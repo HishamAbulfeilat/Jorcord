@@ -26,7 +26,7 @@ test('mobile layout: drawer navigation, chat, no horizontal overflow', async () 
   await expect(M.page.getByRole('dialog', { name: 'Navigation' }).getByRole('navigation', { name: 'Channels' })).toContainText('General');
   await M.page.screenshot({ path: 'test-results/mobile-drawer.png' });
   await M.page.getByRole('dialog', { name: 'Navigation' }).getByRole('button', { name: 'general', exact: true }).click();
-  await expect(M.page.getByRole('dialog', { name: 'Navigation' })).toHaveAttribute('aria-hidden', 'true');
+  await expect(M.page.locator('div[role=dialog][aria-label=Navigation]')).toHaveAttribute('aria-hidden', 'true');
 });
 
 test('mobile voice: join from drawer, controls usable, remote media, no screen-share button', async () => {

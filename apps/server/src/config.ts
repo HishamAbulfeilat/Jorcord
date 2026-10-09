@@ -24,7 +24,28 @@ export interface Config {
   storage: { driver: 'local' | 's3'; s3: { bucket: string; region: string; endpoint: string | null; accessKeyId: string | null; secretAccessKey: string | null; forcePathStyle: boolean; prefix: string } };
   /** Skip calls to the LiveKit RoomService (tests / deployments without a LiveKit API reachable from the server). */
   livekitControl: boolean;
+  push: PushConfig;
 }
+
+export interface PushConfig {
+  /** Web Push (VAPID). Keys are generated into DATA_DIR/vapid.json when not supplied. */
+  vapid: { publicKey: string | null; privateKey: string | null; subject: string };
+  /** Raw FCM service-account JSON (Android; also iOS tokens issued by Firebase). null = FCM disabled. */
+  fcmServiceAccount: string | null;
+  /** APNs token auth (.p8). null = direct APNs disabled. */
+  apns: { key: string; keyId: string; teamId: string; topic: string; production: boolean } | null;
+}
+
+/** Origins of the native wrappers and local dev servers; always allowed unless CORS_ORIGINS is '*'. */
+export const DEFAULT_CORS_ORIGINS = [
+  'capacitor://localhost', 'https://localhost', 'http://localhost', 'tauri://localhost', 'http://tauri.localhost', 'https://tauri.localhost', 'http://localhost:5173',
+];
+
+const readMaybeFile = (inline: string | undefined, file: string | undefined): string | null => {
+  if (inline?.trim()) return inline.trim();
+  if (file) { try { return readFileSync(file, 'utf8'); } catch { return null; } }
+  return null;
+};
 
 const here = new URL('.', import.meta.url).pathname;
 
@@ -40,13 +61,18 @@ export function loadConfig(overrides: Partial<Config> = {}, env: NodeJS.ProcessE
     else { jwtSecret = randomBytes(48).toString('hex'); writeFileSync(p, jwtSecret, { mode: 0o600 }); }
   }
   if (jwtSecret.length < 16) throw new Error('JWT_SECRET too short');
-  const cors = env.CORS_ORIGINS ?? '*';
+  if (isProd && jwtSecret.length < 32) throw new Error('JWT_SECRET must be at least 32 characters in production');
+  const publicUrl = env.PUBLIC_URL ?? 'http://localhost:3000';
+  let publicOrigin: string | null = null; try { publicOrigin = new URL(publicUrl).origin; } catch { /* invalid PUBLIC_URL is reported elsewhere */ }
+  const corsEnv = env.CORS_ORIGINS?.trim();
+  const corsOrigins: string[] | true = corsEnv === '*' ? true
+    : [...new Set([...(corsEnv ? corsEnv.split(',').map((s) => s.trim()).filter(Boolean) : []), ...DEFAULT_CORS_ORIGINS, ...(publicOrigin ? [publicOrigin] : [])])];
+  const apnsKey = readMaybeFile(env.APNS_KEY?.replace(/\\n/g, '\n'), env.APNS_KEY_FILE);
   const cfg: Config = {
     env: env.NODE_ENV ?? 'development', isProd,
     host: env.HOST ?? '0.0.0.0', port: Number(env.PORT ?? 3000), logLevel: env.LOG_LEVEL ?? 'info',
     jwtSecret, databaseUrl: env.DATABASE_URL || null, dataDir, redisUrl: env.REDIS_URL || null, redisPrefix: env.REDIS_PREFIX || 'jorcord',
-    corsOrigins: cors === '*' ? true : cors.split(',').map((s) => s.trim()).filter(Boolean),
-    publicUrl: env.PUBLIC_URL ?? 'http://localhost:3000',
+    corsOrigins, publicUrl,
     trustProxy: env.TRUST_PROXY === 'true',
     rateLimit: env.RATE_LIMIT_ENABLED !== 'false',
     maxUploadBytes: Number(env.MAX_UPLOAD_BYTES || LIMITS.maxUploadBytes),
@@ -71,6 +97,12 @@ export function loadConfig(overrides: Partial<Config> = {}, env: NodeJS.ProcessE
       },
     },
     livekitControl: env.LIVEKIT_CONTROL !== 'false',
+    push: {
+      vapid: { publicKey: env.VAPID_PUBLIC_KEY || null, privateKey: env.VAPID_PRIVATE_KEY || null, subject: env.VAPID_SUBJECT || (publicUrl.startsWith('https://') ? publicUrl : 'mailto:admin@example.com') },
+      fcmServiceAccount: readMaybeFile(env.FCM_SERVICE_ACCOUNT, env.FCM_SERVICE_ACCOUNT_FILE),
+      apns: apnsKey && env.APNS_KEY_ID && env.APNS_TEAM_ID && env.APNS_BUNDLE_ID
+        ? { key: apnsKey, keyId: env.APNS_KEY_ID, teamId: env.APNS_TEAM_ID, topic: env.APNS_BUNDLE_ID, production: env.APNS_PRODUCTION === 'true' } : null,
+    },
   };
   return { ...cfg, ...overrides };
 }

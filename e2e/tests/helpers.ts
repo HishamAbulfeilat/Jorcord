@@ -74,7 +74,10 @@ export async function joinViaInvite(page: Page, path: string) {
 
 export async function sendMessage(page: Page, text: string) {
   const box = page.getByRole('textbox', { name: /^Message/ });
-  await box.click(); await box.fill(text); await box.press('Enter');
+  await box.click(); await box.fill(text);
+  const btn = page.getByRole('button', { name: 'Send message' });
+  if (await btn.isVisible()) await btn.click(); // mobile: Enter inserts a newline, like Discord's phone app
+  else await box.press('Enter');
 }
 
 export const msg = (page: Page, text: string | RegExp) => page.locator('[id^="msg-"]').filter({ hasText: text });

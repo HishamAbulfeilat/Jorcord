@@ -74,7 +74,7 @@ export function ControlBar({ onSettings, className }: { onSettings: () => void; 
   const muted = selfMute || selfDeaf;
   void stage;
   return (
-    <div className={cx('relative flex flex-wrap items-center justify-center gap-3 px-3 py-3 max-md:gap-2', className)} role="toolbar" aria-label="Voice controls">
+    <div className={cx('relative flex flex-wrap items-center justify-center gap-3 px-3 py-3 max-md:gap-2 max-md:pb-5', className)} role="toolbar" aria-label="Voice controls">
       <RoundBtn label={snap.cameraOn ? 'Turn Off Camera' : 'Turn On Camera'} active={snap.cameraOn} pressed={snap.cameraOn} disabled={!canPublish}
         onClick={() => void client.setCamera(!snap.cameraOn).catch(() => {})}>{snap.cameraOn ? <Camera size={22} /> : <CameraOff size={22} />}</RoundBtn>
       {canShare && (
