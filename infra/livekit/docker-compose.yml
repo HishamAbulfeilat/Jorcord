@@ -1,0 +1,14 @@
+# docker compose -f infra/livekit/docker-compose.yml up
+# Linux: host networking is the simplest/fastest for WebRTC.
+services:
+  livekit:
+    image: livekit/livekit-server:v1.11.0
+    command: --config /etc/livekit.yaml
+    network_mode: host
+    restart: unless-stopped
+    volumes:
+      - ./livekit.yaml:/etc/livekit.yaml:ro
+  # Optional: Redis for multi-node / egress
+  # redis:
+  #   image: redis:7-alpine
+  #   ports: ["6379:6379"]

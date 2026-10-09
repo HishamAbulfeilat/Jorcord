@@ -1,0 +1,67 @@
+# Jorcord LiveKit config (development defaults; see README for production).
+port: 7880              # HTTP/WS signalling
+log_level: info
+# Dev keys. REPLACE in production (and set the same in the Jorcord server env).
+keys:
+  devkey: secret
+
+rtc:
+  tcp_port: 7881        # ICE/TCP fallback
+  port_range_start: 50000
+  port_range_end: 50200 # widen for production (~2 ports per participant-track-direction; 10k range for big deployments)
+  use_external_ip: false  # set true on cloud VMs with a public IP (STUN discovery)
+  # Uplink-heavy 4K screenshare: let the congestion controller probe aggressively
+  congestion_control:
+    enabled: true
+    allow_pause: false          # never pause video streams under congestion, degrade instead
+  packet_buffer_size: 1000      # larger buffer helps high-bitrate 4K keyframes / NACK recovery
+  # Uncomment for fixed NAT mapping / cloud:
+  # node_ip: 203.0.113.10
+
+room:
+  auto_create: true
+  empty_timeout: 300
+  departure_timeout: 20
+  max_participants: 0   # 0 = unlimited; Jorcord enforces LIMITS.maxVoiceUsers (99) at token time
+  enabled_codecs:       # order = server preference; AV1/VP9 enable SVC (L3T3_KEY)
+    - mime: audio/opus
+    - mime: audio/red
+    - mime: video/vp8
+    - mime: video/vp9
+    - mime: video/av1
+    - mime: video/h264
+  playout_delay:
+    enabled: true
+    min: 0
+    max: 100
+
+audio:
+  active_level: 35         # lower = more sensitive speaker detection (dBov-ish, 0..127)
+  min_percentile: 40
+  update_interval: 400
+  smooth_intervals: 2
+
+video:
+  dynacast_pause_delay: 5s
+
+turn:
+  enabled: true
+  domain: localhost        # production: turn.example.com
+  udp_port: 3478
+  # tls_port: 5349         # PRODUCTION: enable together with cert_file/key_file (TURN/TLS passes strict firewalls)
+  # cert_file: /certs/fullchain.pem
+  # key_file: /certs/privkey.pem
+  # external_tls: true     # set when an LB terminates TLS in front of TURN
+
+# Webhooks to the Jorcord server (VOICE_STATE mirroring). Server agent exposes /voice/webhook.
+webhook:
+  api_key: devkey
+  urls:
+    - http://host.docker.internal:3000/voice/webhook   # docker; for the local binary use http://127.0.0.1:3000/voice/webhook
+
+# redis:                  # required for multi-node LiveKit
+#   address: redis:6379
+
+limit:
+  num_tracks: 0
+  bytes_per_sec: 0
