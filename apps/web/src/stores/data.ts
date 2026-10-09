@@ -47,6 +47,8 @@ export const useData = create<DataState>((set, get) => ({
     for (const r of p.relationships) users[r.user.id] = r.user;
     const presences: Record<Id, Presence> = {};
     for (const x of p.presences ?? []) presences[x.userId] = x.presence;
+    // The server's READY lists peers only; we are obviously online ourselves (own status honoured unless invisible).
+    if (!presences[p.user.id]) presences[p.user.id] = p.user.presence && p.user.presence !== 'invisible' ? p.user.presence : p.user.presence === 'invisible' ? 'invisible' : 'online';
     const vs: Record<Id, VoiceState> = {};
     for (const v of p.voiceStates ?? []) if (v.channelId) vs[v.userId] = v;
     set({

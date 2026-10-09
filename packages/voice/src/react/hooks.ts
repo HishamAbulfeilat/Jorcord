@@ -92,14 +92,16 @@ export function useVideoTrack(identity: string, source: StreamSource) {
   const ref = useRef<HTMLVideoElement | null>(null);
   const p = snap.participants.find((x) => x.identity === identity);
   const present = source === 'camera' ? p?.cameraOn : p?.screenOn;
+  // Resolve the track during render: the publication exists before the (subscribed) track does, and the snapshot
+  // re-renders us when TrackSubscribed fires, so the effect below re-attaches as soon as it appears.
+  const track: any = present ? client.getVideoTrack(identity, source) : undefined;
   useEffect(() => {
     const el = ref.current;
-    const track: any = client.getVideoTrack(identity, source);
-    if (!el || !track || !present) return;
+    if (!el || !track) return;
     track.attach(el);
     el.playsInline = true; el.muted = true; // audio is routed through separate audio elements
     return () => { try { track.detach(el); } catch { /* noop */ } };
-  }, [client, identity, source, present, snap.status]);
+  }, [track, present]);
   return { ref, present: !!present, participant: p };
 }
 

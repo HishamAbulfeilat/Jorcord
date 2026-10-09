@@ -7,6 +7,8 @@ import { ApiError, conflict, notFound, unauthorized } from '../errors';
 import { issueTokens } from '../auth';
 import { decryptSecret, dummyVerify, encryptSecret, hashPassword, safeEqual, sha256, verifyPassword } from '../lib/crypto';
 import { idSchema, iso, parse } from '../lib/ids';
+import { limitOrThrow } from '../lib/ratelimit';
+import { consumeAuthToken, sendPasswordResetEmail, sendVerificationEmail } from '../services/authTokens';
 import { selfUserDTO } from '../services/serializers';
 
 authenticator.options = { window: 1 };
@@ -28,6 +30,7 @@ export function publicAuthRoutes(app: FastifyInstance, ctx: Ctx) {
       throw e;
     }
     const [row] = await ctx.db.query('SELECT * FROM users WHERE id = $1', [id]);
+    await sendVerificationEmail(ctx, row).catch((e) => ctx.log.warn({ err: e }, 'verification email failed')); // never block sign-up on mail
     return reply.code(201).send(await issueTokens(ctx, row, req));
   });
 
@@ -44,6 +47,40 @@ export function publicAuthRoutes(app: FastifyInstance, ctx: Ctx) {
       if (!authenticator.check(b.totp, decryptSecret(row.mfa_secret, ctx.config.jwtSecret))) throw fail();
     }
     return issueTokens(ctx, row, req);
+  });
+
+  // ---- email verification (the token in the emailed link is the credential) ----
+  app.post('/auth/verify-email', async (req, reply) => {
+    limitOrThrow(ctx.rl, `verify:${req.ip}`, 20, 15 * 60_000, ctx.config.rateLimit);
+    const { token } = parse(z.object({ token: z.string().min(20).max(128) }).strict(), req.body);
+    const userId = await consumeAuthToken(ctx, token, 'verify_email');
+    if (!userId) throw new ApiError(400, 'INVALID_TOKEN', 'This link is invalid or has expired');
+    const [row] = await ctx.db.query('UPDATE users SET verified = true WHERE id = $1 AND deleted_at IS NULL RETURNING *', [userId]);
+    if (row) await ctx.hub.toUser(userId, 'USER_UPDATE', selfUserDTO(ctx, row) as any);
+    return reply.code(204).send();
+  });
+
+  // ---- password reset ----
+  /** Always 204, whether or not the address has an account (no user enumeration). */
+  app.post('/auth/password/forgot', async (req, reply) => {
+    const { email } = parse(z.object({ email: z.string().trim().toLowerCase().email().max(254) }).strict(), req.body);
+    limitOrThrow(ctx.rl, `forgot:ip:${req.ip}`, 10, 15 * 60_000, ctx.config.rateLimit);
+    if (ctx.config.rateLimit && ctx.rl.hit(`forgot:email:${email}`, 3, 3600_000)) return reply.code(204).send(); // silently capped per address
+    const [row] = await ctx.db.query('SELECT id, email FROM users WHERE lower(email) = $1 AND NOT bot AND password_hash IS NOT NULL AND deleted_at IS NULL', [email]);
+    // fire-and-forget so response time does not reveal whether the address has an account (SMTP is slow)
+    if (row) void sendPasswordResetEmail(ctx, row).catch((e) => ctx.log.warn({ err: e }, 'reset email failed'));
+    return reply.code(204).send();
+  });
+  app.post('/auth/password/reset', async (req, reply) => {
+    limitOrThrow(ctx.rl, `reset:${req.ip}`, 20, 15 * 60_000, ctx.config.rateLimit);
+    const b = parse(z.object({ token: z.string().min(20).max(128), newPassword: passwordSchema }).strict(), req.body);
+    const userId = await consumeAuthToken(ctx, b.token, 'reset_password');
+    if (!userId) throw new ApiError(400, 'INVALID_TOKEN', 'This link is invalid or has expired');
+    await ctx.db.query('UPDATE users SET password_hash = $2, verified = true WHERE id = $1 AND deleted_at IS NULL', [userId, await hashPassword(b.newPassword)]);
+    const revoked = await ctx.db.query('UPDATE sessions SET revoked = true WHERE user_id = $1 AND NOT revoked RETURNING id', [userId]); // a reset logs out every device
+    revoked.forEach((r) => ctx.hub.disconnectAuthSession(r.id));
+    await ctx.db.query(`DELETE FROM auth_tokens WHERE user_id = $1 AND kind = 'reset_password'`, [userId]);
+    return reply.code(204).send();
   });
 
   app.post('/auth/refresh', async (req) => {
@@ -68,6 +105,14 @@ export function authRoutes(app: FastifyInstance, ctx: Ctx) {
   app.post('/auth/logout', async (req, reply) => {
     await ctx.db.query('UPDATE sessions SET revoked = true WHERE id = $1 AND user_id = $2', [req.authSessionId, req.userId]);
     ctx.hub.disconnectAuthSession(req.authSessionId);
+    return reply.code(204).send();
+  });
+
+  app.post('/auth/verify-email/send', async (req, reply) => {
+    limitOrThrow(ctx.rl, `verify-send:${req.userId}`, 3, 3600_000, ctx.config.rateLimit);
+    const [u] = await ctx.db.query('SELECT id, email, verified FROM users WHERE id = $1', [req.userId]);
+    if (u.verified) throw conflict('Email already verified', 'ALREADY_VERIFIED');
+    await sendVerificationEmail(ctx, u);
     return reply.code(204).send();
   });
 

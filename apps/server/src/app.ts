@@ -2,7 +2,6 @@ import cors from '@fastify/cors';
 import multipart from '@fastify/multipart';
 import websocket from '@fastify/websocket';
 import Fastify, { type FastifyInstance } from 'fastify';
-import { join } from 'node:path';
 import { ZodError } from 'zod';
 import { authenticate } from './auth';
 import { createBus } from './bus';
@@ -21,7 +20,11 @@ import { invitePublicRoutes, memberRoutes } from './routes/members';
 import { messageRoutes } from './routes/messages';
 import { fileRoutes, miscRoutes, voiceWebhookRoutes } from './routes/misc';
 import { userRoutes } from './routes/users';
-import { LocalStorage } from './storage';
+import { voiceRoutes } from './routes/voice';
+import { createStorage } from './storage';
+import { createState } from './state';
+import { createLiveKitControl } from './services/livekit';
+import { createMailer } from './services/mailer';
 
 export interface BuildOptions { config?: Partial<Config>; memoryDb?: boolean; env?: NodeJS.ProcessEnv }
 
@@ -39,7 +42,12 @@ export async function buildApp(opts: BuildOptions = {}): Promise<{ app: FastifyI
   const bus = await createBus(config.redisUrl);
   const hub = new Hub();
   const rl = new RateLimiter();
-  const ctx: Ctx = { config, db, bus, storage: new LocalStorage(join(config.dataDir, 'files')), hub, rl, log: app.log };
+  const state = await createState(config.redisUrl, config.redisPrefix);
+  const ctx: Ctx = {
+    config, db, bus, storage: await createStorage(config), hub, rl, log: app.log,
+    voice: state.voice, presence: state.presence, livekit: createLiveKitControl(config, app.log), mailer: await createMailer(config, app.log),
+    search: config.searchMode === 'auto' ? (db.kind === 'pg' ? 'fts' : 'ilike') : config.searchMode,
+  };
   await hub.init(ctx);
 
   await app.register(cors, { origin: config.corsOrigins, credentials: false, exposedHeaders: ['retry-after', 'content-range', 'accept-ranges'] });
@@ -80,10 +88,10 @@ export async function buildApp(opts: BuildOptions = {}): Promise<{ app: FastifyI
     await api.register(async (priv) => {
       priv.addHook('preHandler', authenticate(ctx));
       authRoutes(priv, ctx); userRoutes(priv, ctx); guildRoutes(priv, ctx); channelRoutes(priv, ctx);
-      memberRoutes(priv, ctx); messageRoutes(priv, ctx); miscRoutes(priv, ctx);
+      memberRoutes(priv, ctx); messageRoutes(priv, ctx); miscRoutes(priv, ctx); voiceRoutes(priv, ctx);
     });
   }, { prefix: '/api/v1' });
 
-  app.addHook('onClose', async () => { hub.close(); rl.close(); await bus.close(); await db.close(); });
+  app.addHook('onClose', async () => { hub.close(); rl.close(); await bus.close(); await state.close(); await db.close(); });
   return { app, ctx };
 }

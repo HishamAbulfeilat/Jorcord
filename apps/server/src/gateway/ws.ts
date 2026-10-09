@@ -1,16 +1,16 @@
 import type { FastifyInstance } from 'fastify';
 import type { WebSocket } from 'ws';
 import { z } from 'zod';
-import { HEARTBEAT_INTERVAL_MS, Op, Perm, has, type ReadyPayload, type VoiceStateUpdatePayload } from '@jorcord/shared';
+import { HEARTBEAT_INTERVAL_MS, Op, Perm, has, type Presence, type ReadyPayload, type VoiceStateUpdatePayload } from '@jorcord/shared';
 import type { Ctx } from '../ctx';
 import { verifyGatewayToken } from '../auth';
 import { randomToken } from '../lib/crypto';
 import { RateLimiter } from '../lib/ratelimit';
 import { idSchema } from '../lib/ids';
 import { buildGuildFull } from '../services/guilds';
-import { channelAccess } from '../services/perms';
-import { channelsDTO, selfUserDTO } from '../services/serializers';
-import { updateVoiceState, clearVoiceState } from '../services/voice';
+import { channelAccess, guildAccess } from '../services/perms';
+import { channelsDTO, membersDTO, selfUserDTO } from '../services/serializers';
+import { updateVoiceState, clearVoiceAfterGrace } from '../services/voice';
 import { relationshipDTOs } from '../routes/users';
 import type { GwSession } from './hub';
 
@@ -26,13 +26,40 @@ async function buildReady(ctx: Ctx, userId: string, sessionId: string): Promise<
     `SELECT DISTINCT x.uid, u.presence FROM (
         SELECT m2.user_id AS uid FROM members m1 JOIN members m2 ON m1.guild_id = m2.guild_id WHERE m1.user_id = $1 AND m2.user_id <> $1
         UNION SELECT other_id FROM relationships WHERE user_id = $1 AND type = 'friend') x JOIN users u ON u.id = x.uid LIMIT 5000`, [userId]);
+  if (ctx.config.redisUrl) ctx.hub.markOnline(await ctx.presence.onlineAmong(peers.map((p) => p.uid as string)));
   const presences = peers.filter((p) => ctx.hub.isOnline(p.uid)).map((p) => ({ userId: p.uid as string, presence: ctx.hub.publicPresence(p.uid, p.presence) }));
+  presences.push({ userId, presence: (u.presence || 'online') as Presence }); // you are online to yourself (invisible stays invisible)
   const visible = new Set<string>([...guilds.flatMap((g) => g.channels.map((c) => c.id)), ...privateChannels.map((c) => c.id)]);
-  const voiceStates = [...ctx.hub.voice.values()].filter((v) => v.channelId && visible.has(v.channelId));
+  const voiceStates = (await ctx.voice.all()).filter((v) => v.channelId && visible.has(v.channelId));
   return {
     sessionId, user: selfUserDTO(ctx, u), guilds, privateChannels, relationships: await relationshipDTOs(ctx, userId),
     readStates: rs.map((r) => ({ channelId: r.channel_id, lastReadId: r.last_read_id ?? null, mentionCount: r.mention_count })), presences, voiceStates,
   };
+}
+
+const requestMembersSchema = z.object({
+  guildId: idSchema, query: z.string().max(64).optional(), userIds: z.array(idSchema).max(100).optional(),
+  limit: z.number().int().min(1).max(100).optional(), after: idSchema.optional(), nonce: z.string().max(64).optional(),
+}).strict();
+
+/** Gateway REQUEST_MEMBERS: replies with GUILD_MEMBERS_CHUNK to the asking session only. Requires guild membership. */
+async function requestMembers(ctx: Ctx, session: GwSession, d: unknown) {
+  const p = requestMembersSchema.parse(d);
+  await guildAccess(ctx, session.userId, p.guildId);
+  const limit = p.limit ?? 100;
+  let rows: any[];
+  if (p.userIds?.length) {
+    rows = await ctx.db.query('SELECT * FROM members WHERE guild_id = $1 AND user_id = ANY($2::text[])', [p.guildId, p.userIds]);
+  } else if (p.query) {
+    const like = `${p.query.replace(/[\\%_]/g, '\\$&')}%`;
+    rows = await ctx.db.query(
+      `SELECT m.* FROM members m JOIN users u ON u.id = m.user_id WHERE m.guild_id = $1 AND (u.username ILIKE $2 OR u.display_name ILIKE $2 OR m.nick ILIKE $2) ORDER BY u.username LIMIT $3`, [p.guildId, like, limit]);
+  } else {
+    rows = await ctx.db.query('SELECT * FROM members WHERE guild_id = $1 AND ($2::text IS NULL OR user_id > $2) ORDER BY user_id LIMIT $3', [p.guildId, p.after ?? null, limit]);
+  }
+  const members = await membersDTO(ctx, rows);
+  const notFound = (p.userIds ?? []).filter((id) => !members.some((m) => m.user.id === id));
+  ctx.hub.sendTo(session, 'GUILD_MEMBERS_CHUNK', { guildId: p.guildId, members, notFound, chunkIndex: 0, chunkCount: 1, ...(p.nonce ? { nonce: p.nonce } : {}) });
 }
 
 const frameSchema = z.object({ op: z.number().int(), d: z.unknown().optional() });
@@ -58,7 +85,7 @@ export function gatewayRoutes(app: FastifyInstance, ctx: Ctx) {
     async function attach(s: GwSession) {
       session = s; s.socket = socket; s.detachedAt = null;
       clearTimeout(identifyTimer);
-      if (ctx.hub.attachedCount(s.userId) === 1) await ctx.hub.broadcastPresence(s.userId);
+      if ((await ctx.hub.sessionAttached(s)) === 1) await ctx.hub.broadcastPresence(s.userId);
     }
 
     async function identify(d: unknown) {
@@ -115,6 +142,8 @@ export function gatewayRoutes(app: FastifyInstance, ctx: Ctx) {
         } else if (op === Op.VOICE_STATE_UPDATE) {
           const v = z.object({ guildId: idSchema.nullable().optional(), channelId: idSchema.nullable(), selfMute: z.boolean().optional(), selfDeaf: z.boolean().optional(), video: z.boolean().optional(), streaming: z.boolean().optional() }).parse(d);
           await updateVoiceState(ctx, uid, { guildId: v.guildId ?? null, ...v } as VoiceStateUpdatePayload);
+        } else if (op === Op.REQUEST_MEMBERS) {
+          await requestMembers(ctx, session, d);
         } else if (op === Op.TYPING) {
           const { channelId } = z.object({ channelId: idSchema }).parse(d);
           const a = await channelAccess(ctx, uid, channelId);
@@ -135,10 +164,11 @@ export function gatewayRoutes(app: FastifyInstance, ctx: Ctx) {
       const s = session as GwSession | null;
       if (!s || s.socket !== socket) return;
       s.socket = null; s.detachedAt = Date.now();
-      if (ctx.hub.attachedCount(s.userId) === 0) {
-        void clearVoiceState(ctx, s.userId).catch(() => {});
-        void ctx.hub.broadcastPresence(s.userId).catch(() => {});
-      }
+      void ctx.hub.sessionDetached(s).then(async (left) => {
+        if (left > 0) return;
+        clearVoiceAfterGrace(ctx, s.userId); // a flaky network must not eject someone whose LiveKit connection survives
+        await ctx.hub.broadcastPresence(s.userId);
+      }).catch((e) => ctx.log.warn({ err: e }, 'presence detach failed'));
     });
     socket.on('error', (e) => req.log.debug({ err: e }, 'ws error'));
   });

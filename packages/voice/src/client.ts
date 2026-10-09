@@ -180,6 +180,14 @@ export class VoiceClient {
     await this.applyMicState();
   }
   toggleMute = () => this.setMuted(!this.selfMuted);
+  /** Pre-seed mute/deafen before connecting (no side effects until connect). */
+  prepare(o: { muted?: boolean; deafened?: boolean }) {
+    if (this.room.state !== ConnectionState.Disconnected) return;
+    const deaf = !!o.deafened;
+    this.preDeafenMuted = !!o.muted;
+    this.selfMuted = deaf || !!o.muted;
+    this.snap = { ...this.snap, muted: this.selfMuted, deafened: deaf };
+  }
 
   async setDeafened(deaf: boolean) {
     if (deaf === this.snap.deafened) return;

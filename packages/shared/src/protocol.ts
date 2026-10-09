@@ -31,9 +31,14 @@ export interface Events {
   VOICE_STATE_UPDATE: VoiceState;
   EMOJIS_UPDATE: { guildId: Id; emojis: Emoji[] };
   THREAD_CREATE: Channel; THREAD_UPDATE: Channel;
+  THREAD_MEMBERS_UPDATE: { id: Id; guildId: Id; addedUserIds: Id[]; removedUserIds: Id[] };
+  /** Reply to gateway op REQUEST_MEMBERS (sent only to the requesting session). */
+  GUILD_MEMBERS_CHUNK: { guildId: Id; members: Member[]; notFound: Id[]; chunkIndex: number; chunkCount: number; nonce?: string };
 }
 export type EventName = keyof Events;
 
 export interface IdentifyPayload { token: string; sessionId?: string; seq?: number; properties?: { os?: string; client?: string } }
 export interface VoiceStateUpdatePayload { guildId: Id | null; channelId: Id | null; selfMute?: boolean; selfDeaf?: boolean; video?: boolean; streaming?: boolean }
 export const HEARTBEAT_INTERVAL_MS = 30_000;
+/** Gateway op REQUEST_MEMBERS: `query` is a username/display-name/nick prefix; `userIds` fetches specific members; neither lists members by id after `after`. */
+export interface RequestMembersPayload { guildId: Id; query?: string; userIds?: Id[]; limit?: number; after?: Id; nonce?: string }

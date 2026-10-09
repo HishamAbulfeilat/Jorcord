@@ -125,7 +125,17 @@ export const api = {
     /** Upload an image and return the URL to store in avatar/icon/banner fields (the server rejects data: URIs). */
     uploadImage: (file: File) => { const f = new FormData(); f.append('file', file, file.name); return send<Attachment>({ method: 'POST', path: '/uploads', form: f }).then((a) => a.url); },
   },
-  voice: { token: (channelId: Id) => send<VoiceToken>({ method: 'POST', path: '/voice/token', body: { channelId } }) },
+  voice: {
+    token: (channelId: Id) => send<VoiceToken>({ method: 'POST', path: '/voice/token', body: { channelId } }),
+    /** Server mute/deafen another member (MUTE_MEMBERS / DEAFEN_MEMBERS). */
+    moderate: (guildId: Id, userId: Id, b: { mute?: boolean; deaf?: boolean }) => send({ method: 'PATCH', path: `/guilds/${guildId}/voice-states/${userId}`, body: b }),
+    move: (guildId: Id, userId: Id, channelId: Id) => send({ method: 'POST', path: `/guilds/${guildId}/voice-states/${userId}/move`, body: { channelId } }),
+    disconnect: (guildId: Id, userId: Id) => send({ method: 'DELETE', path: `/guilds/${guildId}/voice-states/${userId}` }),
+    /** Stage: ask (or stop asking) to speak. */
+    stageRequest: (channelId: Id, on: boolean) => send({ method: on ? 'PUT' : 'DELETE', path: `/channels/${channelId}/stage/request` }),
+    /** Stage: invite a member to speak (on) or move them back to the audience (off). `@me` for self. */
+    stageSpeaker: (channelId: Id, userId: Id | '@me', on: boolean) => send({ method: on ? 'PUT' : 'DELETE', path: `/channels/${channelId}/stage/speakers/${userId}` }),
+  },
   misc: {
     gifs: (q?: string) => send<any>({ method: 'GET', path: q ? '/gifs/search' : '/gifs/trending', query: q ? { q } : undefined }).then((x) => arr<GifResult>(x)),
     unfurl: (url: string) => send<any>({ method: 'GET', path: '/unfurl', query: { url } }),

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { VoiceSettingsForm } from '@/voice/VoiceSettings';
 import { useQuery } from '@tanstack/react-query';
 import { Accessibility, Bell, Globe, Keyboard, LogOut, Mic, Palette, Shield, User as UserIcon, UserCircle, Monitor } from 'lucide-react';
 import { api } from '@/lib/api';
@@ -130,30 +131,7 @@ function A11y() {
 }
 
 function VoiceVideo() {
-  const p = useUI((s) => s.prefs); const set = useUI((s) => s.setPref);
-  const [devs, setDevs] = useState<MediaDeviceInfo[]>([]); const [err, setErr] = useState('');
-  const [level, setLevel] = useState(0); const stop = useRef<() => void>();
-  const load = () => navigator.mediaDevices?.enumerateDevices().then(setDevs).catch(() => {});
-  useEffect(() => { load(); return () => stop.current?.(); }, []);
-  const test = async () => {
-    try { stop.current?.(); const s = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: p.inputDevice === 'default' ? undefined : { exact: p.inputDevice } } }); await load();
-      const ctx = new AudioContext(); const an = ctx.createAnalyser(); ctx.createMediaStreamSource(s).connect(an); const buf = new Uint8Array(an.frequencyBinCount); let raf = 0;
-      const tick = () => { an.getByteTimeDomainData(buf); let m = 0; for (const b of buf) m = Math.max(m, Math.abs(b - 128)); setLevel(m / 128); raf = requestAnimationFrame(tick); }; tick();
-      stop.current = () => { cancelAnimationFrame(raf); s.getTracks().forEach((t) => t.stop()); ctx.close(); setLevel(0); };
-    } catch { setErr('Microphone access was denied or no microphone was found.'); }
-  };
-  const sel = (kind: MediaDeviceKind, key: 'inputDevice' | 'outputDevice' | 'videoDevice', label: string) => (
-    <Field label={label}><select className="field" value={p[key]} onChange={(e) => set(key, e.target.value)}><option value="default">Default</option>{devs.filter((d) => d.kind === kind && d.deviceId !== 'default').map((d) => <option key={d.deviceId} value={d.deviceId}>{d.label || `${kind} ${d.deviceId.slice(0, 6)}`}</option>)}</select></Field>);
-  return (<><H1>Voice & Video</H1>
-    <div className="grid gap-x-6 sm:grid-cols-2">{sel('audioinput', 'inputDevice', 'Input Device')}{sel('audiooutput', 'outputDevice', 'Output Device')}</div>
-    <div className="grid gap-x-6 sm:grid-cols-2"><Field label={`Input Volume ${p.inputVolume}%`}><input type="range" min={0} max={200} value={p.inputVolume} onChange={(e) => set('inputVolume', Number(e.target.value))} className="w-full accent-brand" /></Field><Field label={`Output Volume ${p.outputVolume}%`}><input type="range" min={0} max={200} value={p.outputVolume} onChange={(e) => set('outputVolume', Number(e.target.value))} className="w-full accent-brand" /></Field></div>
-    <div className="mb-4 rounded-lg bg-side p-3"><div className="mb-2 flex items-center justify-between"><span className="font-semibold text-header">Mic Test</span><button className="btn btn-secondary" onClick={test}>Let’s Check</button></div><div className="h-2 overflow-hidden rounded bg-rail"><div className="h-full bg-success transition-[width]" style={{ width: `${Math.min(100, level * 160)}%` }} /></div>{err && <p className="mt-2 text-sm text-danger">{err}</p>}</div>
-    {sel('videoinput', 'videoDevice', 'Camera')}
-    <Row title="Noise Suppression"><Toggle label="Noise suppression" checked={p.noiseSuppression} onChange={(v) => set('noiseSuppression', v)} /></Row>
-    <Row title="Echo Cancellation"><Toggle label="Echo cancellation" checked={p.echoCancellation} onChange={(v) => set('echoCancellation', v)} /></Row>
-    <Row title="Automatic Gain Control"><Toggle label="Automatic gain" checked={p.autoGain} onChange={(v) => set('autoGain', v)} /></Row>
-    <Row title="Push to Talk" desc={`Hold ${p.keybinds.pushToTalk ?? defaultKeybinds.pushToTalk} to talk.`}><Toggle label="Push to talk" checked={p.pushToTalk} onChange={(v) => set('pushToTalk', v)} /></Row>
-  </>);
+  return (<><H1>Voice & Video</H1><VoiceSettingsForm /></>);
 }
 
 function Notifications() {

@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import type { Readable } from 'node:stream';
 
-/** File storage abstraction (local disk now; S3 implementation can be added behind the same interface). */
+/** File storage abstraction. Implementations: LocalStorage (disk) and S3Storage (storage-s3.ts, S3-compatible). */
 export interface Storage {
   /** Stream into storage. Rejects if more than maxBytes are written. Returns bytes written. */
   put(key: string, data: Readable, maxBytes: number): Promise<number>;
@@ -39,4 +39,9 @@ export class LocalStorage implements Storage {
     return Buffer.concat(chunks);
   }
   async delete(key: string) { await rm(this.path(key), { force: true }); }
+}
+
+export async function createStorage(cfg: { dataDir: string; storage: { driver: 'local' | 's3'; s3: Parameters<typeof import('./storage-s3').createS3Storage>[0] } }): Promise<Storage> {
+  if (cfg.storage.driver === 's3') return (await import('./storage-s3')).createS3Storage(cfg.storage.s3);
+  return new LocalStorage(join(cfg.dataDir, 'files'));
 }

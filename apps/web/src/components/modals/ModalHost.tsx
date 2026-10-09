@@ -13,6 +13,7 @@ import { useNav } from '@/lib/nav';
 import { ProfileCard } from './Profile';
 import { ChannelSettings } from '@/components/settings/ChannelSettings';
 import { goto } from '@/lib/menus';
+import { VoiceSettingsModal } from '@/voice/VoiceSettings';
 
 const TEMPLATES = [
   { id: 'own', label: 'Create My Own', icon: Palette }, { id: 'gaming', label: 'Gaming', icon: Gamepad2 }, { id: 'friends', label: 'Friends', icon: Heart },
@@ -204,6 +205,7 @@ export function ModalHost() {
     case 'createForumPost': return <ForumPost channelId={m.channelId} close={close} />;
     case 'newDm': return <NewDm close={close} />;
     case 'shortcuts': return <Shortcuts close={close} />;
+    case 'voiceSettings': return <VoiceSettingsModal onClose={close} />;
     case 'reactors': return <Reactors spec={m} close={close} />;
     case 'leaveGuild': return <LeaveGuild guildId={m.guildId} close={close} />;
     case 'channelSettings': return <ChannelSettings channelId={m.channelId} close={close} />;

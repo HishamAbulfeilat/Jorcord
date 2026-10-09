@@ -11,7 +11,8 @@ import { QuickSwitcher } from './QuickSwitcher';
 import { ChatView } from '@/components/chat/ChatView';
 import { ForumView } from '@/components/chat/ForumView';
 import { FriendsHome } from '@/components/home/FriendsHome';
-import { VoiceChannelView } from '@/components/VoiceChannelView';
+import { VoiceChannelView, MobileVoiceBar } from '@/components/VoiceChannelView';
+import { VoiceRoot } from '@/voice/VoiceRoot';
 import { BaseCtx, useNav, useRouteIds } from '@/lib/nav';
 import { useIsMobile } from '@/lib/hooks';
 import { useFirstTextChannel } from '@/lib/useGuild';
@@ -117,8 +118,10 @@ export function AppShell({ base = '' }: { base?: string }) {
   const main = <MainContent />;
   return (
     <BaseCtx.Provider value={base}>
+     <VoiceRoot>
       <div ref={ref} className="relative flex h-full flex-col bg-rail">
         <ConnectionBanner />
+        <MobileVoiceBar />
         <div className="relative flex min-h-0 flex-1">
           {!mobile && <><ServerRail /><Sidebar /></>}
           <main id="main" className="relative flex min-w-0 flex-1 flex-col bg-chat md:rounded-tl-lg" style={{ paddingLeft: 'var(--sal)', paddingRight: 'var(--sar)' }}>{main}</main>
@@ -135,6 +138,7 @@ export function AppShell({ base = '' }: { base?: string }) {
         {mobile && !left && !right && <HomeTabBarGate />}
         <QuickSwitcher />
       </div>
+     </VoiceRoot>
     </BaseCtx.Provider>
   );
 }

@@ -7,16 +7,46 @@ import WebSocket from 'ws';
 import { buildApp } from '../src/app';
 import type { Ctx } from '../src/ctx';
 
-export interface TestEnv { app: FastifyInstance; ctx: Ctx; port: number; close(): Promise<void>; dir: string }
+export interface TestEnv { app: FastifyInstance; ctx: Ctx; port: number; close(): Promise<void>; dir: string; livekit: FakeLiveKit }
+
+/** Records LiveKit RoomService calls instead of contacting a LiveKit server. */
+export class FakeLiveKit {
+  perms: { room: string; identity: string; canSpeak: boolean; canStream: boolean; canSubscribe: boolean }[] = [];
+  removed: { room: string; identity: string }[] = [];
+  async setPermissions(room: string, identity: string, p: { canSpeak: boolean; canStream: boolean; canSubscribe: boolean }) { this.perms.push({ room, identity, ...p }); }
+  async remove(room: string, identity: string) { this.removed.push({ room, identity }); }
+}
+
+/**
+ * Set TEST_PG_URL (e.g. postgres://postgres@127.0.0.1:5432/postgres) to run the whole suite against a real Postgres
+ * (one throw-away database per server) and TEST_REDIS_URL to use the Redis event bus / state stores.
+ */
+export async function createTestDatabase(): Promise<{ url: string; drop(): Promise<void> } | null> {
+  const admin = process.env.TEST_PG_URL;
+  if (!admin) return null;
+  const pg = await import('pg');
+  const name = `jc_test_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const c = new pg.default.Client({ connectionString: admin }); await c.connect();
+  await c.query(`CREATE DATABASE ${name}`); await c.end();
+  const u = new URL(admin); u.pathname = `/${name}`;
+  return { url: u.toString(), drop: async () => { const d = new pg.default.Client({ connectionString: admin }); await d.connect(); await d.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`); await d.end(); } };
+}
+
 export async function startServer(config: Record<string, unknown> = {}): Promise<TestEnv> {
   const dir = mkdtempSync(join(tmpdir(), 'jorcord-test-'));
+  const own = config.databaseUrl ? null : await createTestDatabase();
   const { app, ctx } = await buildApp({
     memoryDb: true,
-    config: { logLevel: 'silent', rateLimit: false, dataDir: dir, jwtSecret: 'test-secret-test-secret-123456', unfurlOnSend: false, heartbeatIntervalMs: 30000, ...config } as any,
+    config: {
+      logLevel: process.env.TEST_LOG ?? 'silent', rateLimit: false, dataDir: dir, jwtSecret: 'test-secret-test-secret-123456', unfurlOnSend: false, heartbeatIntervalMs: 30000,
+      livekitControl: false, voiceGraceMs: 0, ...(own ? { databaseUrl: own.url } : {}), ...(process.env.TEST_REDIS_URL ? { redisUrl: process.env.TEST_REDIS_URL, redisPrefix: `jct${Math.random().toString(36).slice(2, 8)}` } : {}), ...config,
+    } as any,
   });
+  const livekit = new FakeLiveKit();
+  ctx.livekit = livekit;
   await app.listen({ port: 0, host: '127.0.0.1' });
   const port = (app.server.address() as AddressInfo).port;
-  return { app, ctx, port, dir, close: async () => { await app.close(); rmSync(dir, { recursive: true, force: true }); } };
+  return { app, ctx, port, dir, livekit, close: async () => { await app.close(); rmSync(dir, { recursive: true, force: true }); await own?.drop(); } };
 }
 
 export interface Client { id: string; token: string; refresh: string; username: string; user: any }

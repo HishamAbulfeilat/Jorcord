@@ -17,6 +17,8 @@ import { setCurrentChannel } from '@/lib/session';
 import { useNav } from '@/lib/nav';
 import { Markdown } from './Markdown';
 import { markChannelRead } from '@/lib/menus';
+import { DmCallPanel, startCall } from '@/voice/DmCall';
+import { Phone, Video } from 'lucide-react';
 
 export function HeaderButton({ label, active, onClick, children, badge }: { label: string; active?: boolean; onClick: () => void; children: React.ReactNode; badge?: boolean }) {
   return <Tip text={label} side="bottom"><button aria-label={label} aria-pressed={active} onClick={onClick} className={cx('touch relative flex h-8 min-w-8 items-center justify-center rounded px-1 md:min-h-0', active ? 'text-header' : 'text-interactive hover:text-interactive-hover')}>{children}{badge && <span className="absolute right-0.5 top-0 h-2 w-2 rounded-full bg-danger" />}</button></Tip>;
@@ -39,6 +41,8 @@ export function ChannelHeader({ channel }: { channel: Channel }) {
       <h1 className="truncate text-base font-semibold text-header">{isDm ? dmName(channel, me?.id) : channel.name}</h1>
       {channel.topic && !mobile && <><span className="mx-1 h-6 w-px bg-divider" aria-hidden /><div className="min-w-0 flex-1 truncate text-sm text-muted" title={channel.topic}><Markdown content={channel.topic} guildId={channel.guildId} inline /></div></>}
       <div className="ml-auto flex items-center gap-1 md:gap-2">
+        {isDm && <HeaderButton label="Start Voice Call" onClick={() => void startCall(channel.id, false)}><Phone size={22} /></HeaderButton>}
+        {isDm && <HeaderButton label="Start Video Call" onClick={() => void startCall(channel.id, true)}><Video size={24} /></HeaderButton>}
         {!isDm && !isThread && <HeaderButton label="Threads" active={panel === 'threads'} onClick={() => toggle('threads')}><MessagesSquare size={24} /></HeaderButton>}
         {!mobile && <HeaderButton label={muted ? 'Unmute Channel' : 'Mute Channel'} onClick={() => setPref('mutedChannels', { ...prefs.mutedChannels, [channel.id]: !muted })}>{muted ? <BellOff size={24} /> : <Bell size={24} />}</HeaderButton>}
         <HeaderButton label="Pinned Messages" active={panel === 'pins'} onClick={() => toggle('pins')}><Pin size={24} /></HeaderButton>
@@ -83,6 +87,7 @@ export function ChatView({ channel }: { channel: Channel }) {
       <ChannelHeader channel={channel} />
       <div className="flex min-h-0 flex-1">
         <div className="relative flex min-w-0 flex-1 flex-col">
+          {isDm && <DmCallPanel channel={channel} />}
           <MessageList key={cid} channel={channel} lastReadSnapshot={snapshot.current.v} />
           <div className="relative"><TypingIndicator channelId={cid} guildId={gid} /></div>
           <Composer key={'c' + cid} channel={channel} stagedExternal={dropped} />

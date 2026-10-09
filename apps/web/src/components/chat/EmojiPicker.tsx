@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { memo, useCallback, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Search, Smile, Clock, Film } from 'lucide-react';
 import { EMOJI_CATEGORIES, searchEmoji } from '@/lib/emoji';
@@ -22,10 +22,10 @@ export function EmojiPicker({ onPick, guildId, allowGif = false }: { onPick: (e:
   const customHits = q ? custom.flatMap((g) => g.emojis.filter((e) => e.name.toLowerCase().includes(q.toLowerCase().replace(/^:/, '')))) : [];
   const rec = recent();
   const gifs = useQuery({ queryKey: ['gifs', dq], queryFn: () => api.misc.gifs(dq || undefined), enabled: tab === 'gif', staleTime: 60_000 });
-  const pick = (e: EmojiPick) => { if (e.char) pushRecent(e.char); onPick(e); };
-  const Btn = ({ char, label }: { char: string; label: string }) => (
-    <button role="gridcell" aria-label={label} onMouseEnter={() => setHover(label)} onFocus={() => setHover(label)} onClick={() => pick({ char, name: label })} className="flex h-9 w-9 items-center justify-center rounded text-[26px] leading-none hover:bg-hover">{char}</button>
-  );
+  // Stable callbacks + module-level memo cells: hovering must not remount ~1800 buttons (that swallowed clicks).
+  const onPickRef = useRef(onPick); onPickRef.current = onPick;
+  const pick = useCallback((e: EmojiPick) => { if (e.char) pushRecent(e.char); onPickRef.current(e); }, []);
+  const setHoverStable = useCallback((v: string) => setHover(v), []);
   return (
     <div className="flex h-[min(420px,70dvh)] w-full flex-col overflow-hidden rounded-lg bg-float text-normal shadow-elev sm:w-[360px]" role="dialog" aria-label="Emoji picker">
       <div className="flex items-center gap-2 p-2">
@@ -51,15 +51,15 @@ export function EmojiPicker({ onPick, guildId, allowGif = false }: { onPick: (e:
           <div className="scroller min-w-0 flex-1 px-2 pb-2" role="grid">
             {results ? (
               <>
-                {customHits.length > 0 && <div className="flex flex-wrap">{customHits.map((e) => <CustomBtn key={e.id} e={e} pick={pick} setHover={setHover} />)}</div>}
-                <div className="flex flex-wrap">{results.map((e) => <Btn key={e.name} char={e.char} label={e.name} />)}</div>
+                {customHits.length > 0 && <div className="flex flex-wrap">{customHits.map((e) => <CustomBtn key={e.id} e={e} pick={pick} setHover={setHoverStable} />)}</div>}
+                <div className="flex flex-wrap">{results.map((e) => <Btn key={e.name} char={e.char} label={e.name} pick={pick} setHover={setHoverStable} />)}</div>
                 {!results.length && !customHits.length && <p className="p-4 text-center text-sm text-muted">No emoji match “{q}”.</p>}
               </>
             ) : (
               <>
-                {rec.length > 0 && <Section id="recent" title="Recently used"><div className="flex flex-wrap">{rec.map((c) => <Btn key={c} char={c} label={c} />)}</div></Section>}
-                {custom.map((g) => <Section key={g.guild.id} id={g.guild.id} title={g.guild.name}><div className="flex flex-wrap">{g.emojis.map((e) => <CustomBtn key={e.id} e={e} pick={pick} setHover={setHover} />)}</div></Section>)}
-                {EMOJI_CATEGORIES.map((c) => <Section key={c.name} id={c.name} title={c.name}><div className="flex flex-wrap">{c.emojis.map((e) => <Btn key={e.name} char={e.char} label={e.name} />)}</div></Section>)}
+                {rec.length > 0 && <Section id="recent" title="Recently used"><div className="flex flex-wrap">{rec.map((c) => <Btn key={c} char={c} label={c} pick={pick} setHover={setHoverStable} />)}</div></Section>}
+                {custom.map((g) => <Section key={g.guild.id} id={g.guild.id} title={g.guild.name}><div className="flex flex-wrap">{g.emojis.map((e) => <CustomBtn key={e.id} e={e} pick={pick} setHover={setHoverStable} />)}</div></Section>)}
+                {EMOJI_CATEGORIES.map((c) => <Section key={c.name} id={c.name} title={c.name}><div className="flex flex-wrap">{c.emojis.map((e) => <Btn key={e.name} char={e.char} label={e.name} pick={pick} setHover={setHoverStable} />)}</div></Section>)}
               </>
             )}
           </div>
@@ -70,6 +70,9 @@ export function EmojiPicker({ onPick, guildId, allowGif = false }: { onPick: (e:
     </div>
   );
 }
+const Btn = memo(function Btn({ char, label, pick, setHover }: { char: string; label: string; pick: (e: EmojiPick) => void; setHover: (s: string) => void }) {
+  return <button role="gridcell" aria-label={label} onMouseEnter={() => setHover(label)} onFocus={() => setHover(label)} onClick={() => pick({ char, name: label })} className="flex h-9 w-9 items-center justify-center rounded text-[26px] leading-none hover:bg-hover">{char}</button>;
+});
 function Section({ id, title, children }: { id: string; title: string; children: React.ReactNode }) {
   return <section id={`emo-${id}`}><h3 className="sticky top-0 z-10 bg-float py-1.5 text-xs font-bold uppercase tracking-wide text-muted">{title}</h3>{children}</section>;
 }

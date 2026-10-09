@@ -106,13 +106,26 @@ export function MessageList({ channel, lastReadSnapshot }: { channel: Channel; l
   useLayoutEffect(() => { if (atBottom.current && didInitial.current) { const el = scroller.current; if (el) el.scrollTop = el.scrollHeight; } }, [total]);
 
   const loadingOlder = useRef(false);
+  /** Mark the channel read when its newest message is on screen and the window is focused. */
+  const ackIfViewing = () => {
+    const last = state?.list[state.list.length - 1];
+    if (!last || state?.hasMoreNewer || !document.hasFocus()) return;
+    const rs = useData.getState().readStates[cid];
+    if (compareId(last.id, rs?.lastReadId) > 0 || (rs?.mentionCount ?? 0) > 0) ackLater(cid, last.id);
+  };
+  // Short channels never scroll, so no scroll event fires: ack once the list has painted at the bottom.
+  useEffect(() => {
+    if (!state?.loadedInitial) return;
+    const t = setTimeout(() => { const el = scroller.current; if (el && el.scrollHeight - el.scrollTop - el.clientHeight < 80) ackIfViewing(); }, 150);
+    return () => clearTimeout(t);
+  }, [state?.loadedInitial, state?.initSeq, state?.list.length, cid]); // eslint-disable-line
   const onScroll = () => {
     const el = scroller.current; if (!el) return;
     const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
     const bottom = dist < 80;
     atBottom.current = bottom && !state?.hasMoreNewer;
     setShowJump(dist > 600 || !!state?.hasMoreNewer);
-    if (bottom && !state?.hasMoreNewer) { setNewBelow(0); const last = state?.list[state.list.length - 1]; if (last && document.hasFocus()) { const rs = useData.getState().readStates[cid]; if (compareId(last.id, rs?.lastReadId) > 0 || (rs?.mentionCount ?? 0) > 0) ackLater(cid, last.id); } }
+    if (bottom && !state?.hasMoreNewer) { setNewBelow(0); ackIfViewing(); }
     if (el.scrollTop < 500 && state?.hasMoreOlder && !state.loading && !loadingOlder.current && state.list.length) {
       loadingOlder.current = true;
       const first = virt.getVirtualItems()[0];

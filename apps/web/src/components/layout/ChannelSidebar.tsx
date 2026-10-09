@@ -1,4 +1,7 @@
-import { ChevronDown, ChevronRight, Hash, Megaphone, MessagesSquare, Plus, Radio, UserPlus, Volume2, Settings, X, Lock, Volume1 } from 'lucide-react';
+import { ChevronDown, ChevronRight, Hash, Megaphone, MessagesSquare, Plus, Radio, UserPlus, Volume2, Settings, X, Lock, Volume1, Video, VolumeX, MicOff } from 'lucide-react';
+import { useVoiceSnapshot } from '@jorcord/voice/react';
+import { joinVoice } from '@/voice/controller';
+import { voiceUserMenu } from '@/voice/menu';
 import type { Channel } from '@jorcord/shared';
 import { Perm } from '@jorcord/shared';
 import { useData, channelUnread } from '@/stores/data';
@@ -23,10 +26,36 @@ export const ChannelIcon = ({ c, size = 20, className = '' }: { c: Pick<Channel,
   return priv ? <Lock size={size - 4} className={className} /> : <Hash size={size} className={className} />;
 };
 
+function VoiceMemberRow({ userId, channelId, speaking, children }: { userId: string; channelId: string; speaking: boolean; children: React.ReactNode }) {
+  const trig = useMenuTrigger(() => voiceUserMenu(userId, channelId));
+  return <li data-speaking={speaking} className="flex items-center gap-2 rounded px-1 py-0.5 text-sm text-interactive hover:bg-hover" {...trig}>{children}</li>;
+}
+
 function VoiceMembers({ channelId }: { channelId: string }) {
-  const users = useData(useShallow((s) => Object.values(s.voiceStates).filter((v) => v.channelId === channelId).map((v) => s.users[v.userId]).filter(Boolean)));
-  if (!users.length) return null;
-  return <ul className="mb-1 ml-8 space-y-0.5">{users.map((u) => <li key={u.id} className="flex items-center gap-2 rounded px-1 py-0.5 text-sm text-interactive"><Avatar user={u} size={20} /><span className="truncate">{displayName(u)}</span></li>)}</ul>;
+  const states = useData(useShallow((s) => Object.values(s.voiceStates).filter((v) => v.channelId === channelId)));
+  const users = useData(useShallow((s) => states.map((v) => s.users[v.userId])));
+  const snap = useVoiceSnapshot();
+  if (!states.length) return null;
+  return (
+    <ul className="mb-1 ml-8 space-y-0.5" aria-label="Voice participants">
+      {states.map((v, i) => {
+        const u = users[i]; if (!u) return null;
+        const live = snap.channelId === channelId ? snap.participants.find((p) => p.identity === v.userId) : undefined;
+        const speaking = !!live?.speaking;
+        return (
+          <VoiceMemberRow key={v.userId} userId={v.userId} channelId={channelId} speaking={speaking}>
+            <span className={cx('rounded-full', speaking && 'shadow-[0_0_0_2px_rgb(var(--success))]')} style={{ lineHeight: 0 }}><Avatar user={u} size={20} /></span>
+            <span className="truncate">{displayName(u)}</span>
+            <span className="ml-auto flex items-center gap-1 text-muted">
+              {v.streaming && <span className="rounded bg-danger px-1 text-[10px] font-bold uppercase leading-4 text-white">Live</span>}
+              {v.video && <Video size={14} aria-label="Camera on" />}
+              {v.selfDeaf || v.serverDeaf ? <VolumeX size={14} className="text-danger" aria-label="Deafened" /> : v.selfMute || v.serverMute ? <MicOff size={14} className="text-danger" aria-label="Muted" /> : null}
+            </span>
+          </VoiceMemberRow>
+        );
+      })}
+    </ul>
+  );
 }
 
 function ChannelRow({ c, guildId, canManage, canInvite }: { c: Channel; guildId: string; canManage: boolean; canInvite: boolean }) {
@@ -41,7 +70,7 @@ function ChannelRow({ c, guildId, canManage, canInvite }: { c: Channel; guildId:
     <li>
       <div className={cx('group relative mx-2 flex items-center rounded', active ? 'bg-active text-header' : 'hover:bg-hover', emph ? 'text-header' : active ? '' : 'text-muted hover:text-interactive-hover', muted && !active && 'opacity-50')} {...trig}>
         {emph && !active && <span className="pill-unread" style={{ left: -8 }} />}
-        <button aria-current={active ? 'page' : undefined} onClick={() => nav.go(guildId, c.id)} className="touch flex min-w-0 flex-1 items-center gap-1.5 px-2 text-left md:min-h-[34px]">
+        <button aria-current={active ? 'page' : undefined} onClick={() => { nav.go(guildId, c.id); if (c.type === 'voice' || c.type === 'stage') void joinVoice(c.id); }} className="touch flex min-w-0 flex-1 items-center gap-1.5 px-2 text-left md:min-h-[34px]">
           <ChannelIcon c={c} className="shrink-0 opacity-70" />
           <span className={cx('truncate text-[16px] leading-5', emph ? 'font-semibold' : 'font-medium')}>{c.name}</span>
         </button>

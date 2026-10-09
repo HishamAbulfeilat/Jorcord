@@ -67,6 +67,12 @@ export async function memberDTO(ctx: Ctx, guildId: string, userId: string): Prom
   return (await membersDTO(ctx, rows))[0] ?? null;
 }
 
+/** Webhook executions may carry their own display name / avatar for that one message. */
+function withWebhookIdentity(u: User | undefined, r: any): User | undefined {
+  if (!u || !r.webhook_id || (!r.webhook_username && !r.webhook_avatar)) return u;
+  return { ...u, username: r.webhook_username ?? u.username, displayName: r.webhook_username ?? u.displayName, avatar: r.webhook_avatar ?? u.avatar };
+}
+
 export async function messagesDTO(ctx: Ctx, rows: any[], viewerId: string | null, withRef = true): Promise<Message[]> {
   if (!rows.length) return [];
   const users = await usersByIds(ctx, rows.map((r) => r.author_id));
@@ -79,7 +85,7 @@ export async function messagesDTO(ctx: Ctx, rows: any[], viewerId: string | null
   const refs = new Map((await messagesDTO(ctx, refRows, viewerId, false)).map((m) => [m.id, m]));
   return rows.map((r) => ({
     id: r.id, channelId: r.channel_id, guildId: r.guild_id ?? null,
-    author: users.get(r.author_id) ?? { id: r.author_id, username: 'deleted', displayName: null, avatar: null, banner: null, accentColor: null, bio: null, pronouns: null, bot: false, createdAt: iso(r.created_at ?? new Date())! },
+    author: withWebhookIdentity(users.get(r.author_id), r) ?? { id: r.author_id, username: 'deleted', displayName: null, avatar: null, banner: null, accentColor: null, bio: null, pronouns: null, bot: false, createdAt: iso(r.created_at ?? new Date())! },
     content: r.content, createdAt: new Date(snowflakeTime(r.id)).toISOString(), editedAt: iso(r.edited_at),
     type: r.type, replyTo: r.reply_to ?? null, referenced: r.reply_to && withRef ? refs.get(r.reply_to) ?? null : undefined,
     mentions: r.mentions, mentionRoles: r.mention_roles, mentionEveryone: r.mention_everyone,

@@ -1,0 +1,10 @@
+{
+  "name": "@jorcord/e2e",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "e2e": "playwright test -c playwright.config.ts",
+    "screenshots": "SHOTS=1 playwright test -c playwright.config.ts screenshots"
+  }
+}

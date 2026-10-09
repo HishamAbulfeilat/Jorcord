@@ -9,7 +9,7 @@ import { limitOrThrow } from '../lib/ratelimit';
 import { isInlineType, saveUpload } from '../services/files';
 import { unfurl } from '../services/unfurl';
 import { channelAccess } from '../services/perms';
-import { VOICE_TYPES, clearVoiceState } from '../services/voice';
+import { VOICE_TYPES, clearVoiceState, loadModeration, voiceCaps } from '../services/voice';
 
 export function fileRoutes(app: FastifyInstance, ctx: Ctx) {
   // Public, unguessable-key download endpoint with range support.
@@ -101,15 +101,17 @@ export function miscRoutes(app: FastifyInstance, ctx: Ctx) {
     const a = await channelAccess(ctx, req.userId, channelId);
     if (!VOICE_TYPES.includes(a.channel.type)) throw badRequest('Not a voice channel');
     if (!has(a.perms, Perm.CONNECT)) throw forbidden('Missing permissions');
-    let n = 0, already = false;
-    for (const s of ctx.hub.voice.values()) if (s.channelId === channelId) { n++; if (s.userId === req.userId) already = true; }
+    const prev = await ctx.voice.get(req.userId);
+    const already = prev?.channelId === channelId;
+    const n = (await ctx.voice.inChannel(channelId)).length;
     if (!already && n >= Math.min(a.channel.user_limit || LIMITS.maxVoiceUsers, a.channel.type === 'stage' ? LIMITS.maxStageSeats : LIMITS.maxVoiceUsers)) throw new ApiError(409, 'CHANNEL_FULL', 'Voice channel is full');
     const [u] = await ctx.db.query('SELECT username, display_name FROM users WHERE id = $1', [req.userId]);
-    const speak = has(a.perms, Perm.SPEAK) && (a.channel.type !== 'stage' || has(a.perms, Perm.MUTE_MEMBERS));
-    const stream = has(a.perms, Perm.STREAM);
-    const sources = [...(speak ? [TrackSource.MICROPHONE] : []), ...(stream ? [TrackSource.CAMERA, TrackSource.SCREEN_SHARE, TrackSource.SCREEN_SHARE_AUDIO] : [])];
+    // server mute/deafen and stage suppression are enforced in the token itself, not just in the UI
+    const mod = already ? { mute: prev!.serverMute, deaf: prev!.serverDeaf } : await loadModeration(ctx, a.channel.guild_id ?? null, req.userId);
+    const caps = voiceCaps(a.channel, a.perms, { serverMute: mod.mute, serverDeaf: mod.deaf, suppress: a.channel.type === 'stage' && (already ? prev!.suppress : !has(a.perms, Perm.MUTE_MEMBERS)) });
+    const sources = [...(caps.canSpeak ? [TrackSource.MICROPHONE] : []), ...(caps.canStream ? [TrackSource.CAMERA, TrackSource.SCREEN_SHARE, TrackSource.SCREEN_SHARE_AUDIO] : [])];
     const at = new AccessToken(ctx.config.livekit.apiKey, ctx.config.livekit.apiSecret, { identity: req.userId, name: u.display_name ?? u.username, ttl: '6h', metadata: JSON.stringify({ userId: req.userId }) });
-    at.addGrant({ roomJoin: true, room: channelId, canSubscribe: true, canPublish: sources.length > 0, canPublishSources: sources, canPublishData: true });
+    at.addGrant({ roomJoin: true, room: channelId, canSubscribe: caps.canSubscribe, canPublish: sources.length > 0, canPublishSources: sources, canPublishData: true, canUpdateOwnMetadata: true });
     const out: VoiceToken = { token: await at.toJwt(), url: ctx.config.livekit.url, room: channelId };
     return out;
   });
@@ -125,7 +127,7 @@ export function voiceWebhookRoutes(app: FastifyInstance, ctx: Ctx) {
     try { event = await receiver.receive(req.body, req.headers.authorization); }
     catch { throw new ApiError(401, 'UNAUTHORIZED', 'Invalid webhook signature'); }
     if (event.event === 'participant_left' && event.participant?.identity) {
-      const st = ctx.hub.voice.get(event.participant.identity);
+      const st = await ctx.voice.get(event.participant.identity);
       if (st && st.channelId === event.room?.name) await clearVoiceState(ctx, event.participant.identity);
     }
     return reply.code(200).send({ ok: true });

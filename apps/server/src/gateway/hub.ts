@@ -1,16 +1,16 @@
-import type { Events, EventName, Presence, VoiceState } from '@jorcord/shared';
+import type { Events, EventName, Presence } from '@jorcord/shared';
 import { Op } from '@jorcord/shared';
 import type { WebSocket } from 'ws';
 import type { Ctx } from '../ctx';
 import { viewersAmong, getChannelRow } from '../services/perms';
 
-const TOPIC = 'jorcord:events';
-
 type Envelope =
   | { kind: 'users'; ids: string[]; t: string; d: unknown }
   | { kind: 'guild'; guildId: string; channelId?: string; exclude?: string; t: string; d: unknown }
   | { kind: 'channel'; channelId: string; exclude?: string; t: string; d: unknown }
-  | { kind: 'presence'; userId: string; t: string; d: unknown };
+  | { kind: 'presence'; userId: string; t: string; d: unknown }
+  /** Cross-node hint: a user went online/offline somewhere in the cluster. */
+  | { kind: 'hint'; userId: string; online: boolean; t: string; d: unknown };
 
 export interface GwSession {
   id: string; userId: string; authSessionId: string; seq: number;
@@ -21,23 +21,37 @@ export interface GwSession {
 /** Gateway session registry and event fan-out. Publishing goes through the EventBus so multiple nodes work. */
 export class Hub {
   sessions = new Map<string, GwSession>();
-  voice = new Map<string, VoiceState>();
+  /** Users online on *other* nodes (and this one), as last reported by the presence store. */
+  private online = new Set<string>();
   private ctx!: Ctx;
   private sweeper?: NodeJS.Timeout;
+  private presenceTimer?: NodeJS.Timeout;
 
   async init(ctx: Ctx) {
     this.ctx = ctx;
-    await ctx.bus.subscribe(TOPIC, (m) => { void this.deliver(m as Envelope).catch((e) => ctx.log.error({ err: e }, 'gateway deliver failed')); });
+    await ctx.bus.subscribe(this.topic, (m) => { void this.deliver(m as Envelope).catch((e) => ctx.log.error({ err: e }, 'gateway deliver failed')); });
     this.sweeper = setInterval(() => {
       const now = Date.now();
       for (const [id, s] of this.sessions) if (s.detachedAt && now - s.detachedAt > ctx.config.resumeWindowMs) this.sessions.delete(id);
     }, 15_000);
     this.sweeper.unref();
+    if (ctx.config.redisUrl) { // multi-node: keep leases fresh and learn about users connected to other nodes
+      const tick = async () => {
+        try {
+          await ctx.presence.refresh([...this.sessions.values()].filter((s) => s.socket).map((s) => ({ userId: s.userId, sessionId: s.id })));
+          this.online = await ctx.presence.onlineUsers();
+        } catch (e) { ctx.log.warn({ err: e }, 'presence sync failed'); }
+      };
+      this.presenceTimer = setInterval(() => void tick(), 10_000);
+      this.presenceTimer.unref();
+      await tick();
+    }
   }
-  close() { if (this.sweeper) clearInterval(this.sweeper); for (const s of this.sessions.values()) s.socket?.close(1001); this.sessions.clear(); }
+  close() { if (this.sweeper) clearInterval(this.sweeper); if (this.presenceTimer) clearInterval(this.presenceTimer); for (const s of this.sessions.values()) s.socket?.close(1001); this.sessions.clear(); }
 
   // ---- publishing API (used by routes) ----
-  private pub(e: Envelope) { return this.ctx.bus.publish(TOPIC, e); }
+  private get topic() { return `${this.ctx.config.redisPrefix}:events`; }
+  private pub(e: Envelope) { return this.ctx.bus.publish(this.topic, e); }
   toUsers<K extends EventName>(ids: string[], t: K, d: Events[K]) { return this.pub({ kind: 'users', ids, t, d }); }
   toUser<K extends EventName>(id: string, t: K, d: Events[K]) { return this.toUsers([id], t, d); }
   toGuild<K extends EventName>(guildId: string, t: K, d: Events[K], o: { channelId?: string; exclude?: string } = {}) { return this.pub({ kind: 'guild', guildId, t, d, ...o }); }
@@ -46,7 +60,23 @@ export class Hub {
 
   // ---- presence ----
   attachedCount(userId: string) { let n = 0; for (const s of this.sessions.values()) if (s.userId === userId && s.socket) n++; return n; }
-  isOnline(userId: string) { return this.attachedCount(userId) > 0; }
+  isOnline(userId: string) { return this.attachedCount(userId) > 0 || this.online.has(userId); }
+  /** Merge authoritative online info from the presence store into the local cache. */
+  markOnline(ids: Iterable<string>) { for (const id of ids) this.online.add(id); }
+  /** A gateway session got a socket. Returns the user's live session count across all nodes. */
+  async sessionAttached(s: GwSession) {
+    const n = await this.ctx.presence.add(s.userId, s.id);
+    this.online.add(s.userId);
+    if (this.ctx.config.redisUrl) await this.pub({ kind: 'hint', userId: s.userId, online: true, t: 'HINT', d: null });
+    return n;
+  }
+  /** A gateway session lost its socket. Returns the user's remaining live sessions across all nodes. */
+  async sessionDetached(s: GwSession) {
+    const n = await this.ctx.presence.remove(s.userId, s.id);
+    if (n === 0) this.online.delete(s.userId);
+    if (this.ctx.config.redisUrl) await this.pub({ kind: 'hint', userId: s.userId, online: n > 0, t: 'HINT', d: null });
+    return n;
+  }
   publicPresence(userId: string, pref: string | undefined): Presence {
     if (!this.isOnline(userId)) return 'offline';
     return pref === 'invisible' ? 'offline' : ((pref as Presence) || 'online');
@@ -73,6 +103,7 @@ export class Hub {
 
   // ---- delivery (runs on every node for every published event) ----
   private async deliver(e: Envelope) {
+    if (e.kind === 'hint') { if (e.online) this.online.add(e.userId); else if (this.attachedCount(e.userId) === 0) this.online.delete(e.userId); return; }
     const bySession = [...this.sessions.values()];
     if (!bySession.length) return;
     const localUsers = [...new Set(bySession.map((s) => s.userId))];

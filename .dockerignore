@@ -1,0 +1,13 @@
+**/node_modules
+**/dist
+**/data
+.git
+.github
+e2e
+apps/web
+packages/voice
+infra
+docs
+*.log
+.env
+**/.env

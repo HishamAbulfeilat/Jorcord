@@ -5,9 +5,13 @@ import type { Ctx } from '../ctx';
 import { ApiError, badRequest, conflict, forbidden, notFound } from '../errors';
 import { assetUrl, idSchema, limitParam, parse } from '../lib/ids';
 import { randomToken, safeEqual } from '../lib/crypto';
+import { limitOrThrow } from '../lib/ratelimit';
 import { audit, insertChannel, visibleChannelRows } from '../services/guilds';
 import { createMessage } from '../services/messages';
-import { channelAccess, guildAccess, guildPerms, loadGuildPerm, need, needOutrank, permsFor, loadOverwrites } from '../services/perms';
+import { addGroupRecipient, removeGroupRecipient } from '../services/dms';
+import { trackVisibility } from '../services/visibility';
+import { joinThread, leaveThread } from '../services/threads';
+import { channelAccess, guildAccess, guildPerms, loadGuildPerm, need, needOutrank, permsFor, loadOverwrites, viewersAmong } from '../services/perms';
 import { channelDTO, channelsDTO, messageDTO } from '../services/serializers';
 
 const GUILD_TYPES = ['text', 'voice', 'announcement', 'stage', 'forum', 'category'] as const;
@@ -132,10 +136,7 @@ export function channelRoutes(app: FastifyInstance, ctx: Ctx) {
     const ch = a.channel;
     if (ch.type === 'dm') throw badRequest('DMs cannot be deleted');
     if (ch.type === 'group_dm') {
-      await ctx.db.query('DELETE FROM dm_participants WHERE channel_id = $1 AND user_id = $2', [id, req.userId]);
-      await ctx.hub.toUser(req.userId, 'CHANNEL_DELETE', { id, guildId: null });
-      const [left] = await ctx.db.query('SELECT count(*)::int AS n FROM dm_participants WHERE channel_id = $1', [id]);
-      if (left.n === 0) await ctx.db.query('DELETE FROM channels WHERE id = $1', [id]);
+      await removeGroupRecipient(ctx, ch, req.userId);
       return reply.code(204).send();
     }
     if (ch.type === 'thread') { if (ch.owner_id !== req.userId) need(a.perms, Perm.MANAGE_THREADS); } else need(a.perms, Perm.MANAGE_CHANNELS);
@@ -160,7 +161,9 @@ export function channelRoutes(app: FastifyInstance, ctx: Ctx) {
     if (!a.channel.guild_id || a.channel.type === 'thread') throw badRequest('Overwrites apply to guild channels only');
     need(a.perms, Perm.MANAGE_ROLES);
     await checkOverwrites(a.channel.guild_id, a.perms, a.gp, [{ id: p.overwriteId, ...b }]);
+    const settled = await trackVisibility(ctx, a.channel.guild_id, { channelIds: [p.id] });
     await saveOverwrites(p.id, [{ id: p.overwriteId, ...b }]);
+    await settled();
     await audit(ctx, a.channel.guild_id, req.userId, 'OVERWRITE_UPDATE', p.id, { target: p.overwriteId, ...b });
     const [row] = await ctx.db.query('SELECT * FROM channels WHERE id = $1', [p.id]);
     await ctx.hub.toChannel(p.id, 'CHANNEL_UPDATE', await channelDTO(ctx, row));
@@ -171,8 +174,10 @@ export function channelRoutes(app: FastifyInstance, ctx: Ctx) {
     const a = await channelAccess(ctx, req.userId, p.id);
     if (!a.channel.guild_id) throw badRequest('Overwrites apply to guild channels only');
     need(a.perms, Perm.MANAGE_ROLES);
+    const settled = await trackVisibility(ctx, a.channel.guild_id, { channelIds: [p.id] });
     const rows = await ctx.db.query('DELETE FROM overwrites WHERE channel_id = $1 AND target_id = $2 RETURNING type', [p.id, p.overwriteId]);
     if (!rows.length) throw notFound('Overwrite');
+    await settled();
     await audit(ctx, a.channel.guild_id, req.userId, 'OVERWRITE_DELETE', p.id, { target: p.overwriteId });
     const [row] = await ctx.db.query('SELECT * FROM channels WHERE id = $1', [p.id]);
     await ctx.hub.toChannel(p.id, 'CHANNEL_UPDATE', await channelDTO(ctx, row));
@@ -212,11 +217,29 @@ export function channelRoutes(app: FastifyInstance, ctx: Ctx) {
     return reply.code(204).send();
   });
 
+  // ---------- group DM recipients ----------
+  app.put('/channels/:id/recipients/:userId', async (req) => {
+    const p = parse(z.object({ id: idSchema, userId: idSchema }), req.params);
+    const a = await channelAccess(ctx, req.userId, p.id);
+    if (a.channel.type !== 'group_dm') throw badRequest('Recipients can only be added to group DMs (create a new group DM instead)');
+    return addGroupRecipient(ctx, a.channel, req.userId, p.userId);
+  });
+  app.delete('/channels/:id/recipients/:userId', async (req, reply) => {
+    const p = parse(z.object({ id: idSchema, userId: z.union([idSchema, z.literal('@me')]) }), req.params);
+    const a = await channelAccess(ctx, req.userId, p.id);
+    if (a.channel.type !== 'group_dm') throw badRequest('Only group DMs have removable recipients');
+    const target = p.userId === '@me' ? req.userId : p.userId;
+    if (target !== req.userId && a.channel.owner_id !== req.userId) throw forbidden('Only the group owner can remove other people', 'NOT_OWNER');
+    await removeGroupRecipient(ctx, a.channel, target);
+    return reply.code(204).send();
+  });
+
   // ---------- threads & forums ----------
   async function createThread(a: Awaited<ReturnType<typeof channelAccess>>, userId: string, id: string, name: string) {
     await insertChannel(ctx.db, { id, guildId: a.channel.guild_id, type: 'thread', name, parentId: a.channel.id, ownerId: userId, slowmode: 0 });
     const [row] = await ctx.db.query('SELECT * FROM channels WHERE id = $1', [id]);
     const dto = await channelDTO(ctx, row);
+    await ctx.db.query('INSERT INTO thread_members (thread_id, user_id) VALUES ($1,$2) ON CONFLICT DO NOTHING', [id, userId]);
     await ctx.hub.toChannel(id, 'THREAD_CREATE', dto);
     return { row, dto };
   }
@@ -256,18 +279,85 @@ export function channelRoutes(app: FastifyInstance, ctx: Ctx) {
     const rows = await ctx.db.query(`SELECT * FROM channels WHERE parent_id = $1 AND type = 'thread' AND archived = $2 ORDER BY last_message_id DESC NULLS LAST, id DESC LIMIT $3`, [id, q.archived === 'true', limitParam(q.limit)]);
     return channelsDTO(ctx, rows);
   });
+
+  /** Threads of one parent channel. `state` = active | archived; archived supports `before=<threadId>` paging. */
+  app.get('/channels/:id/threads/:state', async (req) => {
+    const p = parse(z.object({ id: idSchema, state: z.enum(['active', 'archived']) }), req.params);
+    const q = parse(z.object({ before: idSchema.optional(), limit: z.coerce.number().optional() }), req.query);
+    const a = await channelAccess(ctx, req.userId, p.id);
+    if (!['text', 'announcement', 'forum'].includes(a.channel.type)) throw badRequest('Channel cannot have threads');
+    need(a.perms, Perm.READ_MESSAGE_HISTORY);
+    const limit = limitParam(q.limit, 25);
+    const rows = await ctx.db.query(
+      `SELECT * FROM channels WHERE parent_id = $1 AND type = 'thread' AND archived = $2 AND ($3::text IS NULL OR id < $3) ORDER BY id DESC LIMIT $4`,
+      [p.id, p.state === 'archived', q.before ?? null, limit + 1]);
+    const threads = await channelsDTO(ctx, rows.slice(0, limit));
+    return { threads, members: await myThreadMembers(threads.map((t) => t.id), req.userId), hasMore: rows.length > limit };
+  });
+
+  /** Every active thread in a guild the caller can see (e.g. to populate a sidebar on connect). */
+  app.get('/guilds/:id/threads/active', async (req) => {
+    const { id } = parse(z.object({ id: idSchema }), req.params);
+    await guildAccess(ctx, req.userId, id);
+    const rows = (await visibleChannelRows(ctx, id, req.userId, Perm.READ_MESSAGE_HISTORY)).filter((c) => c.type === 'thread');
+    const threads = await channelsDTO(ctx, rows);
+    return { threads, members: await myThreadMembers(threads.map((t) => t.id), req.userId) };
+  });
+  const myThreadMembers = async (threadIds: string[], userId: string) => !threadIds.length ? [] :
+    (await ctx.db.query('SELECT thread_id, user_id, joined_at FROM thread_members WHERE user_id = $2 AND thread_id = ANY($1::text[])', [threadIds, userId]))
+      .map((r) => ({ threadId: r.thread_id as string, userId: r.user_id as string, joinedAt: new Date(r.joined_at).toISOString() }));
+
+  // ---------- thread membership ----------
+  const threadAccess = async (userId: string, id: string) => {
+    const a = await channelAccess(ctx, userId, id);
+    if (a.channel.type !== 'thread') throw badRequest('Not a thread');
+    return a;
+  };
+  app.get('/channels/:id/thread-members', async (req) => {
+    const { id } = parse(z.object({ id: idSchema }), req.params);
+    const q = parse(z.object({ after: idSchema.optional(), limit: z.coerce.number().optional() }), req.query);
+    await threadAccess(req.userId, id);
+    const rows = await ctx.db.query('SELECT user_id, joined_at FROM thread_members WHERE thread_id = $1 AND ($2::text IS NULL OR user_id > $2) ORDER BY user_id LIMIT $3', [id, q.after ?? null, limitParam(q.limit, 100)]);
+    return rows.map((r) => ({ threadId: id, userId: r.user_id as string, joinedAt: new Date(r.joined_at).toISOString() }));
+  });
+  app.put('/channels/:id/thread-members/:userId', async (req, reply) => {
+    const p = parse(z.object({ id: idSchema, userId: z.union([idSchema, z.literal('@me')]) }), req.params);
+    const a = await threadAccess(req.userId, p.id);
+    if (a.channel.archived) throw badRequest('Thread is archived');
+    const target = p.userId === '@me' ? req.userId : p.userId;
+    if (target !== req.userId) {
+      if (a.channel.owner_id !== req.userId) need(a.perms, Perm.MANAGE_THREADS);
+      const ok = await viewersAmong(ctx, a.channel, [target]); // only people who can actually see the thread
+      if (!ok.length) throw notFound('Member');
+    }
+    await joinThread(ctx, a.channel, target);
+    return reply.code(204).send();
+  });
+  app.delete('/channels/:id/thread-members/:userId', async (req, reply) => {
+    const p = parse(z.object({ id: idSchema, userId: z.union([idSchema, z.literal('@me')]) }), req.params);
+    const a = await threadAccess(req.userId, p.id);
+    const target = p.userId === '@me' ? req.userId : p.userId;
+    if (target !== req.userId && a.channel.owner_id !== req.userId) need(a.perms, Perm.MANAGE_THREADS);
+    await leaveThread(ctx, a.channel, target);
+    return reply.code(204).send();
+  });
 }
 
 /** Executes webhook messages (no user auth; the token is the credential). */
 export function webhookPublicRoutes(app: FastifyInstance, ctx: Ctx) {
   app.post('/webhooks/:id/:token', async (req, reply) => {
     const p = parse(z.object({ id: idSchema, token: z.string().min(10).max(100) }), req.params);
-    const b = parse(z.object({ content: z.string().min(1).max(4000) }).strict(), req.body);
+    const b = parse(z.object({
+      content: z.string().min(1).max(4000),
+      username: z.string().trim().min(1).max(80).regex(/^[^\u0000-\u001f\u007f]+$/, 'invalid characters').optional(),
+      avatarUrl: assetUrl.optional(), avatar_url: assetUrl.optional(),
+    }).strict(), req.body);
     const [w] = await ctx.db.query('SELECT * FROM webhooks WHERE id = $1', [p.id]);
     if (!w || !safeEqual(w.token, p.token)) throw notFound('Webhook');
+    limitOrThrow(ctx.rl, `webhook:${w.id}`, 60, 60_000, ctx.config.rateLimit);
     const [channel] = await ctx.db.query('SELECT * FROM channels WHERE id = $1', [w.channel_id]);
     if (!channel) throw notFound('Webhook');
-    const msg = await createMessage(ctx, { channel, authorId: w.bot_user_id, content: b.content, webhookId: w.id, senderPerms: 0n, skipChecks: true });
+    const msg = await createMessage(ctx, { channel, authorId: w.bot_user_id, content: b.content, webhookId: w.id, senderPerms: 0n, skipChecks: true, webhookUsername: b.username ?? null, webhookAvatar: b.avatarUrl ?? b.avatar_url ?? null });
     return reply.code(200).send(msg);
   });
 }

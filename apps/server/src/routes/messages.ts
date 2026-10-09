@@ -9,6 +9,8 @@ import { claimAttachments, saveUpload } from '../services/files';
 import { audit, visibleChannelRows } from '../services/guilds';
 import { createMessage, parseMentions, postSystemMessage } from '../services/messages';
 import { channelAccess, guildAccess, need } from '../services/perms';
+import { joinThread } from '../services/threads';
+import { searchMessages } from '../services/search';
 import { messageDTO, messagesDTO, usersByIds } from '../services/serializers';
 
 const cm = z.object({ id: idSchema });
@@ -95,6 +97,7 @@ export function messageRoutes(app: FastifyInstance, ctx: Ctx) {
     const attachments = await claimAttachments(ctx, req.userId, body.attachments ?? []);
     try {
       const msg = await createMessage(ctx, { channel: a.channel, authorId: req.userId, content: body.content ?? '', replyTo: body.replyTo, attachments, stickerIds: body.stickerIds, senderPerms: a.perms, memberRoleIds: a.gp?.memberRoleIds });
+      if (a.channel.type === 'thread') await joinThread(ctx, a.channel, req.userId).catch(() => {}); // posting in a thread follows it
       return reply.code(201).send(msg);
     } catch (e) {
       if (attachments.length) await ctx.db.query('UPDATE files SET attached = false WHERE id = ANY($1::text[])', [attachments.map((x) => x.id)]);
@@ -241,12 +244,27 @@ export function messageRoutes(app: FastifyInstance, ctx: Ctx) {
     let channels = (await visibleChannelRows(ctx, id, req.userId, Perm.READ_MESSAGE_HISTORY)).map((c) => c.id as string);
     if (q.channelId) channels = channels.filter((c) => c === q.channelId);
     if (!channels.length) return [];
-    const like = q.q ? `%${q.q.replace(/[\\%_]/g, '\\$&')}%` : null;
-    const hasCond = { link: 'has_link', image: 'has_image', file: 'has_file', embed: "embeds <> '[]'::jsonb", sticker: "sticker_ids <> '[]'::jsonb" } as const;
-    const rows = await ctx.db.query(
-      `SELECT * FROM messages WHERE guild_id = $1 AND channel_id = ANY($2::text[]) AND ($3::text IS NULL OR content ILIKE $3) AND ($4::text IS NULL OR author_id = $4)
-         AND ($5::text IS NULL OR id < $5) ${q.has ? `AND ${hasCond[q.has]}` : ''} ORDER BY id DESC LIMIT $6`,
-      [id, channels, like, q.authorId ?? null, q.before ?? null, limitParam(q.limit, 25)]);
-    return messagesDTO(ctx, rows, req.userId);
+    return searchMessages(ctx, { viewerId: req.userId, guildId: id, channelIds: channels, q: q.q, authorId: q.authorId, has: q.has, before: q.before, limit: limitParam(q.limit, 25) });
+  });
+
+  const searchQuery = z.object({
+    q: z.string().max(200).optional(), authorId: idSchema.optional(),
+    has: z.enum(['link', 'image', 'file', 'embed', 'sticker']).optional(), before: idSchema.optional(), limit: z.coerce.number().optional(),
+  });
+  /** Search inside one channel the caller can read (this is how DMs and group DMs are searched). */
+  app.get('/channels/:id/messages/search', async (req) => {
+    const { id } = parse(cm, req.params);
+    const q = parse(searchQuery, req.query);
+    if (!q.q && !q.authorId && !q.has) throw badRequest('Provide q, authorId or has');
+    const a = await channelAccess(ctx, req.userId, id);
+    if (!has(a.perms, Perm.READ_MESSAGE_HISTORY)) return [];
+    return searchMessages(ctx, { viewerId: req.userId, channelIds: [id], q: q.q, authorId: q.authorId, has: q.has, before: q.before, limit: limitParam(q.limit, 25) });
+  });
+  /** Search across all of the caller's DMs and group DMs. */
+  app.get('/users/@me/messages/search', async (req) => {
+    const q = parse(searchQuery, req.query);
+    if (!q.q && !q.authorId && !q.has) throw badRequest('Provide q, authorId or has');
+    const ids = (await ctx.db.query('SELECT channel_id FROM dm_participants WHERE user_id = $1', [req.userId])).map((r) => r.channel_id as string);
+    return searchMessages(ctx, { viewerId: req.userId, channelIds: ids, q: q.q, authorId: q.authorId, has: q.has, before: q.before, limit: limitParam(q.limit, 25) });
   });
 }

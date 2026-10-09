@@ -54,6 +54,8 @@ export interface NewMessage {
   channel: any; authorId: string; content: string; type?: Message['type']; replyTo?: string | null;
   attachments?: Attachment[]; stickerIds?: string[]; webhookId?: string | null; senderPerms: bigint;
   memberRoleIds?: string[]; skipChecks?: boolean; threadId?: string | null;
+  /** Per-message webhook identity override. */
+  webhookUsername?: string | null; webhookAvatar?: string | null;
 }
 
 export async function createMessage(ctx: Ctx, m: NewMessage): Promise<Message> {
@@ -76,11 +78,11 @@ export async function createMessage(ctx: Ctx, m: NewMessage): Promise<Message> {
   const id = snowflake();
   const type = m.type ?? (m.replyTo ? 'reply' : 'default');
   await ctx.db.query(
-    `INSERT INTO messages (id, channel_id, guild_id, author_id, content, type, reply_to, mention_everyone, mentions, mention_roles, attachments, sticker_ids, webhook_id, thread_id, has_link, has_image, has_file)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10::jsonb,$11::jsonb,$12::jsonb,$13,$14,$15,$16,$17)`,
+    `INSERT INTO messages (id, channel_id, guild_id, author_id, content, type, reply_to, mention_everyone, mentions, mention_roles, attachments, sticker_ids, webhook_id, thread_id, has_link, has_image, has_file, webhook_username, webhook_avatar)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10::jsonb,$11::jsonb,$12::jsonb,$13,$14,$15,$16,$17,$18,$19)`,
     [id, channel.id, channel.guild_id ?? null, m.authorId, content, type, m.replyTo ?? null, ment.mentionEveryone, JSON.stringify(ment.mentions),
       JSON.stringify(ment.mentionRoles), JSON.stringify(attachments), JSON.stringify(stickerIds), m.webhookId ?? null, m.threadId ?? null,
-      /https?:\/\//i.test(content), attachments.some((a) => a.contentType.startsWith('image/')), attachments.length > 0]);
+      /https?:\/\//i.test(content), attachments.some((a) => a.contentType.startsWith('image/')), attachments.length > 0, m.webhookUsername ?? null, m.webhookAvatar ?? null]);
   await ctx.db.query('UPDATE channels SET last_message_id = $2, archived = false WHERE id = $1', [channel.id, id]);
   // author has read their own message
   await ctx.db.query(`INSERT INTO read_states (user_id, channel_id, last_read_id, mention_count) VALUES ($1,$2,$3,0)

@@ -23,7 +23,10 @@ export class MemoryBus implements EventBus {
 export async function createBus(redisUrl: string | null): Promise<EventBus> {
   if (!redisUrl) return new MemoryBus();
   const { default: Redis } = await import('ioredis');
-  const pub = new Redis(redisUrl), sub = new Redis(redisUrl);
+  // A subscriber connection must not run the INFO ready-check: it races with SUBSCRIBE ("only subscriber commands may be used") and silently drops the subscription.
+  const pub = new Redis(redisUrl), sub = new Redis(redisUrl, { enableReadyCheck: false });
+  sub.on('error', (e) => console.error('redis subscriber error', e.message));
+  pub.on('error', (e) => console.error('redis publisher error', e.message));
   const handlers = new Map<string, Set<BusHandler>>();
   sub.on('message', (topic, raw) => {
     let msg: unknown; try { msg = JSON.parse(raw); } catch { return; }

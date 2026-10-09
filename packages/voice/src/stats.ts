@@ -8,7 +8,8 @@ export function parseVideoStats(
   dir: 'outbound' | 'inbound',
   prev?: StatsSample,
 ): { stats: StreamStats; sample: StatsSample } {
-  const all: any[] = report instanceof Map ? Array.from(report.values()) : Array.from(report as Iterable<any>);
+  // RTCStatsReport is a maplike (iterates [id, stat] pairs) but is not `instanceof Map`; arrays/iterables of stats also accepted.
+  const all: any[] = typeof (report as any).values === 'function' && !Array.isArray(report) ? Array.from((report as Map<string, any>).values()) : Array.from(report as Iterable<any>);
   const byId = new Map(all.map((s) => [s.id, s]));
   const rtps = all.filter((s) => s.type === `${dir}-rtp` && (s.kind ?? s.mediaType) === 'video');
   // for simulcast outbound pick the highest-resolution active layer; bytes are summed across layers

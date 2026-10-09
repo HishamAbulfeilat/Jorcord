@@ -52,3 +52,14 @@ Quality: Opus up to 510kbps stereo + DTX/RED; screenshare/camera up to 3840x2160
 
 ## Gateway
 WS /gateway. Server sends HELLO{heartbeatInterval}; client sends IDENTIFY{token} -> DISPATCH READY, then DISPATCH events (see `Events`). Heartbeat op 1/ack 11. RESUME with sessionId+seq replays missed events (buffer ≥ 5 min). Presence/typing via Redis (or in-memory) pub/sub, so multiple server nodes can scale horizontally.
+
+## Additions (server gap-closing pass)
+Users: `GET /users?username=` (exact, case-insensitive; accepts `@name`, `name#0`; blocks => 404) ; `DELETE /users/@me {password,totp?}` (409 `OWNS_GUILDS` while owning servers; anonymises) ; `GET /users/@me/export` (JSON download).
+Auth: `POST /auth/verify-email {token}` ; `POST /auth/verify-email/send` (authed) ; `POST /auth/password/forgot {email}` (always 204) ; `POST /auth/password/reset {token,newPassword}` (revokes all sessions). Emailed links: `{PUBLIC_URL}/verify-email?token=` and `{PUBLIC_URL}/reset-password?token=`.
+Voice moderation (guild perms MUTE_MEMBERS / DEAFEN_MEMBERS / MOVE_MEMBERS + role hierarchy): `GET /guilds/:id/voice-states` ; `PATCH /guilds/:id/voice-states/:userId {mute?,deaf?}` -> `{userId,serverMute,serverDeaf,voiceState}` ; `POST .../voice-states/:userId/move {channelId}` (client must re-fetch a voice token when its own state moves) ; `DELETE .../voice-states/:userId` (disconnect). Mute/deafen persist per member and survive reconnects.
+Stage: `PUT|DELETE /channels/:id/stage/request` (REQUEST_TO_SPEAK) ; `PUT|DELETE /channels/:id/stage/speakers/:userId|@me` (invite = unsuppress needs MUTE_MEMBERS; anyone may step themselves down). `VoiceState.requestToSpeakAt` (ISO|null) is additive.
+Webhook execute body accepts `username`, `avatarUrl` (or `avatar_url`) per message.
+Gateway: op `REQUEST_MEMBERS` (8) `{guildId,query?|userIds?,limit?,after?,nonce?}` -> dispatch `GUILD_MEMBERS_CHUNK`. Users that lose view access to a channel (overwrite / role / member-role change) receive `CHANNEL_DELETE`; users that gain it receive `CHANNEL_CREATE` (`THREAD_CREATE` for threads). `THREAD_MEMBERS_UPDATE {id,guildId,addedUserIds,removedUserIds}`.
+Threads: `GET /channels/:id/threads/active|archived?before&limit` -> `{threads,members,hasMore}` (legacy `GET /channels/:id/threads?archived=` kept) ; `GET /guilds/:id/threads/active` -> `{threads,members}` ; `GET /channels/:id/thread-members` ; `PUT|DELETE /channels/:id/thread-members/:userId|@me` (others need MANAGE_THREADS or thread ownership). Creating a thread, or posting in one, follows it.
+Group DMs: `PUT /channels/:id/recipients/:userId` (any participant; friends-or-shared-server rule, blocks, max 10) ; `DELETE /channels/:id/recipients/:userId|@me` (owner removes others; owner leaving transfers ownership).
+Search: `GET /channels/:id/messages/search?q&authorId&has&before` (works for DMs) ; `GET /users/@me/messages/search?q=` (all DMs). Postgres uses full-text word-prefix matching.

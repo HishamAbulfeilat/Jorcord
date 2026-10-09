@@ -6,6 +6,7 @@ import { ApiError, badRequest, forbidden, notFound } from '../errors';
 import { idSchema, iso, limitParam, parse } from '../lib/ids';
 import { randomToken } from '../lib/crypto';
 import { audit, buildGuildFull } from '../services/guilds';
+import { trackVisibility } from '../services/visibility';
 import { postSystemMessage } from '../services/messages';
 import { channelAccess, guildAccess, guildPerms, loadGuildPerm, need, needOutrank, needOutrankMember } from '../services/perms';
 import { GUILD_SELECT, guildDTO, memberDTO, membersDTO, roleDTO, usersByIds } from '../services/serializers';
@@ -14,11 +15,28 @@ const gid = z.object({ id: idSchema });
 const permStr = z.string().regex(/^\d{1,20}$/);
 const colorInt = z.number().int().min(0).max(0xffffff);
 
+/** A new member's presence goes out to the guild, and they learn who is already online there. */
+async function announceJoin(ctx: Ctx, guildId: string, userId: string) {
+  await ctx.hub.broadcastPresence(userId);
+  const rows = await ctx.db.query('SELECT u.id, u.presence, u.custom_status FROM members m JOIN users u ON u.id = m.user_id WHERE m.guild_id = $1 AND m.user_id <> $2 LIMIT 1000', [guildId, userId]);
+  if (ctx.config.redisUrl) ctx.hub.markOnline(await ctx.presence.onlineAmong(rows.map((r) => r.id as string)));
+  for (const r of rows) {
+    if (!ctx.hub.isOnline(r.id)) continue;
+    await ctx.hub.toUser(userId, 'PRESENCE_UPDATE', { userId: r.id, presence: ctx.hub.publicPresence(r.id, r.presence), customStatus: r.custom_status ?? null });
+  }
+}
+
 export function memberRoutes(app: FastifyInstance, ctx: Ctx) {
   const pushRole = async (guildId: string, id: string) => { const [r] = await ctx.db.query('SELECT * FROM roles WHERE id = $1', [id]); if (r) await ctx.hub.toGuild(guildId, 'ROLE_UPDATE', roleDTO(r)); };
   const pushMember = async (guildId: string, userId: string) => { const m = await memberDTO(ctx, guildId, userId); if (m) await ctx.hub.toGuild(guildId, 'MEMBER_UPDATE', m); };
   /** Non-admins cannot grant permission bits they do not hold themselves. */
   const noEscalation = (actorPerms: bigint, bits: bigint) => { if (!has(actorPerms, Perm.ADMINISTRATOR) && (bits & ~actorPerms) !== 0n) throw forbidden('Cannot grant permissions you do not have', 'ESCALATION'); };
+
+  /** Members whose effective permissions depend on a role (everyone for @everyone). */
+  const roleHolders = async (guildId: string, roleId: string): Promise<string[]> =>
+    roleId === guildId
+      ? (await ctx.db.query('SELECT user_id FROM members WHERE guild_id = $1', [guildId])).map((r) => r.user_id as string)
+      : (await ctx.db.query('SELECT user_id FROM member_roles WHERE guild_id = $1 AND role_id = $2', [guildId, roleId])).map((r) => r.user_id as string);
 
   // ---------- roles ----------
   app.get('/guilds/:id/roles', async (req) => {
@@ -71,9 +89,11 @@ export function memberRoutes(app: FastifyInstance, ctx: Ctx) {
     if (p.roleId === p.id && (b.name !== undefined || b.hoist !== undefined || b.color !== undefined)) throw badRequest('@everyone can only have its permissions changed');
     if (b.permissions !== undefined) noEscalation(perms, BigInt(b.permissions) & ~BigInt(role.permissions));
     const col: Record<string, string> = { name: 'name', color: 'color', hoist: 'hoist', permissions: 'permissions', mentionable: 'mentionable', icon: 'icon' };
+    const settled = b.permissions !== undefined ? await trackVisibility(ctx, p.id, { userIds: await roleHolders(p.id, p.roleId) }) : null;
     const sets: string[] = [], vals: unknown[] = [p.roleId];
     for (const [k, v] of Object.entries(b)) { vals.push(k === 'permissions' ? (BigInt(v as string) & ALL_PERMS).toString() : v); sets.push(`${col[k]} = $${vals.length}`); }
     if (sets.length) await ctx.db.query(`UPDATE roles SET ${sets.join(', ')} WHERE id = $1`, vals);
+    if (settled) await settled();
     await audit(ctx, p.id, req.userId, 'ROLE_UPDATE', p.roleId, b);
     const [row] = await ctx.db.query('SELECT * FROM roles WHERE id = $1', [p.roleId]);
     await ctx.hub.toGuild(p.id, 'ROLE_UPDATE', roleDTO(row));
@@ -88,8 +108,10 @@ export function memberRoutes(app: FastifyInstance, ctx: Ctx) {
     if (!role) throw notFound('Role');
     needOutrank(gp, role.position);
     const holders = (await ctx.db.query('SELECT user_id FROM member_roles WHERE role_id = $1', [p.roleId])).map((r) => r.user_id as string);
+    const settled = await trackVisibility(ctx, p.id, { userIds: holders });
     await ctx.db.query('DELETE FROM overwrites WHERE target_id = $1 AND type = \'role\'', [p.roleId]);
     await ctx.db.query('DELETE FROM roles WHERE id = $1', [p.roleId]);
+    await settled();
     await audit(ctx, p.id, req.userId, 'ROLE_DELETE', p.roleId, { name: role.name });
     await ctx.hub.toGuild(p.id, 'ROLE_DELETE', { id: p.roleId, guildId: p.id });
     for (const u of holders) await pushMember(p.id, u);
@@ -144,8 +166,10 @@ export function memberRoutes(app: FastifyInstance, ctx: Ctx) {
       const adds = want.filter((r) => !have.has(r)), removes = [...have].filter((r) => !want.includes(r));
       for (const r of [...adds, ...removes]) needOutrank(actor, pos(r)); // may only touch roles strictly below own top role
       for (const r of adds) noEscalation(perms, BigInt(found.find((f) => f.id === r)!.permissions));
+      const settled = await trackVisibility(ctx, p.id, { userIds: [targetId] });
       if (removes.length) await ctx.db.query('DELETE FROM member_roles WHERE guild_id = $1 AND user_id = $2 AND role_id = ANY($3::text[])', [p.id, targetId, removes]);
       for (const r of adds) await ctx.db.query('INSERT INTO member_roles (guild_id, user_id, role_id) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING', [p.id, targetId, r]);
+      await settled();
       await audit(ctx, p.id, req.userId, 'MEMBER_ROLE_UPDATE', targetId, { added: adds, removed: removes });
     }
     if (b.timeoutUntil !== undefined) {
@@ -276,6 +300,7 @@ export function memberRoutes(app: FastifyInstance, ctx: Ctx) {
     await ctx.hub.toUser(req.userId, 'GUILD_CREATE', full);
     const m = await memberDTO(ctx, guildId, req.userId);
     if (m) await ctx.hub.toGuild(guildId, 'MEMBER_ADD', m, { exclude: req.userId });
+    await announceJoin(ctx, guildId, req.userId);
     if (full.systemChannelId) await postSystemMessage(ctx, full.systemChannelId, req.userId, 'join').catch((e) => ctx.log.warn({ err: e }, 'join message failed'));
     return reply.code(200).send(full);
   });

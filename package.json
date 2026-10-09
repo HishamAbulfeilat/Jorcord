@@ -7,6 +7,11 @@
     "dev": "pnpm -r --parallel dev",
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
-    "test": "pnpm -r test"
+    "test": "pnpm -r test",
+    "e2e": "playwright test -c e2e/playwright.config.ts",
+    "e2e:shots": "SHOTS=1 playwright test -c e2e/playwright.config.ts screenshots"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.49.1"
   }
 }

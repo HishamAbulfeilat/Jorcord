@@ -1,8 +1,32 @@
 import { create } from 'zustand';
-/** Local mute/deafen UI state. The voice module (src/voice) may read/write this to sync with LiveKit. */
-export const useVoiceUI = create<{ selfMute: boolean; selfDeaf: boolean; toggleMute(): void; toggleDeaf(): void; connectedChannelId: string | null; setConnected(id: string | null): void }>((set) => ({
-  selfMute: false, selfDeaf: false, connectedChannelId: null,
-  toggleMute: () => set((s) => ({ selfMute: !s.selfMute })),
-  toggleDeaf: () => set((s) => ({ selfDeaf: !s.selfDeaf, selfMute: !s.selfDeaf ? true : s.selfMute })),
+
+export type VoiceConn = 'idle' | 'connecting' | 'connected' | 'reconnecting';
+interface VoiceUIState {
+  /** Self mute/deafen. Mirrors the live VoiceClient while connected; remembered locally while not. */
+  selfMute: boolean; selfDeaf: boolean;
+  connectedChannelId: string | null;
+  conn: VoiceConn;
+  /** Optimistic: channel we are currently joining. */
+  joiningChannelId: string | null;
+  /** Spotlighted participant tile ("identity:camera|screen"). */
+  focus: string | null;
+  setFocus(k: string | null): void;
+  toggleMute(): void; toggleDeaf(): void;
+  setConnected(id: string | null): void;
+  patch(p: Partial<Pick<VoiceUIState, 'selfMute' | 'selfDeaf' | 'conn' | 'joiningChannelId'>>): void;
+}
+
+/** Actions (set by src/voice/controller) that forward to the live client when connected. */
+export const voiceHooks: { toggleMute?: () => void; toggleDeaf?: () => void } = {};
+
+export const useVoiceUI = create<VoiceUIState>((set, get) => ({
+  selfMute: false, selfDeaf: false, connectedChannelId: null, conn: 'idle', joiningChannelId: null, focus: null,
+  setFocus: (focus) => set({ focus }),
+  toggleMute: () => { if (get().conn !== 'idle' && voiceHooks.toggleMute) voiceHooks.toggleMute(); else set((s) => ({ selfMute: s.selfDeaf ? false : !s.selfMute, selfDeaf: s.selfDeaf ? false : s.selfDeaf })); },
+  toggleDeaf: () => { if (get().conn !== 'idle' && voiceHooks.toggleDeaf) voiceHooks.toggleDeaf(); else set((s) => ({ selfDeaf: !s.selfDeaf })); },
   setConnected: (connectedChannelId) => set({ connectedChannelId }),
+  patch: (p) => set(p),
 }));
+
+/** Effective "muted" for UI: deafened implies muted. */
+export const isMutedUI = (s: Pick<VoiceUIState, 'selfMute' | 'selfDeaf'>) => s.selfMute || s.selfDeaf;

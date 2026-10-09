@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { ArrowLeft, ChevronRight, X } from 'lucide-react';
 import { cx } from '@/lib/format';
@@ -8,8 +8,8 @@ export interface NavItem { id: string; label: string; icon?: any; danger?: boole
 export interface NavGroup { title?: string; items: NavItem[] }
 
 export function SettingsLayout({ title, groups, tab, onTab, onClose, children, footerNav }: { title: string; groups: NavGroup[]; tab: string; onTab: (t: string) => void; onClose: () => void; children: ReactNode; footerNav?: ReactNode }) {
-  const mobile = useIsMobile(); const [showNav, setShowNav] = useState(true);
-  useEffect(() => { const k = (e: KeyboardEvent) => { if (e.key === 'Escape' && !document.querySelector('[role=dialog][aria-modal]')) onClose(); }; window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k); }, [onClose]);
+  const mobile = useIsMobile(); const [showNav, setShowNav] = useState(true); const rootRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { const k = (e: KeyboardEvent) => { if (e.key === 'Escape' && ![...document.querySelectorAll('[role=dialog][aria-modal]')].some((d) => d !== rootRef.current)) onClose(); }; window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k); }, [onClose]);
   const nav = (
     <nav aria-label={title} className="scroller flex h-full w-full flex-col bg-side px-3 py-6 md:w-[232px] md:shrink-0 md:items-end md:px-1.5 md:py-[60px] lg:w-[300px]">
       <div className="w-full md:w-[192px]">
@@ -30,7 +30,7 @@ export function SettingsLayout({ title, groups, tab, onTab, onClose, children, f
     </nav>
   );
   return createPortal(
-    <div className="fixed inset-0 z-[55] flex animate-pop bg-chat" role="dialog" aria-modal="true" aria-label={title}>
+    <div ref={rootRef} className="fixed inset-0 z-[55] flex animate-pop bg-chat" role="dialog" aria-modal="true" aria-label={title}>
       {(!mobile || showNav) && <div className={cx(mobile ? 'w-full' : 'contents')}>
         {mobile && <div className="absolute right-3 z-10" style={{ top: 'calc(var(--sat) + 8px)' }}><button aria-label="Close settings" onClick={onClose} className="flex h-11 w-11 items-center justify-center rounded-full text-interactive"><X size={24} /></button></div>}
         {nav}
