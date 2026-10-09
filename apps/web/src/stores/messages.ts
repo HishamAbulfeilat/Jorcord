@@ -3,6 +3,7 @@ import type { Id, Message, Reaction } from '@jorcord/shared';
 import { compareId } from '@/lib/format';
 
 export interface ChannelMsgs {
+  initSeq?: number; // bumped on every (re)initialisation so views can re-position
   list: Message[]; // ascending by id
   loading: boolean; loadedInitial: boolean; hasMoreOlder: boolean; hasMoreNewer: boolean; error?: string; jumpTo?: Id | null;
 }
@@ -28,7 +29,7 @@ export const useMessages = create<MsgState>((set) => {
   const patch = (cid: Id, fn: (c: ChannelMsgs) => Partial<ChannelMsgs>) => set((s) => ({ ch: { ...s.ch, [cid]: { ...(s.ch[cid] ?? blank()), ...fn(s.ch[cid] ?? blank()) } } }));
   return {
     ch: {}, pending: [],
-    init: (cid, nf, limit, around) => patch(cid, () => ({ list: asc(nf), loading: false, loadedInitial: true, hasMoreOlder: nf.length >= limit || !!around, hasMoreNewer: !!around, error: undefined, jumpTo: around ?? null })),
+    init: (cid, nf, limit, around) => patch(cid, (c) => ({ initSeq: (c.initSeq ?? 0) + 1, list: asc(nf), loading: false, loadedInitial: true, hasMoreOlder: nf.length >= limit || !!around, hasMoreNewer: !!around, error: undefined, jumpTo: around ?? null })),
     prepend: (cid, nf, limit) => patch(cid, (c) => ({ list: merge(nf, c.list), loading: false, hasMoreOlder: nf.length >= limit })),
     append: (cid, nf, limit) => patch(cid, (c) => ({ list: merge(c.list, nf), loading: false, hasMoreNewer: nf.length >= limit })),
     setLoading: (cid, loading, error) => patch(cid, () => ({ loading, error })),

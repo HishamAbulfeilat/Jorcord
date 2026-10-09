@@ -21,14 +21,16 @@ const TEMPLATES = [
 
 export const fileToDataUrl = (f: File): Promise<string> => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result)); r.onerror = rej; r.readAsDataURL(f); });
 
+export async function uploadImageFile(f: File): Promise<string> { return api.files.uploadImage(f); }
+
 export function IconPicker({ value, onChange, label = 'Upload', size = 80 }: { value: string | null; onChange: (v: string | null) => void; label?: string; size?: number }) {
-  const ref = useRef<HTMLInputElement>(null);
+  const ref = useRef<HTMLInputElement>(null); const [busy, setBusy] = useState(false);
   return (
     <div className="flex items-center gap-4">
       <button type="button" onClick={() => ref.current?.click()} aria-label={`${label} image`} className="relative flex items-center justify-center overflow-hidden rounded-full border-2 border-dashed border-muted text-muted hover:text-header" style={{ width: size, height: size }}>
-        {value ? <img src={fileUrl(value) ?? value} alt="" className="h-full w-full object-cover" /> : <span className="flex flex-col items-center text-[10px] font-bold uppercase"><Upload size={22} />{label}</span>}
+        {busy ? <Spinner /> : value ? <img src={fileUrl(value) ?? value} alt="" className="h-full w-full object-cover" /> : <span className="flex flex-col items-center text-[10px] font-bold uppercase"><Upload size={22} />{label}</span>}
       </button>
-      <input ref={ref} hidden type="file" accept="image/*" onChange={async (e) => { const f = e.target.files?.[0]; if (f) onChange(await fileToDataUrl(f)); e.target.value = ''; }} />
+      <input ref={ref} hidden type="file" accept="image/*" onChange={async (e) => { const f = e.target.files?.[0]; e.target.value = ''; if (!f) return; setBusy(true); try { onChange(await uploadImageFile(f)); } catch (err) { toastError(err); } setBusy(false); }} />
       {value && <button type="button" className="text-sm text-link hover:underline" onClick={() => onChange(null)}>Remove</button>}
     </div>
   );
@@ -40,7 +42,7 @@ function CreateServer({ close }: { close: () => void }) {
   const [name, setName] = useState(me ? `${me.displayName || me.username}'s server` : ''); const [icon, setIcon] = useState<string | null>(null); const [busy, setBusy] = useState(false);
   const submit = async (e: React.FormEvent) => {
     e.preventDefault(); setBusy(true);
-    try { const g = await api.guilds.create({ name: name.trim(), icon, template: tpl }); useData.getState().putGuild(g); close(); const ch = Object.values(g.channels ?? {}).sort((a, b) => a.position - b.position).find((c) => c.type === 'text'); nav.go(g.id, ch?.id); }
+    try { const g = await api.guilds.create({ name: name.trim(), icon, template: ({ own: 'default', friends: 'default', club: 'study' } as Record<string, string>)[tpl] ?? tpl }); useData.getState().putGuild(g); close(); const ch = Object.values(g.channels ?? {}).sort((a, b) => a.position - b.position).find((c) => c.type === 'text'); nav.go(g.id, ch?.id); }
     catch (err) { toastError(err); setBusy(false); }
   };
   if (step === 'pick') return (
@@ -164,7 +166,7 @@ function CreateThread({ channelId, messageId, suggested, close }: { channelId: s
 function ForumPost({ channelId, close }: { channelId: string; close: () => void }) {
   const nav = useNav(); const [name, setName] = useState(''); const [content, setContent] = useState(''); const [busy, setBusy] = useState(false);
   return <Modal title="New Post" onClose={close} footer={<><button className="btn btn-link" onClick={close}>Cancel</button><button form="fp" type="submit" disabled={!name.trim() || !content.trim() || busy} className="btn btn-primary btn-lg sm:ml-auto">Post</button></>}>
-    <form id="fp" onSubmit={async (e) => { e.preventDefault(); setBusy(true); try { const t = await api.channels.forumPost(channelId, { name: name.trim(), content: content.trim() }); useData.getState().apply('THREAD_CREATE', t); close(); nav.go(t.guildId, t.id); } catch (err) { toastError(err); setBusy(false); } }}>
+    <form id="fp" onSubmit={async (e) => { e.preventDefault(); setBusy(true); try { const r = await api.channels.forumPost(channelId, { name: name.trim(), content: content.trim() }); const t = r.channel ?? (r as any); useData.getState().apply('THREAD_CREATE', t); close(); nav.go(t.guildId, t.id); } catch (err) { toastError(err); setBusy(false); } }}>
       <Field label="Post Title"><input className="field" value={name} onChange={(e) => setName(e.target.value)} maxLength={100} autoFocus /></Field>
       <Field label="Message"><textarea className="field min-h-[120px]" value={content} onChange={(e) => setContent(e.target.value)} /></Field></form></Modal>;
 }

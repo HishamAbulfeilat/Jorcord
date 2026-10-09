@@ -1,9 +1,9 @@
 import { createContext, useContext } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useUI } from '@/stores/ui';
 
 export const BaseCtx = createContext<string>('');
-export const useBase = () => useContext(BaseCtx);
+export const useBase = () => { const c = useContext(BaseCtx); const { pathname } = useLocation(); return c || (pathname.startsWith('/demo') ? '/demo' : ''); };
 
 export function useRouteIds() {
   const p = useParams();

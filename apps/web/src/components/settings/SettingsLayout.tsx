@@ -13,7 +13,6 @@ export function SettingsLayout({ title, groups, tab, onTab, onClose, children, f
   const nav = (
     <nav aria-label={title} className="scroller flex h-full w-full flex-col bg-side px-3 py-6 md:w-[232px] md:shrink-0 md:items-end md:px-1.5 md:py-[60px] lg:w-[300px]">
       <div className="w-full md:w-[192px]">
-        <h2 className="mb-1 truncate px-2.5 text-xs font-bold uppercase tracking-wide text-muted md:hidden">{title}</h2>
         {groups.map((g, gi) => (
           <div key={gi} className="mb-2">
             {g.title && <div className="truncate px-2.5 pb-1.5 pt-1.5 text-xs font-bold uppercase tracking-wide text-muted">{g.title}</div>}

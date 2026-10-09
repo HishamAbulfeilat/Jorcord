@@ -97,7 +97,8 @@ export const MessageItem = memo(function MessageItem({ m, grouped, highlighted }
   const replyingTo = useUI((s) => s.replyTo[m.channelId] === m.id);
   const nav = useNav(); const mobile = useIsMobile();
   const ts = msgTime(m.id, m.createdAt);
-  const stickers = useData((s) => (m.stickerIds.length && m.guildId ? s.guilds[m.guildId]?.stickers.filter((x) => m.stickerIds.includes(x.id)) : []));
+  const allStickers = useData((s) => (m.stickerIds.length && m.guildId ? s.guilds[m.guildId]?.stickers : undefined));
+  const stickers = allStickers?.filter((x) => m.stickerIds.includes(x.id));
   const mentioned = !!me && (m.mentions.includes(me.id) || m.mentionEveryone) && m.author.id !== me.id;
   const startEdit = () => setEditing(m.id);
   const menuItems = () => messageMenu(m, { startEdit, pickEmoji: () => openPopout({ kind: 'emoji', rect: new DOMRect(window.innerWidth / 2, window.innerHeight / 2, 0, 0), guildId: m.guildId ?? undefined, onPick: (p) => addReaction(m, p) }) });
@@ -105,7 +106,7 @@ export const MessageItem = memo(function MessageItem({ m, grouped, highlighted }
   const userTrig = useMenuTrigger(() => userMenu(m.author.id, m.guildId));
   const openUser = (e: React.MouseEvent) => { e.stopPropagation(); openPopout({ kind: 'user', userId: m.author.id, guildId: m.guildId ?? undefined, rect: (e.currentTarget as HTMLElement).getBoundingClientRect() }); };
 
-  const sys = SYSTEM[m.type];
+  const sys = !!SYSTEM[m.type];
   const base = cx('group/msg relative px-4 hover:bg-chat-hover focus-within:bg-chat-hover', mentioned && 'bg-warn/10 hover:bg-warn/[0.14] before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:bg-warn', replyingTo && 'bg-brand/10 before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:bg-brand', highlighted && 'flash');
   if (sys) {
     const Icon = m.type === 'join' ? LogIn : m.type === 'pin' ? Pin : m.type === 'boost' ? Rocket : m.type === 'call' ? Phone : MessagesSquare;
@@ -137,7 +138,7 @@ export const MessageItem = memo(function MessageItem({ m, grouped, highlighted }
       {m.replyTo && <ReplyPreview m={m} />}
       <div className="relative flex gap-4 pb-[2px]">
         {grouped && !m.replyTo ? (
-          <time dateTime={new Date(ts).toISOString()} title={fmtFull(ts)} className="mt-[3px] w-10 shrink-0 select-none text-right text-[11px] leading-[1.375rem] text-muted opacity-0 group-hover/msg:opacity-100">{fmtTime(ts)}</time>
+          <time dateTime={new Date(ts).toISOString()} title={fmtFull(ts)} className="mt-[3px] w-10 shrink-0 select-none whitespace-nowrap text-right text-[10px] leading-[1.375rem] text-muted opacity-0 group-hover/msg:opacity-100">{fmtTime(ts)}</time>
         ) : (
           <button onClick={openUser} {...userTrig} aria-label={`${info.name} profile`} className="mt-0.5 h-10 w-10 shrink-0"><Avatar user={info.user} size={40} memberAvatar={info.member?.avatar} className="hover:opacity-90" /></button>
         )}

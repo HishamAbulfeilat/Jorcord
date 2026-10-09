@@ -31,7 +31,7 @@ function GuildButton({ id }: { id: string }) {
           {icon ? <img src={icon} alt="" className="h-full w-full object-cover" draggable={false} /> : <span className="text-[15px] font-medium">{initials(g.name)}</span>}
         </button>
       </Tip>
-      {mentions > 0 && <Badge n={mentions} className="absolute -bottom-1 right-2 border-[3px] border-rail !h-[22px] !min-w-[22px] box-content" />}
+      {mentions > 0 && <Badge n={mentions} className="absolute -bottom-1.5 right-[8px] border-4 border-rail !h-4 !min-w-4 box-content" />}
     </div>
   );
 }
@@ -43,15 +43,15 @@ export function ServerRail({ onNavigate }: { onNavigate?: () => void }) {
   const dmMentions = useMemo(() => Object.values(dms).reduce((a, c) => a + (readStates[c.id]?.mentionCount ?? 0), 0), [dms, readStates]);
   const unreadDms = useData(useShallow((s) => Object.values(s.dms).filter((c) => channelUnread(s, c).unread && channelUnread(s, c).mentions > 0).sort((a, b) => (b.lastMessageId ?? '').localeCompare(a.lastMessageId ?? '')).slice(0, 6).map((c) => c.id)));
   return (
-    <nav aria-label="Servers" className="scroller-hide flex h-full w-[72px] shrink-0 flex-col items-center gap-2 overflow-y-auto bg-rail py-3 safe-top" onClick={onNavigate}>
+    <nav aria-label="Servers" className="scroller-hide flex h-full w-[72px] shrink-0 flex-col items-center gap-2 overflow-y-auto bg-rail pb-3" style={{ paddingTop: 'calc(12px + var(--sat))' }} onClick={onNavigate}>
       <div className="relative flex w-full justify-center">
         <span className={cx('absolute left-0 top-1/2 w-1 -translate-y-1/2 rounded-r-full bg-header transition-all', isHome ? 'h-10' : 'h-0')} />
         <Tip text="Direct Messages">
           <button aria-label="Direct Messages" aria-current={isHome ? 'page' : undefined} onClick={() => nav.go('@me', isHome ? channelId : undefined)} className={cx('flex h-12 w-12 items-center justify-center transition-all hover:rounded-2xl', isHome ? 'rounded-2xl bg-brand' : 'rounded-3xl bg-chat hover:bg-brand')}>
-            <LogoGlyph size={30} className={isHome ? 'text-white' : 'text-normal'} />
+            <LogoGlyph size={32} className={isHome ? 'text-white' : 'text-normal'} />
           </button>
         </Tip>
-        {dmMentions > 0 && <Badge n={dmMentions} className="absolute -bottom-1 right-2 border-[3px] border-rail !h-[22px] !min-w-[22px] box-content" />}
+        {dmMentions > 0 && <Badge n={dmMentions} className="absolute -bottom-1.5 right-[8px] border-4 border-rail !h-4 !min-w-4 box-content" />}
       </div>
       {unreadDms.map((id) => <DmShortcut key={id} id={id} />)}
       <div className="h-0.5 w-8 rounded bg-divider" />
@@ -71,7 +71,7 @@ function DmShortcut({ id }: { id: string }) {
   return (
     <div className="relative">
       <Tip text={dmName(c, me?.id)}><button aria-label={dmName(c, me?.id)} onClick={() => nav.go('@me', id)}><Avatar user={other} size={48} /></button></Tip>
-      <Badge n={m} className="absolute -bottom-1 -right-1 border-[3px] border-rail box-content" />
+      <Badge n={m} className="absolute -bottom-1 -right-1 border-4 border-rail !h-4 !min-w-4 box-content" />
     </div>
   );
 }

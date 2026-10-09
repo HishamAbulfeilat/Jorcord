@@ -40,7 +40,8 @@
 }
 
 html, body, #root { height: 100%; }
-html { font-size: calc(16px * var(--font-scale)); -webkit-text-size-adjust: 100%; }
+html { font-size: calc(16px * var(--font-scale)); -webkit-text-size-adjust: 100%; overscroll-behavior: none; touch-action: pan-y pinch-zoom; }
+#root { touch-action: pan-y pinch-zoom; overscroll-behavior: none; }
 body {
   margin: 0; background: rgb(var(--chat)); color: rgb(var(--text)); font-family: var(--font);
   overflow: hidden; overscroll-behavior: none; -webkit-tap-highlight-color: transparent; font-size: 1rem; line-height: 1.375;
@@ -49,6 +50,8 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 input, textarea, select { font: inherit; color: inherit; }
 *:focus { outline: none; }
 *:focus-visible { outline: 2px solid rgb(var(--link)); outline-offset: 2px; border-radius: 4px; }
+input:focus-visible, textarea:focus-visible, select:focus-visible { outline: none; }
+.field:focus-visible, select.field:focus-visible { outline: 2px solid rgb(var(--link)); outline-offset: 0; }
 a { color: rgb(var(--link)); text-decoration: none; }
 a:hover { text-decoration: underline; }
 ::selection { background: rgb(var(--brand) / .45); }

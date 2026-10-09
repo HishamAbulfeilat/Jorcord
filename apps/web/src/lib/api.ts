@@ -68,7 +68,7 @@ export const api = {
     createInvite: (id: Id, b: { channelId?: Id; maxUses?: number | null; maxAgeSeconds?: number | null; temporary?: boolean } = {}) => send<Invite>({ method: 'POST', path: `/guilds/${id}/invites`, body: b }),
     auditLogs: (id: Id, q: { limit?: number; before?: Id; action?: string } = {}) => send<AuditEntry[]>({ method: 'GET', path: `/guilds/${id}/audit-logs`, query: q }).then((x) => arr<AuditEntry>(x)),
     emojis: (id: Id) => send<Emoji[]>({ method: 'GET', path: `/guilds/${id}/emojis` }).then((x) => arr<Emoji>(x)),
-    createEmoji: (id: Id, b: { name: string; image: string }) => send<Emoji>({ method: 'POST', path: `/guilds/${id}/emojis`, body: b }),
+    createEmoji: (id: Id, b: { name: string; url: string; animated?: boolean }) => send<Emoji>({ method: 'POST', path: `/guilds/${id}/emojis`, body: b }),
     patchEmoji: (id: Id, eid: Id, b: { name: string }) => send<Emoji>({ method: 'PATCH', path: `/guilds/${id}/emojis/${eid}`, body: b }),
     deleteEmoji: (id: Id, eid: Id) => send({ method: 'DELETE', path: `/guilds/${id}/emojis/${eid}` }),
     stickers: (id: Id) => send<Sticker[]>({ method: 'GET', path: `/guilds/${id}/stickers` }).then((x) => arr<Sticker>(x)),
@@ -90,19 +90,19 @@ export const api = {
     webhooks: (id: Id) => send<any[]>({ method: 'GET', path: `/channels/${id}/webhooks` }).then((x) => arr<any>(x)),
     createWebhook: (id: Id, name: string) => send<any>({ method: 'POST', path: `/channels/${id}/webhooks`, body: { name } }),
     deleteWebhook: (id: Id, wid: Id) => send({ method: 'DELETE', path: `/channels/${id}/webhooks/${wid}` }),
-    forumPost: (id: Id, b: { name: string; content: string }) => send<Channel>({ method: 'POST', path: `/channels/${id}/forum/posts`, body: b }),
+    forumPost: (id: Id, b: { name: string; content: string }) => send<{ channel: Channel; message?: Message }>({ method: 'POST', path: `/channels/${id}/forum/posts`, body: b }),
+    threads: (id: Id, archived = false) => send<Channel[]>({ method: 'GET', path: `/channels/${id}/threads`, query: { archived } }).then((x) => arr<Channel>(x)),
   },
   messages: {
     list: (channelId: Id, q: MessageQuery = {}) => send<Message[]>({ method: 'GET', path: `/channels/${channelId}/messages`, query: { limit: 50, ...q } }).then((x) => arr<Message>(x)),
     send: (channelId: Id, m: SendMessageInput) => {
       if (m.files?.length) {
         const f = new FormData();
-        f.set('content', m.content); if (m.replyTo) f.set('replyTo', m.replyTo); if (m.nonce) f.set('nonce', m.nonce);
-        f.set('payload_json', JSON.stringify({ content: m.content, replyTo: m.replyTo ?? null, nonce: m.nonce }));
+        f.set('content', m.content); if (m.replyTo) f.set('replyTo', m.replyTo);
         m.files.forEach((file) => f.append('files[]', file, file.name));
         return send<Message>({ method: 'POST', path: `/channels/${channelId}/messages`, form: f });
       }
-      return send<Message>({ method: 'POST', path: `/channels/${channelId}/messages`, body: { content: m.content, replyTo: m.replyTo ?? null, nonce: m.nonce, stickerIds: m.stickerIds } });
+      return send<Message>({ method: 'POST', path: `/channels/${channelId}/messages`, body: { content: m.content, replyTo: m.replyTo ?? null, ...(m.stickerIds?.length ? { stickerIds: m.stickerIds } : {}) } });
     },
     edit: (channelId: Id, id: Id, content: string) => send<Message>({ method: 'PATCH', path: `/channels/${channelId}/messages/${id}`, body: { content } }),
     delete: (channelId: Id, id: Id) => send({ method: 'DELETE', path: `/channels/${channelId}/messages/${id}` }),
@@ -122,6 +122,8 @@ export const api = {
   },
   files: {
     upload: (file: File) => { const f = new FormData(); f.append('file', file, file.name); return send<Attachment>({ method: 'POST', path: '/uploads', form: f }); },
+    /** Upload an image and return the URL to store in avatar/icon/banner fields (the server rejects data: URIs). */
+    uploadImage: (file: File) => { const f = new FormData(); f.append('file', file, file.name); return send<Attachment>({ method: 'POST', path: '/uploads', form: f }).then((a) => a.url); },
   },
   voice: { token: (channelId: Id) => send<VoiceToken>({ method: 'POST', path: '/voice/token', body: { channelId } }) },
   misc: {

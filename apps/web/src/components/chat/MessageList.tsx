@@ -11,6 +11,7 @@ import { MessageItem, PendingItem } from './MessageItem';
 import { Spinner } from '@/components/ui/primitives';
 import { ackLater } from '@/lib/session';
 import { cx } from '@/lib/format';
+import { toPlain, parseInline } from '@/lib/markdown';
 
 const PAGE = 50;
 type Row =
@@ -63,7 +64,7 @@ export function MessageList({ channel, lastReadSnapshot }: { channel: Channel; l
     try { const r = await api.messages.list(cid, around ? { around, limit: PAGE } : { limit: PAGE }); useData.getState().putUsers(r.map((m) => m.author)); store().init(cid, r, PAGE, around); }
     catch (e) { store().setLoading(cid, false, (e as Error).message); }
   }, [cid, store]);
-  useEffect(() => { if (!state?.loadedInitial) load(); }, [cid]); // eslint-disable-line
+  useEffect(() => { if (!state?.loadedInitial) { didInitial.current = false; load(); } }, [cid, state?.loadedInitial]); // eslint-disable-line
 
   const scrollToEnd = useCallback((smooth = false) => {
     const el = scroller.current; if (!el) return;
@@ -78,7 +79,7 @@ export function MessageList({ channel, lastReadSnapshot }: { channel: Channel; l
     if (!state?.loadedInitial || didInitial.current) return;
     didInitial.current = true;
     if (state.jumpTo) jumpTo(state.jumpTo, false); else scrollToEnd();
-  }, [state?.loadedInitial]); // eslint-disable-line
+  }, [state?.loadedInitial, state?.initSeq]); // eslint-disable-line
 
   // preserve scroll when older messages prepended
   useLayoutEffect(() => {
@@ -201,7 +202,7 @@ function Intro({ channel }: { channel: Channel }) {
     <div className="px-4 pb-4 pt-8">
       <div className="mb-2 flex h-[68px] w-[68px] items-center justify-center rounded-full bg-[rgb(var(--active))] text-header">{isDm ? <Users size={40} /> : <Hash size={40} />}</div>
       <h1 className="text-[32px] font-bold leading-10 text-header">{isDm ? dmName(channel, me?.id) : `Welcome to #${channel.name}!`}</h1>
-      <p className="text-muted">{isDm ? `This is the beginning of your direct message history with ${dmName(channel, me?.id)}.` : `This is the start of the #${channel.name} channel.${channel.topic ? ' ' + channel.topic : ''}`}</p>
+      <p className="text-muted">{isDm ? `This is the beginning of your direct message history with ${dmName(channel, me?.id)}.` : `This is the start of the #${channel.name} channel.${channel.topic ? ' ' + toPlain(parseInline(channel.topic)) : ''}`}</p>
     </div>
   );
 }

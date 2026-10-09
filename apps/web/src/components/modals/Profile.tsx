@@ -15,7 +15,7 @@ export function ProfileCard({ userId, guildId, compact }: { userId: string; guil
   const member = useData((s) => (guildId ? s.guilds[guildId]?.members[userId] : undefined));
   const roles = useData((s) => (guildId ? s.guilds[guildId]?.roles : undefined));
   const me = useData((s) => s.me); const rel = useData((s) => s.relationships[userId]?.type);
-  const openSettings = useUI((s) => s.openSettings); const closeAll = useUI((s) => () => { s.closePopout(); s.closeModal(); });
+  const openSettings = useUI((s) => s.openSettings); const closeAll = () => { const s = useUI.getState(); s.closePopout(); s.closeModal(); };
   const q = useQuery({ queryKey: ['user', userId], queryFn: () => api.users.get(userId), staleTime: 60_000, retry: false });
   const u = { ...cached, ...q.data } as NonNullable<typeof cached>;
   const trig = useMenuTrigger(() => userMenu(userId, guildId));

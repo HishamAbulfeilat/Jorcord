@@ -42,8 +42,8 @@ function AddFriend() {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault(); if (!name.trim()) return; setBusy(true); setState(null);
     try {
-      const uname = name.trim().replace(/^@/, ''); const found = await api.users.findByUsername(uname);
-      const target = found.find((u) => u.username.toLowerCase() === uname.toLowerCase());
+      const uname = name.trim().replace(/^@/, ''); const found = await api.users.findByUsername(uname).catch(() => []);
+      const target = found.find((u) => u.username.toLowerCase() === uname.toLowerCase()) ?? (/^\d{5,}$/.test(uname) ? { id: uname, username: uname } : undefined);
       if (!target) throw new Error(`Hm, didn't work. Double check that the username is correct.`);
       await api.users.setRelationship(target.id, 'friend'); setState({ ok: true, msg: `Success! Your friend request to ${target.username} was sent.` }); setName('');
     } catch (err) { setState({ ok: false, msg: (err as Error).message }); } finally { setBusy(false); }

@@ -44,7 +44,7 @@ interface UIState {
   panel: RightPanel; setPanel(p: RightPanel): void; togglePanel(p: Exclude<RightPanel, null>): void;
   modal: ModalSpec | null; openModal(m: ModalSpec): void; closeModal(): void;
   settings: SettingsSpec; openSettings(s: SettingsSpec): void;
-  menu: { x: number; y: number; items: MenuItem[] } | null; openMenu(x: number, y: number, items: MenuItem[]): void; closeMenu(): void;
+  menu: { x: number; y: number; items: MenuItem[]; t: number } | null; openMenu(x: number, y: number, items: MenuItem[]): void; closeMenu(): void;
   popout: Popout; openPopout(p: Popout): void; closePopout(): void;
   toasts: Toast[]; toast(text: string, kind?: Toast['kind']): void; dismissToast(id: number): void;
   switcher: boolean; setSwitcher(v: boolean): void;
@@ -69,7 +69,7 @@ export const useUI = create<UIState>((set, get) => ({
   panel: 'members', setPanel: (panel) => set({ panel }), togglePanel: (p) => set((s) => ({ panel: s.panel === p ? null : p })),
   modal: null, openModal: (modal) => set({ modal, menu: null, popout: null }), closeModal: () => set({ modal: null }),
   settings: null, openSettings: (settings) => set({ settings, menu: null, popout: null, leftDrawer: false }),
-  menu: null, openMenu: (x, y, items) => set({ menu: { x, y, items }, popout: null }), closeMenu: () => set({ menu: null }),
+  menu: null, openMenu: (x, y, items) => set({ menu: { x, y, items, t: Date.now() }, popout: null }), closeMenu: () => set({ menu: null }),
   popout: null, openPopout: (popout) => set({ popout, menu: null }), closePopout: () => set({ popout: null }),
   toasts: [],
   toast: (text, kind = 'info') => { const id = tid++; set((s) => ({ toasts: [...s.toasts, { id, kind, text }] })); setTimeout(() => get().dismissToast(id), 4500); },

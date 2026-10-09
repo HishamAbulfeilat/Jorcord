@@ -67,13 +67,16 @@ export class GatewayClient implements GatewayLike {
       if (this.ws !== ws) return;
       this.cleanup();
       if (this.manual) return;
-      if (ev.code === 4004 || ev.code === 4001) { this.emit('*' as any, null); this.authFailed?.(); return; }
+      if (ev.code === 4004 || ev.code === 4001) { this.authFailed?.(); return; }
       if (ev.code === 4009 || ev.code === 4007) { this.sessionId = null; this.seq = 0; }
       this.scheduleReconnect();
     };
     ws.onerror = () => { /* close follows */ };
   }
   authFailed?: () => void;
+  getToken?: () => string | null;
+  /** Re-open after auth was repaired (token refreshed). */
+  reconnect(token: string) { this.token = token; this.manual = false; this.open(); }
 
   private scheduleReconnect() {
     this.setStatus('reconnecting');
@@ -93,8 +96,8 @@ export class GatewayClient implements GatewayLike {
           if (this.ackPending) { try { this.ws?.close(4000); } catch { /* noop */ } return; }
           this.ackPending = true; this.raw(Op.HEARTBEAT, this.seq);
         }, interval);
-        if (this.sessionId) this.raw(Op.RESUME, { token: this.token, sessionId: this.sessionId, seq: this.seq });
-        else this.raw(Op.IDENTIFY, { token: this.token, properties: { os: navigator.platform, client: 'jorcord-web' } });
+        if (this.sessionId) this.raw(Op.RESUME, { token: this.getToken?.() ?? this.token, sessionId: this.sessionId, seq: this.seq });
+        else this.raw(Op.IDENTIFY, { token: this.getToken?.() ?? this.token, properties: { os: navigator.platform, client: 'jorcord-web' } });
         break;
       }
       case Op.HEARTBEAT: this.raw(Op.HEARTBEAT, this.seq); break;

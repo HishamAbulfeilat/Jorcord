@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Search, X, Pin, MessagesSquare, Hash, CornerDownRight } from 'lucide-react';
 import type { Channel, Message } from '@jorcord/shared';
@@ -49,7 +49,7 @@ export function SearchPanel({ guildId, channel, onClose }: { guildId: string | u
       <div className="mb-2 flex items-center rounded bg-rail px-2"><input autoFocus value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search messages" placeholder="Search" className="h-9 flex-1 bg-transparent text-sm outline-none placeholder:text-muted" /><Search size={16} className="text-muted" /></div>
       <div className="mb-3 flex flex-wrap gap-1.5">
         {guildId && (['server', 'channel'] as const).map((s) => <button key={s} aria-pressed={scope === s} onClick={() => setScope(s)} className={cx('rounded-full px-3 py-1 text-xs font-semibold', scope === s ? 'bg-brand text-white' : 'bg-active text-interactive')}>{s === 'server' ? 'Everywhere' : 'This channel'}</button>)}
-        {['image', 'file', 'link', 'video'].map((h) => <button key={h} aria-pressed={has === h} onClick={() => setHas(has === h ? '' : h)} className={cx('rounded-full px-3 py-1 text-xs font-semibold', has === h ? 'bg-brand text-white' : 'bg-active text-interactive')}>has: {h}</button>)}
+        {['image', 'file', 'link', 'embed'].map((h) => <button key={h} aria-pressed={has === h} onClick={() => setHas(has === h ? '' : h)} className={cx('rounded-full px-3 py-1 text-xs font-semibold', has === h ? 'bg-brand text-white' : 'bg-active text-interactive')}>has: {h}</button>)}
       </div>
       {res.isFetching && <Spinner className="mx-auto my-6" />}
       {!res.isFetching && res.data?.length === 0 && <Empty icon={<Search size={40} />} title="No results found">Try different keywords or filters.</Empty>}
@@ -73,7 +73,9 @@ export function PinsPanel({ channel, onClose }: { channel: Channel; onClose: () 
 
 export function ThreadsPanel({ channel, onClose }: { channel: Channel; onClose: () => void }) {
   const nav = useNav();
-  const threads = useData((s) => (channel.guildId ? Object.values(s.guilds[channel.guildId]?.channels ?? {}).filter((c) => c.type === 'thread' && c.parentId === channel.id) : []));
+  const chans = useData((s) => (channel.guildId ? s.guilds[channel.guildId]?.channels : undefined));
+  const threads = useMemo(() => Object.values(chans ?? {}).filter((c) => c.type === 'thread' && c.parentId === channel.id), [chans, channel.id]);
+  useQuery({ queryKey: ['threads', channel.id], queryFn: async () => { const [a, b] = await Promise.all([api.channels.threads(channel.id, false), api.channels.threads(channel.id, true)]); [...a, ...b].forEach((t) => useData.getState().apply('THREAD_UPDATE', t)); return true; }, staleTime: 15_000 });
   const active = threads.filter((t) => !t.archived), old = threads.filter((t) => t.archived);
   const Row = ({ t }: { t: Channel }) => <button onClick={() => { nav.go(channel.guildId, t.id); onClose(); }} className="mb-2 flex w-full items-center gap-3 rounded-md border border-divider bg-chat p-3 text-left hover:bg-chat-hover"><MessagesSquare size={20} className="text-muted" /><span className="min-w-0 flex-1"><span className="block truncate font-semibold text-header">{t.name}</span><span className="text-xs text-muted">{t.archived ? 'Archived' : 'Active'}</span></span><CornerDownRight size={16} className="text-muted" /></button>;
   return (

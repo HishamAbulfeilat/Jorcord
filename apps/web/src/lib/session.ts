@@ -18,14 +18,18 @@ export function startSession(token: string) {
   endSession(false);
   const gw = getGateway();
   const names: (keyof Events)[] = ['READY', 'GUILD_CREATE', 'GUILD_UPDATE', 'GUILD_DELETE', 'CHANNEL_CREATE', 'CHANNEL_UPDATE', 'CHANNEL_DELETE', 'ROLE_CREATE', 'ROLE_UPDATE', 'ROLE_DELETE', 'MEMBER_ADD', 'MEMBER_UPDATE', 'MEMBER_REMOVE', 'TYPING_START', 'PRESENCE_UPDATE', 'USER_UPDATE', 'RELATIONSHIP_ADD', 'RELATIONSHIP_REMOVE', 'READ_STATE_UPDATE', 'VOICE_STATE_UPDATE', 'EMOJIS_UPDATE', 'THREAD_CREATE', 'THREAD_UPDATE'];
-  for (const n of names) unsubs.push(gw.on(n, (d: any) => useData.getState().apply(n, d)));
+  let readies = 0;
+  for (const n of names) unsubs.push(gw.on(n, (d: any) => { if (n === 'READY' && ++readies > 1) useMessages.setState({ ch: {} }); /* missed events after a failed resume: reload open channels */ useData.getState().apply(n, d); }));
   unsubs.push(gw.on('MESSAGE_CREATE', onMessageCreate));
   unsubs.push(gw.on('MESSAGE_UPDATE', (m) => { useMessages.getState().update(m); }));
   unsubs.push(gw.on('MESSAGE_DELETE', (d) => useMessages.getState().remove(d.channelId, d.id)));
   unsubs.push(gw.on('MESSAGE_REACTION_ADD', (d) => useMessages.getState().reaction(d.channelId, d.messageId, d.emoji, d.emojiId, 1, d.userId === useData.getState().me?.id)));
   unsubs.push(gw.on('MESSAGE_REACTION_REMOVE', (d) => useMessages.getState().reaction(d.channelId, d.messageId, d.emoji, d.emojiId, -1, d.userId === useData.getState().me?.id)));
   unsubs.push(gw.on('CHANNEL_PINS_UPDATE', (d) => window.dispatchEvent(new CustomEvent('jorcord:pins', { detail: d.channelId }))));
-  (gw as any).authFailed = () => { useAuth.getState().clear(); };
+  (gw as any).getToken = () => useAuth.getState().access;
+  (gw as any).authFailed = () => {
+    api.users.me().then((u) => { useData.getState().setMe(u); (gw as any).reconnect?.(useAuth.getState().access ?? token); }).catch(() => useAuth.getState().clear());
+  };
   gw.connect(token);
 }
 
