@@ -1,0 +1,126 @@
+import type { FastifyInstance } from 'fastify';
+import { authenticator } from 'otplib';
+import { z } from 'zod';
+import { snowflake } from '@jorcord/shared';
+import type { Ctx } from '../ctx';
+import { ApiError, conflict, notFound, unauthorized } from '../errors';
+import { issueTokens } from '../auth';
+import { decryptSecret, dummyVerify, encryptSecret, hashPassword, safeEqual, sha256, verifyPassword } from '../lib/crypto';
+import { idSchema, iso, parse } from '../lib/ids';
+import { selfUserDTO } from '../services/serializers';
+
+authenticator.options = { window: 1 };
+
+const usernameSchema = z.string().trim().toLowerCase().regex(/^[a-z0-9_.]{2,32}$/, 'username must be 2-32 chars: a-z 0-9 _ .');
+const passwordSchema = z.string().min(8).max(128);
+const registerSchema = z.object({ email: z.string().trim().toLowerCase().email().max(254), username: usernameSchema, password: passwordSchema, displayName: z.string().trim().min(1).max(32).optional() }).strict();
+const loginSchema = z.object({ email: z.string().trim().toLowerCase().max(254), password: z.string().max(128), totp: z.string().regex(/^\d{6}$/).optional() }).strict();
+
+export function publicAuthRoutes(app: FastifyInstance, ctx: Ctx) {
+  app.post('/auth/register', async (req, reply) => {
+    const b = parse(registerSchema, req.body);
+    const id = snowflake();
+    try {
+      await ctx.db.query('INSERT INTO users (id, email, username, display_name, password_hash) VALUES ($1,$2,$3,$4,$5)',
+        [id, b.email, b.username, b.displayName ?? null, await hashPassword(b.password)]);
+    } catch (e: any) {
+      if (e?.code === '23505' || /unique|duplicate/i.test(String(e?.message))) throw conflict('Email or username already in use', 'ACCOUNT_EXISTS');
+      throw e;
+    }
+    const [row] = await ctx.db.query('SELECT * FROM users WHERE id = $1', [id]);
+    return reply.code(201).send(await issueTokens(ctx, row, req));
+  });
+
+  app.post('/auth/login', async (req) => {
+    const b = parse(loginSchema, req.body);
+    const throttleKey = `login:${b.email}`;
+    if (ctx.config.rateLimit && ctx.rl.isLimited(throttleKey, 8)) throw new ApiError(429, 'RATE_LIMITED', 'Too many failed attempts, try again later');
+    const fail = () => { ctx.rl.hit(throttleKey, 8, 15 * 60_000); return unauthorized('Invalid credentials', 'INVALID_CREDENTIALS'); };
+    const [row] = await ctx.db.query('SELECT * FROM users WHERE lower(email) = $1 AND NOT bot', [b.email]);
+    if (!row?.password_hash) { await dummyVerify(b.password); throw fail(); }
+    if (!(await verifyPassword(row.password_hash, b.password))) throw fail();
+    if (row.mfa_enabled) {
+      if (!b.totp) throw unauthorized('Two-factor code required', 'MFA_REQUIRED');
+      if (!authenticator.check(b.totp, decryptSecret(row.mfa_secret, ctx.config.jwtSecret))) throw fail();
+    }
+    return issueTokens(ctx, row, req);
+  });
+
+  app.post('/auth/refresh', async (req) => {
+    const { refreshToken } = parse(z.object({ refreshToken: z.string().min(10).max(200) }).strict(), req.body);
+    const sid = refreshToken.split('.')[0] ?? '';
+    if (!idSchema.safeParse(sid).success) throw unauthorized('Invalid refresh token', 'INVALID_TOKEN');
+    const [s] = await ctx.db.query('SELECT * FROM sessions WHERE id = $1', [sid]);
+    if (!s || s.revoked || new Date(s.expires_at).getTime() < Date.now()) throw unauthorized('Invalid refresh token', 'INVALID_TOKEN');
+    if (!safeEqual(s.refresh_hash, sha256(refreshToken))) {
+      // a rotated-out token was replayed: assume theft and kill the session
+      await ctx.db.query('UPDATE sessions SET revoked = true WHERE id = $1', [sid]);
+      ctx.hub.disconnectAuthSession(sid);
+      throw unauthorized('Refresh token reuse detected', 'TOKEN_REUSED');
+    }
+    const [user] = await ctx.db.query('SELECT * FROM users WHERE id = $1', [s.user_id]);
+    if (!user) throw unauthorized();
+    return issueTokens(ctx, user, req, sid);
+  });
+}
+
+export function authRoutes(app: FastifyInstance, ctx: Ctx) {
+  app.post('/auth/logout', async (req, reply) => {
+    await ctx.db.query('UPDATE sessions SET revoked = true WHERE id = $1 AND user_id = $2', [req.authSessionId, req.userId]);
+    ctx.hub.disconnectAuthSession(req.authSessionId);
+    return reply.code(204).send();
+  });
+
+  app.get('/auth/sessions', async (req) => {
+    const rows = await ctx.db.query('SELECT * FROM sessions WHERE user_id = $1 AND NOT revoked AND expires_at > now() ORDER BY last_used_at DESC', [req.userId]);
+    return rows.map((s) => ({ id: s.id, userAgent: s.user_agent, ip: s.ip, createdAt: iso(s.created_at), lastUsedAt: iso(s.last_used_at), current: s.id === req.authSessionId }));
+  });
+  app.post('/auth/sessions', async (req, reply) => {
+    const b = parse(z.object({ sessionId: idSchema.optional(), all: z.boolean().optional() }).strict(), req.body);
+    if (b.all) {
+      const rows = await ctx.db.query('UPDATE sessions SET revoked = true WHERE user_id = $1 AND id <> $2 AND NOT revoked RETURNING id', [req.userId, req.authSessionId]);
+      rows.forEach((r) => ctx.hub.disconnectAuthSession(r.id));
+      return reply.code(204).send();
+    }
+    if (!b.sessionId) throw new ApiError(400, 'VALIDATION_ERROR', 'sessionId or all required');
+    const rows = await ctx.db.query('UPDATE sessions SET revoked = true WHERE id = $1 AND user_id = $2 RETURNING id', [b.sessionId, req.userId]); // user_id check = IDOR guard
+    if (!rows.length) throw notFound('Session');
+    ctx.hub.disconnectAuthSession(b.sessionId);
+    return reply.code(204).send();
+  });
+
+  app.post('/auth/mfa/setup', async (req) => {
+    const [u] = await ctx.db.query('SELECT email, mfa_enabled FROM users WHERE id = $1', [req.userId]);
+    if (u.mfa_enabled) throw conflict('MFA already enabled', 'MFA_ALREADY_ENABLED');
+    const secret = authenticator.generateSecret();
+    await ctx.db.query('UPDATE users SET mfa_secret = $2 WHERE id = $1', [req.userId, encryptSecret(secret, ctx.config.jwtSecret)]);
+    return { secret, otpauthUrl: authenticator.keyuri(u.email, 'Jorcord', secret) };
+  });
+  app.post('/auth/mfa/enable', async (req) => {
+    const { code } = parse(z.object({ code: z.string().regex(/^\d{6}$/) }).strict(), req.body);
+    const [u] = await ctx.db.query('SELECT * FROM users WHERE id = $1', [req.userId]);
+    if (!u.mfa_secret) throw new ApiError(400, 'MFA_NOT_SETUP', 'Call /auth/mfa/setup first');
+    if (!authenticator.check(code, decryptSecret(u.mfa_secret, ctx.config.jwtSecret))) throw new ApiError(400, 'INVALID_CODE', 'Invalid code');
+    const [row] = await ctx.db.query('UPDATE users SET mfa_enabled = true WHERE id = $1 RETURNING *', [req.userId]);
+    return selfUserDTO(ctx, row);
+  });
+  app.post('/auth/mfa/disable', async (req) => {
+    const b = parse(z.object({ password: z.string().max(128), code: z.string().regex(/^\d{6}$/) }).strict(), req.body);
+    const [u] = await ctx.db.query('SELECT * FROM users WHERE id = $1', [req.userId]);
+    if (!u.mfa_enabled) throw new ApiError(400, 'MFA_NOT_ENABLED', 'MFA is not enabled');
+    if (!(await verifyPassword(u.password_hash, b.password))) throw unauthorized('Invalid credentials', 'INVALID_CREDENTIALS');
+    if (!authenticator.check(b.code, decryptSecret(u.mfa_secret, ctx.config.jwtSecret))) throw new ApiError(400, 'INVALID_CODE', 'Invalid code');
+    const [row] = await ctx.db.query('UPDATE users SET mfa_enabled = false, mfa_secret = NULL WHERE id = $1 RETURNING *', [req.userId]);
+    return selfUserDTO(ctx, row);
+  });
+
+  app.post('/auth/password', async (req, reply) => {
+    const b = parse(z.object({ currentPassword: z.string().max(128), newPassword: passwordSchema }).strict(), req.body);
+    const [u] = await ctx.db.query('SELECT password_hash FROM users WHERE id = $1', [req.userId]);
+    if (!(await verifyPassword(u.password_hash, b.currentPassword))) throw unauthorized('Invalid credentials', 'INVALID_CREDENTIALS');
+    await ctx.db.query('UPDATE users SET password_hash = $2 WHERE id = $1', [req.userId, await hashPassword(b.newPassword)]);
+    const others = await ctx.db.query('UPDATE sessions SET revoked = true WHERE user_id = $1 AND id <> $2 AND NOT revoked RETURNING id', [req.userId, req.authSessionId]);
+    others.forEach((r) => ctx.hub.disconnectAuthSession(r.id));
+    return reply.code(204).send();
+  });
+}
