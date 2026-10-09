@@ -7,7 +7,7 @@ import { SignJWT, importPKCS8 } from 'jose';
 import webpush from 'web-push';
 import type { Message } from '@jorcord/shared';
 import type { Ctx } from '../ctx';
-import { safeLookup, isPrivateIp } from '../lib/ssrf';
+import { safeLookup } from '../lib/ssrf';
 import { viewersAmong } from './perms';
 
 export type PushKind = 'dm' | 'mention' | 'reply' | 'message' | 'friend_request' | 'friend_accept' | 'call';
@@ -54,7 +54,7 @@ export function validatePushEndpoint(endpoint: string): boolean {
   const host = u.hostname.toLowerCase().replace(/^\[|\]$/g, '');
   if (net.isIP(host)) return false;
   if (!host.includes('.') || host === 'localhost' || /\.(localhost|local|internal|lan|home|corp|intranet)$/.test(host)) return false;
-  return !isPrivateIp(host);
+  return true;
 }
 
 interface Settings { muted: boolean; mutedUntil: number | null; suppressEveryone: boolean; suppressRoles: boolean; level: string | null }
@@ -259,6 +259,7 @@ export function createPush(ctx: Ctx): PushService {
       })());
     },
     notifyCall(channel, callerId) {
+      if (ctx.config.rateLimit && ctx.rl.hit(`ring:${channel.id}:${callerId}`, 3, 60_000)) return; // redial spam
       track((async () => {
         const [caller] = await ctx.db.query('SELECT username, display_name FROM users WHERE id = $1', [callerId]);
         const parts = await ctx.db.query('SELECT user_id FROM dm_participants WHERE channel_id = $1', [channel.id]);

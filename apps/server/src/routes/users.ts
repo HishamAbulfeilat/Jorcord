@@ -6,8 +6,8 @@ import type { Ctx } from '../ctx';
 import { ApiError, badRequest, forbidden, notFound } from '../errors';
 import { assetUrl, idSchema, iso, parse } from '../lib/ids';
 import { limitOrThrow } from '../lib/ratelimit';
-import { decryptSecret, verifyPassword } from '../lib/crypto';
-import { authenticator } from 'otplib';
+import { verifyPassword } from '../lib/crypto';
+import { verifyTotp } from '../lib/totp';
 import { clearVoiceState } from '../services/voice';
 import { removeGroupRecipient } from '../services/dms';
 import { channelAccess } from '../services/perms';
@@ -76,7 +76,7 @@ export function userRoutes(app: FastifyInstance, ctx: Ctx) {
     limitOrThrow(ctx.rl, `delete-account:${req.userId}`, 5, 15 * 60_000, ctx.config.rateLimit);
     const [u] = await ctx.db.query('SELECT * FROM users WHERE id = $1', [req.userId]);
     if (!u?.password_hash || !(await verifyPassword(u.password_hash, b.password))) throw new ApiError(401, 'INVALID_CREDENTIALS', 'Invalid credentials');
-    if (u.mfa_enabled && (!b.totp || !authenticator.check(b.totp, decryptSecret(u.mfa_secret, ctx.config.jwtSecret)))) throw new ApiError(401, 'MFA_REQUIRED', 'A valid two-factor code is required');
+    if (u.mfa_enabled && (!b.totp || !(await verifyTotp(ctx, u, b.totp)))) throw new ApiError(401, 'MFA_REQUIRED', 'A valid two-factor code is required');
     const owned = await ctx.db.query('SELECT id, name FROM guilds WHERE owner_id = $1', [req.userId]);
     if (owned.length) throw new ApiError(409, 'OWNS_GUILDS', 'Transfer ownership or delete your servers first', owned);
     const id = req.userId;
@@ -177,6 +177,7 @@ export function userRoutes(app: FastifyInstance, ctx: Ctx) {
   });
   app.post('/users/@me/channels', async (req, reply) => {
     const { recipientIds } = parse(z.object({ recipientIds: z.array(idSchema).min(1).max(9) }).strict(), req.body);
+    limitOrThrow(ctx.rl, `dmcreate:${req.userId}`, 20, 60_000, ctx.config.rateLimit); // DM spam brake
     const others = [...new Set(recipientIds)];
     if (others.includes(req.userId)) throw badRequest('Cannot DM yourself');
     const found = await ctx.db.query('SELECT id FROM users WHERE id = ANY($1::text[]) AND NOT bot AND deleted_at IS NULL', [others]);
@@ -213,6 +214,8 @@ export function userRoutes(app: FastifyInstance, ctx: Ctx) {
     const { userId: other } = parse(z.object({ userId: idSchema }), req.params);
     const { type } = parse(z.object({ type: z.enum(['friend', 'blocked']) }).strict(), req.body);
     const me = req.userId;
+    limitOrThrow(ctx.rl, `rel:${me}`, 30, 60_000, ctx.config.rateLimit); // friend-request spam brake
+    limitOrThrow(ctx.rl, `rel-day:${me}`, 300, 86_400_000, ctx.config.rateLimit);
     if (other === me) throw badRequest('Cannot target yourself');
     const [target] = await ctx.db.query('SELECT id FROM users WHERE id = $1 AND NOT bot AND deleted_at IS NULL', [other]);
     if (!target) throw notFound('User');
@@ -239,10 +242,14 @@ export function userRoutes(app: FastifyInstance, ctx: Ctx) {
       await upsert(me, other, 'friend'); await upsert(other, me, 'friend');
       await push(me, other, 'friend'); await push(other, me, 'friend');
       await tellPresence(me, other); await tellPresence(other, me); // new friends see each other's status right away
+      const [self] = await ctx.db.query('SELECT id, username, display_name FROM users WHERE id = $1', [me]);
+      ctx.push.notifyFriendRequest(other, { id: me, username: self.username, displayName: self.display_name ?? null }, true);
       return { type: 'friend' };
     }
     await upsert(me, other, 'outgoing'); await upsert(other, me, 'incoming');
     await push(me, other, 'outgoing'); await push(other, me, 'incoming');
+    const [self] = await ctx.db.query('SELECT id, username, display_name FROM users WHERE id = $1', [me]);
+    ctx.push.notifyFriendRequest(other, { id: me, username: self.username, displayName: self.display_name ?? null });
     return { type: 'outgoing' };
   });
   app.delete('/users/@me/relationships/:userId', async (req, reply) => {

@@ -8,7 +8,7 @@ export function isPrivateIp(ip: string): boolean {
     const [a, b, c] = ip.split('.').map(Number) as [number, number, number];
     return a === 0 || a === 10 || a === 127 || (a === 100 && b >= 64 && b <= 127) || (a === 169 && b === 254) ||
       (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 192 && b === 0 && c === 0) ||
-      (a === 198 && (b === 18 || b === 19)) || a >= 224;
+      (a === 198 && (b === 18 || b === 19)) || (a === 192 && b === 0 && c === 2) || (a === 198 && b === 51 && c === 100) || (a === 203 && b === 0 && c === 113) || a >= 224;
   }
   if (net.isIPv6(ip)) {
     const l = ip.toLowerCase();
@@ -16,7 +16,9 @@ export function isPrivateIp(ip: string): boolean {
     if (mapped) return isPrivateIp(mapped[1]!);
     const hexMapped = l.match(/^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/);
     if (hexMapped) { const n = (parseInt(hexMapped[1]!, 16) << 16) | parseInt(hexMapped[2]!, 16); return isPrivateIp([n >>> 24, (n >> 16) & 255, (n >> 8) & 255, n & 255].join('.')); }
-    return l === '::' || l === '::1' || l.startsWith('fc') || l.startsWith('fd') || /^fe[89ab]/.test(l) || l.startsWith('ff') || l.startsWith('64:ff9b') || l.startsWith('2001:db8');
+    // loopback/unspecified, ULA, link-local (incl. fec0 site-local), multicast, NAT64, documentation, 6to4 / Teredo / IPv4-compatible and discard-only prefixes
+    return l === '::' || l === '::1' || l.startsWith('fc') || l.startsWith('fd') || /^fe[89abc]/.test(l) || l.startsWith('ff') || l.startsWith('64:ff9b') || l.startsWith('2001:db8') ||
+      l.startsWith('2002:') || l.startsWith('2001:0:') || l.startsWith('2001::') || l.startsWith('100::') || /^::[0-9a-f]{1,4}:[0-9a-f]{1,4}$/.test(l) || /^::\d+\.\d+\.\d+\.\d+$/.test(l);
   }
   return true;
 }
@@ -39,6 +41,7 @@ export interface SafeFetchResult { status: number; headers: http.IncomingHttpHea
 /** Minimal SSRF-safe GET: http(s) only, standard ports, validated redirects, size/time caps. */
 export async function safeGet(rawUrl: string, opts: { maxBytes?: number; timeoutMs?: number; maxRedirects?: number; allowPrivate?: boolean } = {}): Promise<SafeFetchResult> {
   const maxBytes = opts.maxBytes ?? 1_000_000, timeoutMs = opts.timeoutMs ?? 5000;
+  const deadline = Date.now() + timeoutMs * 3; // total budget: the per-socket idle timeout alone lets a slow-drip server hold us forever
   let url = new URL(rawUrl);
   for (let i = 0; i <= (opts.maxRedirects ?? 3); i++) {
     if (url.protocol !== 'http:' && url.protocol !== 'https:') throw new Error('SSRF_BLOCKED');
@@ -58,6 +61,8 @@ export async function safeGet(rawUrl: string, opts: { maxBytes?: number; timeout
         r.on('error', reject);
       });
       req.on('timeout', () => req.destroy(new Error('timeout')));
+      const hard = setTimeout(() => req.destroy(new Error('deadline')), Math.max(1, deadline - Date.now())); hard.unref();
+      req.on('close', () => clearTimeout(hard));
       req.on('error', reject); req.end();
     });
     if (res.status >= 300 && res.status < 400 && res.location) { url = new URL(res.location, url); continue; }

@@ -15,10 +15,15 @@ export const fileUrl = (key: string, filename: string) => `/api/v1/files/${key}/
 const INLINE = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/avif', 'video/mp4', 'video/webm', 'audio/mpeg', 'audio/ogg', 'audio/wav', 'audio/webm', 'audio/flac', 'audio/mp4']);
 export const isInlineType = (t: string) => INLINE.has(t);
 
+/** Uploads a user may have outstanding (not yet attached to a message). Stops anonymous-storage abuse via /uploads. */
+export const MAX_UNATTACHED_UPLOADS = 100;
+
 export async function saveUpload(ctx: Ctx, userId: string, part: MultipartFile): Promise<Attachment> {
+  const [pending] = await ctx.db.query('SELECT count(*)::int AS n FROM files WHERE uploader_id = $1 AND NOT attached', [userId]);
+  if (pending.n >= MAX_UNATTACHED_UPLOADS) { part.file.resume(); throw new ApiError(429, 'TOO_MANY_UPLOADS', 'Too many unsent uploads; send or discard some first'); }
   const key = randomBytes(24).toString('hex');
   const filename = sanitizeFilename(part.filename);
-  const contentType = (part.mimetype || 'application/octet-stream').toLowerCase().slice(0, 100);
+  let contentType = (part.mimetype || 'application/octet-stream').toLowerCase().replace(/[^\x21-\x7e]/g, '').slice(0, 100) || 'application/octet-stream';
   let size: number;
   try { size = await ctx.storage.put(key, part.file, ctx.config.maxUploadBytes); }
   catch (e: any) {
@@ -29,7 +34,8 @@ export async function saveUpload(ctx: Ctx, userId: string, part: MultipartFile):
   if (size === 0) { await ctx.storage.delete(key); throw new ApiError(400, 'EMPTY_FILE', 'File is empty'); }
   let width: number | null = null, height: number | null = null;
   if (/^image\/(png|jpeg|gif|webp|avif)$/.test(contentType)) {
-    try { const d = imageSize(await ctx.storage.head(key, 262144)); width = d.width ?? null; height = d.height ?? null; } catch { /* not a decodable image: leave null */ }
+    try { const d = imageSize(await ctx.storage.head(key, 262144)); width = d.width ?? null; height = d.height ?? null; }
+    catch { contentType = 'application/octet-stream'; } // claims to be an image but is not one: never serve it inline as an image
   }
   const id = snowflake();
   await ctx.db.query('INSERT INTO files (id, key, uploader_id, filename, content_type, size, width, height, spoiler) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)',

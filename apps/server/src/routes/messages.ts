@@ -22,7 +22,7 @@ const sendBody = z.object({
 const emojiParam = z.string().min(1).max(100);
 
 function parseEmoji(raw: string): { emoji: string; emojiId: string | null } {
-  const e = decodeURIComponent(raw);
+  let e: string; try { e = decodeURIComponent(raw); } catch { throw badRequest('Invalid emoji'); } // malformed %-escapes must be a 400, not a 500
   const custom = e.match(/^(\w{2,32}):(\d{1,20})$/);
   if (custom) return { emoji: custom[1]!, emojiId: custom[2]! };
   if (e.includes(':') || e.length > 32 || /[\u0000-\u001f<>]/.test(e)) throw badRequest('Invalid emoji');
@@ -108,6 +108,7 @@ export function messageRoutes(app: FastifyInstance, ctx: Ctx) {
   app.patch('/channels/:id/messages/:mid', async (req) => {
     const p = parse(mm, req.params);
     const b = parse(z.object({ content: z.string().min(1).max(LIMITS.maxMessageLength) }).strict(), req.body);
+    limitOrThrow(ctx.rl, `msg-edit:${req.userId}`, 15, 10_000, ctx.config.rateLimit);
     const a = await channelAccess(ctx, req.userId, p.id);
     const [m] = await ctx.db.query('SELECT * FROM messages WHERE id = $1 AND channel_id = $2', [p.mid, p.id]);
     if (!m) throw notFound('Message');
@@ -151,6 +152,7 @@ export function messageRoutes(app: FastifyInstance, ctx: Ctx) {
     ctx.hub.toChannel(channelId, name, { messageId, channelId, userId, emoji: e.emoji, emojiId: e.emojiId });
   app.put('/channels/:id/messages/:mid/reactions/:emoji/@me', async (req, reply) => {
     const p = parse(mm.extend({ emoji: emojiParam }), req.params);
+    limitOrThrow(ctx.rl, `react:${req.userId}`, 30, 10_000, ctx.config.rateLimit);
     const a = await channelAccess(ctx, req.userId, p.id);
     need(a.perms, Perm.ADD_REACTIONS, Perm.READ_MESSAGE_HISTORY);
     const e = parseEmoji(p.emoji);
@@ -239,6 +241,7 @@ export function messageRoutes(app: FastifyInstance, ctx: Ctx) {
       q: z.string().max(200).optional(), authorId: idSchema.optional(), channelId: idSchema.optional(),
       has: z.enum(['link', 'image', 'file', 'embed', 'sticker']).optional(), before: idSchema.optional(), limit: z.coerce.number().optional(),
     }), req.query);
+    limitOrThrow(ctx.rl, `search:${req.userId}`, 30, 60_000, ctx.config.rateLimit); // full-scan queries are expensive
     if (!q.q && !q.authorId && !q.has) throw badRequest('Provide q, authorId or has');
     await guildAccess(ctx, req.userId, id);
     let channels = (await visibleChannelRows(ctx, id, req.userId, Perm.READ_MESSAGE_HISTORY)).map((c) => c.id as string);
@@ -255,6 +258,7 @@ export function messageRoutes(app: FastifyInstance, ctx: Ctx) {
   app.get('/channels/:id/messages/search', async (req) => {
     const { id } = parse(cm, req.params);
     const q = parse(searchQuery, req.query);
+    limitOrThrow(ctx.rl, `search:${req.userId}`, 30, 60_000, ctx.config.rateLimit); // full-scan queries are expensive
     if (!q.q && !q.authorId && !q.has) throw badRequest('Provide q, authorId or has');
     const a = await channelAccess(ctx, req.userId, id);
     if (!has(a.perms, Perm.READ_MESSAGE_HISTORY)) return [];
@@ -263,6 +267,7 @@ export function messageRoutes(app: FastifyInstance, ctx: Ctx) {
   /** Search across all of the caller's DMs and group DMs. */
   app.get('/users/@me/messages/search', async (req) => {
     const q = parse(searchQuery, req.query);
+    limitOrThrow(ctx.rl, `search:${req.userId}`, 30, 60_000, ctx.config.rateLimit); // full-scan queries are expensive
     if (!q.q && !q.authorId && !q.has) throw badRequest('Provide q, authorId or has');
     const ids = (await ctx.db.query('SELECT channel_id FROM dm_participants WHERE user_id = $1', [req.userId])).map((r) => r.channel_id as string);
     return searchMessages(ctx, { viewerId: req.userId, channelIds: ids, q: q.q, authorId: q.authorId, has: q.has, before: q.before, limit: limitParam(q.limit, 25) });

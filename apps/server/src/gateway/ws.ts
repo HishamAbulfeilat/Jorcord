@@ -18,7 +18,7 @@ async function buildReady(ctx: Ctx, userId: string, sessionId: string): Promise<
   const [u] = await ctx.db.query('SELECT * FROM users WHERE id = $1', [userId]);
   const guildIds = (await ctx.db.query('SELECT guild_id FROM members WHERE user_id = $1 ORDER BY joined_at', [userId])).map((r) => r.guild_id as string);
   const guilds = [];
-  for (const id of guildIds) guilds.push(await buildGuildFull(ctx, id, userId));
+  for (let i = 0; i < guildIds.length; i += 4) guilds.push(...(await Promise.all(guildIds.slice(i, i + 4).map((id) => buildGuildFull(ctx, id, userId))))); // bounded parallelism: keeps READY fast without draining the pool
   const dms = await ctx.db.query('SELECT c.* FROM channels c JOIN dm_participants p ON p.channel_id = c.id WHERE p.user_id = $1 ORDER BY c.last_message_id DESC NULLS LAST', [userId]);
   const privateChannels = await channelsDTO(ctx, dms);
   const rs = await ctx.db.query('SELECT * FROM read_states WHERE user_id = $1', [userId]);
@@ -69,9 +69,15 @@ export function gatewayRoutes(app: FastifyInstance, ctx: Ctx) {
   const wsLimiter = new RateLimiter();
   app.addHook('onClose', async () => wsLimiter.close());
   const hbInterval = ctx.config.heartbeatIntervalMs || HEARTBEAT_INTERVAL_MS;
+  /** Open sockets per client IP (pre- and post-identify): bounds slow-loris style socket exhaustion. */
+  const openByIp = new Map<string, number>();
+  const MAX_SOCKETS_PER_IP = 100, MAX_ATTACHED_PER_USER = 25;
 
   app.get('/gateway', { websocket: true }, (socket: WebSocket, req) => {
     const send = (f: object) => { if (socket.readyState === 1) socket.send(JSON.stringify(f)); };
+    const ip = req.ip;
+    if (ctx.config.rateLimit && (openByIp.get(ip) ?? 0) >= MAX_SOCKETS_PER_IP) { socket.close(4008, 'too many connections'); return; }
+    openByIp.set(ip, (openByIp.get(ip) ?? 0) + 1);
     let session: GwSession | null = null;
     let queue: Promise<void> = Promise.resolve();
     const connId = randomToken(8);
@@ -93,6 +99,7 @@ export function gatewayRoutes(app: FastifyInstance, ctx: Ctx) {
       if (!p.success) return socket.close(4002, 'invalid payload');
       const claims = await verifyGatewayToken(ctx, p.data.token);
       if (!claims) return socket.close(4004, 'authentication failed');
+      if (ctx.config.rateLimit && ctx.hub.attachedCount(claims.userId) >= MAX_ATTACHED_PER_USER) return socket.close(4008, 'too many sessions');
       if (p.data.sessionId && p.data.seq !== undefined) {
         if (await tryResume(claims.userId, p.data.sessionId, p.data.seq)) return;
       }
@@ -161,6 +168,7 @@ export function gatewayRoutes(app: FastifyInstance, ctx: Ctx) {
     });
     socket.on('close', () => {
       clearTimeout(identifyTimer); clearTimeout(hbTimer);
+      const left = (openByIp.get(ip) ?? 1) - 1; if (left <= 0) openByIp.delete(ip); else openByIp.set(ip, left);
       const s = session as GwSession | null;
       if (!s || s.socket !== socket) return;
       s.socket = null; s.detachedAt = Date.now();

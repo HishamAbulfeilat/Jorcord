@@ -5,6 +5,7 @@ import type { Ctx } from '../ctx';
 import { ApiError, badRequest, forbidden, notFound } from '../errors';
 import { idSchema, iso, limitParam, parse } from '../lib/ids';
 import { randomToken } from '../lib/crypto';
+import { limitOrThrow } from '../lib/ratelimit';
 import { audit, buildGuildFull } from '../services/guilds';
 import { trackVisibility } from '../services/visibility';
 import { postSystemMessage } from '../services/messages';
@@ -261,6 +262,7 @@ export function memberRoutes(app: FastifyInstance, ctx: Ctx) {
   });
   app.post('/guilds/:id/invites', async (req, reply) => {
     const { id } = parse(gid, req.params);
+    limitOrThrow(ctx.rl, `invite-create:${req.userId}`, 20, 3600_000, ctx.config.rateLimit);
     const b = parse(z.object({ channelId: idSchema.optional(), maxUses: z.number().int().min(1).max(1000).nullable().optional(), maxAgeSeconds: z.number().int().min(0).max(30 * 86400).optional(), temporary: z.boolean().optional() }).strict(), req.body);
     await guildAccess(ctx, req.userId, id);
     let channelId = b.channelId;
@@ -280,6 +282,7 @@ export function memberRoutes(app: FastifyInstance, ctx: Ctx) {
   });
   app.post('/invites/:code', async (req, reply) => {
     const { code } = parse(z.object({ code: z.string().regex(/^[A-Za-z0-9_-]{3,32}$/) }), req.params);
+    limitOrThrow(ctx.rl, `invite-join:${req.userId}`, 20, 15 * 60_000, ctx.config.rateLimit); // code/vanity guessing + join spam
     let guildId: string;
     const [existing] = await ctx.db.query('SELECT * FROM invites WHERE code = $1 AND (expires_at IS NULL OR expires_at > now()) AND (max_uses IS NULL OR uses < max_uses)', [code]);
     const [vanity] = existing ? [] : await ctx.db.query('SELECT id FROM guilds WHERE lower(vanity_url) = lower($1)', [code]);
@@ -320,6 +323,7 @@ export function memberRoutes(app: FastifyInstance, ctx: Ctx) {
 export function invitePublicRoutes(app: FastifyInstance, ctx: Ctx) {
   app.get('/invites/:code', async (req) => {
     const { code } = parse(z.object({ code: z.string().regex(/^[A-Za-z0-9_-]{3,32}$/) }), req.params);
+    limitOrThrow(ctx.rl, `invite-peek:${req.ip}`, 60, 60_000, ctx.config.rateLimit); // unauthenticated: stop code enumeration
     const [r] = await ctx.db.query('SELECT * FROM invites WHERE code = $1 AND (expires_at IS NULL OR expires_at > now()) AND (max_uses IS NULL OR uses < max_uses)', [code]);
     if (!r) throw notFound('Invite');
     const [g] = await ctx.db.query('SELECT id, name, icon FROM guilds WHERE id = $1', [r.guild_id]);

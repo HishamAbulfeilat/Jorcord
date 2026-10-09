@@ -92,6 +92,7 @@ export async function createMessage(ctx: Ctx, m: NewMessage): Promise<Message> {
   const dto = await messageDTO(ctx, row, null);
   await ctx.hub.toChannel(channel.id, 'MESSAGE_CREATE', dto);
   await bumpMentionCounts(ctx, channel, m.authorId, ment, !channel.guild_id).catch((e) => ctx.log.warn({ err: e }, 'mention count failed'));
+  ctx.push.notifyMessage(channel, dto); // async + best effort; honours presence, DND, mute and block rules
   if (ctx.config.unfurlOnSend && has(m.senderPerms, Perm.EMBED_LINKS)) void unfurlMessage(ctx, row, channel).catch(() => {});
   return dto;
 }

@@ -45,3 +45,14 @@ export interface AutoModRule { id: Id; guildId: Id; name: string; enabled: boole
 export interface VoiceToken { token: string; url: string; room: string }
 export interface Page<T> { items: T[]; nextCursor: Id | null }
 export interface ApiError { code: string; message: string; details?: unknown }
+
+// ---- Push notifications (server: POST/DELETE /users/@me/push-devices, GET /push/vapid-public-key, /users/@me/notification-settings) ----
+export type PushPlatform = 'web' | 'android' | 'ios' | 'desktop';
+export interface WebPushSubscriptionJSON { endpoint: string; expirationTime?: number | null; keys: { p256dh: string; auth: string } }
+/** web/desktop send `subscription`; android/ios send the FCM/APNs `token`. */
+export interface RegisterPushDevice { platform: PushPlatform; token?: string; subscription?: WebPushSubscriptionJSON }
+export interface PushDevice { id: Id; platform: PushPlatform; createdAt: string; lastUsedAt: string; current: boolean }
+export type NotificationLevel = 'all' | 'mentions' | 'none';
+export interface GuildNotificationSettings { guildId: Id; muted: boolean; mutedUntil: string | null; suppressEveryone: boolean; suppressRoles: boolean; level: NotificationLevel | null }
+export interface ChannelNotificationSettings { channelId: Id; muted: boolean; mutedUntil: string | null }
+export interface NotificationSettings { pushEnabled: boolean; guilds: GuildNotificationSettings[]; channels: ChannelNotificationSettings[] }

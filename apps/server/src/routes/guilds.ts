@@ -4,6 +4,7 @@ import { LIMITS, Perm, snowflake } from '@jorcord/shared';
 import type { Ctx } from '../ctx';
 import { ApiError, badRequest, conflict, forbidden, notFound } from '../errors';
 import { assetUrl, idSchema, iso, limitParam, parse } from '../lib/ids';
+import { limitOrThrow } from '../lib/ratelimit';
 import { audit, buildGuildFull, createGuild, GUILD_TEMPLATES } from '../services/guilds';
 import { postSystemMessage } from '../services/messages';
 import { guildAccess, guildPerms, need } from '../services/perms';
@@ -24,6 +25,7 @@ export async function getGuildDTO(ctx: Ctx, id: string) {
 export function guildRoutes(app: FastifyInstance, ctx: Ctx) {
   app.post('/guilds', async (req, reply) => {
     const b = parse(z.object({ name: z.string().trim().min(2).max(100), icon: assetUrl.nullable().optional(), template: z.enum(Object.keys(GUILD_TEMPLATES) as [string, ...string[]]).optional() }).strict(), req.body);
+    limitOrThrow(ctx.rl, `guild-create:${req.userId}`, 10, 3600_000, ctx.config.rateLimit);
     const [c] = await ctx.db.query('SELECT count(*)::int AS n FROM members WHERE user_id = $1', [req.userId]);
     if (c.n >= LIMITS.maxServersPerUser) throw new ApiError(400, 'MAX_GUILDS', `You can be in at most ${LIMITS.maxServersPerUser} servers`);
     const id = await createGuild(ctx, req.userId, b);
@@ -88,6 +90,7 @@ export function guildRoutes(app: FastifyInstance, ctx: Ctx) {
 
   app.get('/discover/guilds', async (req) => {
     const q = parse(z.object({ q: z.string().max(100).optional(), limit: z.coerce.number().optional() }), req.query);
+    limitOrThrow(ctx.rl, `discover:${req.userId}`, 30, 60_000, ctx.config.rateLimit);
     const like = q.q ? `%${q.q.replace(/[\\%_]/g, '\\$&')}%` : '%';
     const rows = await ctx.db.query(
       `SELECT g.*, (SELECT count(*) FROM boosts b WHERE b.guild_id = g.id)::int AS boost_count, (SELECT count(*) FROM members m WHERE m.guild_id = g.id)::int AS approx
@@ -98,6 +101,7 @@ export function guildRoutes(app: FastifyInstance, ctx: Ctx) {
   // ---------- boosts (free) ----------
   app.post('/guilds/:id/boosts', async (req, reply) => {
     const { id } = parse(gid, req.params);
+    limitOrThrow(ctx.rl, `boost:${req.userId}`, 30, 3600_000, ctx.config.rateLimit);
     await guildAccess(ctx, req.userId, id);
     await ctx.db.query('INSERT INTO boosts (id, guild_id, user_id) VALUES ($1,$2,$3)', [snowflake(), id, req.userId]);
     const dto = (await getGuildDTO(ctx, id))!;

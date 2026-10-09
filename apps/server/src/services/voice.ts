@@ -66,8 +66,10 @@ export async function updateVoiceState(ctx: Ctx, userId: string, p: VoiceStateUp
   if (!has(a.perms, Perm.CONNECT)) throw new ApiError(403, 'FORBIDDEN', 'Missing permissions');
   const prev = await ctx.voice.get(userId);
   const inChannel = prev?.channelId === p.channelId;
+  let alone = false; // first person into a DM call => ring the others
   if (!inChannel) {
     const n = (await ctx.voice.inChannel(p.channelId)).length;
+    alone = n === 0;
     if (n >= (a.channel.user_limit || 99)) throw new ApiError(409, 'CHANNEL_FULL', 'Voice channel is full');
   }
   const mod = inChannel ? { mute: prev!.serverMute, deaf: prev!.serverDeaf } : await loadModeration(ctx, a.channel.guild_id ?? null, userId);
@@ -85,6 +87,7 @@ export async function updateVoiceState(ctx: Ctx, userId: string, p: VoiceStateUp
   await ctx.voice.set(state);
   if (prev?.channelId && prev.channelId !== p.channelId) await publishVoice(ctx, prev.channelId, leaveState(prev));
   await publishVoice(ctx, p.channelId, state);
+  if (alone && (a.channel.type === 'dm' || a.channel.type === 'group_dm')) ctx.push.notifyCall(a.channel, userId);
 }
 
 /** Server-side mute/deafen: persisted on the member, applied to the live state and to LiveKit. */

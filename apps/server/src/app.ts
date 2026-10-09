@@ -19,12 +19,15 @@ import { guildRoutes } from './routes/guilds';
 import { invitePublicRoutes, memberRoutes } from './routes/members';
 import { messageRoutes } from './routes/messages';
 import { fileRoutes, miscRoutes, voiceWebhookRoutes } from './routes/misc';
+import { pushPublicRoutes, pushRoutes } from './routes/push';
 import { userRoutes } from './routes/users';
 import { voiceRoutes } from './routes/voice';
 import { createStorage } from './storage';
 import { createState } from './state';
 import { createLiveKitControl } from './services/livekit';
 import { createMailer } from './services/mailer';
+import { createPush } from './services/push';
+import { securityHeaders, logSerializers, LOG_REDACT } from './lib/security';
 
 export interface BuildOptions { config?: Partial<Config>; memoryDb?: boolean; env?: NodeJS.ProcessEnv }
 
@@ -33,7 +36,7 @@ export async function buildApp(opts: BuildOptions = {}): Promise<{ app: FastifyI
   const app = Fastify({
     logger: config.logLevel === 'silent' ? false : {
       level: config.logLevel,
-      redact: ['req.headers.authorization', 'req.headers.cookie'],
+      redact: LOG_REDACT, serializers: logSerializers,
     },
     trustProxy: config.trustProxy, bodyLimit: 1_048_576, genReqId: () => crypto.randomUUID(),
   });
@@ -45,19 +48,23 @@ export async function buildApp(opts: BuildOptions = {}): Promise<{ app: FastifyI
   const state = await createState(config.redisUrl, config.redisPrefix);
   const ctx: Ctx = {
     config, db, bus, storage: await createStorage(config), hub, rl, log: app.log,
-    voice: state.voice, presence: state.presence, livekit: createLiveKitControl(config, app.log), mailer: await createMailer(config, app.log),
+    push: undefined as never, voice: state.voice, presence: state.presence, livekit: createLiveKitControl(config, app.log), mailer: await createMailer(config, app.log),
     search: config.searchMode === 'auto' ? (db.kind === 'pg' ? 'fts' : 'ilike') : config.searchMode,
   };
+  ctx.push = createPush(ctx);
   await hub.init(ctx);
 
-  await app.register(cors, { origin: config.corsOrigins, credentials: false, exposedHeaders: ['retry-after', 'content-range', 'accept-ranges'] });
+  await app.register(cors, {
+    origin: config.corsOrigins, credentials: false, methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'], maxAge: 600,
+    exposedHeaders: ['retry-after', 'content-range', 'accept-ranges', 'x-request-id'],
+  });
   await app.register(multipart, { limits: { fileSize: config.maxUploadBytes, files: 10, fields: 20, fieldSize: 64 * 1024 } });
   await app.register(websocket, { options: { maxPayload: 64 * 1024 } });
   installRateLimit(app, rl, config.rateLimit);
 
   app.addHook('onSend', async (req, reply) => {
     reply.header('x-request-id', req.id);
-    if (!reply.hasHeader('x-content-type-options')) reply.header('x-content-type-options', 'nosniff');
+    securityHeaders(reply, req, config);
   });
 
   app.setErrorHandler((err: any, req, reply) => {
@@ -81,6 +88,7 @@ export async function buildApp(opts: BuildOptions = {}): Promise<{ app: FastifyI
 
   await app.register(async (api) => {
     publicAuthRoutes(api, ctx);
+    pushPublicRoutes(api, ctx);
     invitePublicRoutes(api, ctx);
     webhookPublicRoutes(api, ctx);
     fileRoutes(api, ctx);
@@ -88,10 +96,10 @@ export async function buildApp(opts: BuildOptions = {}): Promise<{ app: FastifyI
     await api.register(async (priv) => {
       priv.addHook('preHandler', authenticate(ctx));
       authRoutes(priv, ctx); userRoutes(priv, ctx); guildRoutes(priv, ctx); channelRoutes(priv, ctx);
-      memberRoutes(priv, ctx); messageRoutes(priv, ctx); miscRoutes(priv, ctx); voiceRoutes(priv, ctx);
+      memberRoutes(priv, ctx); messageRoutes(priv, ctx); miscRoutes(priv, ctx); voiceRoutes(priv, ctx); pushRoutes(priv, ctx);
     });
   }, { prefix: '/api/v1' });
 
-  app.addHook('onClose', async () => { hub.close(); rl.close(); await bus.close(); await state.close(); await db.close(); });
+  app.addHook('onClose', async () => { hub.close(); rl.close(); await ctx.push.flush().catch(() => {}); await bus.close(); await state.close(); await db.close(); });
   return { app, ctx };
 }

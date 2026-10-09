@@ -4,7 +4,7 @@ import { Perm } from '@jorcord/shared';
 import type { Ctx } from '../ctx';
 import { badRequest, notFound } from '../errors';
 import { idSchema, parse } from '../lib/ids';
-import { audit } from '../services/guilds';
+import { audit, visibleChannelRows } from '../services/guilds';
 import { channelAccess, guildAccess, guildPerms, loadGuildPerm, need, needOutrankMember } from '../services/perms';
 import { disconnectMember, moveMember, requestToSpeak, setServerVoiceFlags, setSuppressed } from '../services/voice';
 
@@ -25,11 +25,9 @@ export function voiceRoutes(app: FastifyInstance, ctx: Ctx) {
   app.get('/guilds/:id/voice-states', async (req) => {
     const { id } = parse(z.object({ id: idSchema }), req.params);
     await guildAccess(ctx, req.userId, id);
-    const visible = new Set((await ctx.db.query('SELECT id FROM channels WHERE guild_id = $1 AND type IN (\'voice\',\'stage\')', [id])).map((r) => r.id as string));
-    const mine: string[] = [];
-    // only channels the caller can view
-    for (const cid of visible) { try { await channelAccess(ctx, req.userId, cid); mine.push(cid); } catch { /* hidden */ } }
-    return (await ctx.voice.all()).filter((s) => s.guildId === id && s.channelId && mine.includes(s.channelId));
+    // one permission load for the whole guild instead of channelAccess() per voice channel
+    const mine = new Set((await visibleChannelRows(ctx, id, req.userId)).filter((c) => c.type === 'voice' || c.type === 'stage').map((c) => c.id as string));
+    return (await ctx.voice.all()).filter((s) => s.guildId === id && s.channelId && mine.has(s.channelId));
   });
 
   app.patch('/guilds/:id/voice-states/:userId', async (req) => {

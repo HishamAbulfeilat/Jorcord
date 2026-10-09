@@ -6,12 +6,13 @@ import type { Ctx } from '../ctx';
 import { ApiError, conflict, notFound, unauthorized } from '../errors';
 import { issueTokens } from '../auth';
 import { decryptSecret, dummyVerify, encryptSecret, hashPassword, safeEqual, sha256, verifyPassword } from '../lib/crypto';
+import { verifyTotp } from '../lib/totp';
+import { dropPushDevices } from '../services/pushDevices';
 import { idSchema, iso, parse } from '../lib/ids';
 import { limitOrThrow } from '../lib/ratelimit';
 import { consumeAuthToken, sendPasswordResetEmail, sendVerificationEmail } from '../services/authTokens';
 import { selfUserDTO } from '../services/serializers';
 
-authenticator.options = { window: 1 };
 
 const usernameSchema = z.string().trim().toLowerCase().regex(/^[a-z0-9_.]{2,32}$/, 'username must be 2-32 chars: a-z 0-9 _ .');
 const passwordSchema = z.string().min(8).max(128);
@@ -20,6 +21,7 @@ const loginSchema = z.object({ email: z.string().trim().toLowerCase().max(254), 
 
 export function publicAuthRoutes(app: FastifyInstance, ctx: Ctx) {
   app.post('/auth/register', async (req, reply) => {
+    limitOrThrow(ctx.rl, `register:${req.ip}`, 10, 3600_000, ctx.config.rateLimit); // mass sign-up / enumeration brake
     const b = parse(registerSchema, req.body);
     const id = snowflake();
     try {
@@ -36,15 +38,15 @@ export function publicAuthRoutes(app: FastifyInstance, ctx: Ctx) {
 
   app.post('/auth/login', async (req) => {
     const b = parse(loginSchema, req.body);
-    const throttleKey = `login:${b.email}`;
-    if (ctx.config.rateLimit && ctx.rl.isLimited(throttleKey, 8)) throw new ApiError(429, 'RATE_LIMITED', 'Too many failed attempts, try again later');
-    const fail = () => { ctx.rl.hit(throttleKey, 8, 15 * 60_000); return unauthorized('Invalid credentials', 'INVALID_CREDENTIALS'); };
+    const throttleKey = `login:${b.email}`, ipKey = `login-ip:${req.ip}`;
+    if (ctx.config.rateLimit && (ctx.rl.isLimited(throttleKey, 8) || ctx.rl.isLimited(ipKey, 40))) throw new ApiError(429, 'RATE_LIMITED', 'Too many failed attempts, try again later');
+    const fail = () => { ctx.rl.hit(throttleKey, 8, 15 * 60_000); ctx.rl.hit(ipKey, 40, 15 * 60_000); return unauthorized('Invalid credentials', 'INVALID_CREDENTIALS'); };
     const [row] = await ctx.db.query('SELECT * FROM users WHERE lower(email) = $1 AND NOT bot', [b.email]);
     if (!row?.password_hash) { await dummyVerify(b.password); throw fail(); }
     if (!(await verifyPassword(row.password_hash, b.password))) throw fail();
     if (row.mfa_enabled) {
       if (!b.totp) throw unauthorized('Two-factor code required', 'MFA_REQUIRED');
-      if (!authenticator.check(b.totp, decryptSecret(row.mfa_secret, ctx.config.jwtSecret))) throw fail();
+      if (!(await verifyTotp(ctx, row, b.totp))) throw fail();
     }
     return issueTokens(ctx, row, req);
   });
@@ -78,6 +80,7 @@ export function publicAuthRoutes(app: FastifyInstance, ctx: Ctx) {
     if (!userId) throw new ApiError(400, 'INVALID_TOKEN', 'This link is invalid or has expired');
     await ctx.db.query('UPDATE users SET password_hash = $2, verified = true WHERE id = $1 AND deleted_at IS NULL', [userId, await hashPassword(b.newPassword)]);
     const revoked = await ctx.db.query('UPDATE sessions SET revoked = true WHERE user_id = $1 AND NOT revoked RETURNING id', [userId]); // a reset logs out every device
+    await dropPushDevices(ctx, revoked.map((r) => r.id));
     revoked.forEach((r) => ctx.hub.disconnectAuthSession(r.id));
     await ctx.db.query(`DELETE FROM auth_tokens WHERE user_id = $1 AND kind = 'reset_password'`, [userId]);
     return reply.code(204).send();
@@ -96,7 +99,7 @@ export function publicAuthRoutes(app: FastifyInstance, ctx: Ctx) {
       throw unauthorized('Refresh token reuse detected', 'TOKEN_REUSED');
     }
     const [user] = await ctx.db.query('SELECT * FROM users WHERE id = $1', [s.user_id]);
-    if (!user) throw unauthorized();
+    if (!user || user.deleted_at) throw unauthorized();
     return issueTokens(ctx, user, req, sid);
   });
 }
@@ -104,6 +107,7 @@ export function publicAuthRoutes(app: FastifyInstance, ctx: Ctx) {
 export function authRoutes(app: FastifyInstance, ctx: Ctx) {
   app.post('/auth/logout', async (req, reply) => {
     await ctx.db.query('UPDATE sessions SET revoked = true WHERE id = $1 AND user_id = $2', [req.authSessionId, req.userId]);
+    await dropPushDevices(ctx, [req.authSessionId]);
     ctx.hub.disconnectAuthSession(req.authSessionId);
     return reply.code(204).send();
   });
@@ -124,17 +128,20 @@ export function authRoutes(app: FastifyInstance, ctx: Ctx) {
     const b = parse(z.object({ sessionId: idSchema.optional(), all: z.boolean().optional() }).strict(), req.body);
     if (b.all) {
       const rows = await ctx.db.query('UPDATE sessions SET revoked = true WHERE user_id = $1 AND id <> $2 AND NOT revoked RETURNING id', [req.userId, req.authSessionId]);
+      await dropPushDevices(ctx, rows.map((r) => r.id));
       rows.forEach((r) => ctx.hub.disconnectAuthSession(r.id));
       return reply.code(204).send();
     }
     if (!b.sessionId) throw new ApiError(400, 'VALIDATION_ERROR', 'sessionId or all required');
     const rows = await ctx.db.query('UPDATE sessions SET revoked = true WHERE id = $1 AND user_id = $2 RETURNING id', [b.sessionId, req.userId]); // user_id check = IDOR guard
     if (!rows.length) throw notFound('Session');
+    await dropPushDevices(ctx, [b.sessionId]);
     ctx.hub.disconnectAuthSession(b.sessionId);
     return reply.code(204).send();
   });
 
   app.post('/auth/mfa/setup', async (req) => {
+    limitOrThrow(ctx.rl, `mfa-setup:${req.userId}`, 10, 15 * 60_000, ctx.config.rateLimit);
     const [u] = await ctx.db.query('SELECT email, mfa_enabled FROM users WHERE id = $1', [req.userId]);
     if (u.mfa_enabled) throw conflict('MFA already enabled', 'MFA_ALREADY_ENABLED');
     const secret = authenticator.generateSecret();
@@ -143,6 +150,7 @@ export function authRoutes(app: FastifyInstance, ctx: Ctx) {
   });
   app.post('/auth/mfa/enable', async (req) => {
     const { code } = parse(z.object({ code: z.string().regex(/^\d{6}$/) }).strict(), req.body);
+    limitOrThrow(ctx.rl, `mfa-enable:${req.userId}`, 10, 15 * 60_000, ctx.config.rateLimit); // 6-digit code: brute-force brake
     const [u] = await ctx.db.query('SELECT * FROM users WHERE id = $1', [req.userId]);
     if (!u.mfa_secret) throw new ApiError(400, 'MFA_NOT_SETUP', 'Call /auth/mfa/setup first');
     if (!authenticator.check(code, decryptSecret(u.mfa_secret, ctx.config.jwtSecret))) throw new ApiError(400, 'INVALID_CODE', 'Invalid code');
@@ -151,20 +159,23 @@ export function authRoutes(app: FastifyInstance, ctx: Ctx) {
   });
   app.post('/auth/mfa/disable', async (req) => {
     const b = parse(z.object({ password: z.string().max(128), code: z.string().regex(/^\d{6}$/) }).strict(), req.body);
+    limitOrThrow(ctx.rl, `mfa-disable:${req.userId}`, 10, 15 * 60_000, ctx.config.rateLimit);
     const [u] = await ctx.db.query('SELECT * FROM users WHERE id = $1', [req.userId]);
     if (!u.mfa_enabled) throw new ApiError(400, 'MFA_NOT_ENABLED', 'MFA is not enabled');
     if (!(await verifyPassword(u.password_hash, b.password))) throw unauthorized('Invalid credentials', 'INVALID_CREDENTIALS');
-    if (!authenticator.check(b.code, decryptSecret(u.mfa_secret, ctx.config.jwtSecret))) throw new ApiError(400, 'INVALID_CODE', 'Invalid code');
+    if (!(await verifyTotp(ctx, u, b.code))) throw new ApiError(400, 'INVALID_CODE', 'Invalid code');
     const [row] = await ctx.db.query('UPDATE users SET mfa_enabled = false, mfa_secret = NULL WHERE id = $1 RETURNING *', [req.userId]);
     return selfUserDTO(ctx, row);
   });
 
   app.post('/auth/password', async (req, reply) => {
     const b = parse(z.object({ currentPassword: z.string().max(128), newPassword: passwordSchema }).strict(), req.body);
+    limitOrThrow(ctx.rl, `pwchange:${req.userId}`, 10, 15 * 60_000, ctx.config.rateLimit); // current-password guessing brake
     const [u] = await ctx.db.query('SELECT password_hash FROM users WHERE id = $1', [req.userId]);
     if (!(await verifyPassword(u.password_hash, b.currentPassword))) throw unauthorized('Invalid credentials', 'INVALID_CREDENTIALS');
     await ctx.db.query('UPDATE users SET password_hash = $2 WHERE id = $1', [req.userId, await hashPassword(b.newPassword)]);
     const others = await ctx.db.query('UPDATE sessions SET revoked = true WHERE user_id = $1 AND id <> $2 AND NOT revoked RETURNING id', [req.userId, req.authSessionId]);
+    await dropPushDevices(ctx, others.map((r) => r.id));
     others.forEach((r) => ctx.hub.disconnectAuthSession(r.id));
     return reply.code(204).send();
   });
