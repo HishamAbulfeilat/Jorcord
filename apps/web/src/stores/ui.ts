@@ -33,7 +33,7 @@ export type ModalSpec =
   | { kind: 'invite'; guildId: Id; channelId?: Id } | { kind: 'profile'; userId: Id; guildId?: Id }
   | { kind: 'confirm'; title: string; body: string; confirmLabel?: string; danger?: boolean; onConfirm: () => void | Promise<void> }
   | { kind: 'image'; url: string; name?: string } | { kind: 'createThread'; channelId: Id; messageId: Id; suggested?: string }
-  | { kind: 'newDm' } | { kind: 'voiceSettings' } | { kind: 'createForumPost'; channelId: Id } | { kind: 'shortcuts' }
+  | { kind: 'newDm'; addTo?: Id } | { kind: 'voiceSettings' } | { kind: 'createForumPost'; channelId: Id } | { kind: 'shortcuts' }
   | { kind: 'channelSettings'; channelId: Id } | { kind: 'reactors'; channelId: Id; messageId: Id; emoji: string; emojiId: Id | null }
   | { kind: 'prompt'; title: string; label: string; initial?: string; onSubmit: (v: string) => void | Promise<void> }
   | { kind: 'leaveGuild'; guildId: Id };

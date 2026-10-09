@@ -6,7 +6,7 @@ import { useUI } from '@/stores/ui';
 import { api } from '@/lib/api';
 import { startSession, endSession } from '@/lib/session';
 import { AppShell } from '@/components/layout/AppShell';
-import { LoginPage, RegisterPage } from '@/pages/AuthPages';
+import { LoginPage, RegisterPage, ForgotPasswordPage, ResetPasswordPage, VerifyEmailPage } from '@/pages/AuthPages';
 import { InvitePage } from '@/pages/InvitePage';
 import { DemoPage } from '@/pages/DemoPage';
 import { ModalHost } from '@/components/modals/ModalHost';
@@ -69,6 +69,9 @@ export default function App() {
       <Routes>
         <Route path="/login" element={access ? <Navigate to="/channels/@me" replace /> : <LoginPage />} />
         <Route path="/register" element={access ? <Navigate to="/channels/@me" replace /> : <RegisterPage />} />
+        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
+        <Route path="/verify-email" element={<VerifyEmailPage />} />
         <Route path="/invite/:code" element={<InvitePage />} />
         <Route path="/demo/*" element={<DemoPage />} />
         <Route path="/channels/:guildId/:channelId?/:messageId?" element={<Protected />} />

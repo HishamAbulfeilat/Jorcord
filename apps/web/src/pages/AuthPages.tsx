@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '@/lib/api';
 import { ApiException } from '@/lib/transport';
@@ -48,6 +48,7 @@ export function LoginPage() {
         </>) : (
           <label className="mb-2 block"><span className={labelCls}>Authentication code</span><input className={inputCls} inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]*" maxLength={8} value={totp} onChange={(e) => setTotp(e.target.value.replace(/\s/g, ''))} autoFocus /></label>
         )}
+        {!mfa && <Link to="/forgot-password" className="mb-1 mt-2 inline-block text-sm text-[#00a8fc] hover:underline">Forgot your password?</Link>}
         {err && <p role="alert" className="mb-2 text-sm text-[#f23f43]">{err}</p>}
         <button disabled={busy || !email || !password || (mfa && totp.length < 6)} className="mt-4 flex h-11 w-full items-center justify-center rounded-[3px] bg-[#5865f2] font-medium text-white hover:bg-[#4752c4] disabled:opacity-60">{busy ? <Spinner className="text-white" /> : mfa ? 'Verify' : 'Log In'}</button>
         {mfa && <button type="button" className="mt-3 text-sm text-[#00a8fc] hover:underline" onClick={() => { setMfa(false); setTotp(''); }}>Back</button>}
@@ -76,6 +77,65 @@ export function RegisterPage() {
         {err && <p role="alert" className="mb-2 text-sm text-[#f23f43]">{err}</p>}
         <button disabled={busy || !agree || f.password.length < 8 || !f.username || !f.email} className="mt-2 flex h-11 w-full items-center justify-center rounded-[3px] bg-[#5865f2] font-medium text-white hover:bg-[#4752c4] disabled:opacity-60">{busy ? <Spinner className="text-white" /> : 'Continue'}</button>
       </form>
+    </Shell>
+  );
+}
+
+export function ForgotPasswordPage() {
+  const [email, setEmail] = useState(''); const [done, setDone] = useState(false); const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault(); setBusy(true); setErr('');
+    try { await api.auth.forgotPassword(email); setDone(true); } catch (ex) { setErr((ex as Error).message); } setBusy(false);
+  };
+  return (
+    <Shell title="Forgot your password?" sub="Enter your email and we will send a reset link." footer={<Link to="/login" className="text-[#00a8fc] hover:underline">Back to login</Link>}>
+      {done ? <p role="status" className="text-[#dbdee1]">If an account exists for <b>{email}</b>, a reset link is on its way. Check your inbox.</p> : (
+        <form onSubmit={submit}>
+          <label className="mb-4 block"><span className={labelCls}>Email</span><input className={inputCls} type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoFocus /></label>
+          {err && <p role="alert" className="mb-2 text-sm text-[#f23f43]">{err}</p>}
+          <button disabled={busy || !email} className="flex h-11 w-full items-center justify-center rounded-[3px] bg-[#5865f2] font-medium text-white hover:bg-[#4752c4] disabled:opacity-60">{busy ? <Spinner /> : 'Send reset link'}</button>
+        </form>)}
+    </Shell>
+  );
+}
+
+export function ResetPasswordPage() {
+  const [sp] = useSearchParams(); const token = sp.get('token') ?? ''; const nav = useNavigate();
+  const [pw, setPw] = useState(''); const [pw2, setPw2] = useState(''); const [err, setErr] = useState(''); const [busy, setBusy] = useState(false); const [done, setDone] = useState(false);
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault(); if (pw !== pw2) { setErr('Passwords do not match.'); return; }
+    setBusy(true); setErr('');
+    try { await api.auth.resetPassword(token, pw); useAuth.getState().clear(); setDone(true); setTimeout(() => nav('/login', { replace: true }), 2000); }
+    catch (ex) { setErr((ex as Error).message || 'This reset link is invalid or has expired.'); setBusy(false); }
+  };
+  return (
+    <Shell title="Reset password" sub="Choose a new password. All other sessions will be signed out." footer={<Link to="/login" className="text-[#00a8fc] hover:underline">Back to login</Link>}>
+      {!token ? <p role="alert" className="text-[#f23f43]">This reset link is missing its token.</p> : done ? <p role="status" className="text-[#dbdee1]">Password updated. Redirecting to login…</p> : (
+        <form onSubmit={submit}>
+          <label className="mb-4 block"><span className={labelCls}>New password</span><input className={inputCls} type="password" autoComplete="new-password" minLength={8} value={pw} onChange={(e) => setPw(e.target.value)} required autoFocus /></label>
+          <label className="mb-4 block"><span className={labelCls}>Confirm password</span><input className={inputCls} type="password" autoComplete="new-password" minLength={8} value={pw2} onChange={(e) => setPw2(e.target.value)} required /></label>
+          {err && <p role="alert" className="mb-2 text-sm text-[#f23f43]">{err}</p>}
+          <button disabled={busy || pw.length < 8} className="flex h-11 w-full items-center justify-center rounded-[3px] bg-[#5865f2] font-medium text-white hover:bg-[#4752c4] disabled:opacity-60">{busy ? <Spinner /> : 'Change password'}</button>
+        </form>)}
+    </Shell>
+  );
+}
+
+export function VerifyEmailPage() {
+  const [sp] = useSearchParams(); const token = sp.get('token') ?? '';
+  const [state, setState] = useState<'working' | 'ok' | 'error'>(token ? 'working' : 'error'); const [msg, setMsg] = useState('');
+  const authed = !!useAuth((s) => s.access);
+  useEffect(() => {
+    if (!token) return;
+    let dead = false;
+    api.auth.verifyEmail(token).then(() => { if (!dead) setState('ok'); }).catch((e) => { if (!dead) { setState('error'); setMsg((e as Error).message); } });
+    return () => { dead = true; };
+  }, [token]);
+  return (
+    <Shell title={state === 'ok' ? 'Email verified' : state === 'error' ? 'Verification failed' : 'Verifying…'} sub="" footer={<Link to={authed ? '/channels/@me' : '/login'} className="text-[#00a8fc] hover:underline">{authed ? 'Continue to Jorcord' : 'Go to login'}</Link>}>
+      {state === 'working' && <div className="flex justify-center"><Spinner /></div>}
+      {state === 'ok' && <p role="status" className="text-[#dbdee1]">Thanks! Your email address is verified.</p>}
+      {state === 'error' && <p role="alert" className="text-[#f23f43]">{msg || 'This verification link is invalid or has expired.'}</p>}
     </Shell>
   );
 }

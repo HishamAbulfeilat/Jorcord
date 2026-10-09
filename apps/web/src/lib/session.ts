@@ -20,6 +20,7 @@ export function startSession(token: string) {
   const names: (keyof Events)[] = ['READY', 'GUILD_CREATE', 'GUILD_UPDATE', 'GUILD_DELETE', 'CHANNEL_CREATE', 'CHANNEL_UPDATE', 'CHANNEL_DELETE', 'ROLE_CREATE', 'ROLE_UPDATE', 'ROLE_DELETE', 'MEMBER_ADD', 'MEMBER_UPDATE', 'MEMBER_REMOVE', 'TYPING_START', 'PRESENCE_UPDATE', 'USER_UPDATE', 'RELATIONSHIP_ADD', 'RELATIONSHIP_REMOVE', 'READ_STATE_UPDATE', 'VOICE_STATE_UPDATE', 'EMOJIS_UPDATE', 'THREAD_CREATE', 'THREAD_UPDATE'];
   let readies = 0;
   for (const n of names) unsubs.push(gw.on(n, (d: any) => { if (n === 'READY' && ++readies > 1) useMessages.setState({ ch: {} }); /* missed events after a failed resume: reload open channels */ useData.getState().apply(n, d); }));
+  unsubs.push(gw.on('GUILD_MEMBERS_CHUNK', (d) => useData.getState().putMembers(d.guildId, d.members)));
   unsubs.push(gw.on('MESSAGE_CREATE', onMessageCreate));
   unsubs.push(gw.on('MESSAGE_UPDATE', (m) => { useMessages.getState().update(m); }));
   unsubs.push(gw.on('MESSAGE_DELETE', (d) => useMessages.getState().remove(d.channelId, d.id)));

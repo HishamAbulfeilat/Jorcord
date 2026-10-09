@@ -124,10 +124,10 @@ function InviteModal({ close, guildId, channelId }: { close: () => void; guildId
   );
 }
 
-function NewDm({ close }: { close: () => void }) {
+function NewDm({ close, addTo }: { close: () => void; addTo?: string }) {
   const rels = useData((s) => s.relationships); const [sel, setSel] = useState<string[]>([]); const [q, setQ] = useState(''); const [busy, setBusy] = useState(false);
   const friends = Object.values(rels).filter((r) => r.type === 'friend' && displayName(r.user).toLowerCase().includes(q.toLowerCase()));
-  const go = async () => { setBusy(true); try { const c = await api.users.openDm(sel); useData.getState().putDm(c); close(); goto(null, c.id); } catch (e) { toastError(e); setBusy(false); } };
+  const go = async () => { setBusy(true); try { if (addTo) { for (const id of sel) await api.channels.addRecipient(addTo, id); close(); return; } const c = await api.users.openDm(sel); useData.getState().putDm(c); close(); goto(null, c.id); } catch (e) { toastError(e); setBusy(false); } };
   return (
     <Modal title="Select Friends" onClose={close} footer={<><button className="btn btn-link" onClick={close}>Cancel</button><button disabled={!sel.length || busy} onClick={go} className="btn btn-primary btn-lg sm:ml-auto">{sel.length > 1 ? 'Create Group DM' : 'Create DM'}</button></>}>
       <p className="mb-3 text-center text-sm text-muted">You can add {Math.max(0, 9 - sel.length)} more friends.</p>
@@ -203,7 +203,7 @@ export function ModalHost() {
     case 'image': return <ImageLightbox url={m.url} name={m.name} close={close} />;
     case 'createThread': return <CreateThread channelId={m.channelId} messageId={m.messageId} suggested={m.suggested} close={close} />;
     case 'createForumPost': return <ForumPost channelId={m.channelId} close={close} />;
-    case 'newDm': return <NewDm close={close} />;
+    case 'newDm': return <NewDm close={close} addTo={m.addTo} />;
     case 'shortcuts': return <Shortcuts close={close} />;
     case 'voiceSettings': return <VoiceSettingsModal onClose={close} />;
     case 'reactors': return <Reactors spec={m} close={close} />;

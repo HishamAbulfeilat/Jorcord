@@ -10,6 +10,8 @@ export interface GatewayLike {
   sendTyping(channelId: string): void;
   updatePresence(presence: string): void;
   updateVoiceState(p: VoiceStateUpdatePayload): void;
+  /** Op REQUEST_MEMBERS (8): server answers with GUILD_MEMBERS_CHUNK. */
+  requestMembers?(p: { guildId: string; query?: string; userIds?: string[]; limit?: number; after?: string; nonce?: string }): void;
   readonly status: GatewayStatus;
 }
 
@@ -118,6 +120,7 @@ export class GatewayClient implements GatewayLike {
   }
   updatePresence(presence: string) { this.raw(Op.PRESENCE_UPDATE, { presence }); }
   updateVoiceState(p: VoiceStateUpdatePayload) { this.raw(Op.VOICE_STATE_UPDATE, p); }
+  requestMembers(p: { guildId: string; query?: string; userIds?: string[]; limit?: number; after?: string; nonce?: string }) { this.raw(Op.REQUEST_MEMBERS, p); }
 }
 
 function defaultUrl() {

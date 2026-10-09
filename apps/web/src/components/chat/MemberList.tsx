@@ -7,7 +7,8 @@ import { Avatar } from '@/components/ui/Avatar';
 import { displayName } from '@/lib/format';
 import { useMenuTrigger } from '@/components/ui/ContextMenu';
 import { userMenu } from '@/lib/menus';
-import { Crown } from 'lucide-react';
+import { Crown, X } from 'lucide-react';
+import { toastError } from '@/stores/ui';
 import type { Member, Role } from '@jorcord/shared';
 
 function MemberRow({ m, roles, guildId, ownerId }: { m: Member; roles: Role[]; guildId: string; ownerId: string }) {
@@ -56,8 +57,9 @@ export function DmMemberPanel({ channelId }: { channelId: string }) {
     <aside aria-label="Members" className="scroller h-full w-60 shrink-0 bg-side pb-4">
       <h3 className="px-4 pb-1 pt-6 text-xs font-bold uppercase tracking-wide text-muted">Members — {list.length}</h3>
       <ul>{list.map((u) => (
-        <li key={u.id}><button onClick={(e) => open({ kind: 'user', userId: u.id, rect: e.currentTarget.getBoundingClientRect() })} className="touch mx-2 flex w-[calc(100%-16px)] items-center gap-3 rounded px-2 text-left hover:bg-hover md:min-h-[42px]"><Avatar user={u} size={32} presence /><span className="truncate font-medium text-interactive">{displayName(u)}</span></button></li>
+        <li key={u.id} className="group relative"><button onClick={(e) => open({ kind: 'user', userId: u.id, rect: e.currentTarget.getBoundingClientRect() })} className="touch mx-2 flex w-[calc(100%-16px)] items-center gap-3 rounded px-2 text-left hover:bg-hover md:min-h-[42px]"><Avatar user={u} size={32} presence /><span className="truncate font-medium text-interactive">{displayName(u)}</span></button>{c.type === 'group_dm' && u.id !== me?.id && c.ownerId === me?.id && <button aria-label={`Remove ${displayName(u)}`} onClick={() => api.channels.removeRecipient(channelId, u.id).catch(toastError)} className="absolute right-3 top-1/2 hidden -translate-y-1/2 text-interactive hover:text-danger group-hover:block"><X size={16} /></button>}</li>
       ))}</ul>
+      {c.type === 'group_dm' && <button className="btn btn-secondary mx-4 mt-3 w-[calc(100%-32px)]" onClick={() => useUI.getState().openModal({ kind: 'newDm', addTo: channelId })}>Add Friends</button>}
     </aside>
   );
 }

@@ -25,6 +25,10 @@ export const api = {
     mfaSetup: () => send<{ secret: string; uri?: string; otpauthUrl?: string; qr?: string }>({ method: 'POST', path: '/auth/mfa/setup' }),
     mfaEnable: (code: string) => send<{ recoveryCodes?: string[] }>({ method: 'POST', path: '/auth/mfa/enable', body: { code, totp: code } }),
     mfaDisable: (code: string, password?: string) => send({ method: 'POST', path: '/auth/mfa/disable', body: { code, totp: code, password } }),
+    verifyEmail: (token: string) => send({ method: 'POST', path: '/auth/verify-email', body: { token }, auth: false }),
+    sendVerifyEmail: () => send({ method: 'POST', path: '/auth/verify-email/send' }),
+    forgotPassword: (email: string) => send({ method: 'POST', path: '/auth/password/forgot', body: { email }, auth: false }),
+    resetPassword: (token: string, newPassword: string) => send({ method: 'POST', path: '/auth/password/reset', body: { token, newPassword }, auth: false }),
     password: (b: { currentPassword: string; newPassword: string }) => send({ method: 'POST', path: '/auth/password', body: b }),
   },
   users: {
@@ -91,7 +95,10 @@ export const api = {
     createWebhook: (id: Id, name: string) => send<any>({ method: 'POST', path: `/channels/${id}/webhooks`, body: { name } }),
     deleteWebhook: (id: Id, wid: Id) => send({ method: 'DELETE', path: `/channels/${id}/webhooks/${wid}` }),
     forumPost: (id: Id, b: { name: string; content: string }) => send<{ channel: Channel; message?: Message }>({ method: 'POST', path: `/channels/${id}/forum/posts`, body: b }),
-    threads: (id: Id, archived = false) => send<Channel[]>({ method: 'GET', path: `/channels/${id}/threads`, query: { archived } }).then((x) => arr<Channel>(x)),
+    /** Active or archived threads of a channel: `{threads,members,hasMore}`. */
+    threads: (id: Id, archived = false) => send<any>({ method: 'GET', path: `/channels/${id}/threads/${archived ? 'archived' : 'active'}` }).then((x) => (Array.isArray(x) ? x : (x?.threads ?? [])) as Channel[]),
+    addRecipient: (channelId: Id, userId: Id) => send({ method: 'PUT', path: `/channels/${channelId}/recipients/${userId}` }),
+    removeRecipient: (channelId: Id, userId: Id | '@me') => send({ method: 'DELETE', path: `/channels/${channelId}/recipients/${userId}` }),
   },
   messages: {
     list: (channelId: Id, q: MessageQuery = {}) => send<Message[]>({ method: 'GET', path: `/channels/${channelId}/messages`, query: { limit: 50, ...q } }).then((x) => arr<Message>(x)),

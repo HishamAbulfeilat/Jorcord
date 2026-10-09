@@ -36,15 +36,7 @@ export function getVoiceClient(): VoiceClient {
   if (!client) {
     client = new VoiceClient({
       settings: settingsFromPrefs(useUI.getState().prefs),
-      onDisconnected: (reason) => {
-        // Permanent drop (kicked / room closed / token expired): reflect it everywhere.
-        if (reason === 'client' || wantChannel === null) return;
-        const ch = wantChannel; wantChannel = null; lastSent = '';
-        useVoiceUI.getState().patch({ conn: 'idle', joiningChannelId: null }); useVoiceUI.getState().setConnected(null);
-        sendVoiceState(null, undefined);
-        useUI.getState().toast(reason === 'server' ? 'You were disconnected from voice.' : 'Lost connection to voice.', 'error');
-        void ch;
-      },
+      onDisconnected: () => scheduleReconcile(),
     });
     bindClient(client);
     (window as any).__jorcordVoice = debugApi(client);
@@ -87,14 +79,7 @@ function bindClient(c: VoiceClient) {
   getGateway().on('VOICE_STATE_UPDATE', (d) => {
     const me = useData.getState().me?.id;
     if (!me || d.userId !== me || !wantChannel || joining || Date.now() - lastSendAt < 2500) return;
-    if (!d.channelId) {
-      wantChannel = null; lastSent = '';
-      const ui = useVoiceUI.getState(); ui.patch({ conn: 'idle', joiningChannelId: null }); ui.setConnected(null);
-      void c.disconnect().catch(() => {});
-      useUI.getState().toast('You were disconnected from voice.', 'info');
-    } else if (d.channelId !== wantChannel) {
-      void moveTo(d.channelId);
-    }
+    scheduleReconcile();
   });
   voiceHooks.toggleMute = () => { const s = c.getSnapshot(); if (s.deafened) { void c.setDeafened(false); } else void c.setMuted(!s.muted).catch((e) => c.reportError(e)); };
   voiceHooks.toggleDeaf = () => { void c.toggleDeafen(); };
@@ -102,17 +87,38 @@ function bindClient(c: VoiceClient) {
 
 async function moveTo(channelId: string) {
   const c = getVoiceClient(); const ui = useVoiceUI.getState();
+  const moved = wantChannel !== channelId;
   wantChannel = channelId; lastSent = '';
   ui.setConnected(channelId); ui.patch({ conn: 'connecting' });
   try {
     const tok = await api.voice.token(channelId);
     await c.connect(tok, channelId);
     const name = findChannel(useData.getState(), channelId)?.name;
-    useUI.getState().toast(`You were moved to ${name ?? 'another channel'}.`, 'info');
+    if (moved) useUI.getState().toast(`You were moved to ${name ?? 'another channel'}.`, 'info');
   } catch (e: any) {
     wantChannel = null; ui.patch({ conn: 'idle' }); ui.setConnected(null);
     useUI.getState().toast(e?.message || 'Could not follow the move.', 'error');
   }
+}
+
+let settle: ReturnType<typeof setTimeout> | undefined;
+/**
+ * The server and LiveKit tell us about moves/kicks in several racing events (room removal, state clear, state set).
+ * Wait for them to settle, then compare the gateway's view of my voice state with what we are connected to.
+ */
+function scheduleReconcile() {
+  clearTimeout(settle);
+  settle = setTimeout(() => {
+    const c = client; const me = useData.getState().me?.id;
+    if (!c || !me || !wantChannel || joining) return;
+    const st = useData.getState().voiceStates[me]; const status = c.getSnapshot().status;
+    if (!st?.channelId) {
+      wantChannel = null; lastSent = '';
+      const ui = useVoiceUI.getState(); ui.patch({ conn: 'idle', joiningChannelId: null }); ui.setConnected(null);
+      void c.disconnect().catch(() => {});
+      useUI.getState().toast('You were disconnected from voice.', 'info');
+    } else if (st.channelId !== wantChannel || status === 'disconnected' || status === 'idle') void moveTo(st.channelId);
+  }, 900);
 }
 
 export function currentVoiceChannel() { return wantChannel; }

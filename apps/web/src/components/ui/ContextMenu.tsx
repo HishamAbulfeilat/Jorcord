@@ -56,7 +56,7 @@ function Item({ it, mobile, close, openedAt }: { it: MenuItem; mobile: boolean; 
   const Icon = it.icon;
   return (
     <div className="relative" onMouseEnter={() => it.children && setSub(true)} onMouseLeave={() => setSub(false)}>
-      <button role="menuitem" disabled={it.disabled} onClick={() => { if (Date.now() - openedAt < 400) return; /* finger-lift after a long press */ if (it.children) { setSub((v) => !v); return; } close(); it.onClick?.(); }}
+      <button role="menuitem" disabled={it.disabled} onClick={() => { if (Date.now() - openedAt < 400) return; /* finger-lift after a long press */ if (it.children) { setSub((v) => (mobile ? !v : true)); return; } close(); it.onClick?.(); }}
         className={cx('flex w-full items-center justify-between gap-2 rounded px-2 py-1.5 text-left font-medium disabled:opacity-40', mobile && 'min-h-[44px] text-base',
           it.danger ? 'text-danger hover:bg-danger hover:text-white' : 'text-interactive hover:bg-brand hover:text-white')}>
         <span className="flex min-w-0 items-center gap-2">{Icon && <Icon size={16} className="shrink-0" />}<span className="truncate">{it.label}</span></span>
