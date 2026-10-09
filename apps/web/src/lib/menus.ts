@@ -8,6 +8,7 @@ import { useUI, toast, toastError, type MenuItem } from '@/stores/ui';
 import { useMessages } from '@/stores/messages';
 import { canDeleteMessage, canEditMessage, canManageMember, canOpenGuildSettings, canPinMessage, effectivePerms, can } from './perms';
 import { copyText, inviteUrl } from './format';
+import { publicOrigin } from './server';
 import { myChannelPerms } from './session';
 
 export const goto = (guildId: Id | null | undefined, channelId?: Id | null) => window.dispatchEvent(new CustomEvent('jorcord:goto', { detail: { guildId, channelId } }));
@@ -45,7 +46,7 @@ export function channelMenu(c: Channel): MenuItem[] {
   return [
     { label: 'Mark As Read', icon: Check, onClick: () => markChannelRead(c) },
     ...(gid && c.type !== 'category' ? [{ label: 'Invite People', icon: UserPlus, disabled: !can(p, Perm.CREATE_INVITE), onClick: () => ui().openModal({ kind: 'invite', guildId: gid, channelId: c.id }) }] : []),
-    { label: 'Copy Link', icon: Link2, onClick: () => copyText(`${location.origin}/channels/${gid ?? '@me'}/${c.id}`).then(() => toast('Link copied', 'success')) },
+    { label: 'Copy Link', icon: Link2, onClick: () => copyText(`${publicOrigin()}/channels/${gid ?? '@me'}/${c.id}`).then(() => toast('Link copied', 'success')) },
     { label: muted ? 'Unmute Channel' : 'Mute Channel', icon: BellOff, onClick: () => ui().setPref('mutedChannels', { ...ui().prefs.mutedChannels, [c.id]: !muted }) },
     ...(manage ? [{ separator: true }, { label: 'Edit Channel', icon: Pencil, onClick: () => ui().openModal({ kind: 'channelSettings', channelId: c.id }) },
       { label: 'Delete Channel', icon: Trash2, danger: true, onClick: () => ui().openModal({ kind: 'confirm', title: `Delete ${c.type === 'category' ? 'Category' : 'Channel'}`, body: `Are you sure you want to delete ${c.name}? This cannot be undone.`, confirmLabel: 'Delete', danger: true, onConfirm: () => api.channels.delete(c.id).catch(toastError) }) }] : []),
@@ -107,7 +108,7 @@ export function messageMenu(m: Message, opts: { startEdit: () => void; pickEmoji
     ...(m.content ? [{ label: 'Copy Text', icon: Copy, onClick: () => copyText(m.content).then(() => toast('Copied text', 'success')) }] : []),
     ...(ch?.guildId && ch.type !== 'thread' && can(perms, Perm.CREATE_PUBLIC_THREADS) ? [{ label: 'Create Thread', icon: Hash, onClick: () => ui().openModal({ kind: 'createThread', channelId: m.channelId, messageId: m.id, suggested: m.content.slice(0, 50) }) }] : []),
     { label: 'Mark Unread', icon: Mail, onClick: () => { s.setRead(m.channelId, String(BigInt(m.id) - 1n), 0); api.channels.ack(m.channelId, String(BigInt(m.id) - 1n)).catch(() => {}); } },
-    { label: 'Copy Message Link', icon: Link2, onClick: () => copyText(`${location.origin}/channels/${m.guildId ?? '@me'}/${m.channelId}/${m.id}`).then(() => toast('Link copied', 'success')) },
+    { label: 'Copy Message Link', icon: Link2, onClick: () => copyText(`${publicOrigin()}/channels/${m.guildId ?? '@me'}/${m.channelId}/${m.id}`).then(() => toast('Link copied', 'success')) },
     ...(canDeleteMessage(m, me.id, perms) ? [{ separator: true }, { label: 'Delete Message', icon: Trash2, danger: true, onClick: () => ui().openModal({ kind: 'confirm', title: 'Delete Message', body: 'Are you sure you want to delete this message?', confirmLabel: 'Delete', danger: true, onConfirm: () => api.messages.delete(m.channelId, m.id).then(() => useMessages.getState().remove(m.channelId, m.id)).catch(toastError) }) }] : []),
     { separator: true },
     { label: 'Copy Message ID', icon: Copy, onClick: () => copyText(m.id).then(() => toast('Copied ID', 'success')) },

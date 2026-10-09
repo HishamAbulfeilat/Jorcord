@@ -11,19 +11,30 @@ export interface Prefs {
   noiseEngine: 'browser' | 'rnnoise' | 'off'; voiceBitrate: number; musicMode: boolean; pttCode: string; vadMode: boolean; vadThreshold: number;
   screenPreset: '720p30' | '1080p60' | '1440p60' | '4k60' | 'source'; cameraPreset: '720p30' | '1080p60' | '1440p60' | '4k60' | 'source'; screenHint: 'motion' | 'detail'; screenAudio: boolean; showVoiceStats: boolean;
   keybinds: Record<string, string>;
+  streamerMode: boolean; streamerAuto: boolean; streamerHidePersonal: boolean; streamerHideInvites: boolean; streamerNoSounds: boolean; streamerNoNotifications: boolean;
   mutedChannels: Record<Id, boolean>; mutedGuilds: Record<Id, boolean>; collapsedCategories: Record<Id, boolean>;
+}
+/** First-run language: the browser's, when we ship that translation. */
+export function detectLanguage(): string {
+  try {
+    const l = (navigator.languages?.[0] ?? navigator.language ?? 'en-US');
+    const base = l.toLowerCase().split('-')[0];
+    return ({ es: 'es-ES', fr: 'fr-FR', de: 'de-DE', tr: 'tr-TR', ar: 'ar' } as Record<string, string>)[base!] ?? 'en-US';
+  } catch { return 'en-US'; }
 }
 export const defaultKeybinds: Record<string, string> = {
   quickSwitcher: 'Ctrl+K', markRead: 'Escape', prevChannel: 'Alt+ArrowUp', nextChannel: 'Alt+ArrowDown',
   prevServer: 'Ctrl+Alt+ArrowUp', nextServer: 'Ctrl+Alt+ArrowDown', toggleMembers: 'Ctrl+U', search: 'Ctrl+F', shortcuts: 'Ctrl+/', pushToTalk: 'Ctrl+`', toggleMute: 'Ctrl+Shift+M', toggleDeafen: 'Ctrl+Shift+D',
 };
 export const defaultPrefs: Prefs = {
-  theme: 'dark', density: 'cozy', fontScale: 1, reducedMotion: false, saturation: 1, showEmbeds: true, autoplayGifs: true, twentyFourHour: false, language: 'en-US', highContrast: false,
+  theme: 'dark', density: 'cozy', fontScale: 1, reducedMotion: false, saturation: 1, showEmbeds: true, autoplayGifs: true, twentyFourHour: false, language: detectLanguage(), highContrast: false,
   desktopNotifications: false, notificationSounds: true, defaultNotify: 'mentions', suppressEveryone: false,
   inputDevice: 'default', outputDevice: 'default', videoDevice: 'default', inputVolume: 100, outputVolume: 100, noiseSuppression: true, echoCancellation: true, autoGain: true, pushToTalk: false,
   noiseEngine: 'browser', voiceBitrate: 64, musicMode: false, pttCode: 'Backquote', vadMode: false, vadThreshold: 0.03,
   screenPreset: '1080p60', cameraPreset: '720p30', screenHint: 'motion', screenAudio: true, showVoiceStats: false,
-  keybinds: defaultKeybinds, mutedChannels: {}, mutedGuilds: {}, collapsedCategories: {},
+  keybinds: defaultKeybinds,
+  streamerMode: false, streamerAuto: true, streamerHidePersonal: true, streamerHideInvites: true, streamerNoSounds: true, streamerNoNotifications: true,
+  mutedChannels: {}, mutedGuilds: {}, collapsedCategories: {},
 };
 
 export type RightPanel = 'members' | 'search' | 'pins' | 'threads' | null;
@@ -36,7 +47,10 @@ export type ModalSpec =
   | { kind: 'newDm'; addTo?: Id } | { kind: 'voiceSettings' } | { kind: 'createForumPost'; channelId: Id } | { kind: 'shortcuts' }
   | { kind: 'channelSettings'; channelId: Id } | { kind: 'reactors'; channelId: Id; messageId: Id; emoji: string; emojiId: Id | null }
   | { kind: 'prompt'; title: string; label: string; initial?: string; onSubmit: (v: string) => void | Promise<void> }
-  | { kind: 'leaveGuild'; guildId: Id };
+  | { kind: 'leaveGuild'; guildId: Id }
+  | { kind: 'customStatus' } | { kind: 'folder'; folderId: string } | { kind: 'notifSettings'; scope: 'guild' | 'channel'; id: Id }
+  | { kind: 'onboarding'; guildId: Id; step?: 'welcome' | 'rules' } | { kind: 'createSticker'; guildId: Id } | { kind: 'sticker'; url: string; name: string }
+  | { kind: 'createWebhook'; channelId: Id } | { kind: 'streamerStart' };
 export type SettingsSpec = { kind: 'user'; tab?: string } | { kind: 'guild'; guildId: Id; tab?: string } | null;
 export interface MenuItem { label?: string; icon?: any; onClick?: () => void; danger?: boolean; separator?: boolean; checked?: boolean; disabled?: boolean; hint?: string; children?: MenuItem[] }
 export interface Toast { id: number; kind: 'info' | 'success' | 'error'; text: string }

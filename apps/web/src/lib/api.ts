@@ -9,6 +9,11 @@ export interface UserProfile extends User { mutualGuilds?: { id: Id; name: strin
 export interface MessageQuery { limit?: number; before?: Id; after?: Id; around?: Id }
 export interface SearchQuery { q?: string; authorId?: Id; channelId?: Id; has?: string; before?: string }
 export interface SendMessageInput { content: string; replyTo?: Id | null; files?: File[]; nonce?: string; stickerIds?: Id[] }
+export interface PushDevice { id: Id; platform: 'web' | 'android' | 'ios' | 'desktop'; createdAt: string | null; lastUsedAt: string | null; current?: boolean }
+export type PushRegistration = { platform: 'web' | 'desktop'; subscription: { endpoint: string; expirationTime?: number | null; keys: { p256dh: string; auth: string } } } | { platform: 'android' | 'ios'; token: string };
+export interface GuildNotify { muted: boolean; mutedUntil: string | null; suppressEveryone: boolean; suppressRoles: boolean; level: 'all' | 'mentions' | 'none' | null }
+export interface ChannelNotify { muted: boolean; mutedUntil: string | null }
+export interface NotificationSettings { pushEnabled: boolean; guilds: (GuildNotify & { guildId: Id })[]; channels: (ChannelNotify & { channelId: Id })[] }
 export interface GifResult { id: string; url: string; preview: string; title?: string }
 
 const arr = <T>(x: any): T[] => (Array.isArray(x) ? x : Array.isArray(x?.items) ? x.items : []);
@@ -76,6 +81,9 @@ export const api = {
     patchEmoji: (id: Id, eid: Id, b: { name: string }) => send<Emoji>({ method: 'PATCH', path: `/guilds/${id}/emojis/${eid}`, body: b }),
     deleteEmoji: (id: Id, eid: Id) => send({ method: 'DELETE', path: `/guilds/${id}/emojis/${eid}` }),
     stickers: (id: Id) => send<Sticker[]>({ method: 'GET', path: `/guilds/${id}/stickers` }).then((x) => arr<Sticker>(x)),
+    createSticker: (id: Id, b: { name: string; url: string; format?: Sticker['format'] }) => send<Sticker>({ method: 'POST', path: `/guilds/${id}/stickers`, body: b }),
+    patchSticker: (id: Id, sid: Id, b: { name: string }) => send<Sticker>({ method: 'PATCH', path: `/guilds/${id}/stickers/${sid}`, body: b }),
+    deleteSticker: (id: Id, sid: Id) => send({ method: 'DELETE', path: `/guilds/${id}/stickers/${sid}` }),
     automod: (id: Id) => send<AutoModRule[]>({ method: 'GET', path: `/guilds/${id}/automod/rules` }).then((x) => arr<AutoModRule>(x)),
     createAutomod: (id: Id, b: Partial<AutoModRule>) => send<AutoModRule>({ method: 'POST', path: `/guilds/${id}/automod/rules`, body: b }),
     patchAutomod: (id: Id, rid: Id, b: Partial<AutoModRule>) => send<AutoModRule>({ method: 'PATCH', path: `/guilds/${id}/automod/rules/${rid}`, body: b }),
@@ -92,7 +100,7 @@ export const api = {
     ack: (id: Id, messageId: Id) => send({ method: 'POST', path: `/channels/${id}/ack`, body: { messageId } }),
     typing: (id: Id) => send({ method: 'POST', path: `/channels/${id}/typing` }),
     webhooks: (id: Id) => send<any[]>({ method: 'GET', path: `/channels/${id}/webhooks` }).then((x) => arr<any>(x)),
-    createWebhook: (id: Id, name: string) => send<any>({ method: 'POST', path: `/channels/${id}/webhooks`, body: { name } }),
+    createWebhook: (id: Id, name: string, avatar?: string | null) => send<any>({ method: 'POST', path: `/channels/${id}/webhooks`, body: { name, ...(avatar ? { avatar } : {}) } }),
     deleteWebhook: (id: Id, wid: Id) => send({ method: 'DELETE', path: `/channels/${id}/webhooks/${wid}` }),
     forumPost: (id: Id, b: { name: string; content: string }) => send<{ channel: Channel; message?: Message }>({ method: 'POST', path: `/channels/${id}/forum/posts`, body: b }),
     /** Active or archived threads of a channel: `{threads,members,hasMore}`. */
@@ -142,6 +150,21 @@ export const api = {
     stageRequest: (channelId: Id, on: boolean) => send({ method: on ? 'PUT' : 'DELETE', path: `/channels/${channelId}/stage/request` }),
     /** Stage: invite a member to speak (on) or move them back to the audience (off). `@me` for self. */
     stageSpeaker: (channelId: Id, userId: Id | '@me', on: boolean) => send({ method: on ? 'PUT' : 'DELETE', path: `/channels/${channelId}/stage/speakers/${userId}` }),
+  },
+  push: {
+    vapidKey: () => send<{ publicKey: string | null }>({ method: 'GET', path: '/push/vapid-public-key', auth: false }),
+    register: (b: PushRegistration) => send<PushDevice>({ method: 'POST', path: '/users/@me/push-devices', body: b }),
+    devices: () => send<PushDevice[]>({ method: 'GET', path: '/users/@me/push-devices' }).then((x) => arr<PushDevice>(x)),
+    /** Forget this device by token (native) or endpoint (web push). Idempotent. */
+    unregister: (b: { token?: string; endpoint?: string; platform?: PushDevice['platform'] }) => send({ method: 'DELETE', path: '/users/@me/push-devices', body: b }),
+    removeDevice: (id: Id) => send({ method: 'DELETE', path: `/users/@me/push-devices/${id}` }),
+  },
+  notifications: {
+    get: () => send<NotificationSettings>({ method: 'GET', path: '/users/@me/notification-settings' }),
+    setPushEnabled: (pushEnabled: boolean) => send<NotificationSettings>({ method: 'PATCH', path: '/users/@me/notification-settings', body: { pushEnabled } }),
+    putGuild: (guildId: Id, b: Partial<GuildNotify>) => send<GuildNotify & { guildId: Id }>({ method: 'PUT', path: `/users/@me/notification-settings/guilds/${guildId}`, body: b }),
+    putChannel: (channelId: Id, b: Partial<ChannelNotify>) => send<ChannelNotify & { channelId: Id }>({ method: 'PUT', path: `/users/@me/notification-settings/channels/${channelId}`, body: b }),
+    reset: (scope: 'guilds' | 'channels', targetId: Id) => send({ method: 'DELETE', path: `/users/@me/notification-settings/${scope}/${targetId}` }),
   },
   misc: {
     gifs: (q?: string) => send<any>({ method: 'GET', path: q ? '/gifs/search' : '/gifs/trending', query: q ? { q } : undefined }).then((x) => arr<GifResult>(x)),

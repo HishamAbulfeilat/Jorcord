@@ -1,10 +1,12 @@
 import { snowflakeTime } from '@jorcord/shared';
 import type { Channel, Member, User } from '@jorcord/shared';
+import { apiBase, publicOrigin, serverPath } from './server';
 
 export const fileUrl = (p: string | null | undefined): string | null => {
   if (!p) return null;
-  if (/^(https?:|data:|blob:|\/)/.test(p)) return p;
-  return `/api/v1/files/${p}`;
+  if (/^(https?:|data:|blob:)/.test(p)) return p;
+  if (p.startsWith('/')) return serverPath(p);
+  return `${apiBase()}/files/${p}`;
 };
 const PALETTE = ['#5865f2', '#3ba55d', '#faa61a', '#ed4245', '#eb459e', '#9b59b6', '#1abc9c', '#e67e22'];
 export const idColor = (id: string) => { let h = 0; for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0; return PALETTE[h % PALETTE.length]; };
@@ -42,4 +44,4 @@ export function debounce<A extends unknown[]>(fn: (...a: A) => void, ms: number)
 export const isImage = (ct: string) => ct.startsWith('image/');
 export const isVideo = (ct: string) => ct.startsWith('video/');
 export const isAudio = (ct: string) => ct.startsWith('audio/');
-export const inviteUrl = (code: string) => `${location.origin}/invite/${code}`;
+export const inviteUrl = (code: string) => `${publicOrigin()}/invite/${code}`;

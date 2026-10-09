@@ -1,5 +1,6 @@
 /** Swappable HTTP transport. Default = fetch against /api/v1 with bearer auth + refresh. The /demo route swaps in a stub. */
 import type { ApiError } from '@jorcord/shared';
+import { apiBase } from './server';
 
 export class ApiException extends Error {
   status: number; code: string; details?: unknown;
@@ -22,10 +23,11 @@ let tokens: TokenStore = {
 };
 export const bindTokenStore = (t: TokenStore) => { tokens = t; };
 
-export const API_BASE = '/api/v1';
+/** Resolved per call: wrappers can switch servers at runtime. */
+export const API_BASE_PATH = '/api/v1';
 
 export function buildUrl(path: string, query?: Record<string, unknown>) {
-  const u = API_BASE + path;
+  const u = apiBase() + path;
   if (!query) return u;
   const p = new URLSearchParams();
   for (const [k, v] of Object.entries(query)) if (v !== undefined && v !== null && v !== '') p.set(k, String(v));
@@ -38,7 +40,7 @@ async function doRefresh(): Promise<boolean> {
   const { refresh } = tokens.get();
   if (!refresh) return false;
   try {
-    const res = await fetch(API_BASE + '/auth/refresh', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ refreshToken: refresh }) });
+    const res = await fetch(apiBase() + '/auth/refresh', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ refreshToken: refresh }) });
     if (!res.ok) return false;
     const j = await res.json();
     tokens.set(j.accessToken, j.refreshToken ?? refresh);

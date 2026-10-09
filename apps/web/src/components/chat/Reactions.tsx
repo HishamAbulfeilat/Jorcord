@@ -1,3 +1,4 @@
+import { apiBase } from '@/lib/server';
 import { SmilePlus } from 'lucide-react';
 import type { Message } from '@jorcord/shared';
 import { Perm } from '@jorcord/shared';
@@ -22,7 +23,7 @@ export function ReactionBar({ m }: { m: Message }) {
   return (
     <div className="mt-1 flex flex-wrap gap-1" role="group" aria-label="Reactions">
       {m.reactions.map((r) => {
-        const custom = r.emojiId ? emojis?.find((e) => e.id === r.emojiId)?.url ?? `/api/v1/emojis/${r.emojiId}.webp` : null;
+        const custom = r.emojiId ? emojis?.find((e) => e.id === r.emojiId)?.url ?? `${apiBase()}/emojis/${r.emojiId}.webp` : null;
         return (
           <button key={`${r.emoji}:${r.emojiId}`} aria-pressed={r.me} aria-label={`${r.emoji} ${r.count}`} onClick={() => toggle(r)}
             onContextMenu={(e) => { e.preventDefault(); openModal({ kind: 'reactors', channelId: m.channelId, messageId: m.id, emoji: r.emoji, emojiId: r.emojiId }); }}

@@ -1,3 +1,5 @@
+import { getServerUrl } from '@/lib/server';
+import { apiBase } from '@/lib/server';
 import { memo, useState, type ReactNode } from 'react';
 import { parseMarkdown, isJumbo, formatTimestamp, type MdNode } from '@/lib/markdown';
 import { useData } from '@/stores/data';
@@ -11,7 +13,7 @@ import { useNav } from '@/lib/nav';
 import { copyText } from '@/lib/format';
 import { toast } from '@/stores/ui';
 
-export const emojiUrl = (id: string, animated: boolean) => `/api/v1/emojis/${id}.${animated ? 'gif' : 'webp'}`;
+export const emojiUrl = (id: string, animated: boolean) => `${apiBase()}/emojis/${id}.${animated ? 'gif' : 'webp'}`;
 
 function Spoiler({ children }: { children: ReactNode }) {
   const [on, setOn] = useState(false);
@@ -55,7 +57,7 @@ function Node({ n, ctx }: { n: MdNode; ctx: Ctx }) {
     case 'heading': { const H = (`h${n.level}`) as 'h1'; return <H><Nodes ns={n.c} ctx={ctx} /></H>; }
     case 'list': { const L = n.ordered ? 'ol' : 'ul'; return <L>{n.items.map((it, i) => <li key={i}><Nodes ns={it} ctx={ctx} /></li>)}</L>; }
     case 'link': {
-      const internal = n.href.startsWith(location.origin);
+      const internal = n.href.startsWith(location.origin) || (!!getServerUrl() && n.href.startsWith(getServerUrl()));
       return <a href={n.href} target={internal ? undefined : '_blank'} rel="noopener noreferrer nofollow ugc" title={n.masked ? n.href : undefined} onClick={(e) => e.stopPropagation()}><Nodes ns={n.c} ctx={ctx} /></a>;
     }
     case 'user': return <User id={n.id} guildId={ctx.guildId} />;

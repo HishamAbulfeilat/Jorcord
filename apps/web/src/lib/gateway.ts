@@ -1,4 +1,5 @@
 /** Gateway client: HELLO -> IDENTIFY/RESUME, heartbeat w/ ack watchdog, exponential reconnect, typed events. Swappable via `GatewayLike`. */
+import { gatewayUrl } from './server';
 import { Op, type EventName, type Events, type GatewayFrame, type VoiceStateUpdatePayload } from '@jorcord/shared';
 
 export type GatewayStatus = 'idle' | 'connecting' | 'connected' | 'reconnecting' | 'closed';
@@ -30,7 +31,7 @@ export class GatewayClient implements GatewayLike {
   private statusHandlers = new Set<(s: GatewayStatus) => void>();
   private lastTyping = new Map<string, number>();
 
-  constructor(private url = defaultUrl()) {
+  constructor(private urlOverride?: string) {
     if (typeof window !== 'undefined') {
       window.addEventListener('online', () => { if (!this.manual && this.status !== 'connected') this.open(); });
       document.addEventListener('visibilitychange', () => {
@@ -62,7 +63,7 @@ export class GatewayClient implements GatewayLike {
     if (this.ws && this.ws.readyState <= 1) { try { this.ws.close(); } catch { /* noop */ } }
     this.setStatus(this.retry > 0 || this.sessionId ? 'reconnecting' : 'connecting');
     let ws: WebSocket;
-    try { ws = new WebSocket(this.url); } catch { this.scheduleReconnect(); return; }
+    try { ws = new WebSocket(this.urlOverride ?? gatewayUrl()); } catch { this.scheduleReconnect(); return; }
     this.ws = ws;
     ws.onmessage = (ev) => { try { this.onFrame(JSON.parse(String(ev.data))); } catch (e) { console.error('[gateway] bad frame', e); } };
     ws.onclose = (ev) => {
@@ -121,11 +122,6 @@ export class GatewayClient implements GatewayLike {
   updatePresence(presence: string) { this.raw(Op.PRESENCE_UPDATE, { presence }); }
   updateVoiceState(p: VoiceStateUpdatePayload) { this.raw(Op.VOICE_STATE_UPDATE, p); }
   requestMembers(p: { guildId: string; query?: string; userIds?: string[]; limit?: number; after?: string; nonce?: string }) { this.raw(Op.REQUEST_MEMBERS, p); }
-}
-
-function defaultUrl() {
-  if (typeof location === 'undefined') return 'ws://localhost/gateway';
-  return `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/gateway`;
 }
 
 class NullGateway implements GatewayLike {
