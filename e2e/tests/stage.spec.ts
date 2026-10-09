@@ -41,15 +41,15 @@ test('voice moderation: server mute, move and disconnect via context menu', asyn
   await chan(A.page, 'Lounge').click(); await chan(B.page, 'Lounge').click();
   const row = A.page.getByRole('list', { name: 'Voice participants' }).getByRole('listitem').filter({ hasText: 'Bob' });
   await expect(row).toBeVisible();
-  await row.click({ button: 'right' });
+  await row.click({ button: 'right' }); await A.page.waitForTimeout(500); // menus ignore clicks for 400ms (long-press guard)
   await A.page.getByRole('menuitem', { name: 'Server Mute' }).click();
   await expect(B.page.getByRole('list', { name: 'Voice participants' }).getByLabel('Muted')).toHaveCount(1);
-  await row.click({ button: 'right' });
+  await row.click({ button: 'right' }); await A.page.waitForTimeout(500); // menus ignore clicks for 400ms (long-press guard)
   await A.page.getByRole('menuitem', { name: 'Move To' }).click();
   await A.page.getByRole('menuitem', { name: 'Town Hall' }).click();
   await expect(B.page.getByTestId('voice-dock')).toContainText('Town Hall', { timeout: 20_000 });
   const row2 = A.page.getByRole('list', { name: 'Voice participants' }).getByRole('listitem').filter({ hasText: 'Bob' });
-  await row2.click({ button: 'right' });
+  await row2.click({ button: 'right' }); await A.page.waitForTimeout(500);
   await A.page.getByRole('menuitem', { name: 'Disconnect' }).click();
   await expect(B.page.getByTestId('voice-dock')).toHaveCount(0, { timeout: 20_000 });
   await A.page.getByTestId('voice-view').getByRole('button', { name: 'Disconnect' }).click();
