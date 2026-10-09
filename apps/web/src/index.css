@@ -91,7 +91,7 @@ a:hover { text-decoration: underline; }
 .md .spoiler.revealed > * { opacity: 1; }
 .md .timestamp { background: rgb(var(--active) / .6); border-radius: 3px; padding: 0 2px; }
 .md img.emoji { display: inline-block; vertical-align: -0.3em; width: 1.375em; height: 1.375em; object-fit: contain; }
-.md.jumbo img.emoji { width: 3rem; height: 3rem; } .md.jumbo .uemoji { font-size: 2.5rem; line-height: 3rem; }
+.md.jumbo { font-size: 2.5rem; line-height: 3rem; } .md.jumbo img.emoji { width: 3rem; height: 3rem; }
 .hljs-keyword, .hljs-selector-tag, .hljs-literal, .hljs-built_in { color: #ff7b72; } .hljs-string, .hljs-attr { color: #a5d6ff; }
 .hljs-number, .hljs-symbol { color: #79c0ff; } .hljs-comment, .hljs-quote { color: #8b949e; font-style: italic; }
 .hljs-title, .hljs-section, .hljs-function .hljs-title { color: #d2a8ff; } .hljs-variable, .hljs-type, .hljs-name { color: #ffa657; } .hljs-meta { color: #79c0ff; }

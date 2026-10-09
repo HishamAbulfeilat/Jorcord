@@ -31,10 +31,10 @@ export function loadConfig(overrides: Partial<Config> = {}, env: NodeJS.ProcessE
   const cors = env.CORS_ORIGINS ?? '*';
   const cfg: Config = {
     env: env.NODE_ENV ?? 'development', isProd,
-    host: env.HOST ?? '0.0.0.0', port: Number(env.PORT ?? 3001), logLevel: env.LOG_LEVEL ?? 'info',
+    host: env.HOST ?? '0.0.0.0', port: Number(env.PORT ?? 3000), logLevel: env.LOG_LEVEL ?? 'info',
     jwtSecret, databaseUrl: env.DATABASE_URL || null, dataDir, redisUrl: env.REDIS_URL || null,
     corsOrigins: cors === '*' ? true : cors.split(',').map((s) => s.trim()).filter(Boolean),
-    publicUrl: env.PUBLIC_URL ?? 'http://localhost:3001',
+    publicUrl: env.PUBLIC_URL ?? 'http://localhost:3000',
     trustProxy: env.TRUST_PROXY === 'true',
     rateLimit: env.RATE_LIMIT_ENABLED !== 'false',
     maxUploadBytes: Number(env.MAX_UPLOAD_BYTES || LIMITS.maxUploadBytes),

@@ -34,10 +34,14 @@ function User({ id, guildId }: { id: string; guildId?: string | null }) {
   return <span className="mention" role="button" tabIndex={0} onClick={(e) => open({ kind: 'user', userId: id, guildId: guildId ?? undefined, rect: (e.currentTarget as HTMLElement).getBoundingClientRect() })}>@{u ? displayName(u, m) : 'unknown-user'}</span>;
 }
 
+function CustomEmoji({ id, name, animated }: { id: string; name: string; animated: boolean }) {
+  const url = useData((s) => { for (const g of Object.values(s.guilds)) { const e = g.emojis.find((x) => x.id === id); if (e) return e.url; } return undefined; });
+  return <img className="emoji" src={url ?? emojiUrl(id, animated)} alt={`:${name}:`} title={`:${name}:`} draggable={false} />;
+}
+
 function Node({ n, ctx }: { n: MdNode; ctx: Ctx }) {
   const nav = useNav();
   const guild = useData((s) => (ctx.guildId ? s.guilds[ctx.guildId] : undefined));
-  const openModal = useUI((s) => s.openModal);
   switch (n.t) {
     case 'text': return <>{n.v.includes(':') ? replaceShortcodes(n.v) : n.v}</>;
     case 'bold': return <strong><Nodes ns={n.c} ctx={ctx} /></strong>;
@@ -61,11 +65,10 @@ function Node({ n, ctx }: { n: MdNode; ctx: Ctx }) {
       return <span className="mention" role="link" tabIndex={0} onClick={() => nav.go(ctx.guildId, n.id)}><Hash size={13} className="mr-0.5 inline -translate-y-px" />{c?.name ?? 'unknown'}</span>;
     }
     case 'everyone': return <span className="mention">@{n.v}</span>;
-    case 'emoji': return <img className="emoji" src={emojiUrl(n.id, n.animated)} alt={`:${n.name}:`} title={`:${n.name}:`} draggable={false} onClick={() => undefined} />;
+    case 'emoji': return <CustomEmoji id={n.id} name={n.name} animated={n.animated} />;
     case 'time': return <time className="timestamp" title={fmtFull(n.ts * 1000)} dateTime={new Date(n.ts * 1000).toISOString()}>{formatTimestamp(n.ts, n.style)}</time>;
     case 'br': return <br />;
   }
-  void openModal;
 }
 interface Ctx { guildId?: string | null }
 function Nodes({ ns, ctx }: { ns: MdNode[]; ctx: Ctx }) { return <>{ns.map((n, i) => <Node key={i} n={n} ctx={ctx} />)}</>; }

@@ -60,7 +60,7 @@ export async function createGuild(ctx: Ctx, ownerId: string, input: { name: stri
   return id;
 }
 
-export async function visibleChannelRows(ctx: Ctx, guildId: string, userId: string): Promise<any[]> {
+export async function visibleChannelRows(ctx: Ctx, guildId: string, userId: string, alsoNeed: bigint = 0n): Promise<any[]> {
   const gp = await loadGuildPerm(ctx, guildId, userId);
   if (!gp) return [];
   const rows = await ctx.db.query('SELECT * FROM channels WHERE guild_id = $1 AND NOT (type = \'thread\' AND archived) ORDER BY position, id', [guildId]);
@@ -68,7 +68,7 @@ export async function visibleChannelRows(ctx: Ctx, guildId: string, userId: stri
   const byCh = new Map<string, Overwrite[]>();
   for (const o of ows) { const l = byCh.get(o.channel_id) ?? []; l.push({ id: o.target_id, type: o.type, allow: BigInt(o.allow), deny: BigInt(o.deny) }); byCh.set(o.channel_id, l); }
   const byId = new Map(rows.map((r) => [r.id, r]));
-  const canView = (r: any) => { const src = r.type === 'thread' && r.parent_id ? byId.get(r.parent_id) ?? r : r; return has(permsFor(gp, byCh.get(src.id) ?? []), Perm.VIEW_CHANNEL); };
+  const canView = (r: any) => { const src = r.type === 'thread' && r.parent_id ? byId.get(r.parent_id) ?? r : r; const p = permsFor(gp, byCh.get(src.id) ?? []); return has(p, Perm.VIEW_CHANNEL) && has(p, alsoNeed); };
   return rows.filter(canView);
 }
 

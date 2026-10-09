@@ -1,0 +1,145 @@
+import type { FastifyInstance } from 'fastify';
+import type { WebSocket } from 'ws';
+import { z } from 'zod';
+import { HEARTBEAT_INTERVAL_MS, Op, Perm, has, type ReadyPayload, type VoiceStateUpdatePayload } from '@jorcord/shared';
+import type { Ctx } from '../ctx';
+import { verifyGatewayToken } from '../auth';
+import { randomToken } from '../lib/crypto';
+import { RateLimiter } from '../lib/ratelimit';
+import { idSchema } from '../lib/ids';
+import { buildGuildFull } from '../services/guilds';
+import { channelAccess } from '../services/perms';
+import { channelsDTO, selfUserDTO } from '../services/serializers';
+import { updateVoiceState, clearVoiceState } from '../services/voice';
+import { relationshipDTOs } from '../routes/users';
+import type { GwSession } from './hub';
+
+async function buildReady(ctx: Ctx, userId: string, sessionId: string): Promise<ReadyPayload> {
+  const [u] = await ctx.db.query('SELECT * FROM users WHERE id = $1', [userId]);
+  const guildIds = (await ctx.db.query('SELECT guild_id FROM members WHERE user_id = $1 ORDER BY joined_at', [userId])).map((r) => r.guild_id as string);
+  const guilds = [];
+  for (const id of guildIds) guilds.push(await buildGuildFull(ctx, id, userId));
+  const dms = await ctx.db.query('SELECT c.* FROM channels c JOIN dm_participants p ON p.channel_id = c.id WHERE p.user_id = $1 ORDER BY c.last_message_id DESC NULLS LAST', [userId]);
+  const privateChannels = await channelsDTO(ctx, dms);
+  const rs = await ctx.db.query('SELECT * FROM read_states WHERE user_id = $1', [userId]);
+  const peers = await ctx.db.query(
+    `SELECT DISTINCT x.uid, u.presence FROM (
+        SELECT m2.user_id AS uid FROM members m1 JOIN members m2 ON m1.guild_id = m2.guild_id WHERE m1.user_id = $1 AND m2.user_id <> $1
+        UNION SELECT other_id FROM relationships WHERE user_id = $1 AND type = 'friend') x JOIN users u ON u.id = x.uid LIMIT 5000`, [userId]);
+  const presences = peers.filter((p) => ctx.hub.isOnline(p.uid)).map((p) => ({ userId: p.uid as string, presence: ctx.hub.publicPresence(p.uid, p.presence) }));
+  const visible = new Set<string>([...guilds.flatMap((g) => g.channels.map((c) => c.id)), ...privateChannels.map((c) => c.id)]);
+  const voiceStates = [...ctx.hub.voice.values()].filter((v) => v.channelId && visible.has(v.channelId));
+  return {
+    sessionId, user: selfUserDTO(ctx, u), guilds, privateChannels, relationships: await relationshipDTOs(ctx, userId),
+    readStates: rs.map((r) => ({ channelId: r.channel_id, lastReadId: r.last_read_id ?? null, mentionCount: r.mention_count })), presences, voiceStates,
+  };
+}
+
+const frameSchema = z.object({ op: z.number().int(), d: z.unknown().optional() });
+const identifySchema = z.object({ token: z.string().max(4096), sessionId: z.string().max(100).optional(), seq: z.number().int().min(0).optional() }).passthrough();
+
+export function gatewayRoutes(app: FastifyInstance, ctx: Ctx) {
+  const wsLimiter = new RateLimiter();
+  app.addHook('onClose', async () => wsLimiter.close());
+  const hbInterval = ctx.config.heartbeatIntervalMs || HEARTBEAT_INTERVAL_MS;
+
+  app.get('/gateway', { websocket: true }, (socket: WebSocket, req) => {
+    const send = (f: object) => { if (socket.readyState === 1) socket.send(JSON.stringify(f)); };
+    let session: GwSession | null = null;
+    let queue: Promise<void> = Promise.resolve();
+    const connId = randomToken(8);
+    send({ op: Op.HELLO, d: { heartbeatInterval: hbInterval } });
+
+    const identifyTimer = setTimeout(() => { if (!session) socket.close(4003, 'identify timeout'); }, 20_000);
+    let hbTimer: NodeJS.Timeout | undefined;
+    const armHeartbeat = () => { clearTimeout(hbTimer); hbTimer = setTimeout(() => socket.close(4009, 'heartbeat timeout'), hbInterval * 2 + 5000); };
+    armHeartbeat();
+
+    async function attach(s: GwSession) {
+      session = s; s.socket = socket; s.detachedAt = null;
+      clearTimeout(identifyTimer);
+      if (ctx.hub.attachedCount(s.userId) === 1) await ctx.hub.broadcastPresence(s.userId);
+    }
+
+    async function identify(d: unknown) {
+      const p = identifySchema.safeParse(d);
+      if (!p.success) return socket.close(4002, 'invalid payload');
+      const claims = await verifyGatewayToken(ctx, p.data.token);
+      if (!claims) return socket.close(4004, 'authentication failed');
+      if (p.data.sessionId && p.data.seq !== undefined) {
+        if (await tryResume(claims.userId, p.data.sessionId, p.data.seq)) return;
+      }
+      const s: GwSession = { id: randomToken(16), userId: claims.userId, authSessionId: claims.sessionId, seq: 0, buffer: [], socket: null, detachedAt: null };
+      ctx.hub.sessions.set(s.id, s);
+      await attach(s);
+      ctx.hub.sendTo(s, 'READY', await buildReady(ctx, s.userId, s.id));
+    }
+
+    async function tryResume(userId: string, sessionId: string, seq: number): Promise<boolean> {
+      const s = ctx.hub.sessions.get(sessionId);
+      if (!s || s.userId !== userId) return false;
+      const oldest = s.buffer[0]?.s ?? s.seq + 1;
+      if (seq > s.seq || oldest > seq + 1) return false;
+      if (s.socket && s.socket !== socket) s.socket.close(4005, 'session taken over');
+      await attach(s);
+      for (const e of s.buffer) if (e.s > seq && e.t !== 'READY') send({ op: Op.DISPATCH, t: e.t, s: e.s, d: e.d });
+      send({ op: Op.DISPATCH, t: 'RESUMED', d: { sessionId: s.id, seq: s.seq } });
+      return true;
+    }
+
+    async function resume(d: unknown) {
+      const p = identifySchema.safeParse(d);
+      const claims = p.success ? await verifyGatewayToken(ctx, p.data.token) : null;
+      if (!p.success || !claims || !p.data.sessionId || p.data.seq === undefined || !(await tryResume(claims.userId, p.data.sessionId, p.data.seq))) {
+        send({ op: Op.RECONNECT, d: { resumable: false } });
+        socket.close(4007, 'invalid session');
+      }
+    }
+
+    async function handle(raw: string) {
+      let json: unknown; try { json = JSON.parse(raw); } catch { return socket.close(4002, 'invalid json'); }
+      const f = frameSchema.safeParse(json);
+      if (!f.success) return socket.close(4002, 'invalid frame');
+      const { op, d } = f.data;
+      if (op === Op.HEARTBEAT) { armHeartbeat(); return send({ op: Op.HEARTBEAT_ACK }); }
+      if (op === Op.IDENTIFY) { if (session) return socket.close(4005, 'already identified'); return identify(d); }
+      if (op === Op.RESUME) { if (session) return socket.close(4005, 'already identified'); return resume(d); }
+      if (!session) return socket.close(4003, 'not authenticated');
+      const uid = session.userId;
+      try {
+        // re-validate the auth session so revoked tokens can't keep a socket alive
+        if (op === Op.PRESENCE_UPDATE) {
+          const { presence } = z.object({ presence: z.enum(['online', 'idle', 'dnd', 'invisible']) }).parse(d);
+          await ctx.db.query('UPDATE users SET presence = $2 WHERE id = $1', [uid, presence]);
+          await ctx.hub.broadcastPresence(uid);
+        } else if (op === Op.VOICE_STATE_UPDATE) {
+          const v = z.object({ guildId: idSchema.nullable().optional(), channelId: idSchema.nullable(), selfMute: z.boolean().optional(), selfDeaf: z.boolean().optional(), video: z.boolean().optional(), streaming: z.boolean().optional() }).parse(d);
+          await updateVoiceState(ctx, uid, { guildId: v.guildId ?? null, ...v } as VoiceStateUpdatePayload);
+        } else if (op === Op.TYPING) {
+          const { channelId } = z.object({ channelId: idSchema }).parse(d);
+          const a = await channelAccess(ctx, uid, channelId);
+          if (has(a.perms, Perm.SEND_MESSAGES)) await ctx.hub.toChannel(channelId, 'TYPING_START', { channelId, userId: uid, timestamp: Date.now() }, { exclude: uid });
+        }
+      } catch (e: any) {
+        send({ op: Op.DISPATCH, t: 'ERROR', d: { op, code: e?.code ?? 'BAD_REQUEST', message: e?.message ?? 'error' } });
+      }
+    }
+
+    socket.on('message', (data) => {
+      if (ctx.config.rateLimit && wsLimiter.hit(connId, 120, 60_000)) return socket.close(4008, 'rate limited');
+      const raw = data.toString();
+      queue = queue.then(() => handle(raw)).catch((e) => ctx.log.error({ err: e }, 'gateway handler failed'));
+    });
+    socket.on('close', () => {
+      clearTimeout(identifyTimer); clearTimeout(hbTimer);
+      const s = session as GwSession | null;
+      if (!s || s.socket !== socket) return;
+      s.socket = null; s.detachedAt = Date.now();
+      if (ctx.hub.attachedCount(s.userId) === 0) {
+        void clearVoiceState(ctx, s.userId).catch(() => {});
+        void ctx.hub.broadcastPresence(s.userId).catch(() => {});
+      }
+    });
+    socket.on('error', (e) => req.log.debug({ err: e }, 'ws error'));
+  });
+}
