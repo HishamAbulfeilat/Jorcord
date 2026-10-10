@@ -14,6 +14,7 @@ export interface Prefs {
   streamerMode: boolean; streamerAuto: boolean; streamerHidePersonal: boolean; streamerHideInvites: boolean; streamerNoSounds: boolean; streamerNoNotifications: boolean;
   mutedChannels: Record<Id, boolean>; mutedGuilds: Record<Id, boolean>; collapsedCategories: Record<Id, boolean>;
   /** Soundboard: silence everything / one person's sounds (local), and playback gain 0-100. */
+  /** "Hide Muted Channels" per server. */ hideMutedChannels: Record<Id, boolean>;
   soundboardMuted: boolean; soundboardMutedUsers: Record<Id, boolean>; soundboardVolume: number;
 }
 /** First-run language: the browser's, when we ship that translation. */
@@ -37,7 +38,7 @@ export const defaultPrefs: Prefs = {
   keybinds: defaultKeybinds,
   streamerMode: false, streamerAuto: true, streamerHidePersonal: true, streamerHideInvites: true, streamerNoSounds: true, streamerNoNotifications: true,
   mutedChannels: {}, mutedGuilds: {}, collapsedCategories: {},
-  soundboardMuted: false, soundboardMutedUsers: {}, soundboardVolume: 100,
+  hideMutedChannels: {}, soundboardMuted: false, soundboardMutedUsers: {}, soundboardVolume: 100,
 };
 
 export type RightPanel = 'members' | 'search' | 'pins' | 'threads' | null;
@@ -56,6 +57,7 @@ export type ModalSpec =
   | { kind: 'interactionModal'; interactionId: Id; channelId: Id; modal: Modal }
   | { kind: 'createPoll'; channelId: Id } | { kind: 'pollVoters'; channelId: Id; messageId: Id; answerId?: number }
   | { kind: 'events'; guildId: Id } | { kind: 'eventEditor'; guildId: Id; eventId?: Id; channelId?: Id }
+  | { kind: 'customize'; guildId: Id }
   | { kind: 'forward'; message: Message } | { kind: 'inbox'; tab?: 'mentions' | 'saved' | 'reminders' } | { kind: 'screening'; guildId: Id } | { kind: 'threadSettings'; channelId: Id } | { kind: 'stage'; channelId: Id; mode: 'start' | 'edit' };
 export type SettingsSpec = { kind: 'user'; tab?: string } | { kind: 'guild'; guildId: Id; tab?: string } | null;
 export interface MenuItem { label?: string; icon?: any; onClick?: () => void; danger?: boolean; separator?: boolean; checked?: boolean; disabled?: boolean; hint?: string; children?: MenuItem[] }

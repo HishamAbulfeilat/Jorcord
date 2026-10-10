@@ -55,3 +55,16 @@ export interface GuildSafety {
   checklist: { id: string; done: boolean }[]; score: number;
 }
 export type SafetyPreset = 'basic' | 'recommended' | 'strict';
+
+// ---------- server onboarding ----------
+/** One answer to an onboarding question: picking it grants roles and opts the member into channels. */
+export interface OnboardingOption { id: Id; title: string; description: string | null; emoji: string | null; channelIds: Id[]; roleIds: Id[] }
+export interface OnboardingPrompt { id: Id; title: string; singleSelect: boolean; required: boolean; options: OnboardingOption[] }
+export interface OnboardingResponse { optionIds: Id[]; /** channels opted into through the chosen options */ channelIds: Id[]; completedAt: string }
+export interface Onboarding {
+  enabled: boolean;
+  /** channels every member sees from the start */ defaultChannelIds: Id[];
+  prompts: OnboardingPrompt[];
+  /** my answers (null until I completed it); only on GET */ responses?: OnboardingResponse | null;
+}
+export const ONBOARDING_LIMITS = { prompts: 5, optionsPerPrompt: 12 } as const;

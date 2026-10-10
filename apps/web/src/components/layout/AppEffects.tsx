@@ -6,6 +6,8 @@ import { useNotif } from '@/stores/notif';
 import { useRouteIds } from '@/lib/nav';
 import { syncPush } from '@/lib/push';
 import { setBadgeCount } from '@/lib/native';
+import { api } from '@/lib/api';
+import { queryClient } from '@/lib/queryClient';
 
 /** Post-login side effects that need the router + loaded data: layout/notification hydration, push, badge, status expiry, onboarding. */
 export function AppEffects() {
@@ -37,5 +39,18 @@ export function AppEffects() {
     if (useUI.getState().modal) return;
     useUI.getState().openModal({ kind: 'onboarding', guildId });
   }, [guildId, g?.guild.rulesChannelId, g?.guild.description, !!mem, !!mem?.pending, onboarded[guildId ?? '']]); // eslint-disable-line
+  // onboarding questions: newcomers of a server that has them are asked once (they can always redo it from the server menu)
+  const onbOn = !!g?.guild.features.includes('ONBOARDING');
+  useEffect(() => {
+    if (!guildId || !me || !mem || !onbOn || mem.pending) return;
+    try { if (sessionStorage.getItem('jorcord.cust.' + guildId)) return; } catch { /* */ }
+    let dead = false;
+    void queryClient.fetchQuery({ queryKey: ['onboarding', guildId], queryFn: () => api.guilds.onboarding(guildId), staleTime: 30_000 }).then((o) => {
+      if (dead || o.responses || !o.prompts.length || useUI.getState().modal) return;
+      try { sessionStorage.setItem('jorcord.cust.' + guildId, '1'); } catch { /* */ }
+      useUI.getState().openModal({ kind: 'customize', guildId });
+    }).catch(() => {});
+    return () => { dead = true; };
+  }, [guildId, onbOn, !!mem, !!mem?.pending]); // eslint-disable-line
   return null;
 }

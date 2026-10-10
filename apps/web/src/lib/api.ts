@@ -1,7 +1,7 @@
 /** Typed REST client written against docs/CONTRACT.md. All calls go through the swappable transport. */
 import type {
   Activity, Attachment, AuditEntry, AutoModRule, Channel, Emoji, Guild, GuildFull, Invite, Member, Message, Relationship, ReadState, Role, SelfUser, Sticker, User, VoiceToken, Id, Presence, OverwriteDTO,
-  Reminder, SoundboardSound, GuildSafety, SafetyPreset, Application, ApplicationCommand, CommandPermissionOverwrite, CommandOptionChoice, CreatePoll, ForumTag, InteractionOptionValue, ModalSubmitRow, OAuthAuthorizePreview, OAuthAuthorizeResult, ScheduledEvent, StageInstance,
+  Reminder, SoundboardSound, Onboarding, OnboardingResponse, GuildSafety, SafetyPreset, Application, ApplicationCommand, CommandPermissionOverwrite, CommandOptionChoice, CreatePoll, ForumTag, InteractionOptionValue, ModalSubmitRow, OAuthAuthorizePreview, OAuthAuthorizeResult, ScheduledEvent, StageInstance,
 } from '@jorcord/shared';
 import { send } from './transport';
 
@@ -139,6 +139,9 @@ export const api = {
     safety: (id: Id) => send<GuildSafety>({ method: 'GET', path: `/guilds/${id}/safety` }),
     patchSafety: (id: Id, b: Partial<{ verificationLevel: number; explicitFilter: number; defaultNotifications: 'all' | 'mentions'; raidProtection: Partial<GuildSafety['raidProtection']>; pauseInvites: boolean }>) => send<GuildSafety>({ method: 'PATCH', path: `/guilds/${id}/safety`, body: b }),
     safetyPreset: (id: Id, preset: SafetyPreset) => send<GuildSafety>({ method: 'POST', path: `/guilds/${id}/safety/preset`, body: { preset } }),
+    onboarding: (id: Id) => send<Onboarding>({ method: 'GET', path: `/guilds/${id}/onboarding` }),
+    putOnboarding: (id: Id, b: Partial<Pick<Onboarding, 'enabled' | 'defaultChannelIds'>> & { prompts?: any[] }) => send<Onboarding>({ method: 'PUT', path: `/guilds/${id}/onboarding`, body: b }),
+    answerOnboarding: (id: Id, optionIds: Id[]) => send<OnboardingResponse>({ method: 'PUT', path: `/guilds/${id}/onboarding/responses`, body: { optionIds } }),
     sounds: (id: Id) => send<SoundboardSound[]>({ method: 'GET', path: `/guilds/${id}/soundboard-sounds` }).then((x) => arr<SoundboardSound>(x)),
     createSound: (id: Id, b: { name: string; url: string; emoji?: string | null; volume?: number }) => send<SoundboardSound>({ method: 'POST', path: `/guilds/${id}/soundboard-sounds`, body: b }),
     patchSound: (id: Id, sid: Id, b: Partial<{ name: string; emoji: string | null; volume: number }>) => send<SoundboardSound>({ method: 'PATCH', path: `/guilds/${id}/soundboard-sounds/${sid}`, body: b }),

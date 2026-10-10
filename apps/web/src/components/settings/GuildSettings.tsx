@@ -26,6 +26,7 @@ import { t, T } from '@/i18n';
 import { SoundboardTab } from '@/components/Soundboard';
 import { ServerTagEditor } from './CosmeticsPicker';
 import { SafetyTab } from './SafetyTab';
+import { OnboardingTab } from './OnboardingTab';
 import { AUDIT_FILTER_GROUPS, actionLabel, entryDetail, entryType } from '@/lib/audit';
 
 export function GuildSettings({ guildId, initialTab }: { guildId: string; initialTab?: string }) {
@@ -35,7 +36,7 @@ export function GuildSettings({ guildId, initialTab }: { guildId: string; initia
   const items = useMemo(() => {
     const it = (id: string, label: string, icon: any, ok: boolean) => (ok ? [{ id, label: t(label), icon }] : []);
     return [
-      { title: g?.guild.name ?? 'Server', items: [...it('overview', T('Overview'), Cog, can(perms, Perm.MANAGE_GUILD)), ...it('roles', T('Roles'), Shield, can(perms, Perm.MANAGE_ROLES)), ...it('channels', T('Channels'), Hash, can(perms, Perm.MANAGE_CHANNELS)), ...it('emoji', T('Emoji'), Smile, can(perms, Perm.MANAGE_EMOJIS)), ...it('stickers', T('Stickers'), StickerIcon, can(perms, Perm.MANAGE_EMOJIS)), ...it('soundboard', T('Soundboard'), Volume2, can(perms, Perm.MANAGE_EMOJIS)), ...it('safety', T('Safety Setup'), ShieldCheck, can(perms, Perm.MANAGE_GUILD)), ...it('servertag', T('Server Tag'), Tag, can(perms, Perm.MANAGE_GUILD)), ...it('integrations', T('Integrations'), WebhookIcon, can(perms, Perm.MANAGE_WEBHOOKS)), ...it('commands', T('Command Permissions'), Bot, can(perms, Perm.MANAGE_GUILD) && can(perms, Perm.MANAGE_ROLES)), ...it('boosts', T('Server Boost'), Rocket, true)] },
+      { title: g?.guild.name ?? 'Server', items: [...it('overview', T('Overview'), Cog, can(perms, Perm.MANAGE_GUILD)), ...it('roles', T('Roles'), Shield, can(perms, Perm.MANAGE_ROLES)), ...it('channels', T('Channels'), Hash, can(perms, Perm.MANAGE_CHANNELS)), ...it('emoji', T('Emoji'), Smile, can(perms, Perm.MANAGE_EMOJIS)), ...it('stickers', T('Stickers'), StickerIcon, can(perms, Perm.MANAGE_EMOJIS)), ...it('soundboard', T('Soundboard'), Volume2, can(perms, Perm.MANAGE_EMOJIS)), ...it('safety', T('Safety Setup'), ShieldCheck, can(perms, Perm.MANAGE_GUILD)), ...it('onboarding', T('Onboarding'), ListChecks, can(perms, Perm.MANAGE_GUILD)), ...it('servertag', T('Server Tag'), Tag, can(perms, Perm.MANAGE_GUILD)), ...it('integrations', T('Integrations'), WebhookIcon, can(perms, Perm.MANAGE_WEBHOOKS)), ...it('commands', T('Command Permissions'), Bot, can(perms, Perm.MANAGE_GUILD) && can(perms, Perm.MANAGE_ROLES)), ...it('boosts', T('Server Boost'), Rocket, true)] },
       { title: t('Moderation'), items: [...it('members', T('Members'), Users, can(perms, Perm.KICK_MEMBERS) || can(perms, Perm.MANAGE_ROLES) || can(perms, Perm.MANAGE_GUILD)), ...it('invites', T('Invites'), Link2, can(perms, Perm.MANAGE_GUILD) || can(perms, Perm.CREATE_INVITE)), ...it('automod', T('AutoMod'), Bot, can(perms, Perm.MANAGE_GUILD)), ...it('audit', T('Audit Log'), ScrollText, can(perms, Perm.VIEW_AUDIT_LOG)), ...it('bans', T('Bans'), Ban, can(perms, Perm.BAN_MEMBERS))] },
       ...(isOwner ? [{ items: [{ id: 'delete', label: t('Delete Server'), icon: Trash2, danger: true }] }] : []),
     ].filter((gr) => gr.items.length);
@@ -52,6 +53,7 @@ export function GuildSettings({ guildId, initialTab }: { guildId: string; initia
       {tab === 'stickers' && <StickersTab guildId={guildId} />}
       {tab === 'soundboard' && <SoundboardTab guildId={guildId} />}
       {tab === 'safety' && <SafetyTab guildId={guildId} />}
+      {tab === 'onboarding' && <OnboardingTab guildId={guildId} />}
       {tab === 'servertag' && <ServerTagTab guildId={guildId} />}
       {tab === 'integrations' && <IntegrationsTab guildId={guildId} />}
       {tab === 'commands' && <CommandPermissions guildId={guildId} />}

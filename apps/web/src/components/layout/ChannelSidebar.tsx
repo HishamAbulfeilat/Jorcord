@@ -1,6 +1,6 @@
 import { useMemo, useRef } from 'react';
 import { useRovingTabindex } from '@/lib/hooks';
-import { CalendarDays, ChevronDown, ChevronRight, Hash, Megaphone, MessagesSquare, Plus, Radio, UserPlus, Volume2, Settings, X, Lock, Volume1, Video, VolumeX, MicOff } from 'lucide-react';
+import { ListChecks, CalendarDays, ChevronDown, ChevronRight, Hash, Megaphone, MessagesSquare, Plus, Radio, UserPlus, Volume2, Settings, X, Lock, Volume1, Video, VolumeX, MicOff } from 'lucide-react';
 import { useVoiceSnapshot } from '@jorcord/voice/react';
 import { joinVoice } from '@/voice/controller';
 import { voiceUserMenu } from '@/voice/menu';
@@ -25,6 +25,7 @@ import { api } from '@/lib/api';
 import { toastError } from '@/stores/ui';
 import { CAT, applyChannelDrop, layoutOf, orderDiff, plainAttrs } from '@/lib/channelOrder';
 import { t } from '@/i18n';
+import { useChannelHides } from '@/lib/channelHide';
 import { usePlatform } from '@/stores/platform';
 import { useLoadEvents } from '@/components/modals/PlatformModals';
 import { useGuildStages } from '@/voice/StageBar';
@@ -132,6 +133,7 @@ export function ChannelSidebar({ guildId }: { guildId: string }) {
   const g = useData((s) => s.guilds[guildId]?.guild);
   const channels = useData((s) => s.guilds[guildId]?.channels);
   const { uncategorized, categories } = useSidebarChannels(guildId);
+  const hides = useChannelHides(guildId, useRouteIds().channelId);
   const perms = useGuildPerms(guildId);
   const prefs = useUI((s) => s.prefs); const setPref = useUI((s) => s.setPref); const open = useUI((s) => s.openModal);
   const openMenu = useUI((s) => s.openMenu); const { channelId } = useRouteIds();
@@ -167,13 +169,15 @@ export function ChannelSidebar({ guildId }: { guildId: string }) {
         <ChevronDown size={18} />
       </button>
       <EventsEntry guildId={guildId} />
+      {hides.filtering && <button data-testid="browse-channels" aria-pressed={hides.browseAll} onClick={() => hides.setBrowseAll(!hides.browseAll)} className="mx-2 mt-1 flex items-center gap-2 rounded px-2 py-1.5 text-start text-sm font-medium text-interactive hover:bg-hover hover:text-interactive-hover"><ListChecks size={18} aria-hidden /><span className="flex-1 truncate">{hides.browseAll ? t('Show only my channels') : t('Browse Channels')}</span></button>}
       <div ref={listRef} className="scroller min-h-0 flex-1 pb-4 pt-2" role="navigation" aria-label={t('Channels')}>
         <DndContext sensors={sensors} collisionDetection={collision} onDragEnd={onEnd}>
-          <SortableContext items={uncategorized.map((c) => c.id)} strategy={verticalListSortingStrategy}><ul className="mb-1">{uncategorized.map(row)}</ul></SortableContext>
+          <SortableContext items={uncategorized.filter(hides.keep).map((c) => c.id)} strategy={verticalListSortingStrategy}><ul className="mb-1">{uncategorized.filter(hides.keep).map(row)}</ul></SortableContext>
           <SortableContext items={categories.map(({ cat }) => CAT + cat.id)} strategy={verticalListSortingStrategy}>
             {categories.map(({ cat, children }) => {
               const collapsed = !!prefs.collapsedCategories[cat.id];
-              const shown = collapsed ? children.filter((c) => c.id === channelId || channelUnread({ readStates } as any, c).unread) : children;
+              const visibleKids = children.filter(hides.keep);
+              const shown = collapsed ? visibleKids.filter((c) => c.id === channelId || channelUnread({ readStates } as any, c).unread) : visibleKids;
               return <CategorySection key={cat.id} cat={cat} items={shown} collapsed={collapsed} toggle={() => setPref('collapsedCategories', { ...prefs.collapsedCategories, [cat.id]: !collapsed })} canManage={canManage} onAdd={() => open({ kind: 'createChannel', guildId, parentId: cat.id })} render={row} />;
             })}
           </SortableContext>

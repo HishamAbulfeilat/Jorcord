@@ -1,7 +1,7 @@
 /** Context-menu builders. Pure functions over store state; navigation goes through a window event the shell listens to. */
 import { Perm } from '@jorcord/shared';
 import type { Channel, Id, Message } from '@jorcord/shared';
-import { AlarmClock, Bookmark, Forward, ArrowDown, ArrowUp, Bell, FolderMinus, FolderPlus as FolderAdd, Folder as FolderI, MonitorUp, Unlink, AtSign, BellOff, Check, Copy, Edit3, Hash, LogOut, MessageSquare, Pencil, Pin, PinOff, Reply, Settings, ShieldBan, Smile, Trash2, UserMinus, UserPlus, Link2, UserX, Clock, BookOpen, Plus, FolderPlus, Mail, Ban } from 'lucide-react';
+import { EyeOff, ListChecks, AlarmClock, Bookmark, Forward, ArrowDown, ArrowUp, Bell, FolderMinus, FolderPlus as FolderAdd, Folder as FolderI, MonitorUp, Unlink, AtSign, BellOff, Check, Copy, Edit3, Hash, LogOut, MessageSquare, Pencil, Pin, PinOff, Reply, Settings, ShieldBan, Smile, Trash2, UserMinus, UserPlus, Link2, UserX, Clock, BookOpen, Plus, FolderPlus, Mail, Ban } from 'lucide-react';
 import { api } from './api';
 import { queryClient } from './queryClient';
 import { useSocial } from '@/stores/social';
@@ -43,6 +43,8 @@ export function guildMenu(gid: Id): MenuItem[] {
     { label: t('Invite People'), icon: UserPlus, disabled: !can(p, Perm.CREATE_INVITE), onClick: () => ui().openModal({ kind: 'invite', guildId: gid }) },
     { label: muted ? t('Unmute Server') : t('Mute Server'), icon: BellOff, onClick: () => setMuted('guild', gid, !muted) },
     { label: t('Notification Settings'), icon: Bell, onClick: () => ui().openModal({ kind: 'notifSettings', scope: 'guild', id: gid }) },
+    { label: t('Hide Muted Channels'), icon: EyeOff, checked: !!ui().prefs.hideMutedChannels[gid], onClick: () => ui().setPref('hideMutedChannels', { ...ui().prefs.hideMutedChannels, [gid]: !ui().prefs.hideMutedChannels[gid] }) },
+    ...(g.features.includes('ONBOARDING') ? [{ label: t('Channels & Roles'), icon: ListChecks, onClick: () => ui().openModal({ kind: 'customize', guildId: gid }) }] : []),
     ...(g.rulesChannelId || g.description ? [{ label: t('View Server Welcome'), icon: BookOpen, onClick: () => ui().openModal({ kind: 'onboarding', guildId: gid }) }] : []),
     ...(canOpenGuildSettings(p) ? [{ label: t('Server Settings'), icon: Settings, onClick: () => ui().openSettings({ kind: 'guild', guildId: gid }) }] : []),
     ...(can(p, Perm.MANAGE_CHANNELS) ? [{ label: t('Create Channel'), icon: Plus, onClick: () => ui().openModal({ kind: 'createChannel', guildId: gid }) }, { label: t('Create Category'), icon: FolderPlus, onClick: () => ui().openModal({ kind: 'createCategory', guildId: gid }) }] : []),

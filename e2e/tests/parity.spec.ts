@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { newUser, createServer, openGuildSettings, openUserSettings, closeSettings, rest, guildId, sendMessage, msg, type User } from './helpers';
+import { newUser, createServer, openGuildSettings, openUserSettings, closeSettings, rest, guildId, sendMessage, msg, clickMenu, type User } from './helpers';
 
 let A: User;
 test.describe.configure({ mode: 'serial' });
@@ -113,5 +113,44 @@ test('safety: Safety Setup applies a preset; verification level blocks an unveri
     await expect(C.page.getByText(/paused/i).first()).toBeVisible();
     await C.ctx.close();
     await closeSettings(A.page);
+    await rest(A.page, 'PATCH', `/guilds/${gid}/safety`, { pauseInvites: false, verificationLevel: 0 }); // leave the server open for later tests
+  } finally { await B.ctx.close(); }
+});
+
+test('onboarding: newcomers answer questions, get the role and only their opted-in channels; Hide Muted Channels works', async ({ browser }) => {
+  const B = await newUser(browser, 'Joiner');
+  try {
+    const gid = await guildId(A.page);
+    const games = await rest(A.page, 'POST', `/guilds/${gid}/channels`, { name: 'games-chat', type: 'text' });
+    const art = await rest(A.page, 'POST', `/guilds/${gid}/channels`, { name: 'art-chat', type: 'text' });
+    const general = (await rest(A.page, 'GET', `/guilds/${gid}/channels`)).find((c: any) => c.name === 'general');
+    const gamer = await rest(A.page, 'POST', `/guilds/${gid}/roles`, { name: 'gamer' });
+    await rest(A.page, 'PUT', `/guilds/${gid}/onboarding`, { enabled: true, defaultChannelIds: [general.id], prompts: [{ title: 'What are you into?', required: true, options: [{ title: 'Games', emoji: '🎮', channelIds: [games.id], roleIds: [gamer.id] }, { title: 'Art', channelIds: [art.id], roleIds: [] }] }] });
+    const code = (await rest(A.page, 'POST', `/guilds/${gid}/invites`, {})).code;
+    await B.page.goto(`/invite/${code}`);
+    await B.page.getByRole('button', { name: /Accept Invite/ }).click();
+    await B.page.waitForURL(/\/channels\/\d+/);
+    const dlg = B.page.getByRole('dialog', { name: 'Channels & Roles' });
+    await expect(dlg.getByTestId('onboarding-questions')).toBeVisible();
+    await expect(dlg.getByRole('button', { name: 'Save' })).toBeDisabled(); // required question
+    await dlg.getByRole('checkbox', { name: /Games/ }).click();
+    await dlg.getByRole('button', { name: 'Save' }).click();
+    const nav = B.page.getByRole('navigation', { name: 'Channels' });
+    await expect(nav.getByRole('button', { name: /games-chat/ })).toBeVisible();
+    await expect(nav.getByRole('button', { name: /art-chat/ })).toHaveCount(0);
+    await B.page.getByTestId('browse-channels').click();
+    await expect(nav.getByRole('button', { name: /art-chat/ })).toBeVisible();
+    await B.page.getByTestId('browse-channels').click();
+    const me = await rest(B.page, 'GET', '/users/@me');
+    const mem = (await rest(A.page, 'GET', `/guilds/${gid}/members?limit=100`)).find((m: any) => m.user.id === me.id);
+    expect(mem.roles).toContain(gamer.id);
+    // Hide Muted Channels
+    await nav.getByRole('button', { name: /games-chat/ }).click({ button: 'right' });
+    await clickMenu(B.page, 'Mute Channel');
+    await expect(nav.getByRole('button', { name: /games-chat/ })).toBeVisible(); // still shown until asked
+    await nav.getByRole('button', { name: /general/ }).click(); // leave the muted channel so it is not "the open one"
+    await B.page.getByRole('button', { name: /server menu/ }).click();
+    await clickMenu(B.page, 'Hide Muted Channels');
+    await expect(nav.getByRole('button', { name: /games-chat/ })).toHaveCount(0);
   } finally { await B.ctx.close(); }
 });
