@@ -31,7 +31,7 @@ Get everything from the [latest release](https://github.com/HishamAbulfeilat/Jor
 
 ```
 git clone https://github.com/HishamAbulfeilat/Jorcord && cd Jorcord
-./scripts/init-env.sh        # writes .env with random secrets
+./scripts/init-env.sh        # writes .env with random secrets (Windows PowerShell: .\scripts\init-env.ps1)
 docker compose up -d         # server :3000, Postgres, Redis, LiveKit, MinIO
 ```
 Open the web app (hosted copy, or the downloaded desktop/mobile app) and enter `http://localhost:3000` as the server address.
