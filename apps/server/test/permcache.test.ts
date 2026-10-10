@@ -35,10 +35,10 @@ async function world(ownerEnv: TestEnv, plebEnv: TestEnv = ownerEnv) {
   };
   /** Pleb types over the gateway; resolves true iff the owner's socket got TYPING_START. */
   const typingReaches = async (channelId = general.id) => {
-    const before = ow.frames.filter((f) => f.t === 'TYPING_START').length;
+    const t0 = Date.now();
     pw.send({ op: Op.TYPING, d: { channelId } });
-    await sleep(150);
-    return ow.frames.filter((f) => f.t === 'TYPING_START').length > before;
+    await sleep(250);
+    return ow.frames.some((f) => f.t === 'TYPING_START' && f.d.channelId === channelId && f.d.timestamp >= t0);
   };
   return { oa, pa, owner, pleb, guild, general, ow, pw, invite, role, plebSees, typingReaches };
 }
