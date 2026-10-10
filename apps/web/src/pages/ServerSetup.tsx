@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Server } from 'lucide-react';
 import { Shell, inputCls, labelCls } from './AuthPages';
 import { Spinner } from '@/components/ui/primitives';
-import { getServerUrl, isNative, validateServer } from '@/lib/server';
+import { getServerUrl, isNative, isStaticHost, validateServer } from '@/lib/server';
 import { switchServer } from '@/lib/serverSwitch';
 import { t } from '@/i18n';
 
@@ -19,7 +19,7 @@ export function ServerSetupPage() {
     nav(sp.get('next') || '/login', { replace: true });
   };
   return (
-    <Shell title={t('Connect to a server')} sub={t('Enter the address of the Jorcord server you want to use.')} footer={<span>{isNative() ? t('You can change the server later from the login screen or in Settings.') : t('Leave this page to keep using this site.')}</span>}>
+    <Shell title={t('Connect to a server')} sub={t('Enter the address of the Jorcord server you want to use.')} footer={<span>{isNative() || isStaticHost() ? t('You can change the server later from the login screen or in Settings.') : t('Leave this page to keep using this site.')}</span>}>
       <form onSubmit={submit} noValidate data-testid="server-setup">
         <label className="mb-2 block"><span className={labelCls}>{t('Server address')} <span className="text-[#f23f43]">*</span></span>
           <div className="relative"><Server size={18} className="pointer-events-none absolute start-3 top-3 text-[#949ba4]" />

@@ -6,6 +6,8 @@ name: jorcord
 
 services:
   server:
+    # Pulls the published image; `docker compose up --build` builds it from source instead.
+    image: ghcr.io/hishamabulfeilat/jorcord-server:${JORCORD_VERSION:-latest}
     build: { context: ., dockerfile: apps/server/Dockerfile }
     restart: unless-stopped
     depends_on:

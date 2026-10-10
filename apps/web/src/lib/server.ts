@@ -46,7 +46,9 @@ export function setServerUrl(url: string | null) {
 export const onServerChange = (f: () => void) => { listeners.add(f); return () => { listeners.delete(f); }; };
 
 /** Wrappers must pick a server before anything else works. */
-export const needsServerSetup = () => isNative() && !getServerUrl();
+/** Static hosting (GitHub Pages, any CDN) has no API on its own origin either: build with VITE_STATIC_HOST=1. */
+export const isStaticHost = () => import.meta.env.VITE_STATIC_HOST === '1';
+export const needsServerSetup = () => (isNative() || isStaticHost()) && !getServerUrl();
 
 export const apiBase = () => `${getServerUrl()}/api/v1`;
 /** Origin used for links we hand to people (invites, message links): the server when running in a wrapper. */

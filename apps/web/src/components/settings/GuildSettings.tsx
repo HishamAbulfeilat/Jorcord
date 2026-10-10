@@ -228,7 +228,7 @@ function Bans({ guildId }: { guildId: string }) {
 function DeleteServer({ guildId }: { guildId: string }) {
   const g = useData((s) => s.guilds[guildId])!.guild; const open = useUI((s) => s.openModal);
   return (<><H1>{t('Delete Server')}</H1><p className="mb-4 text-muted">Deleting <b className="text-header">{g.name}</b> is permanent. All channels, messages, and members will be removed.</p>
-    <button className="btn btn-danger btn-lg" onClick={() => open({ kind: 'prompt', title: `Delete '${g.name}'`, label: `Type the server name (${g.name}) to confirm`, onSubmit: async (v) => { if (v !== g.name) { toast(t('Name did not match'), 'error'); return; } try { await api.guilds.delete(guildId); useData.getState().apply('GUILD_DELETE', { id: guildId }); useUI.getState().openSettings(null); location.assign('/channels/@me'); } catch (e) { toastError(e); } } })}>{t('Delete Server')}</button></>);
+    <button className="btn btn-danger btn-lg" onClick={() => open({ kind: 'prompt', title: `Delete '${g.name}'`, label: `Type the server name (${g.name}) to confirm`, onSubmit: async (v) => { if (v !== g.name) { toast(t('Name did not match'), 'error'); return; } try { await api.guilds.delete(guildId); useData.getState().apply('GUILD_DELETE', { id: guildId }); useUI.getState().openSettings(null); location.assign(import.meta.env.BASE_URL + 'channels/@me'); } catch (e) { toastError(e); } } })}>{t('Delete Server')}</button></>);
 }
 void ListChecks; void msgTime;
 

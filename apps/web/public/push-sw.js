@@ -8,7 +8,7 @@ self.addEventListener('push', (event) => {
     // The app shows its own in-app notification while a tab is visible and focused.
     if (wins.some((c) => c.visibilityState === 'visible' && c.focused)) return;
     await self.registration.showNotification(title, {
-      body: p.body || '', tag: p.tag || 'jorcord', renotify: true, icon: '/icon-192.png', badge: '/icon-192.png',
+      body: p.body || '', tag: p.tag || 'jorcord', renotify: true, icon: self.registration.scope + 'icon-192.png', badge: self.registration.scope + 'icon-192.png',
       data: { guildId: p.guildId || null, channelId: p.channelId || null, messageId: p.messageId || null, kind: p.kind || 'message' },
     });
   })());
@@ -23,6 +23,6 @@ self.addEventListener('notificationclick', (event) => {
     for (const c of wins) {
       if ('focus' in c) { await c.focus(); c.postMessage({ type: 'jorcord:goto', guildId: d.guildId || null, channelId: d.channelId || null }); return; }
     }
-    await self.clients.openWindow(path);
+    await self.clients.openWindow(self.registration.scope.replace(/\/$/, '') + path);
   })());
 });

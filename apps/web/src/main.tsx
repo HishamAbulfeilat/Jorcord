@@ -18,6 +18,6 @@ if (!isNative()) registerSW({ immediate: true });
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <QueryClientProvider client={qc}><BrowserRouter><ErrorBoundary><App /></ErrorBoundary></BrowserRouter></QueryClientProvider>
+    <QueryClientProvider client={qc}><BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, '')}><ErrorBoundary><App /></ErrorBoundary></BrowserRouter></QueryClientProvider>
   </React.StrictMode>,
 );

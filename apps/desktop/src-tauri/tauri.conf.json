@@ -71,7 +71,7 @@
     "updater": {
       "active": true,
       "pubkey": "REPLACE_WITH_OUTPUT_OF__tauri_signer_generate",
-      "endpoints": ["https://github.com/REPLACE_OWNER/Jorcord/releases/latest/download/latest.json"]
+      "endpoints": ["https://github.com/HishamAbulfeilat/Jorcord/releases/latest/download/latest.json"]
     }
   }
 }

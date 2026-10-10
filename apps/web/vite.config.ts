@@ -4,8 +4,12 @@ import { VitePWA } from 'vite-plugin-pwa';
 import path from 'node:path';
 
 const target = process.env.JORCORD_SERVER ?? 'http://localhost:3000';
+// Public base path. '/' for the server / Tauri / Capacitor; '/Jorcord/' for GitHub Pages (set VITE_BASE).
+const rawBase = process.env.VITE_BASE || '/';
+const base = rawBase.endsWith('/') ? rawBase : rawBase + '/';
 
 export default defineConfig({
+  base,
   resolve: { alias: { '@': path.resolve(__dirname, 'src') } },
   server: {
     port: 5173,
@@ -40,7 +44,7 @@ export default defineConfig({
       includeAssets: ['favicon.svg', 'icon-192.png', 'icon-512.png'],
       manifest: {
         name: 'Jorcord', short_name: 'Jorcord', description: 'Free, open chat for communities and friends.',
-        theme_color: '#1e1f22', background_color: '#313338', display: 'standalone', start_url: '/', scope: '/',
+        theme_color: '#1e1f22', background_color: '#313338', display: 'standalone', start_url: base, scope: base,
         icons: [
           { src: 'icon-192.png', sizes: '192x192', type: 'image/png' },
           { src: 'icon-512.png', sizes: '512x512', type: 'image/png' },
@@ -49,10 +53,10 @@ export default defineConfig({
         ],
       },
       workbox: {
-        navigateFallback: '/index.html',
+        navigateFallback: `${base}index.html`,
         // Web Push handlers (push + notificationclick) live in public/push-sw.js
         importScripts: ['push-sw.js'],
-        navigateFallbackDenylist: [/^\/api/, /^\/gateway/, /^\/files/],
+        navigateFallbackDenylist: [/^\/api/, /^\/gateway/, /^\/files/, new RegExp('^' + base.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(api|gateway|files)')],
         globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
         // the 4.8 MB RNNoise/WASM chunk is only needed when someone enables noise suppression: cache it on first use instead of on install
         globIgnores: ['**/noise_suppression-*.js'],

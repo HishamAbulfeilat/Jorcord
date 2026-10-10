@@ -16,6 +16,15 @@ android {
             ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    splits {
+        abi {
+            // Per-ABI APKs (small downloads) plus one universal APK that installs on anything. The AAB ignores splits.
+            enable true
+            reset()
+            include 'armeabi-v7a', 'arm64-v8a', 'x86_64'
+            universalApk true
+        }
+    }
     signingConfigs {
         release {
             // Provide via env (CI) or ~/.gradle/gradle.properties. Without them the release build is unsigned.
