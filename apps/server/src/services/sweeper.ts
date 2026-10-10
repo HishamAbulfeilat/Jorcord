@@ -3,6 +3,7 @@ import { finalizeDuePolls } from './polls';
 import { sweepEvents } from './scheduled';
 import { endEmptyStages } from './stage';
 import { channelsDTO } from './serializers';
+import { fireDueReminders } from './reminders';
 
 /** Thread auto-archive: no activity for `auto_archive_minutes` -> archived (THREAD_UPDATE). Atomic, so multi-node safe. */
 export async function archiveIdleThreads(ctx: Ctx) {
@@ -34,5 +35,6 @@ export async function runSweeps(ctx: Ctx) {
   await step('stages', () => endEmptyStages(ctx));
   await step('threads', () => archiveIdleThreads(ctx));
   await step('statuses', () => expireStatuses(ctx));
+  await step('reminders', () => fireDueReminders(ctx));
   await step('interactions', () => pruneInteractions(ctx));
 }

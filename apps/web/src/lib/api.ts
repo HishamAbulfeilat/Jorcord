@@ -1,7 +1,7 @@
 /** Typed REST client written against docs/CONTRACT.md. All calls go through the swappable transport. */
 import type {
   Attachment, AuditEntry, AutoModRule, Channel, Emoji, Guild, GuildFull, Invite, Member, Message, Relationship, ReadState, Role, SelfUser, Sticker, User, VoiceToken, Id, Presence, OverwriteDTO,
-  Application, ApplicationCommand, CommandPermissionOverwrite, CommandOptionChoice, CreatePoll, ForumTag, InteractionOptionValue, ModalSubmitRow, OAuthAuthorizePreview, OAuthAuthorizeResult, ScheduledEvent, StageInstance,
+  Reminder, Application, ApplicationCommand, CommandPermissionOverwrite, CommandOptionChoice, CreatePoll, ForumTag, InteractionOptionValue, ModalSubmitRow, OAuthAuthorizePreview, OAuthAuthorizeResult, ScheduledEvent, StageInstance,
 } from '@jorcord/shared';
 import { send } from './transport';
 
@@ -63,6 +63,15 @@ export const api = {
     removeRelationship: (userId: Id) => send({ method: 'DELETE', path: `/users/@me/relationships/${userId}` }),
     readStates: () => send<ReadState[]>({ method: 'GET', path: '/users/@me/read-states' }).then((x) => arr<ReadState>(x)),
     /** Friend request by username: the contract addresses relationships by user id, so resolve through a username lookup. */
+    /** Saved for later. */
+    savedIds: () => send<Id[]>({ method: 'GET', path: '/users/@me/saved/ids' }).then((x) => arr<Id>(x)),
+    saved: (q: { limit?: number; offset?: number } = {}) => send<Message[]>({ method: 'GET', path: '/users/@me/saved', query: q }).then((x) => arr<Message>(x)),
+    save: (channelId: Id, messageId: Id) => send({ method: 'PUT', path: `/users/@me/saved/${channelId}/${messageId}` }),
+    unsave: (channelId: Id, messageId: Id) => send({ method: 'DELETE', path: `/users/@me/saved/${channelId}/${messageId}` }),
+    /** Reminders: pass `inSeconds` or an absolute `remindAt`. */
+    reminders: () => send<Reminder[]>({ method: 'GET', path: '/users/@me/reminders' }).then((x) => arr<Reminder>(x)),
+    remind: (channelId: Id, messageId: Id, when: { inSeconds: number } | { remindAt: string }) => send<Reminder>({ method: 'POST', path: '/users/@me/reminders', body: { channelId, messageId, ...when } }),
+    deleteReminder: (id: Id) => send({ method: 'DELETE', path: `/users/@me/reminders/${id}` }),
     /** Private note about another user (author-only). */
     setNote: (userId: Id, note: string) => send({ method: 'PUT', path: `/users/@me/notes/${userId}`, body: { note } }),
     /** Inbox: recent @mentions (user, my roles, @everyone) in channels I can read. */

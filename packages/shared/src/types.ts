@@ -58,6 +58,8 @@ export interface Message {
   /** Set on a forwarded message: the original's content as it was when forwarded. */
   forward?: ForwardSnapshot | null;
 }
+/** A message reminder (private). `firedAt` is set once it is due. */
+export interface Reminder { id: Id; remindAt: string; firedAt: string | null; message: Message }
 export interface Invite { code: string; guildId: Id; channelId: Id; inviterId: Id; uses: number; maxUses: number | null; expiresAt: string | null; temporary: boolean; guild?: Pick<Guild, 'id' | 'name' | 'icon'>; approxMembers?: number }
 export interface Relationship { user: User; type: 'friend' | 'blocked' | 'incoming' | 'outgoing' }
 export interface Emoji { id: Id; guildId: Id; name: string; animated: boolean; url: string }

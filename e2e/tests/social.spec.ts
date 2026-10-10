@@ -107,3 +107,37 @@ test('forward a message into a DM: snapshot with a Forwarded label and a jump li
   await expect(msg(A.page, 'unrelated chatter').first()).toBeVisible();
   await expect(A.page).toHaveURL(/\/channels\/\d+\/\d+/);
 });
+
+test('save for later, remind me: Inbox tabs, live reminder toast when due', async () => {
+  await B.page.goto('/channels/@me');
+  await B.page.getByRole('navigation', { name: 'Servers' }).getByRole('button', { name: 'Social HQ' }).click();
+  await msg(B.page, 'check the inbox').first().click({ button: 'right' });
+  await clickMenu(B.page, 'Save for Later');
+  await expect(B.page.getByText('Saved for later')).toBeVisible();
+  await msg(B.page, 'check the inbox').first().click({ button: 'right' });
+  await expect(B.page.getByRole('menuitem', { name: 'Remove from Saved' })).toBeVisible();
+  await B.page.keyboard.press('Escape');
+  // schedule via the menu (5 minutes) ...
+  await msg(B.page, 'check the inbox').first().click({ button: 'right' });
+  await clickMenu(B.page, 'Remind Me');
+  await B.page.getByRole('menuitem', { name: 'in 5 minutes' }).click();
+  await expect(B.page.getByText(/We will remind you in 5 minutes/)).toBeVisible();
+  // ... and one that is due in ~12 seconds, through the API
+  const ch = await rest(B.page, 'GET', '/users/@me/saved'); const m0 = ch[0];
+  await rest(B.page, 'POST', '/users/@me/reminders', { channelId: m0.channelId, messageId: m0.id, inSeconds: 12 });
+  await B.page.getByRole('button', { name: 'Inbox' }).click();
+  const inbox = B.page.getByRole('dialog', { name: 'Inbox' });
+  await inbox.getByRole('tab', { name: 'Saved' }).click();
+  await expect(inbox.getByLabel('Saved messages').getByText('check the inbox')).toBeVisible();
+  await inbox.getByRole('tab', { name: 'Reminders' }).click();
+  await expect(inbox.getByLabel('Upcoming reminders').getByText('check the inbox').first()).toBeVisible();
+  // the due one fires through the sweeper and arrives live
+  await expect(inbox.getByLabel('Due reminders').getByText('check the inbox')).toBeVisible({ timeout: 40_000 });
+  await inbox.getByRole('button', { name: 'Dismiss reminder' }).click();
+  await expect(inbox.getByLabel('Due reminders')).toHaveCount(0);
+  await inbox.getByRole('tab', { name: 'Saved' }).click();
+  await inbox.getByLabel('Saved messages').getByText('check the inbox').hover();
+  await inbox.getByRole('button', { name: 'Remove from Saved' }).click();
+  await expect(inbox.getByText('Nothing saved yet')).toBeVisible();
+  await expect.poll(async () => (await rest(B.page, 'GET', '/users/@me/saved')).length).toBe(0);
+});

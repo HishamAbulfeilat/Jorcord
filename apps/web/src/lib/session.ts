@@ -18,6 +18,7 @@ import { usePlatform } from '@/stores/platform';
 import { isEphemeral } from '@/stores/messages';
 import { onAutocompleteResult, onInteractionFailed, onInteractionModal, settleForMessage } from './interactions';
 import { queryClient } from './queryClient';
+import { useSocial } from '@/stores/social';
 import { setRateLimitNotifier } from './transport';
 import { toast } from '@/stores/ui';
 
@@ -28,6 +29,7 @@ export function startSession(token: string) {
   const gw = getGateway();
   const names: (keyof Events)[] = ['READY', 'GUILD_CREATE', 'GUILD_UPDATE', 'GUILD_DELETE', 'CHANNEL_CREATE', 'CHANNEL_UPDATE', 'CHANNEL_DELETE', 'ROLE_CREATE', 'ROLE_UPDATE', 'ROLE_DELETE', 'MEMBER_ADD', 'MEMBER_UPDATE', 'MEMBER_REMOVE', 'TYPING_START', 'PRESENCE_UPDATE', 'USER_UPDATE', 'RELATIONSHIP_ADD', 'RELATIONSHIP_REMOVE', 'READ_STATE_UPDATE', 'VOICE_STATE_UPDATE', 'EMOJIS_UPDATE', 'STICKERS_UPDATE', 'THREAD_CREATE', 'THREAD_UPDATE', 'THREAD_DELETE', 'MESSAGE_REQUEST_UPDATE'];
   let readies = 0;
+  unsubs.push(gw.on('READY', () => { void useSocial.getState().load(); void queryClient.invalidateQueries({ queryKey: ['inbox', 'reminders'] }); }));
   for (const n of names) unsubs.push(gw.on(n, (d: any) => { if (n === 'READY' && ++readies > 1) { useMessages.setState({ ch: {} }); usePlatform.setState({ eventsLoaded: {}, stagesLoaded: {} }); } /* missed events after a failed resume: reload open channels */ useData.getState().apply(n, d); }));
   // a bot joining or leaving changes which commands the picker may offer
   for (const n of ['MEMBER_ADD', 'MEMBER_REMOVE'] as const) unsubs.push(gw.on(n, (d: any) => { const bot = d.user?.bot ?? useData.getState().users[d.userId]?.bot; if (bot) void queryClient.invalidateQueries({ queryKey: ['commands', d.guildId] }); }));
@@ -41,6 +43,12 @@ export function startSession(token: string) {
   const meId = () => useData.getState().me?.id;
   unsubs.push(gw.on('MESSAGE_POLL_VOTE_ADD', (d) => { useMessages.getState().pollVote(d.channelId, d.messageId, d.answerId, 1, d.userId === meId()); refreshPoll(d.channelId, d.messageId); }));
   unsubs.push(gw.on('MESSAGE_POLL_VOTE_REMOVE', (d) => { useMessages.getState().pollVote(d.channelId, d.messageId, d.answerId, -1, d.userId === meId()); refreshPoll(d.channelId, d.messageId); }));
+  unsubs.push(gw.on('SAVED_UPDATE', (d) => { useSocial.getState().setSaved(d.messageId, d.saved); void queryClient.invalidateQueries({ queryKey: ['inbox', 'saved'] }); }));
+  unsubs.push(gw.on('REMINDER_DUE', (r) => {
+    void queryClient.invalidateQueries({ queryKey: ['inbox', 'reminders'] });
+    toast(`Reminder: ${(r.message.content || r.message.attachments[0]?.filename || 'a message').slice(0, 80)}`, 'info');
+    window.dispatchEvent(new CustomEvent('jorcord:reminder', { detail: r }));
+  }));
   unsubs.push(gw.on('USER_NOTE_UPDATE', (d) => queryClient.setQueryData(['user', d.userId], (old: any) => (old ? { ...old, note: d.note } : old))));
   unsubs.push(gw.on('INTERACTION_FAILED', onInteractionFailed));
   unsubs.push(gw.on('INTERACTION_MODAL', onInteractionModal));
@@ -83,7 +91,7 @@ function refreshPoll(channelId: string, messageId: string) {
 export function endSession(reset = true) {
   unsubs.forEach((u) => u()); unsubs = [];
   getGateway().disconnect();
-  if (reset) { useData.getState().reset(); usePlatform.getState().reset(); }
+  if (reset) { useData.getState().reset(); usePlatform.getState().reset(); useSocial.getState().reset(); }
 }
 
 function onMessageCreate(m: Message) {

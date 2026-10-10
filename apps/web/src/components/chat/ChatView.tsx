@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Bell, BellOff, Hash, Menu, MessagesSquare, Pin, Search, Upload, Users, X, AtSign, ArrowLeft, UserPlus, Inbox } from 'lucide-react';
 import type { Channel } from '@jorcord/shared';
 import { useData } from '@/stores/data';
@@ -39,6 +40,7 @@ export function ChannelHeader({ channel }: { channel: Channel }) {
   const other = isDm ? (channel.recipients ?? []).find((r) => r.id !== me?.id) ?? channel.recipients?.[0] : undefined;
   const mentions = useData((s) => Object.values(s.readStates).reduce((a, r) => a + r.mentionCount, 0) - (s.readStates[channel.id]?.mentionCount ?? 0));
   const unreadElsewhere = mentions > 0;
+  const dueReminders = useQuery({ queryKey: ['inbox', 'reminders'], queryFn: api.users.reminders, staleTime: 60_000, retry: false }).data?.some((r) => r.firedAt) ?? false;
   return (
     <header className="flex h-12 shrink-0 items-center gap-2 px-2 shadow-[0_1px_0_rgb(0_0_0/0.2)] safe-top box-content md:px-4">
       {mobile && <button aria-label={t('Open navigation')} onClick={() => setLeft(true)} className="relative flex h-11 w-11 items-center justify-center text-interactive"><Menu size={24} />{unreadElsewhere && <span className="absolute end-2 top-2 h-2.5 w-2.5 rounded-full bg-danger" />}</button>}
@@ -57,7 +59,7 @@ export function ChannelHeader({ channel }: { channel: Channel }) {
         <HeaderButton label={t('Pinned Messages')} active={panel === 'pins'} onClick={() => toggle('pins')}><Pin size={24} /></HeaderButton>
         {isDm && channel.type === 'dm' && !mobile && <HeaderButton label={t('Add Friends to DM')} onClick={() => openModal({ kind: 'newDm' })}><UserPlus size={24} /></HeaderButton>}
         {(!isDm || channel.type === 'group_dm') && <HeaderButton label={t('Member List')} active={mobile ? undefined : panel === 'members'} onClick={() => (mobile ? setRight(true) : toggle('members'))}><Users size={24} /></HeaderButton>}
-        {!mobile && <HeaderButton label={t('Inbox')} onClick={() => openModal({ kind: 'inbox' })}><Inbox size={24} /></HeaderButton>}
+        {!mobile && <HeaderButton label={t('Inbox')} badge={dueReminders} onClick={() => openModal({ kind: 'inbox', tab: dueReminders ? 'reminders' : undefined })}><Inbox size={24} /></HeaderButton>}
         {mobile ? <HeaderButton label={t('Search')} onClick={() => toggle('search')}><Search size={22} /></HeaderButton> : (
           <button onClick={() => toggle('search')} aria-label={t('Search')} className={cx('flex h-6 w-36 items-center justify-between rounded bg-rail px-1.5 text-start text-[13px] text-muted transition-all hover:w-44', panel === 'search' && 'w-44')}>{t('Search')}<Search size={14} /></button>
         )}

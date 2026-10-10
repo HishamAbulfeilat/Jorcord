@@ -1,6 +1,6 @@
 /** Gateway protocol: JSON over WebSocket at /gateway. Opcode model mirrors Discord's. */
 import type { Application, ApplicationCommand, Interaction, Modal, ScheduledEvent, StageInstance, CommandOptionChoice } from './platform';
-import type { Channel, Guild, Id, Member, Message, Presence, ReadState, Relationship, Role, SelfUser, User, VoiceState, Emoji, Sticker } from './types';
+import type { Channel, Guild, Id, Member, Message, Presence, ReadState, Relationship, Reminder, Role, SelfUser, User, VoiceState, Emoji, Sticker } from './types';
 
 export const Op = { DISPATCH: 0, HEARTBEAT: 1, IDENTIFY: 2, PRESENCE_UPDATE: 3, VOICE_STATE_UPDATE: 4, RESUME: 6, RECONNECT: 7, REQUEST_MEMBERS: 8, TYPING: 9, HELLO: 10, HEARTBEAT_ACK: 11 } as const;
 
@@ -58,6 +58,10 @@ export interface Events {
   /** To the caller's own sessions: a private note about another user changed (`note: null` = removed). */
   /** To me: a DM became (or stopped being) a message request. */
   MESSAGE_REQUEST_UPDATE: { channelId: Id; request: boolean };
+  /** To me: a reminder came due (the message is the one I asked to be reminded about). */
+  REMINDER_DUE: Reminder;
+  /** To me: my saved-for-later list changed on another session. */
+  SAVED_UPDATE: { channelId: Id; messageId: Id; saved: boolean };
   USER_NOTE_UPDATE: { userId: Id; note: string | null };
   GUILD_MEMBERS_CHUNK: { guildId: Id; members: Member[]; notFound: Id[]; chunkIndex: number; chunkCount: number; nonce?: string };
 }

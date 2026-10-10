@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Perm } from '@jorcord/shared';
+import { runSweeps } from '../src/services/sweeper';
 import { Api, WsClient, startServer, type Client, type TestEnv } from './helpers';
 
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64');
@@ -239,5 +240,77 @@ describe('message forwarding', () => {
     expect(r.status).toBe(201);
     expect(r.body.forward.attachments[0].url).toBe(up.body.url);
     expect((await env.app.inject({ url: up.body.url })).statusCode).toBe(200);
+  });
+});
+
+describe('saved messages and reminders', () => {
+  it('saves and lists messages, rechecks access, caps and cleans up', async () => {
+    const { owner, guild, members: [a, b], general } = await guildWith('sa', 'sb');
+    const m1 = (await say(b!, general.id, 'keep this')).body, m2 = (await say(b!, general.id, 'and this')).body;
+    const w = await WsClient.connect(env.port); await w.identify(a!.token);
+    expect((await api.req('PUT', `/users/@me/saved/${general.id}/${m1.id}`, a!.token)).status).toBe(204);
+    expect((await w.waitEvent('SAVED_UPDATE', (d) => d.messageId === m1.id)).d.saved).toBe(true);
+    await api.req('PUT', `/users/@me/saved/${general.id}/${m2.id}`, a!.token);
+    await api.req('PUT', `/users/@me/saved/${general.id}/${m2.id}`, a!.token); // idempotent
+    expect((await api.req('GET', '/users/@me/saved', a!.token)).body.map((m: any) => m.id)).toEqual([m2.id, m1.id]);
+    expect((await api.req('GET', '/users/@me/saved/ids', a!.token)).body.sort()).toEqual([m1.id, m2.id].sort());
+    expect((await api.req('GET', '/users/@me/saved?limit=1&offset=1', a!.token)).body.map((m: any) => m.id)).toEqual([m1.id]);
+    // private to me
+    expect((await api.req('GET', '/users/@me/saved', b!.token)).body).toEqual([]);
+    // wrong channel / unknown message
+    expect((await api.req('PUT', `/users/@me/saved/${general.id}/999`, a!.token)).status).toBe(404);
+    // losing access hides them (and a stranger cannot save them)
+    const priv = (await api.req('POST', `/guilds/${guild.id}/channels`, owner.token, { name: 'vault', type: 'text' })).body;
+    await api.req('PUT', `/channels/${priv.id}/permissions/${guild.id}`, owner.token, { type: 'role', allow: '0', deny: String(Perm.VIEW_CHANNEL) });
+    const s1 = (await say(owner, priv.id, 'secret')).body;
+    expect((await api.req('PUT', `/users/@me/saved/${priv.id}/${s1.id}`, a!.token)).status).toBe(404);
+    await api.req('PUT', `/channels/${priv.id}/permissions/${a!.id}`, owner.token, { type: 'member', allow: String(Perm.VIEW_CHANNEL | Perm.READ_MESSAGE_HISTORY), deny: '0' });
+    expect((await api.req('PUT', `/users/@me/saved/${priv.id}/${s1.id}`, a!.token)).status).toBe(204);
+    expect((await api.req('GET', '/users/@me/saved', a!.token)).body.map((m: any) => m.id)).toContain(s1.id);
+    await api.req('DELETE', `/channels/${priv.id}/permissions/${a!.id}`, owner.token);
+    expect((await api.req('GET', '/users/@me/saved', a!.token)).body.map((m: any) => m.id)).not.toContain(s1.id);
+    // unsave + message deletion removes rows
+    expect((await api.req('DELETE', `/users/@me/saved/${general.id}/${m1.id}`, a!.token)).status).toBe(204);
+    await api.req('DELETE', `/channels/${general.id}/messages/${m2.id}`, b!.token);
+    expect((await api.req('GET', '/users/@me/saved', a!.token)).body.map((m: any) => m.id)).not.toContain(m2.id);
+    expect((await api.req('GET', '/users/@me/saved', null)).status).toBe(401);
+    w.close();
+  });
+
+  it('creates, lists, deletes and fires reminders (live event), only for the owner', async () => {
+    const { members: [a, b], general } = await guildWith('ra', 'rb');
+    const m = (await say(b!, general.id, 'remember me')).body;
+    const w = await WsClient.connect(env.port); await w.identify(a!.token);
+    const bad = (body: object) => api.req('POST', '/users/@me/reminders', a!.token, { channelId: general.id, messageId: m.id, ...body });
+    expect((await bad({})).status).toBe(400);
+    expect((await bad({ inSeconds: 2 })).status).toBe(400);
+    expect((await bad({ inSeconds: 60, remindAt: new Date(Date.now() + 90_000).toISOString() })).status).toBe(400);
+    expect((await bad({ remindAt: new Date(Date.now() - 1000).toISOString() })).status).toBe(400);
+    expect((await api.req('POST', '/users/@me/reminders', a!.token, { channelId: general.id, messageId: '999', inSeconds: 60 })).status).toBe(404);
+    const r = await bad({ inSeconds: 3600 });
+    expect(r.status).toBe(201); expect(r.body.message.id).toBe(m.id); expect(r.body.firedAt).toBeNull();
+    expect((await api.req('GET', '/users/@me/reminders', a!.token)).body.map((x: any) => x.id)).toEqual([r.body.id]);
+    expect((await api.req('GET', '/users/@me/reminders', b!.token)).body).toEqual([]);
+    // not yet due: sweeping does nothing
+    await runSweeps(env.ctx); await w.expectNone((f) => f.t === 'REMINDER_DUE', 200);
+    // make it due, sweep, live event + marked fired
+    await env.ctx.db.query(`UPDATE reminders SET remind_at = now() - interval '1 second' WHERE id = $1`, [r.body.id]);
+    await runSweeps(env.ctx);
+    const ev = await w.waitEvent('REMINDER_DUE', (d) => d.id === r.body.id);
+    expect(ev.d.message.content).toBe('remember me'); expect(ev.d.firedAt).toBeTruthy();
+    await runSweeps(env.ctx); // fires once only
+    expect(w.frames.filter((f) => f.t === 'REMINDER_DUE').length).toBe(1);
+    expect((await api.req('GET', '/users/@me/reminders', a!.token)).body[0].firedAt).toBeTruthy();
+    // another user cannot delete mine; the owner can
+    await api.req('DELETE', `/users/@me/reminders/${r.body.id}`, b!.token);
+    expect((await api.req('GET', '/users/@me/reminders', a!.token)).body.length).toBe(1);
+    expect((await api.req('DELETE', `/users/@me/reminders/${r.body.id}`, a!.token)).status).toBe(204);
+    expect((await api.req('GET', '/users/@me/reminders', a!.token)).body).toEqual([]);
+    // reminders vanish with their message
+    const m3 = (await say(b!, general.id, 'gone soon')).body;
+    await api.req('POST', '/users/@me/reminders', a!.token, { channelId: general.id, messageId: m3.id, inSeconds: 60 });
+    await api.req('DELETE', `/channels/${general.id}/messages/${m3.id}`, b!.token);
+    expect((await api.req('GET', '/users/@me/reminders', a!.token)).body).toEqual([]);
+    w.close();
   });
 });

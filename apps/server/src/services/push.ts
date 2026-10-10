@@ -10,7 +10,7 @@ import type { Ctx } from '../ctx';
 import { safeLookup } from '../lib/ssrf';
 import { viewersAmong } from './perms';
 
-export type PushKind = 'dm' | 'mention' | 'reply' | 'message' | 'friend_request' | 'friend_accept' | 'call';
+export type PushKind = 'dm' | 'mention' | 'reply' | 'message' | 'friend_request' | 'friend_accept' | 'call' | 'reminder';
 
 export interface PushPayload {
   kind: PushKind; title: string; body: string; tag: string;
