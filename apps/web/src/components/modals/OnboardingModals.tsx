@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Id } from '@jorcord/shared';
 import { api } from '@/lib/api';
-import { useData } from '@/stores/data';
+import { useData, findChannel } from '@/stores/data';
+import { Perm } from '@jorcord/shared';
+import { can, effectivePerms } from '@/lib/perms';
 import { toast, toastError } from '@/stores/ui';
 import { Modal, Spinner } from '@/components/ui/primitives';
 import { cx } from '@/lib/format';
@@ -53,6 +55,34 @@ export function CustomizeModal({ guildId, close }: { guildId: Id; close: () => v
           </fieldset>
         ))}
       </div>
+    </Modal>
+  );
+}
+
+/** "Follow Channel": pick one of my channels (where I may manage webhooks) to receive this announcement channel's published messages. */
+export function FollowChannelModal({ channelId, close }: { channelId: Id; close: () => void }) {
+  const guilds = useData((s) => s.guilds); const me = useData((s) => s.me); const src = useData((s) => findChannel(s, channelId));
+  const options = useMemo(() => {
+    if (!me) return [] as { guildId: Id; guildName: string; channels: { id: Id; name: string }[] }[];
+    return Object.values(guilds).map((g) => {
+      const mem = g.members[me.id]; if (!mem) return null;
+      const roles = Object.values(g.roles);
+      const chans = Object.values(g.channels).filter((c) => (c.type === 'text' || c.type === 'announcement') && c.id !== channelId && can(effectivePerms({ guild: g.guild, roles, member: mem }, c), Perm.VIEW_CHANNEL, Perm.MANAGE_WEBHOOKS)).sort((a, b) => a.position - b.position);
+      return chans.length ? { guildId: g.guild.id, guildName: g.guild.name, channels: chans.map((c) => ({ id: c.id, name: c.name ?? '' })) } : null;
+    }).filter(Boolean) as { guildId: Id; guildName: string; channels: { id: Id; name: string }[] }[];
+  }, [guilds, me, channelId]);
+  const [target, setTarget] = useState<Id>(''); const [busy, setBusy] = useState(false);
+  const go = async () => { setBusy(true); try { await api.channels.follow(channelId, target); toast(t('Following! Published messages will arrive in that channel.'), 'success'); close(); } catch (e) { toastError(e); setBusy(false); } };
+  return (
+    <Modal title={t('Follow Channel')} onClose={close} width={440} footer={<><button className="btn btn-link" onClick={close}>{t('Cancel')}</button><button className="btn btn-primary btn-lg sm:ms-auto" disabled={!target || busy} onClick={go}>{t('Follow')}</button></>}>
+      <p className="mb-3 text-sm text-muted">{t('Get messages published in #{name} delivered to a channel of yours.', { name: src?.name ?? '' })}</p>
+      {!options.length ? <p className="text-sm text-muted">{t('You need the Manage Webhooks permission in a channel to follow into it.')}</p> : (
+        <label className="block text-xs font-bold uppercase text-header">{t('Deliver to')}
+          <select className="field mt-1" aria-label={t('Deliver to')} value={target} onChange={(e) => setTarget(e.target.value)}>
+            <option value="">{t('Choose a channel')}</option>
+            {options.map((o) => <optgroup key={o.guildId} label={o.guildName}>{o.channels.map((c) => <option key={c.id} value={c.id}>#{c.name}</option>)}</optgroup>)}
+          </select>
+        </label>)}
     </Modal>
   );
 }

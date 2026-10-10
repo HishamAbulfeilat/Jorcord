@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Bell, BellOff, Hash, Menu, MessagesSquare, Pin, Search, Upload, Users, X, AtSign, ArrowLeft, UserPlus, Inbox } from 'lucide-react';
+import { Megaphone, Bell, BellOff, Hash, Menu, MessagesSquare, Pin, Search, Upload, Users, X, AtSign, ArrowLeft, UserPlus, Inbox } from 'lucide-react';
 import type { Channel } from '@jorcord/shared';
 import { useData } from '@/stores/data';
 import { useUI } from '@/stores/ui';
@@ -54,6 +54,7 @@ export function ChannelHeader({ channel }: { channel: Channel }) {
         {isDm && <HeaderButton label={t('Start Voice Call')} onClick={() => void startCall(channel.id, false)}><Phone size={22} /></HeaderButton>}
         {isDm && <HeaderButton label={t('Start Video Call')} onClick={() => void startCall(channel.id, true)}><Video size={24} /></HeaderButton>}
         {isThread && (can(myChannelPerms(channel.id), Perm.MANAGE_THREADS) || channel.ownerId === me?.id) && <HeaderButton label={t('Thread Settings')} onClick={() => openModal({ kind: 'threadSettings', channelId: channel.id })}><Cog size={22} /></HeaderButton>}
+        {channel.type === 'announcement' && <HeaderButton label={t('Follow Channel')} onClick={() => openModal({ kind: 'followChannel', channelId: channel.id })}><Megaphone size={22} /></HeaderButton>}
         {!isDm && !isThread && <HeaderButton label={t('Threads')} active={panel === 'threads'} onClick={() => toggle('threads')}><MessagesSquare size={24} /></HeaderButton>}
         {!mobile && <HeaderButton label={muted ? 'Unmute Channel' : 'Mute Channel'} onClick={() => setPref('mutedChannels', { ...prefs.mutedChannels, [channel.id]: !muted })}>{muted ? <BellOff size={24} /> : <Bell size={24} />}</HeaderButton>}
         <HeaderButton label={t('Pinned Messages')} active={panel === 'pins'} onClick={() => toggle('pins')}><Pin size={24} /></HeaderButton>

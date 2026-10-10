@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { newUser, createServer, openGuildSettings, openUserSettings, closeSettings, rest, guildId, sendMessage, msg, clickMenu, type User } from './helpers';
+import { newUser, createServer, openGuildSettings, openUserSettings, closeSettings, rest, guildId, sendMessage, msg, clickMenu, hoverMsg, type User } from './helpers';
 
 let A: User;
 test.describe.configure({ mode: 'serial' });
@@ -152,5 +152,40 @@ test('onboarding: newcomers answer questions, get the role and only their opted-
     await B.page.getByRole('button', { name: /server menu/ }).click();
     await clickMenu(B.page, 'Hide Muted Channels');
     await expect(nav.getByRole('button', { name: /games-chat/ })).toHaveCount(0);
+    await rest(A.page, 'PUT', `/guilds/${gid}/onboarding`, { enabled: false }); // later tests join this server too
+  } finally { await B.ctx.close(); }
+});
+
+test('announcements: follow a channel into your own server, publish, and the copy arrives with its origin', async ({ browser }) => {
+  const B = await newUser(browser, 'Follower');
+  try {
+    const gid = await guildId(A.page);
+    const ann = await rest(A.page, 'POST', `/guilds/${gid}/channels`, { name: 'news', type: 'announcement' });
+    const code = (await rest(A.page, 'POST', `/guilds/${gid}/invites`, {})).code;
+    await B.page.goto(`/invite/${code}`);
+    await B.page.getByRole('button', { name: /Accept Invite/ }).click();
+    await B.page.waitForURL(/\/channels\/\d+/);
+    await createServer(B.page, 'Follower HQ');
+    const bGuild = await guildId(B.page);
+    const bGeneral = (await rest(B.page, 'GET', `/guilds/${bGuild}/channels`)).find((c: any) => c.name === 'general');
+    // follow from the announcement channel's header
+    await B.page.goto(`/channels/${gid}/${ann.id}`);
+    await B.page.getByRole('button', { name: 'Follow Channel' }).click();
+    const dlg = B.page.getByRole('dialog', { name: 'Follow Channel' });
+    await dlg.getByLabel('Deliver to').selectOption(bGeneral.id);
+    await dlg.getByRole('button', { name: 'Follow', exact: true }).click();
+    await expect(B.page.getByText(/Following!/)).toBeVisible();
+    // Alice publishes
+    await A.page.goto(`/channels/${gid}/${ann.id}`);
+    await sendMessage(A.page, 'Release 2.0 is out');
+    await (await hoverMsg(A.page, 'Release 2.0 is out')).getByRole('button', { name: 'Publish' }).click();
+    await expect(msg(A.page, 'Release 2.0 is out').getByTestId('published-mark')).toBeVisible();
+    await B.page.goto(`/channels/${bGuild}/${bGeneral.id}`);
+    const copy = msg(B.page, 'Release 2.0 is out');
+    await expect(copy).toBeVisible();
+    await expect(copy.getByTestId('crosspost-origin')).toContainText('Sound Lab');
+    await expect(copy.getByTestId('crosspost-origin')).toContainText('#news');
+    // unfollow from the channel's settings
+    await rest(B.page, 'GET', `/channels/${bGeneral.id}/follows`).then((l) => expect(l).toHaveLength(1));
   } finally { await B.ctx.close(); }
 });

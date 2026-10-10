@@ -119,7 +119,7 @@ export async function messagesDTO(ctx: Ctx, rows: any[], viewerId: string | null
     pinned: r.pinned, stickerIds: r.sticker_ids, threadId: r.thread_id ?? null, webhookId: r.webhook_id ?? null,
     components: (r.components ?? []) as Component[], flags: r.flags ?? 0, applicationId: r.application_id ?? null, interaction: r.interaction ?? null,
     poll: r.poll ? pollDTO(r, votes, voters) : null,
-    forward: r.forward ?? null,
+    forward: r.forward ?? null, crosspost: r.crosspost ?? null,
   }));
 }
 export async function messageDTO(ctx: Ctx, row: any, viewerId: string | null): Promise<Message> { return (await messagesDTO(ctx, [row], viewerId))[0]!; }

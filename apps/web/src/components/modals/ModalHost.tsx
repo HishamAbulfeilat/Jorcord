@@ -18,7 +18,7 @@ import { joinDiscoverable } from '@/components/home/DiscoveryPage';
 import { myChannelPerms } from '@/lib/session';
 import { publicOrigin } from '@/lib/server';
 import { useStreamer } from '@/lib/streamer';
-import { CustomizeModal } from './OnboardingModals';
+import { CustomizeModal, FollowChannelModal } from './OnboardingModals';
 import { CustomStatusModal, FolderModal, NotifSettingsModal, OnboardingModal, ShortcutsModal, StreamerStartModal } from './ExtraModals';
 import { VoiceSettingsModal } from '@/voice/VoiceSettings';
 import { CreatePollModal, EventEditorModal, EventsModal, InteractionModal, PollVotersModal, ScreeningModal, StageModal, ThreadSettingsModal } from './PlatformModals';
@@ -224,6 +224,7 @@ export function ModalHost() {
     case 'notifSettings': return <NotifSettingsModal scope={m.scope} id={m.id} close={close} />;
     case 'forward': return <ForwardModal message={m.message} close={close} />;
     case 'inbox': return <InboxModal initialTab={m.tab} close={close} />;
+    case 'followChannel': return <FollowChannelModal channelId={m.channelId} close={close} />;
     case 'customize': return <CustomizeModal guildId={m.guildId} close={close} />;
     case 'onboarding': return <OnboardingModal guildId={m.guildId} step={m.step} close={close} />;
     case 'streamerStart': return <StreamerStartModal close={close} />;

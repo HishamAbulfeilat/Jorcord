@@ -18,7 +18,7 @@ Rank = order in which this pass implements items (R1 first). `-` = not planned i
 | R8 | Avatar decorations, profile effects, name plates, server tag (guild tag beside name) | DONE (`services/cosmetics.ts`, `cosmetics.css`, `CosmeticsPicker.tsx`) | 4 | only accent/banner/`themeColors` (`profileTheme.ts`) |
 | R9 | Activities / rich presence (Playing X, Listening, Streaming, Competing) shown in member list, profile and friends "Now Playing" | DONE (`routes/activities.ts`, `ActivityLine.tsx`, bot-sdk `setActivity`) | 4 | `PRESENCE_UPDATE` has status+customStatus only |
 | R10 | Activity privacy (hide activity) DONE; Hide muted channels DONE (`channelHide.ts`), onboarding "Browse Channels" toggle DONE | 3 | no setting |
-| R11 | Announcement channels: follow + crosspost | todo | 3 | channel type exists, no routes |
+| R11 | Announcement channels: follow + crosspost | DONE (`routes/follows.ts`, `FollowsList.tsx`, `FollowChannelModal`) | 3 | channel type exists, no routes |
 | R12 | NSFW age-gate interstitial | DONE (`services/agegate.ts`, `ChatView.tsx` AgeGate) | 3 | `nsfw` flag stored, no gate in web |
 | R13 | Server welcome screen (channel list) + onboarding questions (channels & roles prompts) | DONE (`routes/onboarding.ts`, `OnboardingModals.tsx`, `OnboardingTab.tsx`) | 3 | rules screening + welcome modal done (`ExtraModals.tsx` OnboardingModal); no questions/default channels |
 | R14 | User-created guild templates (share code), widget, vanity URL claim UI, server insights/analytics | partial/todo | 2 | built-in presets only (`services/guilds.ts`); vanity PATCH exists |

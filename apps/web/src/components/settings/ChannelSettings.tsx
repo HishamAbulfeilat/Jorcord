@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Hash, Lock, Plus, Tag, Trash2, Settings as Cog, Shield, User as UserIcon, Webhook as WebhookIcon } from 'lucide-react';
 import { WebhooksList } from './Webhooks';
+import { FollowsList } from './FollowsList';
 import { t } from '@/i18n';
 import { AUTO_ARCHIVE_DURATIONS } from '@jorcord/shared';
 import type { Channel, ForumTag, OverwriteDTO } from '@jorcord/shared';
@@ -73,7 +74,7 @@ export function ChannelSettings({ channelId, close }: { channelId: string; close
         <SaveBar dirty={dirtyOws} busy={busy} onSave={saveOws} onReset={() => setOws(ch.overwrites ?? [])} />
       </>)}
       {tab === 'tags' && ch.type === 'forum' && <ForumTagsTab ch={ch} />}
-      {tab === 'integrations' && (<><H1>{t('Integrations')}</H1><p className="mb-4 text-sm text-muted">{t('Webhooks let other services post messages into this channel.')}</p><WebhooksList channelId={ch.id} /></>)}
+      {tab === 'integrations' && (<><H1>{t('Integrations')}</H1><p className="mb-4 text-sm text-muted">{t('Webhooks let other services post messages into this channel.')}</p><WebhooksList channelId={ch.id} /><FollowsList channelId={ch.id} announcement={ch.type === 'announcement'} /></>)}
       {tab === 'delete' && (<><H1>{t('Delete Channel')}</H1><p className="mb-4 text-muted">{t('Deleting a channel removes all of its messages permanently.')}</p><button className="btn btn-danger btn-lg" onClick={() => openModal({ kind: 'confirm', title: 'Delete Channel', body: `Are you sure you want to delete #${ch.name}? This cannot be undone.`, confirmLabel: 'Delete Channel', danger: true, onConfirm: async () => { try { await api.channels.delete(ch.id); } catch (e) { toastError(e); } } })}>{t('Delete Channel')}</button></>)}
     </SettingsLayout>
   );

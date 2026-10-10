@@ -1,4 +1,4 @@
-import type { ServerTag } from './parity';
+import type { CrosspostOrigin, ServerTag } from './parity';
 import type { Component, FieldErrors, ForumTag, Poll } from './platform';
 /** Wire types shared by server and clients. IDs are snowflake strings; bigints (permissions) travel as strings. */
 export type Id = string;
@@ -64,6 +64,8 @@ export interface Message {
   interaction?: { id: Id; type: number; name: string | null; userId: Id } | null;
   /** Set on a forwarded message: the original's content as it was when forwarded. */
   forward?: ForwardSnapshot | null;
+  /** Published from an announcement channel this channel follows (flags & IS_CROSSPOST). */
+  crosspost?: CrosspostOrigin | null;
 }
 /** A message reminder (private). `firedAt` is set once it is due. */
 export interface Reminder { id: Id; remindAt: string; firedAt: string | null; message: Message }

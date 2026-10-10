@@ -68,3 +68,14 @@ export interface Onboarding {
   /** my answers (null until I completed it); only on GET */ responses?: OnboardingResponse | null;
 }
 export const ONBOARDING_LIMITS = { prompts: 5, optionsPerPrompt: 12 } as const;
+
+// ---------- announcement channels: follow + crosspost ----------
+/** Set on a message that was published from an announcement channel into a following channel. */
+export interface CrosspostOrigin { guildId: Id; guildName: string; channelId: Id; channelName: string; messageId: Id }
+/** Someone (a channel elsewhere) follows an announcement channel. `target` is filled for the source side, `source` for the target side. */
+export interface ChannelFollow {
+  id: Id; sourceChannelId: Id; targetChannelId: Id; targetGuildId: Id; createdAt: string;
+  source?: { channelName: string; guildId: Id; guildName: string; guildIcon: string | null };
+  target?: { channelName: string; guildId: Id; guildName: string };
+}
+export const MAX_FOLLOWERS_PER_CHANNEL = 25;

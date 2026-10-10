@@ -1,7 +1,7 @@
 /** Typed REST client written against docs/CONTRACT.md. All calls go through the swappable transport. */
 import type {
   Activity, Attachment, AuditEntry, AutoModRule, Channel, Emoji, Guild, GuildFull, Invite, Member, Message, Relationship, ReadState, Role, SelfUser, Sticker, User, VoiceToken, Id, Presence, OverwriteDTO,
-  Reminder, SoundboardSound, Onboarding, OnboardingResponse, GuildSafety, SafetyPreset, Application, ApplicationCommand, CommandPermissionOverwrite, CommandOptionChoice, CreatePoll, ForumTag, InteractionOptionValue, ModalSubmitRow, OAuthAuthorizePreview, OAuthAuthorizeResult, ScheduledEvent, StageInstance,
+  Reminder, SoundboardSound, ChannelFollow, Onboarding, OnboardingResponse, GuildSafety, SafetyPreset, Application, ApplicationCommand, CommandPermissionOverwrite, CommandOptionChoice, CreatePoll, ForumTag, InteractionOptionValue, ModalSubmitRow, OAuthAuthorizePreview, OAuthAuthorizeResult, ScheduledEvent, StageInstance,
 } from '@jorcord/shared';
 import { send } from './transport';
 
@@ -182,6 +182,12 @@ export const api = {
     send: (b: InteractionInput) => send<{ id: Id }>({ method: 'POST', path: '/interactions', body: b }),
   },
   channels: {
+    /** Announcement channels: follow into a channel of mine, publish a message, list/stop follows. */
+    follow: (sourceId: Id, targetChannelId: Id) => send<ChannelFollow>({ method: 'POST', path: `/channels/${sourceId}/followers`, body: { webhookChannelId: targetChannelId } }),
+    followers: (id: Id) => send<ChannelFollow[]>({ method: 'GET', path: `/channels/${id}/followers` }).then((x) => arr<ChannelFollow>(x)),
+    follows: (id: Id) => send<ChannelFollow[]>({ method: 'GET', path: `/channels/${id}/follows` }).then((x) => arr<ChannelFollow>(x)),
+    unfollow: (followId: Id) => send({ method: 'DELETE', path: `/follows/${followId}` }),
+    crosspost: (channelId: Id, messageId: Id) => send<Message>({ method: 'POST', path: `/channels/${channelId}/messages/${messageId}/crosspost` }),
     patch: (id: Id, b: Partial<Channel>) => send<Channel>({ method: 'PATCH', path: `/channels/${id}`, body: b }),
     delete: (id: Id) => send({ method: 'DELETE', path: `/channels/${id}` }),
     putOverwrite: (id: Id, ow: OverwriteDTO) => send({ method: 'PUT', path: `/channels/${id}/permissions/${ow.id}`, body: { type: ow.type, allow: ow.allow, deny: ow.deny } }),

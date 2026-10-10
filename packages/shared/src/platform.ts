@@ -45,7 +45,7 @@ export const AuditActionType = {
   APPLICATION_COMMAND_PERMISSION_UPDATE: 121, AUTOMOD_RULE_CREATE: 140, AUTOMOD_RULE_UPDATE: 141, AUTOMOD_RULE_DELETE: 142, AUTOMOD_BLOCK: 143, AUTOMOD_ALERT: 144,
   STAGE_INVITE_SPEAKER: 300, STAGE_SUPPRESS_SPEAKER: 301, VOICE_MOVE: 302, VOICE_DISCONNECT: 303, VOICE_MODERATE: 304,
   SOUNDBOARD_SOUND_CREATE: 150, SOUNDBOARD_SOUND_UPDATE: 151, SOUNDBOARD_SOUND_DELETE: 152,
-  RAID_DETECTED: 160, SAFETY_UPDATE: 161, ONBOARDING_UPDATE: 162,
+  RAID_DETECTED: 160, SAFETY_UPDATE: 161, ONBOARDING_UPDATE: 162, CHANNEL_FOLLOW_CREATE: 170, CHANNEL_FOLLOW_DELETE: 171,
   POLL_END: 310, APPLICATION_UPDATE: 311, APPLICATION_TOKEN_RESET: 312, FORUM_TAG_UPDATE: 313,
 } as const;
 export type AuditAction = keyof typeof AuditActionType;
@@ -83,7 +83,7 @@ export const InteractionType = { PING: 1, APPLICATION_COMMAND: 2, MESSAGE_COMPON
 export const InteractionCallbackType = { PONG: 1, CHANNEL_MESSAGE_WITH_SOURCE: 4, DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE: 5, DEFERRED_UPDATE_MESSAGE: 6, UPDATE_MESSAGE: 7, APPLICATION_COMMAND_AUTOCOMPLETE_RESULT: 8, MODAL: 9 } as const;
 export const INTERACTION_TOKEN_TTL_MS = 15 * 60_000;
 export const INTERACTION_ACK_DEADLINE_MS = 3000;
-export const MessageFlags = { SUPPRESS_EMBEDS: 1 << 2, EPHEMERAL: 1 << 6, LOADING: 1 << 7 } as const;
+export const MessageFlags = { CROSSPOSTED: 1 << 0, IS_CROSSPOST: 1 << 1, SUPPRESS_EMBEDS: 1 << 2, EPHEMERAL: 1 << 6, LOADING: 1 << 7 } as const;
 export interface InteractionOptionValue { name: string; type: number; value?: string | number | boolean; options?: InteractionOptionValue[]; focused?: boolean }
 export interface Interaction {
   id: Id; applicationId: Id; type: number; token: string; version: 1; guildId: Id | null; channelId: Id | null; user: User; member?: unknown;

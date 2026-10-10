@@ -1,5 +1,5 @@
 import { memo, useEffect, useRef, useState } from 'react';
-import { CornerUpLeft, Hash, LogIn, MoreHorizontal, Pencil, Pin, Reply, SmilePlus, Trash2, Rocket, Phone, MessagesSquare, AlertCircle, RotateCw } from 'lucide-react';
+import { Megaphone, CornerUpLeft, Hash, LogIn, MoreHorizontal, Pencil, Pin, Reply, SmilePlus, Trash2, Rocket, Phone, MessagesSquare, AlertCircle, RotateCw } from 'lucide-react';
 import type { Message } from '@jorcord/shared';
 import { Perm } from '@jorcord/shared';
 import { Avatar } from '@/components/ui/Avatar';
@@ -9,7 +9,7 @@ import { AttachmentView, EmbedView } from './Attachments';
 import { Forward as ForwardIcon } from 'lucide-react';
 import { ReactionBar, addReaction } from './Reactions';
 import { useData, refreshStickers } from '@/stores/data';
-import { useUI, toastError } from '@/stores/ui';
+import { useUI, toast, toastError } from '@/stores/ui';
 import { useMessages, type Pending } from '@/stores/messages';
 import { api } from '@/lib/api';
 import { cx, displayName, fmtFull, fmtStamp, fmtTime, msgTime, fileUrl } from '@/lib/format';
@@ -90,6 +90,7 @@ function Toolbar({ m, onMenu, startEdit }: { m: Message; onMenu: (e: React.Mouse
       {react && <B label="Add Reaction" onClick={(e) => openPopout({ kind: 'emoji', rect: e.currentTarget.getBoundingClientRect(), guildId: m.guildId ?? undefined, onPick: (p) => addReaction(m, p) })}><SmilePlus size={20} /></B>}
       {mine ? <B label="Edit" onClick={startEdit}><Pencil size={18} /></B> : send ? <B label="Reply" onClick={() => setReply(m.channelId, m.id)}><Reply size={20} /></B> : null}
       {mine && send && <B label="Reply" onClick={() => setReply(m.channelId, m.id)}><Reply size={20} /></B>}
+      {m.guildId && !(m.flags && (m.flags & 1)) && !(m.flags && (m.flags & 2)) && (m.type === 'default' || m.type === 'reply') && useData.getState().guilds[m.guildId]?.channels[m.channelId]?.type === 'announcement' && (mine || can(perms, Perm.MANAGE_MESSAGES)) && <B label="Publish" onClick={() => api.channels.crosspost(m.channelId, m.id).then((u) => { useMessages.getState().update(u); toast('Published to followers', 'success'); }).catch(toastError)}><Megaphone size={18} /></B>}
       {canPinMessage(perms, isDm) && <B label={m.pinned ? 'Unpin' : 'Pin'} onClick={() => (m.pinned ? api.messages.unpin : api.messages.pin)(m.channelId, m.id).then(() => useMessages.getState().update({ ...m, pinned: !m.pinned })).catch(toastError)}><Pin size={18} className={m.pinned ? 'fill-current' : ''} /></B>}
       {canDeleteMessage(m, me.id, perms) && <B danger label="Delete" onClick={() => openModal({ kind: 'confirm', title: 'Delete Message', body: 'Are you sure you want to delete this message?', confirmLabel: 'Delete', danger: true, onConfirm: () => api.messages.delete(m.channelId, m.id).then(() => useMessages.getState().remove(m.channelId, m.id)).catch(toastError) })}><Trash2 size={18} /></B>}
       <B label="More" onClick={onMenu}><MoreHorizontal size={20} /></B>
@@ -137,6 +138,8 @@ export const MessageItem = memo(function MessageItem({ m, grouped, highlighted }
       {m.attachments.length > 0 && <div className="mt-1 flex flex-col items-start gap-1">{m.attachments.map((a) => <AttachmentView key={a.id} a={a} />)}</div>}
       {stickers && stickers.length > 0 && <div className="mt-1 flex gap-2">{stickers.map((s) => <img loading="lazy" decoding="async" key={s.id} src={fileUrl(s.url) ?? s.url} alt={s.name} title={s.name} className="h-[160px] w-[160px] object-contain" />)}</div>}
       {m.embeds.length > 0 && <div className="mt-1 flex flex-col items-start gap-1">{m.embeds.map((e, i) => <EmbedView key={i} e={e} />)}</div>}
+      {!!m.flags && !!(m.flags & 1) && <div className="mt-0.5 flex items-center gap-1 text-[11px] font-medium text-muted" data-testid="published-mark"><Megaphone size={11} aria-hidden />{t('Published')}</div>}
+      {m.crosspost && <div className="mt-0.5 flex items-center gap-1 text-[11px] font-medium text-muted" data-testid="crosspost-origin"><Megaphone size={11} aria-hidden />{t('Followed from')} {m.crosspost.guildName} · #{m.crosspost.channelName}</div>}
       {m.pinned && <div className="mt-0.5 flex items-center gap-1 text-[11px] font-medium text-muted" data-testid="pinned-mark"><Pin size={11} aria-hidden />{t('Pinned')}</div>}
       {m.poll && <PollView m={m} />}
       {!!m.components?.length && !isLoadingMsg(m) && <MessageComponents m={m} />}

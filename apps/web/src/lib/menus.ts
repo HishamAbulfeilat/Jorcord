@@ -1,7 +1,7 @@
 /** Context-menu builders. Pure functions over store state; navigation goes through a window event the shell listens to. */
 import { Perm } from '@jorcord/shared';
 import type { Channel, Id, Message } from '@jorcord/shared';
-import { EyeOff, ListChecks, AlarmClock, Bookmark, Forward, ArrowDown, ArrowUp, Bell, FolderMinus, FolderPlus as FolderAdd, Folder as FolderI, MonitorUp, Unlink, AtSign, BellOff, Check, Copy, Edit3, Hash, LogOut, MessageSquare, Pencil, Pin, PinOff, Reply, Settings, ShieldBan, Smile, Trash2, UserMinus, UserPlus, Link2, UserX, Clock, BookOpen, Plus, FolderPlus, Mail, Ban } from 'lucide-react';
+import { Megaphone, EyeOff, ListChecks, AlarmClock, Bookmark, Forward, ArrowDown, ArrowUp, Bell, FolderMinus, FolderPlus as FolderAdd, Folder as FolderI, MonitorUp, Unlink, AtSign, BellOff, Check, Copy, Edit3, Hash, LogOut, MessageSquare, Pencil, Pin, PinOff, Reply, Settings, ShieldBan, Smile, Trash2, UserMinus, UserPlus, Link2, UserX, Clock, BookOpen, Plus, FolderPlus, Mail, Ban } from 'lucide-react';
 import { api } from './api';
 import { queryClient } from './queryClient';
 import { useSocial } from '@/stores/social';
@@ -80,6 +80,7 @@ export function channelMenu(c: Channel): MenuItem[] {
     ...(isVoice && gid && can(p, Perm.STREAM) && canShareScreen() ? [{ label: t('Go Live'), icon: MonitorUp, onClick: () => void goLive(c.id) }] : []),
     ...(gid && c.type !== 'category' ? [{ label: t('Invite People'), icon: UserPlus, disabled: !can(p, Perm.CREATE_INVITE), onClick: () => ui().openModal({ kind: 'invite', guildId: gid, channelId: c.id }) }] : []),
     { label: t('Copy Link'), icon: Link2, onClick: () => copyText(`${publicOrigin()}/channels/${gid ?? '@me'}/${c.id}`).then(() => toast(t('Link copied'), 'success')) },
+    ...(c.type === 'announcement' ? [{ label: t('Follow Channel'), icon: Megaphone, onClick: () => ui().openModal({ kind: 'followChannel', channelId: c.id }) }] : []),
     ...(c.type !== 'category' ? [{ label: muted ? t('Unmute Channel') : t('Mute Channel'), icon: BellOff, onClick: () => setMuted('channel', c.id, !muted) }, { label: t('Notification Settings'), icon: Bell, onClick: () => ui().openModal({ kind: 'notifSettings', scope: 'channel' as const, id: c.id }) }] : []),
     ...(manage ? [{ separator: true }, { label: t('Edit Channel'), icon: Pencil, onClick: () => ui().openModal({ kind: 'channelSettings', channelId: c.id }) },
       { label: t('Delete Channel'), icon: Trash2, danger: true, onClick: () => ui().openModal({ kind: 'confirm', title: c.type === 'category' ? t('Delete Category') : t('Delete Channel'), body: t('Are you sure you want to delete {name}? This cannot be undone.', { name: c.name ?? '' }), confirmLabel: t('Delete'), danger: true, onConfirm: () => api.channels.delete(c.id).catch(toastError) }) }] : []),

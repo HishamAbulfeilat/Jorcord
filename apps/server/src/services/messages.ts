@@ -1,4 +1,4 @@
-import { LIMITS, Perm, has, snowflake, type Attachment, type Component, type ForwardSnapshot, type Message } from '@jorcord/shared';
+import { LIMITS, Perm, has, snowflake, type Attachment, type Component, type CrosspostOrigin, type ForwardSnapshot, type Message } from '@jorcord/shared';
 import type { Ctx } from '../ctx';
 import { ApiError, badRequest, forbidden } from '../errors';
 import { checkAutomod } from './automod';
@@ -40,6 +40,8 @@ export interface NewMessage {
   allowEmpty?: boolean;
   /** Forwarded message: snapshot of the original (see routes/messages forward handling). */
   forward?: ForwardSnapshot | null;
+  /** Crossposted copy: where it came from. */
+  crosspost?: CrosspostOrigin | null;
 }
 
 export async function createMessage(ctx: Ctx, m: NewMessage): Promise<Message> {
@@ -70,6 +72,7 @@ export async function createMessage(ctx: Ctx, m: NewMessage): Promise<Message> {
       /https?:\/\//i.test(content), attachments.some((a) => a.contentType.startsWith('image/')), attachments.length > 0, m.webhookUsername ?? null, m.webhookAvatar ?? null,
       JSON.stringify(m.components ?? []), m.flags ?? 0, m.applicationId ?? null, m.interaction ? JSON.stringify(m.interaction) : null, m.poll ? JSON.stringify(m.poll) : null, m.pollExpiry ?? null]);
   if (m.forward) await ctx.db.query('UPDATE messages SET forward = $2::jsonb WHERE id = $1', [id, JSON.stringify(m.forward)]);
+  if (m.crosspost) await ctx.db.query('UPDATE messages SET crosspost = $2::jsonb WHERE id = $1', [id, JSON.stringify(m.crosspost)]);
   await ctx.db.query('UPDATE channels SET last_message_id = $2, archived = false, activity_at = now() WHERE id = $1', [channel.id, id]);
   // author has read their own message
   await ctx.db.query(`INSERT INTO read_states (user_id, channel_id, last_read_id, mention_count) VALUES ($1,$2,$3,0)
