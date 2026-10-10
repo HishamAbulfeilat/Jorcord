@@ -291,3 +291,37 @@ test('connections: add a link, others see it on the profile, hiding removes it',
     await closeSettings(A.page);
   } finally { await B.ctx.close(); }
 });
+
+test('multi-account: add a second account, switch back and forth, signing out continues with the other', async ({ browser }) => {
+  const C = await newUser(browser, 'Switcher');
+  try {
+    const first = C.username;
+    // a second account (created through the API; the app only needs its credentials)
+    const second = `second${Math.random().toString(36).slice(2, 7)}`;
+    await C.page.evaluate(async (name) => { const r = await fetch('/api/v1/auth/register', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: `${name}@example.test`, username: name, password: 'correct-horse-battery' }) }); if (!r.ok) throw new Error(await r.text()); }, second);
+    await openUserSettings(C.page, 'My Account');
+    const dlg = C.page.getByRole('dialog', { name: 'User Settings' });
+    await expect(dlg.getByTestId('account-row')).toHaveCount(1);
+    await dlg.getByRole('button', { name: 'Add Account' }).click();
+    await C.page.waitForURL(/\/login/);
+    await C.page.getByLabel('Email').fill(`${second}@example.test`);
+    await C.page.getByLabel('Password').fill('correct-horse-battery');
+    await C.page.getByRole('button', { name: /log in/i }).click();
+    await C.page.waitForURL(/\/channels\/@me/);
+    expect((await rest(C.page, 'GET', '/users/@me')).username).toBe(second);
+    await openUserSettings(C.page, 'My Account');
+    await expect(dlg.getByTestId('account-row')).toHaveCount(2);
+    // switch to the first account: the page reloads as that user, with no leftovers of the other
+    await dlg.getByRole('button', { name: /Switch to Switcher/ }).click();
+    await C.page.waitForURL(/\/channels\/@me/);
+    await expect.poll(async () => (await rest(C.page, 'GET', '/users/@me').catch(() => ({ username: '' }))).username).toBe(first);
+    await openUserSettings(C.page, 'My Account');
+    await expect(dlg.getByTestId('account-row').filter({ hasText: 'Current' })).toContainText(first);
+    // signing out of this one continues with the remaining account
+    await dlg.getByRole('button', { name: 'Log Out' }).click();
+    await C.page.waitForURL(/\/channels\/@me/);
+    await expect.poll(async () => (await rest(C.page, 'GET', '/users/@me').catch(() => ({ username: '' }))).username).toBe(second);
+    await openUserSettings(C.page, 'My Account');
+    await expect(dlg.getByTestId('account-row')).toHaveCount(1);
+  } finally { await C.ctx.close(); }
+});

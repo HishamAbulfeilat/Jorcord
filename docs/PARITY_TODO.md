@@ -23,7 +23,7 @@ Rank = order in which this pass implements items (R1 first). `-` = not planned i
 | R13 | Server welcome screen (channel list) + onboarding questions (channels & roles prompts) | DONE (`routes/onboarding.ts`, `OnboardingModals.tsx`, `OnboardingTab.tsx`) | 3 | rules screening + welcome modal done (`ExtraModals.tsx` OnboardingModal); no questions/default channels |
 | R14 | User-created guild templates (share code), widget, vanity URL claim UI, server insights/analytics | DONE (`routes/guildextras.ts`, `services/templates.ts`, `ServerExtrasTabs.tsx`, `TemplatePage.tsx`) | 2 | built-in presets only (`services/guilds.ts`); vanity PATCH exists |
 | R15 | GIF favorites, saved media | DONE (`routes/favorites.ts`, `gifFavorites.ts`, EmojiPicker Favorites tab) | 3 | `GET /gifs/*` only |
-| R16 | Account switching (multi-account) | todo | 3 | single session store (`lib/session.ts`) |
+| R16 | Account switching (multi-account) | DONE (`lib/accounts.ts`, `AccountsSection.tsx`, status menu) | 3 | single session store (`lib/session.ts`) |
 | R17 | Connections on profile (links to Twitch/GitHub...) | DONE (`routes/connections.ts`, `ConnectionsTab.tsx`; self-declared + verify-by-code, no third-party OAuth) | 2 | none |
 | R18 | Soundboard (guild sounds + play in voice) | DONE (`routes/soundboard.ts`, `components/Soundboard.tsx`) | 4 | upload/limits, play over gateway event, USE_SOUNDBOARD, per-user + global mute, voice dock button |
 | R19 | Message edit history | todo | 1 | `edited_at` only; Discord itself does not show history, skip |
@@ -38,3 +38,14 @@ Mark unread (`lib/menus.ts` messageMenu), mark server/folder/channel read, serve
 ## C. Implementation log
 
 Updated as items land (see git log, prefix `parity:`).
+
+Second pass (soundboard through multi-account), one commit each, prefix `parity:`:
+1. Soundboard (R18): `routes/soundboard.ts`, gateway `VOICE_CHANNEL_EFFECT_SEND` to the people in the voice channel (no LiveKit track, so voice reconnect is untouched), `components/Soundboard.tsx` (voice dock button, settings tab, per-user/global mute).
+2. Activities (R9, R10 activity privacy): `routes/activities.ts`, `PRESENCE_UPDATE.activities`, bot-sdk `setActivity`.
+3. Cosmetics (R8): free CSS catalog (`cosmetics.css`), `services/cosmetics.ts`, server tags.
+4. Safety Setup (R6): verification levels, raid protection, media blur (no classifier), default notifications.
+5. Onboarding questions + Hide Muted Channels (R13, R10).
+6. Announcement follow/crosspost (R11).
+7. Templates, widget, insights, vanity UI (R14).
+8. GIF favorites (R15). 9. Connections (R17, self-declared + verify by code). 10. Multi-account (R16).
+Still open: R19 (skipped on purpose), R20, R21, R22; AutoMod alert channel/regex (R7).

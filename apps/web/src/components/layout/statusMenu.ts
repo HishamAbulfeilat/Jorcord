@@ -1,4 +1,6 @@
-import { Circle, Moon, MinusCircle, EyeOff, Settings, Smile, Video, X } from 'lucide-react';
+import { Circle, Moon, MinusCircle, EyeOff, Settings, Smile, UserPlus, Users, Video, X } from 'lucide-react';
+import { useAuth } from '@/stores/auth';
+import { accountsHere, beginAddAccount, switchAccount } from '@/lib/accounts';
 import type { Presence } from '@jorcord/shared';
 import { api } from '@/lib/api';
 import { useData } from '@/stores/data';
@@ -28,5 +30,6 @@ export const statusMenu = (): MenuItem[] => {
     { separator: true },
     { label: t('Streamer Mode'), icon: Video, checked: ui.prefs.streamerMode, onClick: () => ui.setPref('streamerMode', !ui.prefs.streamerMode) },
     { label: t('Edit Profile'), icon: Settings, onClick: () => ui.openSettings({ kind: 'user', tab: 'profile' }) },
+    { label: t('Switch Accounts'), icon: Users, children: [...accountsHere().map((a) => ({ label: a.displayName || a.username, checked: a.id === s.me?.id, disabled: a.id === s.me?.id, onClick: () => { switchAccount(a.id, (x, r) => useAuth.getState().set(x, r)); } })), { separator: true }, { label: t('Add Account'), icon: UserPlus, onClick: () => beginAddAccount() }] },
   ];
 };

@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { bindTokenStore } from '@/lib/transport';
+import { syncActiveTokens } from '@/lib/accounts';
 
 interface AuthState { access: string | null; refresh: string | null; set(a: string | null, r: string | null): void; clear(): void }
 const KEY = 'jorcord.auth.v1';
@@ -8,7 +9,7 @@ const persist = (a: string | null, r: string | null) => { try { a ? localStorage
 
 export const useAuth = create<AuthState>((set) => ({
   access: load().access ?? null, refresh: load().refresh ?? null,
-  set: (access, refresh) => { persist(access, refresh); set({ access, refresh }); },
+  set: (access, refresh) => { persist(access, refresh); syncActiveTokens(access, refresh); set({ access, refresh }); },
   clear: () => { persist(null, null); set({ access: null, refresh: null }); },
 }));
 

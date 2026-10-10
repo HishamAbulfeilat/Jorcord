@@ -5,6 +5,7 @@ import { useData } from '@/stores/data';
 import { useUI } from '@/stores/ui';
 import { api } from '@/lib/api';
 import { startSession, endSession } from '@/lib/session';
+import { activeAccountId, forgetAccount, rememberAccount } from '@/lib/accounts';
 import { AppShell } from '@/components/layout/AppShell';
 import { lazyNamed, Lazy } from '@/lib/lazy';
 // route-level code splitting: only the shell + the page being opened are downloaded
@@ -62,8 +63,8 @@ function Protected() {
   useEffect(() => {
     if (!access) return;
     let dead = false;
-    api.users.me().then((u) => { if (dead) return; useData.getState().setMe(u); startSession(useAuth.getState().access!); })
-      .catch((e: ApiException) => { if (dead) return; if (e.status === 401) useAuth.getState().clear(); else setErr(e.message); });
+    api.users.me().then((u) => { if (dead) return; useData.getState().setMe(u); rememberAccount(u, { access: useAuth.getState().access, refresh: useAuth.getState().refresh }); startSession(useAuth.getState().access!); })
+      .catch((e: ApiException) => { if (dead) return; if (e.status === 401) { const id = activeAccountId(); if (id) forgetAccount(id); useAuth.getState().clear(); } else setErr(e.message); });
     return () => { dead = true; };
   }, [!!access, tries]); // eslint-disable-line
   useEffect(() => { if (!access) endSession(true); }, [access]);
@@ -94,7 +95,7 @@ export default function App() {
       <NativeBridge />
       <Lazy fallback={<Splash />}><Routes>
         <Route path="/connect" element={<ServerSetupPage />} />
-        <Route path="/login" element={access ? <Navigate to="/channels/@me" replace /> : <LoginPage />} />
+        <Route path="/login" element={access && !new URLSearchParams(loc.search).has('add') ? <Navigate to="/channels/@me" replace /> : <LoginPage />} />
         <Route path="/register" element={access ? <Navigate to="/channels/@me" replace /> : <RegisterPage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />

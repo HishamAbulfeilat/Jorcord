@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Link2, Accessibility, Bell, Globe, Keyboard, LogOut, Mic, Palette, Shield, User as UserIcon, UserCircle, Monitor, Radio, Laptop, Smile, Code2, Lock } from 'lucide-react';
 import { PrivacyTab } from './PrivacyTab';
 import { ConnectionsTab } from './ConnectionsTab';
+import { AccountsSection } from './AccountsSection';
 import { NotificationsTab, StreamerTab, DesktopTab, ServerSection, ThemePicker, ThemeColorsPicker } from './UserSettingsExtra';
 import { isTauri } from '@/lib/server';
 import { LOCALES } from '@/i18n';
@@ -61,6 +62,7 @@ function Account({ go }: { go: (t: string) => void }) {
       <div className="flex items-center gap-4 px-4 pb-4"><div className="-mt-8 rounded-full border-[6px] border-[rgb(var(--side))]"><Avatar user={me} size={80} presence /></div><div className="mt-2 text-xl font-bold text-header">{me.displayName || me.username}</div><button className="btn btn-primary ms-auto" onClick={() => go('profile')}>{t('Edit User Profile')}</button></div>
       <dl className="m-4 space-y-4 rounded-lg bg-[rgb(var(--modal-alt))] p-4"><div><dt className="label !mb-0.5">{t('Username')}</dt><dd className="text-header">{me.username}</dd></div><div><dt className="label !mb-0.5">{t('Email')}</dt><dd className="text-header" data-testid="account-email">{st.hidePersonal ? maskEmail(me.email) : me.email}{!me.verified && <span className="ms-2 text-xs text-warn">unverified</span>}</dd></div></dl></div>
     <ServerSection />
+    <AccountsSection />
     <H3>{t('Password')}</H3>
     <form className="max-w-sm" onSubmit={async (e) => { e.preventDefault(); setBusy(true); try { await api.auth.password({ currentPassword: pw.cur, newPassword: pw.next }); toast(t('Password changed'), 'success'); setPw({ cur: '', next: '' }); } catch (err) { toastError(err); } setBusy(false); }}>
       <Field label={t('Current Password')}><input type="password" autoComplete="current-password" className="field" value={pw.cur} onChange={(e) => setPw({ ...pw, cur: e.target.value })} /></Field>
