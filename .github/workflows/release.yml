@@ -6,7 +6,6 @@ name: Release
 on:
   push:
     tags: ['v*']
-    branches: ['claude/discord-clone-design-cdj43b']   # TEMP dry-run trigger (workflow_dispatch needs the file on the default branch)
   workflow_dispatch:
     inputs:
       publish_pages:
@@ -56,6 +55,8 @@ jobs:
       - id: d
         run: |
           set -e
+          # drop leftovers of failed dry runs
+          for old in $(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq '.[] | select(.draft and (.tag_name|startswith("dryrun-"))) | .id'); do gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/$old"; done
           V=${{ needs.prepare.outputs.version }}
           if [ "${{ needs.prepare.outputs.is_release }}" = true ]; then TAG="v$V"; else TAG="dryrun-${{ github.run_id }}"; fi
           sed "s/VERSION/$V/g" .github/release-notes.md > notes.md
