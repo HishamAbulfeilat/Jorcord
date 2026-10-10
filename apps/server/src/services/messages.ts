@@ -1,7 +1,7 @@
 import { LIMITS, Perm, has, snowflake, type Attachment, type Component, type ForwardSnapshot, type Message } from '@jorcord/shared';
 import type { Ctx } from '../ctx';
 import { ApiError, badRequest, forbidden } from '../errors';
-import { audit } from './guilds';
+import { checkAutomod } from './automod';
 import { loadGuildPerms, viewersAmong, permsFor, loadOverwrites } from './perms';
 import { channelDTO, messageDTO } from './serializers';
 import { unfurl } from './unfurl';
@@ -26,31 +26,6 @@ export async function parseMentions(ctx: Ctx, channel: any, content: string, sen
   return { mentions, mentionRoles, mentionEveryone };
 }
 
-export async function checkAutomod(ctx: Ctx, guildId: string, userId: string, memberRoleIds: string[], perms: bigint, content: string, mentionCount: number) {
-  if (has(perms, Perm.MANAGE_GUILD)) return; // administrators/managers are exempt
-  const rules = await ctx.db.query('SELECT * FROM automod_rules WHERE guild_id = $1 AND enabled', [guildId]);
-  const lower = content.toLowerCase();
-  for (const r of rules) {
-    if ((r.exempt_roles as string[]).some((x) => memberRoleIds.includes(x))) continue;
-    let hit = false;
-    if (r.trigger === 'keyword') hit = (r.keywords as string[]).some((k) => k && lower.includes(k.toLowerCase()));
-    else if (r.trigger === 'link') hit = /https?:\/\//i.test(content);
-    else if (r.trigger === 'mention_spam') hit = mentionCount >= 5;
-    else if (r.trigger === 'spam') {
-      const [c] = await ctx.db.query('SELECT count(*)::int AS n FROM messages WHERE guild_id = $1 AND author_id = $2 AND id > $3', [guildId, userId, snowflake(Date.now() - 5000)]);
-      hit = c.n >= 5;
-    }
-    if (!hit) continue;
-    if (r.action === 'alert') { await audit(ctx, guildId, userId, 'AUTOMOD_ALERT', r.id, { content: content.slice(0, 200) }, r.name); continue; }
-    if (r.action === 'timeout') {
-      await ctx.db.query(`UPDATE members SET timeout_until = now() + interval '60 seconds' WHERE guild_id = $1 AND user_id = $2`, [guildId, userId]);
-      await ctx.pcache.invalidate({ k: 'member', guildId, userId });
-    }
-    await audit(ctx, guildId, userId, 'AUTOMOD_BLOCK', r.id, null, r.name);
-    throw new ApiError(400, 'AUTOMOD_BLOCKED', 'Your message was blocked by AutoMod', { rule: r.name });
-  }
-}
-
 export interface NewMessage {
   channel: any; authorId: string; content: string; type?: Message['type']; replyTo?: string | null;
   attachments?: Attachment[]; stickerIds?: string[]; webhookId?: string | null; senderPerms: bigint;
@@ -73,7 +48,7 @@ export async function createMessage(ctx: Ctx, m: NewMessage): Promise<Message> {
   const attachments = m.attachments ?? [];
   if (!content.trim() && !attachments.length && !(m.stickerIds?.length) && !m.components?.length && !m.poll && !m.allowEmpty && !m.forward && m.type !== 'join' && m.type !== 'thread_created' && m.type !== 'poll_result') throw badRequest('Cannot send an empty message');
   const ment = await parseMentions(ctx, channel, content, m.senderPerms);
-  if (channel.guild_id && !m.skipChecks) await checkAutomod(ctx, channel.guild_id, m.authorId, m.memberRoleIds ?? [], m.senderPerms, m.forward ? `${content}\n${m.forward.content}` : content, ment.mentions.length + ment.mentionRoles.length);
+  if (channel.guild_id && !m.skipChecks) await checkAutomod(ctx, channel.guild_id, m.authorId, m.memberRoleIds ?? [], m.senderPerms, m.forward ? `${content}\n${m.forward.content}` : content, ment.mentions.length + ment.mentionRoles.length, [channel.id, ...(channel.parent_id ? [channel.parent_id] : [])]);
   if (m.replyTo) {
     const [ref] = await ctx.db.query('SELECT 1 AS x FROM messages WHERE id = $1 AND channel_id = $2', [m.replyTo, channel.id]);
     if (!ref) throw badRequest('Replied-to message not found in this channel');

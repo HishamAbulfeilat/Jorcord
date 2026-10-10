@@ -68,7 +68,13 @@ export interface VoiceState { userId: Id; guildId: Id | null; channelId: Id | nu
 export interface AuditEntry { id: Id; guildId: Id; actorId: Id; action: string; /** numeric AuditActionType (additive) */ actionType?: number; targetId: Id | null; changes: unknown; reason: string | null; createdAt: string }
 export interface ReadState { channelId: Id; lastReadId: Id | null; mentionCount: number }
 export interface Webhook { id: Id; guildId: Id; channelId: Id; name: string; avatar: string | null; token?: string }
-export interface AutoModRule { id: Id; guildId: Id; name: string; enabled: boolean; trigger: 'keyword' | 'spam' | 'mention_spam' | 'link'; keywords: string[]; action: 'block' | 'timeout' | 'alert'; exemptRoles: Id[] }
+export type AutoModTrigger = 'keyword' | 'keyword_preset' | 'spam' | 'mention_spam' | 'link';
+export type AutoModPreset = 'profanity' | 'sexual_content' | 'slurs';
+export interface AutoModRule {
+  id: Id; guildId: Id; name: string; enabled: boolean; trigger: AutoModTrigger; keywords: string[]; action: 'block' | 'timeout' | 'alert'; exemptRoles: Id[];
+  /** Additive (AutoMod depth). */
+  presets?: AutoModPreset[]; allowList?: string[]; mentionLimit?: number; exemptChannels?: Id[]; timeoutSeconds?: number; customMessage?: string | null;
+}
 export interface VoiceToken { token: string; url: string; room: string }
 export interface Page<T> { items: T[]; nextCursor: Id | null }
 export interface ApiError { code: string; message: string; details?: unknown; /** Discord-style numeric code (additive; see ErrorCode). */ errorCode?: number; /** Field-level validation errors (additive). */ errors?: FieldErrors; retry_after?: number; global?: boolean }

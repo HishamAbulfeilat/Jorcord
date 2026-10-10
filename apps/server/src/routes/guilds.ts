@@ -204,11 +204,23 @@ export function guildRoutes(app: FastifyInstance, ctx: Ctx) {
   });
 
   // ---------- automod ----------
-  const ruleRow = (r: any) => ({ id: r.id, guildId: r.guild_id, name: r.name, enabled: r.enabled, trigger: r.trigger, keywords: r.keywords, action: r.action, exemptRoles: r.exempt_roles });
+  const ruleRow = (r: any) => ({ id: r.id, guildId: r.guild_id, name: r.name, enabled: r.enabled, trigger: r.trigger, keywords: r.keywords, action: r.action, exemptRoles: r.exempt_roles,
+    presets: r.presets ?? [], allowList: r.allow_list ?? [], mentionLimit: r.mention_limit ?? 5, exemptChannels: r.exempt_channels ?? [], timeoutSeconds: r.timeout_seconds ?? 60, customMessage: r.custom_message ?? null });
   const ruleBody = z.object({
-    name: z.string().trim().min(1).max(100), enabled: z.boolean(), trigger: z.enum(['keyword', 'spam', 'mention_spam', 'link']),
+    name: z.string().trim().min(1).max(100), enabled: z.boolean(), trigger: z.enum(['keyword', 'keyword_preset', 'spam', 'mention_spam', 'link']),
     keywords: z.array(z.string().min(1).max(60)).max(100), action: z.enum(['block', 'timeout', 'alert']), exemptRoles: z.array(idSchema).max(20),
+    presets: z.array(z.enum(['profanity', 'sexual_content', 'slurs'])).max(3), allowList: z.array(z.string().min(1).max(60)).max(100),
+    mentionLimit: z.number().int().min(1).max(50), exemptChannels: z.array(idSchema).max(50), timeoutSeconds: z.number().int().min(10).max(7 * 86400),
+    customMessage: z.string().trim().max(150).nullable(),
   }).strict();
+  const checkRule = (b: { trigger?: string; presets?: string[] }, creating: boolean) => {
+    if (b.trigger === 'keyword_preset' && !b.presets?.length && creating) throw badRequest('Pick at least one preset');
+  };
+  const checkChannels = async (guildId: string, ids: string[]) => {
+    if (!ids.length) return;
+    const ok = await ctx.db.query('SELECT id FROM channels WHERE guild_id = $1 AND id = ANY($2::text[])', [guildId, ids]);
+    if (ok.length !== new Set(ids).size) throw badRequest('Unknown channel in exemptChannels');
+  };
   const checkRoles = async (guildId: string, roles: string[]) => {
     if (!roles.length) return;
     const ok = await ctx.db.query('SELECT id FROM roles WHERE guild_id = $1 AND id = ANY($2::text[])', [guildId, roles]);
@@ -221,12 +233,12 @@ export function guildRoutes(app: FastifyInstance, ctx: Ctx) {
   });
   app.post('/guilds/:id/automod/rules', async (req, reply) => {
     const { id } = parse(gid, req.params);
-    const b = parse(ruleBody.partial({ enabled: true, keywords: true, exemptRoles: true }), req.body);
+    const b = parse(ruleBody.partial({ enabled: true, keywords: true, exemptRoles: true, presets: true, allowList: true, mentionLimit: true, exemptChannels: true, timeoutSeconds: true, customMessage: true }), req.body);
     need(guildPerms(await guildAccess(ctx, req.userId, id)), Perm.MANAGE_GUILD);
-    await checkRoles(id, b.exemptRoles ?? []);
+    await checkRoles(id, b.exemptRoles ?? []); await checkChannels(id, b.exemptChannels ?? []); checkRule(b, true);
     const rid = snowflake();
-    await ctx.db.query('INSERT INTO automod_rules (id, guild_id, name, enabled, trigger, keywords, action, exempt_roles) VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,$8::jsonb)',
-      [rid, id, b.name, b.enabled ?? true, b.trigger, JSON.stringify(b.keywords ?? []), b.action, JSON.stringify(b.exemptRoles ?? [])]);
+    await ctx.db.query('INSERT INTO automod_rules (id, guild_id, name, enabled, trigger, keywords, action, exempt_roles, presets, allow_list, mention_limit, exempt_channels, timeout_seconds, custom_message) VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,$8::jsonb,$9::jsonb,$10::jsonb,$11,$12::jsonb,$13,$14)',
+      [rid, id, b.name, b.enabled ?? true, b.trigger, JSON.stringify(b.keywords ?? []), b.action, JSON.stringify(b.exemptRoles ?? []), JSON.stringify(b.presets ?? []), JSON.stringify(b.allowList ?? []), b.mentionLimit ?? 5, JSON.stringify(b.exemptChannels ?? []), b.timeoutSeconds ?? 60, b.customMessage ?? null]);
     await audit(ctx, id, req.userId, 'AUTOMOD_RULE_CREATE', rid, b);
     return reply.code(201).send(ruleRow((await ctx.db.query('SELECT * FROM automod_rules WHERE id = $1', [rid]))[0]));
   });
@@ -235,7 +247,9 @@ export function guildRoutes(app: FastifyInstance, ctx: Ctx) {
     const b = parse(ruleBody.partial(), req.body) as Record<string, any>;
     need(guildPerms(await guildAccess(ctx, req.userId, p.id)), Perm.MANAGE_GUILD);
     if (b.exemptRoles) await checkRoles(p.id, b.exemptRoles);
-    const col: Record<string, [string, boolean]> = { name: ['name', false], enabled: ['enabled', false], trigger: ['trigger', false], keywords: ['keywords', true], action: ['action', false], exemptRoles: ['exempt_roles', true] };
+    if (b.exemptChannels) await checkChannels(p.id, b.exemptChannels);
+    const col: Record<string, [string, boolean]> = { name: ['name', false], enabled: ['enabled', false], trigger: ['trigger', false], keywords: ['keywords', true], action: ['action', false], exemptRoles: ['exempt_roles', true],
+      presets: ['presets', true], allowList: ['allow_list', true], mentionLimit: ['mention_limit', false], exemptChannels: ['exempt_channels', true], timeoutSeconds: ['timeout_seconds', false], customMessage: ['custom_message', false] };
     const sets: string[] = [], vals: unknown[] = [p.ruleId, p.id];
     for (const [k, v] of Object.entries(b)) { const c = col[k]; if (!c) continue; vals.push(c[1] ? JSON.stringify(v) : v); sets.push(`${c[0]} = $${vals.length}${c[1] ? '::jsonb' : ''}`); }
     const rows = sets.length ? await ctx.db.query(`UPDATE automod_rules SET ${sets.join(', ')} WHERE id = $1 AND guild_id = $2 RETURNING *`, vals)
