@@ -2,6 +2,12 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Perm } from '@jorcord/shared';
 import { Api, WsClient, startServer, type Client, type TestEnv } from './helpers';
 
+const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64');
+const mpart = (filename: string, value: Buffer, type: string) => {
+  const b = 'XBOUNDARYX';
+  const payload = Buffer.concat([Buffer.from(`--${b}\r\nContent-Disposition: form-data; name="file"; filename="${filename}"\r\nContent-Type: ${type}\r\n\r\n`), value, Buffer.from(`\r\n--${b}--\r\n`)]);
+  return { payload, headers: { 'content-type': `multipart/form-data; boundary=${b}` } };
+};
 let env: TestEnv, api: Api;
 beforeAll(async () => { env = await startServer(); api = new Api(env); });
 afterAll(async () => { await env.close(); });
@@ -184,5 +190,54 @@ describe('privacy: DMs, message requests, friend requests', () => {
     await api.req('PUT', `/users/@me/relationships/${f.id}`, e.token, { type: 'friend' });
     await api.req('PATCH', '/users/@me', e.token, { privacy: { friendRequests: { everyone: false, friendsOfFriends: false, serverMembers: false } } });
     expect((await api.req('PUT', `/users/@me/relationships/${e.id}`, f.token, { type: 'friend' })).body.type).toBe('friend');
+  });
+});
+
+describe('message forwarding', () => {
+  it('forwards a snapshot (no author, no pings), chains keep the first origin, permissions are enforced', async () => {
+    const { owner, guild, members: [a, b], general } = await guildWith('fa', 'fb');
+    const other = (await api.req('POST', `/guilds/${guild.id}/channels`, owner.token, { name: 'other', type: 'text' })).body;
+    const orig = (await say(a!, general.id, `look <@${b!.id}> **this**`)).body;
+    const r = await api.req('POST', `/channels/${other.id}/messages`, b!.token, { forward: { channelId: general.id, messageId: orig.id } });
+    expect(r.status).toBe(201);
+    expect(r.body.content).toBe('');
+    expect(r.body.author.id).toBe(b!.id);
+    expect(r.body.mentions).toEqual([]);
+    expect(r.body.forward).toMatchObject({ content: `look <@${b!.id}> **this**`, sourceChannelId: general.id, sourceMessageId: orig.id, sourceGuildId: guild.id });
+    expect(r.body.forward.author).toBeUndefined();
+    // the forwarder's mention list is not bumped
+    expect((await api.req('GET', '/users/@me/mentions?roles=false&everyone=false', a!.token)).body.length).toBe(0); // the forward quoted <@b> but pinged nobody
+    // history shows the snapshot and it survives deletion of the original
+    await api.req('DELETE', `/channels/${general.id}/messages/${orig.id}`, a!.token);
+    const hist = (await api.req('GET', `/channels/${other.id}/messages`, b!.token)).body;
+    expect(hist[0].forward.content).toContain('this');
+    // forward of a forward keeps the first origin
+    const r2 = await api.req('POST', `/channels/${general.id}/messages`, a!.token, { forward: { channelId: other.id, messageId: r.body.id } });
+    expect(r2.status).toBe(201); expect(r2.body.forward.sourceMessageId).toBe(orig.id);
+    // cannot combine with content, and nothing to forward from empty/system messages
+    expect((await api.req('POST', `/channels/${other.id}/messages`, b!.token, { content: 'x', forward: { channelId: general.id, messageId: r2.body.id } })).status).toBe(400);
+    expect((await api.req('POST', `/channels/${other.id}/messages`, b!.token, { forward: { channelId: general.id, messageId: '12345' } })).status).toBe(404);
+    // forwarded messages cannot be edited
+    expect((await api.req('PATCH', `/channels/${other.id}/messages/${r.body.id}`, b!.token, { content: 'edited' })).status).toBe(400);
+    // a channel the forwarder cannot read is a 404; sending into a channel without SEND_MESSAGES is refused
+    const priv = (await api.req('POST', `/guilds/${guild.id}/channels`, owner.token, { name: 'staff', type: 'text' })).body;
+    await api.req('PUT', `/channels/${priv.id}/permissions/${guild.id}`, owner.token, { type: 'role', allow: '0', deny: String(Perm.VIEW_CHANNEL) });
+    const secret = (await say(owner, priv.id, 'staff only')).body;
+    expect((await api.req('POST', `/channels/${other.id}/messages`, b!.token, { forward: { channelId: priv.id, messageId: secret.id } })).status).toBe(404);
+    await api.req('PUT', `/channels/${other.id}/permissions/${b!.id}`, owner.token, { type: 'member', allow: '0', deny: String(Perm.SEND_MESSAGES) });
+    expect((await api.req('POST', `/channels/${other.id}/messages`, b!.token, { forward: { channelId: general.id, messageId: r2.body.id } })).status).toBe(403);
+    // unauthenticated
+    expect((await api.req('POST', `/channels/${other.id}/messages`, null, { forward: { channelId: general.id, messageId: r2.body.id } })).status).toBe(401);
+  });
+  it('forwards into a DM and carries attachments', async () => {
+    const { members: [a, b], general } = await guildWith('fda', 'fdb');
+    const mp = mpart('dot.png', PNG, 'image/png');
+    const up = await api.req('POST', '/uploads', a!.token, mp.payload as any, mp.headers);
+    const orig = (await api.req('POST', `/channels/${general.id}/messages`, a!.token, { content: 'pic', attachments: [up.body.id] })).body;
+    const dm = (await api.req('POST', '/users/@me/channels', b!.token, { recipientIds: [a!.id] })).body;
+    const r = await api.req('POST', `/channels/${dm.id}/messages`, b!.token, { forward: { channelId: general.id, messageId: orig.id } });
+    expect(r.status).toBe(201);
+    expect(r.body.forward.attachments[0].url).toBe(up.body.url);
+    expect((await env.app.inject({ url: up.body.url })).statusCode).toBe(200);
   });
 });

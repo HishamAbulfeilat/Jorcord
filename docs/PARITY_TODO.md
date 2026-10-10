@@ -11,7 +11,7 @@ Rank = order in which this pass implements items (R1 first). `-` = not planned i
 | R1 | Inbox / recent mentions panel | DONE (`routes/social.ts`, `SocialModals.tsx`) | 5 | `FriendsHome.tsx` Inbox button has no handler; no mentions query endpoint |
 | R2 | Privacy: who can DM you, friend-request controls, message requests for non-friends | DONE (`routes/social.ts`, `services/privacy.ts`, `PrivacyTab.tsx`, `DmSidebar.tsx`) | 5 | `POST /users/@me/channels` only checks friend-or-shared-server; no settings |
 | R3 | User notes (private note on a profile) + mutual friends on profiles | DONE (`routes/social.ts`, `Profile.tsx`) | 4 | mutual servers done (`routes/users.ts` GET /users/:id); `mutualFriends` typed in `lib/api.ts` but never sent; no notes |
-| R4 | Message forwarding | todo | 4 | no `forward` in messages; no snapshot model |
+| R4 | Message forwarding | DONE (`routes/messages.ts`, `SocialModals.tsx`, `MessageItem.tsx`) | 4 | no `forward` in messages; no snapshot model |
 | R5 | Message reminders ("Remind me") + saved messages ("Saved for later") | todo | 3 | no table/route |
 | R6 | Verification levels, raid protection, explicit-media filter, default notification level (Safety Setup) | todo | 4 | `Guild` has none; screening only |
 | R7 | AutoMod: keyword presets (profanity/sexual/slurs), mention-spam limit, allow-list, exempt channels, alert channel | partial | 3 | 4 triggers, `exemptRoles` only (`routes/guilds.ts` automod, `services/messages.ts`) |

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Id, Modal } from '@jorcord/shared';
+import type { Id, Message, Modal } from '@jorcord/shared';
 
 export type Theme = 'dark' | 'light' | 'amoled';
 export interface Prefs {
@@ -53,7 +53,7 @@ export type ModalSpec =
   | { kind: 'interactionModal'; interactionId: Id; channelId: Id; modal: Modal }
   | { kind: 'createPoll'; channelId: Id } | { kind: 'pollVoters'; channelId: Id; messageId: Id; answerId?: number }
   | { kind: 'events'; guildId: Id } | { kind: 'eventEditor'; guildId: Id; eventId?: Id; channelId?: Id }
-  | { kind: 'inbox'; tab?: 'mentions' | 'saved' | 'reminders' } | { kind: 'screening'; guildId: Id } | { kind: 'threadSettings'; channelId: Id } | { kind: 'stage'; channelId: Id; mode: 'start' | 'edit' };
+  | { kind: 'forward'; message: Message } | { kind: 'inbox'; tab?: 'mentions' | 'saved' | 'reminders' } | { kind: 'screening'; guildId: Id } | { kind: 'threadSettings'; channelId: Id } | { kind: 'stage'; channelId: Id; mode: 'start' | 'edit' };
 export type SettingsSpec = { kind: 'user'; tab?: string } | { kind: 'guild'; guildId: Id; tab?: string } | null;
 export interface MenuItem { label?: string; icon?: any; onClick?: () => void; danger?: boolean; separator?: boolean; checked?: boolean; disabled?: boolean; hint?: string; children?: MenuItem[] }
 export interface Toast { id: number; kind: 'info' | 'success' | 'error'; text: string }

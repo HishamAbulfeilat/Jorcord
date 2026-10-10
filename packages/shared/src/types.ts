@@ -45,6 +45,8 @@ export interface Member { guildId: Id; user: User; nick: string | null; roles: I
 export interface Attachment { id: Id; filename: string; contentType: string; size: number; url: string; width: number | null; height: number | null; spoiler: boolean }
 export interface Embed { type: 'link' | 'image' | 'video' | 'rich'; url?: string; title?: string; description?: string; color?: number; thumbnail?: string; image?: string; video?: string; siteName?: string; fields?: { name: string; value: string; inline?: boolean }[]; footer?: string; author?: string }
 export interface Reaction { emoji: string; emojiId: Id | null; count: number; me: boolean }
+/** Snapshot of a forwarded message. Author is deliberately not included; the origin ids let readers who can see it jump there. */
+export interface ForwardSnapshot { content: string; attachments: Attachment[]; embeds: Embed[]; createdAt: string; editedAt: string | null; sourceGuildId: Id | null; sourceChannelId: Id; sourceMessageId: Id }
 export interface Message {
   id: Id; channelId: Id; guildId: Id | null; author: User; content: string; createdAt: string; editedAt: string | null;
   type: 'default' | 'reply' | 'join' | 'pin' | 'boost' | 'thread_created' | 'call' | 'poll_result';
@@ -53,6 +55,8 @@ export interface Message {
   /** Additive (platform pass). */
   components?: Component[]; poll?: Poll | null; flags?: number; applicationId?: Id | null;
   interaction?: { id: Id; type: number; name: string | null; userId: Id } | null;
+  /** Set on a forwarded message: the original's content as it was when forwarded. */
+  forward?: ForwardSnapshot | null;
 }
 export interface Invite { code: string; guildId: Id; channelId: Id; inviterId: Id; uses: number; maxUses: number | null; expiresAt: string | null; temporary: boolean; guild?: Pick<Guild, 'id' | 'name' | 'icon'>; approxMembers?: number }
 export interface Relationship { user: User; type: 'friend' | 'blocked' | 'incoming' | 'outgoing' }

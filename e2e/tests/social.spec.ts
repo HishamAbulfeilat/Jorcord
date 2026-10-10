@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { newUser, createServer, makeInvite, joinViaInvite, sendMessage, msg, rest, openUserSettings, closeSettings, type User } from './helpers';
+import { newUser, createServer, makeInvite, joinViaInvite, sendMessage, msg, rest, openUserSettings, closeSettings, clickMenu, type User } from './helpers';
 
 let A: User, B: User;
 test.describe.configure({ mode: 'serial' });
@@ -85,4 +85,25 @@ test.describe('privacy and message requests', () => {
     await C.page.getByTestId('profile-card').getByRole('button', { name: 'Message' }).click();
     await expect(C.page.getByText(/does not accept direct messages/)).toBeVisible();
   });
+});
+
+test('forward a message into a DM: snapshot with a Forwarded label and a jump link back', async () => {
+  await B.page.getByRole('navigation', { name: 'Servers' }).getByRole('button', { name: 'Social HQ' }).click();
+  await msg(B.page, 'unrelated chatter').first().click({ button: 'right' });
+  await clickMenu(B.page, 'Forward');
+  const dlg = B.page.getByRole('dialog', { name: 'Forward Message' });
+  await expect(dlg.getByRole('button', { name: 'Send' })).toBeDisabled();
+  await dlg.getByLabel('Search channels and people').fill('alice');
+  await dlg.getByRole('checkbox', { name: /Alice/ }).check();
+  await dlg.getByRole('button', { name: 'Send' }).click();
+  await expect(B.page.getByText('Message forwarded')).toBeVisible();
+  // Alice receives a forwarded block in the DM (no author of the original is shown, but the label and text are)
+  await A.page.goto('/channels/@me');
+  await A.page.getByRole('button', { name: /Bob/ }).first().click();
+  const fwd = A.page.getByTestId('forwarded').filter({ hasText: 'unrelated chatter' });
+  await expect(fwd).toBeVisible();
+  await expect(fwd).toContainText('Forwarded');
+  await fwd.getByRole('button', { name: '#general' }).click();
+  await expect(msg(A.page, 'unrelated chatter').first()).toBeVisible();
+  await expect(A.page).toHaveURL(/\/channels\/\d+\/\d+/);
 });

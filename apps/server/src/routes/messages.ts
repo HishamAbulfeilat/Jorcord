@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { LIMITS, Perm, has, snowflakeTime } from '@jorcord/shared';
+import { LIMITS, Perm, has, snowflakeTime, type ForwardSnapshot } from '@jorcord/shared';
 import type { Ctx } from '../ctx';
 import { ApiError, badRequest, forbidden, notFound } from '../errors';
 import { idSchema, limitParam, parse } from '../lib/ids';
@@ -25,6 +25,8 @@ const sendBody = z.object({
   /** Needs SEND_POLLS. */
   poll: z.unknown().optional(),
   flags: z.number().int().optional(),
+  /** Forward an existing message (instead of writing content). */
+  forward: z.object({ channelId: idSchema, messageId: idSchema }).strict().optional(),
 }).strict();
 const emojiParam = z.string().min(1).max(100);
 
@@ -34,6 +36,21 @@ function parseEmoji(raw: string): { emoji: string; emojiId: string | null } {
   if (custom) return { emoji: custom[1]!, emojiId: custom[2]! };
   if (e.includes(':') || e.length > 32 || /[\u0000-\u001f<>]/.test(e)) throw badRequest('Invalid emoji');
   return { emoji: e, emojiId: null };
+}
+
+/** Loads the original for a forward: the caller must be able to read it; forwarding a forward keeps the first origin. */
+async function snapshotForForward(ctx: Ctx, userId: string, channelId: string, messageId: string): Promise<ForwardSnapshot> {
+  const src = await channelAccess(ctx, userId, channelId);
+  need(src.perms, Perm.READ_MESSAGE_HISTORY);
+  const [m] = await ctx.db.query('SELECT * FROM messages WHERE id = $1 AND channel_id = $2', [messageId, channelId]);
+  if (!m || !['default', 'reply'].includes(m.type)) throw notFound('Message');
+  if (m.forward) return m.forward as ForwardSnapshot;
+  const snap: ForwardSnapshot = {
+    content: m.content, attachments: m.attachments ?? [], embeds: m.embeds ?? [], createdAt: new Date(snowflakeTime(m.id)).toISOString(), editedAt: m.edited_at ? new Date(m.edited_at).toISOString() : null,
+    sourceGuildId: m.guild_id ?? null, sourceChannelId: m.channel_id, sourceMessageId: m.id,
+  };
+  if (!snap.content.trim() && !snap.attachments.length && !snap.embeds.length) throw badRequest('Nothing to forward');
+  return snap;
 }
 
 export function messageRoutes(app: FastifyInstance, ctx: Ctx) {
@@ -114,10 +131,18 @@ export function messageRoutes(app: FastifyInstance, ctx: Ctx) {
       if (a.channel.guild_id) need(a.perms, Perm.SEND_POLLS);
       pollInput = buildPoll(body.poll);
     }
+    let forward: ForwardSnapshot | undefined;
+    if (body.forward) {
+      if (req.isBot) throw new ApiError(403, 'USER_FORBIDDEN', 'Bots cannot forward messages').num(20002);
+      if (body.content?.trim() || body.attachments?.length || body.stickerIds?.length || body.replyTo || body.components !== undefined || body.poll !== undefined) throw badRequest('A forward cannot carry other content');
+      limitOrThrow(ctx.rl, `msg-forward:${req.userId}`, 20, 60_000, ctx.config.rateLimit);
+      forward = await snapshotForForward(ctx, req.userId, body.forward.channelId, body.forward.messageId);
+      if (forward.attachments.length) need(a.perms, Perm.ATTACH_FILES);
+    }
     const attachments = await claimAttachments(ctx, req.userId, body.attachments ?? []);
     try {
       const msg = await createMessage(ctx, { channel: a.channel, authorId: req.userId, content: body.content ?? '', replyTo: body.replyTo, attachments, stickerIds: body.stickerIds, senderPerms: a.perms, memberRoleIds: a.gp?.memberRoleIds,
-        components, flags: body.flags, applicationId: req.applicationId, poll: pollInput?.poll, pollExpiry: pollInput?.expiry });
+        components, flags: body.flags, applicationId: req.applicationId, poll: pollInput?.poll, pollExpiry: pollInput?.expiry, forward });
       if (a.channel.type === 'thread') await joinThread(ctx, a.channel, req.userId).catch(() => {}); // posting in a thread follows it
       return reply.code(201).send(msg);
     } catch (e) {
@@ -135,6 +160,7 @@ export function messageRoutes(app: FastifyInstance, ctx: Ctx) {
     const [m] = await ctx.db.query('SELECT * FROM messages WHERE id = $1 AND channel_id = $2', [p.mid, p.id]);
     if (!m) throw notFound('Message');
     if (m.author_id !== req.userId || m.webhook_id || !['default', 'reply'].includes(m.type)) throw forbidden('You can only edit your own messages');
+    if (m.forward) throw badRequest('Forwarded messages cannot be edited');
     if (b.components !== undefined) {
       if (!req.isBot || m.application_id !== req.applicationId) throw new ApiError(403, 'USER_FORBIDDEN', 'Only the owning bot can edit components').num(20002);
       await ctx.db.query('UPDATE messages SET components = $2::jsonb, edited_at = now() WHERE id = $1', [p.mid, JSON.stringify(parseComponents(b.components))]);

@@ -12,6 +12,7 @@ const voiceChannel = (p: Page) => p.getByRole('navigation', { name: 'Channels' }
 const dbg = <T>(p: Page, fn: string, ...args: unknown[]) => p.evaluate(([fn, args]) => (window as any).__jorcordVoice[fn as string](...(args as unknown[])), [fn, args] as const) as Promise<T>;
 const dock = (p: Page) => p.getByTestId('voice-dock');
 const roster = (p: Page) => p.getByRole('list', { name: 'Voice participants' }).getByRole('listitem');
+const leave = async (u: User) => { const b = u.page.getByTestId('voice-view').getByRole('button', { name: 'Disconnect' }); if (await b.isVisible().catch(() => false)) await b.click(); };
 const gwBar = (p: Page) => p.locator('[role=status]', { hasText: 'Reconnecting…' });
 
 let A: User, B: User; const csp: string[] = [];
@@ -105,13 +106,11 @@ test('LiveKit killed and restarted mid-call: both recover, mute / camera / roste
 });
 
 test('join with LiveKit down: the real reason, a Troubleshoot panel and Retry that works', async () => {
-  for (const u of [A, B]) await u.page.getByTestId('voice-view').getByRole('button', { name: 'Disconnect' }).click();
+  for (const u of [A, B]) await leave(u);
   await expect(dock(A.page)).toHaveCount(0);
   await stack.killLivekit();
   const started = Date.now();
-  await voiceChannel(A.page).click();
-  await A.page.getByRole('button', { name: 'Join Voice' }).click();
-  await expect(A.page.getByTestId('voice-connecting')).toBeVisible();
+  await voiceChannel(A.page).click(); // clicking a voice channel joins it
   const panel = A.page.getByTestId('voice-troubleshoot');
   await expect(panel).toBeVisible({ timeout: 25_000 });
   expect(Date.now() - started).toBeLessThan(25_000); // bounded: never "Connecting…" forever
@@ -127,12 +126,11 @@ test('join with LiveKit down: the real reason, a Troubleshoot panel and Retry th
 
 test('Docker Desktop failure mode: LiveKit advertises an unreachable ICE address -> bounded wait, "ice-failed" with the fix, Retry works once fixed', async () => {
   // Reproduces the user's report: signalling connects (through the app) but the advertised candidate (a container IP) is unreachable from the browser.
-  for (const u of [A, B]) await u.page.getByTestId('voice-view').getByRole('button', { name: 'Disconnect' }).click();
-  await stack.killLivekit(); await stack.startLivekit({ LIVEKIT_NODE_IP: '203.0.113.9' });
+  for (const u of [A, B]) await leave(u);
+  await stack.killLivekit(); await stack.startLivekit({ LIVEKIT_NODE_IP: '203.0.113.9' }, { onlyAdvertised: true });
   const started = Date.now();
   await voiceChannel(A.page).click();
-  await A.page.getByRole('button', { name: 'Join Voice' }).click();
-  await expect(A.page.getByTestId('voice-connecting')).toBeVisible();
+  await expect(A.page.getByTestId('voice-connecting')).toBeVisible(); // visible while ICE is being attempted
   const panel = A.page.getByTestId('voice-troubleshoot');
   await expect(panel).toBeVisible({ timeout: 30_000 });
   expect(Date.now() - started).toBeLessThan(25_000);

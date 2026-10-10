@@ -1,4 +1,4 @@
-import { LIMITS, Perm, has, snowflake, type Attachment, type Component, type Message } from '@jorcord/shared';
+import { LIMITS, Perm, has, snowflake, type Attachment, type Component, type ForwardSnapshot, type Message } from '@jorcord/shared';
 import type { Ctx } from '../ctx';
 import { ApiError, badRequest, forbidden } from '../errors';
 import { audit } from './guilds';
@@ -62,6 +62,8 @@ export interface NewMessage {
   poll?: { question: string; answers: { id: number; text: string; emoji: string | null }[]; allowMultiselect: boolean; layoutType: 1 } | null; pollExpiry?: Date | null;
   /** Allow a message without content (deferred-response placeholder). */
   allowEmpty?: boolean;
+  /** Forwarded message: snapshot of the original (see routes/messages forward handling). */
+  forward?: ForwardSnapshot | null;
 }
 
 export async function createMessage(ctx: Ctx, m: NewMessage): Promise<Message> {
@@ -69,9 +71,9 @@ export async function createMessage(ctx: Ctx, m: NewMessage): Promise<Message> {
   const content = m.content;
   if (content.length > LIMITS.maxMessageLength) throw badRequest(`Message exceeds ${LIMITS.maxMessageLength} characters`);
   const attachments = m.attachments ?? [];
-  if (!content.trim() && !attachments.length && !(m.stickerIds?.length) && !m.components?.length && !m.poll && !m.allowEmpty && m.type !== 'join' && m.type !== 'thread_created' && m.type !== 'poll_result') throw badRequest('Cannot send an empty message');
+  if (!content.trim() && !attachments.length && !(m.stickerIds?.length) && !m.components?.length && !m.poll && !m.allowEmpty && !m.forward && m.type !== 'join' && m.type !== 'thread_created' && m.type !== 'poll_result') throw badRequest('Cannot send an empty message');
   const ment = await parseMentions(ctx, channel, content, m.senderPerms);
-  if (channel.guild_id && !m.skipChecks) await checkAutomod(ctx, channel.guild_id, m.authorId, m.memberRoleIds ?? [], m.senderPerms, content, ment.mentions.length + ment.mentionRoles.length);
+  if (channel.guild_id && !m.skipChecks) await checkAutomod(ctx, channel.guild_id, m.authorId, m.memberRoleIds ?? [], m.senderPerms, m.forward ? `${content}\n${m.forward.content}` : content, ment.mentions.length + ment.mentionRoles.length);
   if (m.replyTo) {
     const [ref] = await ctx.db.query('SELECT 1 AS x FROM messages WHERE id = $1 AND channel_id = $2', [m.replyTo, channel.id]);
     if (!ref) throw badRequest('Replied-to message not found in this channel');
@@ -90,6 +92,7 @@ export async function createMessage(ctx: Ctx, m: NewMessage): Promise<Message> {
       JSON.stringify(ment.mentionRoles), JSON.stringify(attachments), JSON.stringify(stickerIds), m.webhookId ?? null, m.threadId ?? null,
       /https?:\/\//i.test(content), attachments.some((a) => a.contentType.startsWith('image/')), attachments.length > 0, m.webhookUsername ?? null, m.webhookAvatar ?? null,
       JSON.stringify(m.components ?? []), m.flags ?? 0, m.applicationId ?? null, m.interaction ? JSON.stringify(m.interaction) : null, m.poll ? JSON.stringify(m.poll) : null, m.pollExpiry ?? null]);
+  if (m.forward) await ctx.db.query('UPDATE messages SET forward = $2::jsonb WHERE id = $1', [id, JSON.stringify(m.forward)]);
   await ctx.db.query('UPDATE channels SET last_message_id = $2, archived = false, activity_at = now() WHERE id = $1', [channel.id, id]);
   // author has read their own message
   await ctx.db.query(`INSERT INTO read_states (user_id, channel_id, last_read_id, mention_count) VALUES ($1,$2,$3,0)

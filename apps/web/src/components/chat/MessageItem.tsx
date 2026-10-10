@@ -5,6 +5,7 @@ import { Perm } from '@jorcord/shared';
 import { Avatar } from '@/components/ui/Avatar';
 import { Markdown } from './Markdown';
 import { AttachmentView, EmbedView } from './Attachments';
+import { Forward as ForwardIcon } from 'lucide-react';
 import { ReactionBar, addReaction } from './Reactions';
 import { useData, refreshStickers } from '@/stores/data';
 import { useUI, toastError } from '@/stores/ui';
@@ -131,6 +132,7 @@ export const MessageItem = memo(function MessageItem({ m, grouped, highlighted }
           {m.editedAt && <time className="ms-1 select-none text-[10px] text-muted" title={fmtFull(new Date(m.editedAt).getTime())}>(edited)</time>}
         </div>
       ) : null}
+      {m.forward && <ForwardedBody f={m.forward} guildId={m.guildId} />}
       {m.attachments.length > 0 && <div className="mt-1 flex flex-col items-start gap-1">{m.attachments.map((a) => <AttachmentView key={a.id} a={a} />)}</div>}
       {stickers && stickers.length > 0 && <div className="mt-1 flex gap-2">{stickers.map((s) => <img loading="lazy" decoding="async" key={s.id} src={fileUrl(s.url) ?? s.url} alt={s.name} title={s.name} className="h-[160px] w-[160px] object-contain" />)}</div>}
       {m.embeds.length > 0 && <div className="mt-1 flex flex-col items-start gap-1">{m.embeds.map((e, i) => <EmbedView key={i} e={e} />)}</div>}
@@ -184,6 +186,22 @@ export function PendingItem({ p, grouped }: { p: Pending; grouped: boolean }) {
         {p.files.map((f) => <div key={f.name} className="mt-1 text-xs text-muted">📎 {f.name}</div>)}
         {p.status === 'failed' && <div className="mt-1 flex items-center gap-2 text-sm text-danger"><AlertCircle size={14} />Failed to send. <button className="flex items-center gap-1 underline" onClick={retry}><RotateCw size={12} />Retry</button> <button className="underline" onClick={drop}>Delete</button></div>}
       </div>
+    </div>
+  );
+}
+
+/** Snapshot of a forwarded message: quoted block, original time, and a jump link when the origin is known to this client. */
+function ForwardedBody({ f, guildId }: { f: NonNullable<Message['forward']>; guildId: string | null }) {
+  const src = useData((s) => (f.sourceGuildId ? s.guilds[f.sourceGuildId]?.channels[f.sourceChannelId] : s.dms[f.sourceChannelId]));
+  const nav = useNav();
+  return (
+    <div data-testid="forwarded" className="mt-1 max-w-[520px] rounded border-s-4 border-muted/50 bg-side/60 py-1 pe-3 ps-3">
+      <div className="mb-0.5 flex items-center gap-1 text-xs italic text-muted"><ForwardIcon size={12} aria-hidden />{t('Forwarded')}</div>
+      {f.content && <div className="text-[16px] leading-[1.375rem] text-normal"><Markdown content={f.content} guildId={f.sourceGuildId ?? guildId} /></div>}
+      {f.attachments.length > 0 && <div className="mt-1 flex flex-col items-start gap-1">{f.attachments.map((a) => <AttachmentView key={a.id} a={a} />)}</div>}
+      {f.embeds.length > 0 && <div className="mt-1 flex flex-col items-start gap-1">{f.embeds.map((e, i) => <EmbedView key={i} e={e} />)}</div>}
+      <div className="mt-0.5 flex items-center gap-2 text-[11px] text-muted"><time>{fmtStamp(new Date(f.createdAt).getTime())}</time>
+        {src && <button className="hover:underline" onClick={() => { nav.go(f.sourceGuildId ?? '@me', f.sourceChannelId); setTimeout(() => window.dispatchEvent(new CustomEvent('jorcord:jump', { detail: { channelId: f.sourceChannelId, messageId: f.sourceMessageId } })), 400); }}>{src.name ? `#${src.name}` : t('Original')}</button>}</div>
     </div>
   );
 }

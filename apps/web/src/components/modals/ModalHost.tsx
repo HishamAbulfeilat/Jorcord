@@ -21,7 +21,7 @@ import { useStreamer } from '@/lib/streamer';
 import { CustomStatusModal, FolderModal, NotifSettingsModal, OnboardingModal, ShortcutsModal, StreamerStartModal } from './ExtraModals';
 import { VoiceSettingsModal } from '@/voice/VoiceSettings';
 import { CreatePollModal, EventEditorModal, EventsModal, InteractionModal, PollVotersModal, ScreeningModal, StageModal, ThreadSettingsModal } from './PlatformModals';
-import { InboxModal } from './SocialModals';
+import { ForwardModal, InboxModal } from './SocialModals';
 import { t } from '@/i18n';
 
 const TEMPLATES = [
@@ -221,6 +221,7 @@ export function ModalHost() {
     case 'customStatus': return <CustomStatusModal close={close} />;
     case 'folder': return <FolderModal folderId={m.folderId} close={close} />;
     case 'notifSettings': return <NotifSettingsModal scope={m.scope} id={m.id} close={close} />;
+    case 'forward': return <ForwardModal message={m.message} close={close} />;
     case 'inbox': return <InboxModal initialTab={m.tab} close={close} />;
     case 'onboarding': return <OnboardingModal guildId={m.guildId} step={m.step} close={close} />;
     case 'streamerStart': return <StreamerStartModal close={close} />;

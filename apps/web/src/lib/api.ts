@@ -181,6 +181,8 @@ export const api = {
       }
       return send<Message>({ method: 'POST', path: `/channels/${channelId}/messages`, body: { content: m.content, replyTo: m.replyTo ?? null, ...(m.stickerIds?.length ? { stickerIds: m.stickerIds } : {}), ...(m.poll ? { poll: m.poll } : {}) } });
     },
+    /** Forward a message I can read into `channelId` (snapshot copy, no pings). */
+    forward: (channelId: Id, src: { channelId: Id; messageId: Id }) => send<Message>({ method: 'POST', path: `/channels/${channelId}/messages`, body: { forward: src } }),
     edit: (channelId: Id, id: Id, content: string) => send<Message>({ method: 'PATCH', path: `/channels/${channelId}/messages/${id}`, body: { content } }),
     delete: (channelId: Id, id: Id) => send({ method: 'DELETE', path: `/channels/${channelId}/messages/${id}` }),
     bulkDelete: (channelId: Id, ids: Id[]) => send({ method: 'POST', path: `/channels/${channelId}/messages/bulk-delete`, body: { messageIds: ids } }),

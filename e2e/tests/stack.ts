@@ -13,7 +13,7 @@ export const PORTS = { server: 3120, livekit: 7895, lkTcp: 7896, lkMux: 7897, ud
 const KEY = 'jorcord'; const SECRET = 'e2e-livekit-secret-0123456789abcdef0123';
 
 /** LIVEKIT_CONFIG from docker-compose.yml with ${VAR:-default} resolved and ports remapped for the test machine. */
-export function composeLivekitConfig(env: Record<string, string> = {}): string {
+export function composeLivekitConfig(env: Record<string, string> = {}, o: { onlyAdvertised?: boolean } = {}): string {
   const compose = readFileSync(join(root, 'docker-compose.yml'), 'utf8');
   const m = /LIVEKIT_CONFIG: \|\n([\s\S]*?)\n    ports:/.exec(compose);
   if (!m) throw new Error('LIVEKIT_CONFIG not found in docker-compose.yml');
@@ -23,6 +23,8 @@ export function composeLivekitConfig(env: Record<string, string> = {}): string {
     if (name in vars) return vars[name]!;
     return op ? (dflt ?? '') : '';
   });
+  // `onlyAdvertised`: behave like a container whose only candidate is the advertised one (no host/loopback candidates)
+  if (o.onlyAdvertised) cfg = cfg.replace(/^rtc:$/m, 'rtc:\n  ips:\n    excludes: ["0.0.0.0/0", "::/0"]');
   return cfg
     .replace(/^port: 7880$/m, `port: ${PORTS.livekit}`).replace('tcp_port: 7881', `tcp_port: ${PORTS.lkTcp}`)
     .replace('port_range_start: 50000', `port_range_start: ${PORTS.udpStart}`).replace('port_range_end: 50200', `port_range_end: ${PORTS.udpEnd}`)
@@ -60,9 +62,9 @@ export class Stack {
   origin = `http://localhost:${PORTS.server}`;
   constructor(private o: { livekitUrl?: string } = {}) {}
 
-  async startLivekit(env: Record<string, string> = {}) {
+  async startLivekit(env: Record<string, string> = {}, o: { onlyAdvertised?: boolean } = {}) {
     const cfg = join(this.data, 'livekit.yaml'); mkdirSync(this.data, { recursive: true });
-    writeFileSync(cfg, composeLivekitConfig(env));
+    writeFileSync(cfg, composeLivekitConfig(env, o));
     this.lk = spawn(resolve(root, 'infra/livekit/bin/livekit-server'), ['--config', cfg], { stdio: 'ignore' });
     await waitPort(PORTS.livekit, true, 30_000);
   }
