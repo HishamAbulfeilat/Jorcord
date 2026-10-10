@@ -13,6 +13,7 @@ import { createMessage, parseMentions, postSystemMessage } from '../services/mes
 import { channelAccess, channelPermsLite, guildAccess, need } from '../services/perms';
 import { joinThread } from '../services/threads';
 import { searchMessages } from '../services/search';
+import { ageConfirmed, ageGate } from '../services/agegate';
 import { messageDTO, messagesDTO, usersByIds } from '../services/serializers';
 
 const cm = z.object({ id: idSchema });
@@ -78,6 +79,7 @@ export function messageRoutes(app: FastifyInstance, ctx: Ctx) {
     const { id } = parse(cm, req.params);
     const q = parse(z.object({ limit: z.coerce.number().optional(), before: idSchema.optional(), after: idSchema.optional(), around: idSchema.optional() }), req.query);
     const a = await channelAccess(ctx, req.userId, id);
+    await ageGate(ctx, req.userId, req.isBot, a);
     if (!has(a.perms, Perm.READ_MESSAGE_HISTORY)) return [];
     const limit = limitParam(q.limit);
     let rows: any[];
@@ -98,6 +100,7 @@ export function messageRoutes(app: FastifyInstance, ctx: Ctx) {
     const { id } = parse(cm, req.params);
     limitOrThrow(ctx.rl, `msg:${req.userId}`, 10, 10_000, ctx.config.rateLimit);
     const a = await channelAccess(ctx, req.userId, id);
+    await ageGate(ctx, req.userId, req.isBot, a);
     await assertCanPostIn(a, req.userId);
     let body: z.infer<typeof sendBody>;
     const uploaded: string[] = [];
@@ -252,6 +255,7 @@ export function messageRoutes(app: FastifyInstance, ctx: Ctx) {
   app.get('/channels/:id/pins', async (req) => {
     const { id } = parse(cm, req.params);
     const a = await channelAccess(ctx, req.userId, id);
+    await ageGate(ctx, req.userId, req.isBot, a);
     need(a.perms, Perm.READ_MESSAGE_HISTORY);
     return messagesDTO(ctx, await ctx.db.query('SELECT * FROM messages WHERE channel_id = $1 AND pinned ORDER BY id DESC LIMIT $2', [id, LIMITS.maxPins]), req.userId);
   });
@@ -304,6 +308,10 @@ export function messageRoutes(app: FastifyInstance, ctx: Ctx) {
     await guildAccess(ctx, req.userId, id);
     let channels = (await visibleChannelRows(ctx, id, req.userId, Perm.READ_MESSAGE_HISTORY)).map((c) => c.id as string);
     if (q.channelId) channels = channels.filter((c) => c === q.channelId);
+    if (channels.length && !req.isBot && !(await ageConfirmed(ctx, req.userId))) { // age-restricted channels stay out of search until 18+ is confirmed
+      const nsfw = new Set((await ctx.db.query('SELECT id FROM channels WHERE id = ANY($1::text[]) AND nsfw', [channels])).map((r) => r.id as string));
+      channels = channels.filter((c) => !nsfw.has(c));
+    }
     if (!channels.length) return [];
     return searchMessages(ctx, { viewerId: req.userId, guildId: id, channelIds: channels, q: q.q, authorId: q.authorId, has: q.has, before: q.before, limit: limitParam(q.limit, 25) });
   });
@@ -319,6 +327,7 @@ export function messageRoutes(app: FastifyInstance, ctx: Ctx) {
     limitOrThrow(ctx.rl, `search:${req.userId}`, 30, 60_000, ctx.config.rateLimit); // full-scan queries are expensive
     if (!q.q && !q.authorId && !q.has) throw badRequest('Provide q, authorId or has');
     const a = await channelAccess(ctx, req.userId, id);
+    await ageGate(ctx, req.userId, req.isBot, a);
     if (!has(a.perms, Perm.READ_MESSAGE_HISTORY)) return [];
     return searchMessages(ctx, { viewerId: req.userId, channelIds: [id], q: q.q, authorId: q.authorId, has: q.has, before: q.before, limit: limitParam(q.limit, 25) });
   });

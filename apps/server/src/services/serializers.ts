@@ -20,7 +20,7 @@ export function userDTO(ctx: Ctx, r: any): User {
   };
 }
 export function selfUserDTO(ctx: Ctx, r: any): SelfUser {
-  return { ...userDTO(ctx, r), privacy: normalizePrivacy(r.privacy), presence: r.presence, email: r.email, mfaEnabled: !!r.mfa_enabled, verified: !!r.verified, theme: r.theme, settings: r.settings ?? {} };
+  return { ...userDTO(ctx, r), privacy: normalizePrivacy(r.privacy), ageConfirmed: !!r.age_confirmed_at, presence: r.presence, email: r.email, mfaEnabled: !!r.mfa_enabled, verified: !!r.verified, theme: r.theme, settings: r.settings ?? {} };
 }
 export async function usersByIds(ctx: Ctx, ids: string[]): Promise<Map<string, User>> {
   const uniq = [...new Set(ids)];

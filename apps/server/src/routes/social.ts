@@ -7,7 +7,7 @@ import { idSchema, limitParam, parse } from '../lib/ids';
 import { limitOrThrow } from '../lib/ratelimit';
 import { channelPermsLite } from '../services/perms';
 import { canReadChannel, reminderDTOs } from '../services/reminders';
-import { messagesDTO } from '../services/serializers';
+import { messagesDTO, userDTO } from '../services/serializers';
 
 /** Social / inbox features: recent mentions, private user notes. */
 export function socialRoutes(app: FastifyInstance, ctx: Ctx) {
@@ -161,4 +161,23 @@ export function socialRoutes(app: FastifyInstance, ctx: Ctx) {
     await ctx.db.query('DELETE FROM reminders WHERE id = $1 AND user_id = $2', [id, req.userId]); // somebody else's id is a silent no-op
     return reply.code(204).send();
   });
+
+  // ---------- age gate ----------
+  /** Self-attest 18+: unlocks age-restricted (nsfw) server channels. */
+  app.post('/users/@me/age-confirm', async (req, reply) => {
+    parse(z.object({ confirm: z.literal(true) }).strict(), req.body);
+    limitOrThrow(ctx.rl, `age:${req.userId}`, 10, 60_000, ctx.config.rateLimit);
+    await ctx.db.query('UPDATE users SET age_confirmed_at = COALESCE(age_confirmed_at, now()) WHERE id = $1', [req.userId]);
+    await pushSelf(req.userId);
+    return reply.code(204).send();
+  });
+  app.delete('/users/@me/age-confirm', async (req, reply) => {
+    await ctx.db.query('UPDATE users SET age_confirmed_at = NULL WHERE id = $1', [req.userId]);
+    await pushSelf(req.userId);
+    return reply.code(204).send();
+  });
+  const pushSelf = async (userId: string) => {
+    const [row] = await ctx.db.query('SELECT * FROM users WHERE id = $1', [userId]);
+    await ctx.hub.toUser(userId, 'USER_UPDATE', { ...userDTO(ctx, row), ageConfirmed: !!row.age_confirmed_at } as any);
+  };
 }

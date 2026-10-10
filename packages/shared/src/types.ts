@@ -24,7 +24,7 @@ export interface Privacy {
   friendRequests: { everyone: boolean; friendsOfFriends: boolean; serverMembers: boolean };
 }
 export const DEFAULT_PRIVACY: Privacy = { allowDmsFromServerMembers: true, messageRequests: true, showActivity: true, friendRequests: { everyone: true, friendsOfFriends: true, serverMembers: true } };
-export interface SelfUser extends User { privacy: Privacy; email: string; mfaEnabled: boolean; verified: boolean; theme: 'dark' | 'light' | 'amoled'; settings: Record<string, unknown> }
+export interface SelfUser extends User { privacy: Privacy; /** Confirmed 18+ (unlocks age-restricted channels). */ ageConfirmed?: boolean; email: string; mfaEnabled: boolean; verified: boolean; theme: 'dark' | 'light' | 'amoled'; settings: Record<string, unknown> }
 export interface Guild {
   id: Id; name: string; icon: string | null; banner: string | null; description: string | null;
   ownerId: Id; systemChannelId: Id | null; rulesChannelId: Id | null; boostLevel: number; boostCount: number;

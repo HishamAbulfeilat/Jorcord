@@ -314,3 +314,35 @@ describe('saved messages and reminders', () => {
     w.close();
   });
 });
+
+describe('age-restricted channels', () => {
+  it('require a self-attested 18+ confirmation for reading, posting, pins and search (bots and DMs exempt)', async () => {
+    const { owner, guild, members: [a] } = await guildWith('ag');
+    const nsfw = (await api.req('POST', `/guilds/${guild.id}/channels`, owner.token, { name: 'spicy', type: 'text', nsfw: true })).body;
+    expect(nsfw.nsfw).toBe(true);
+    const plain = guild.channels.find((c: any) => c.type === 'text' && c.name === 'general');
+    await env.ctx.db.query(`INSERT INTO messages (id, channel_id, guild_id, author_id, content) VALUES ('777000000000001', $1, $2, $3, 'adult words')`, [nsfw.id, guild.id, owner.id]);
+    for (const [method, url, body] of [['GET', `/channels/${nsfw.id}/messages`], ['POST', `/channels/${nsfw.id}/messages`, { content: 'hi' }], ['GET', `/channels/${nsfw.id}/pins`], ['GET', `/channels/${nsfw.id}/messages/search?q=adult`]] as const) {
+      const r = await api.req(method, url, a!.token, body);
+      expect([r.status, r.body.code]).toEqual([403, 'AGE_RESTRICTED']);
+    }
+    // guild-wide search silently leaves the channel out
+    expect((await api.req('GET', `/guilds/${guild.id}/messages/search?q=adult`, a!.token)).body).toEqual([]);
+    expect((await api.req('GET', '/users/@me', a!.token)).body.ageConfirmed).toBe(false);
+    // non-nsfw channels are unaffected
+    expect((await api.req('POST', `/channels/${plain.id}/messages`, a!.token, { content: 'fine' })).status).toBe(201);
+    // confirm (must be explicit)
+    expect((await api.req('POST', '/users/@me/age-confirm', a!.token, {})).status).toBe(400);
+    const w = await WsClient.connect(env.port); await w.identify(a!.token);
+    expect((await api.req('POST', '/users/@me/age-confirm', a!.token, { confirm: true })).status).toBe(204);
+    expect((await w.waitEvent('USER_UPDATE', (d) => d.ageConfirmed === true)).d.id).toBe(a!.id);
+    expect((await api.req('GET', `/channels/${nsfw.id}/messages`, a!.token)).body.map((m: any) => m.content)).toContain('adult words');
+    expect((await api.req('POST', `/channels/${nsfw.id}/messages`, a!.token, { content: 'hi' })).status).toBe(201);
+    expect((await api.req('GET', `/guilds/${guild.id}/messages/search?q=adult`, a!.token)).body.length).toBe(1);
+    // revoking locks it again
+    expect((await api.req('DELETE', '/users/@me/age-confirm', a!.token)).status).toBe(204);
+    expect((await api.req('GET', `/channels/${nsfw.id}/messages`, a!.token)).status).toBe(403);
+    expect((await api.req('POST', '/users/@me/age-confirm', null, { confirm: true })).status).toBe(401);
+    w.close();
+  });
+});
