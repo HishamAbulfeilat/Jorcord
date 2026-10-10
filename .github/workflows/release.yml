@@ -1,7 +1,8 @@
 name: Release
 # Push a tag vX.Y.Z to build everything and publish ONE GitHub Release with every asset attached.
-# Run manually (Actions > Release > Run workflow) for a dry run: builds everything and uploads the
-# would-be release files as the "release-preview" artifact, but publishes nothing.
+# Every build job uploads straight to ONE draft release (created first); the last job adds SHA256SUMS.txt and publishes it.
+# Dry runs (manual / branch push) do the same against a throw-away draft that is deleted at the end, so nothing is published.
+# (Release assets, not Actions artifacts, so the Actions artifact storage quota is not needed.)
 on:
   push:
     tags: ['v*']
@@ -16,7 +17,9 @@ concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
 permissions:
-  contents: read
+  contents: write
+env:
+  GH_TOKEN: ${{ github.token }}
 
 jobs:
   prepare:
@@ -42,9 +45,28 @@ jobs:
           fi
           echo "version=$PKG" >> "$GITHUB_OUTPUT"
 
+  draft:
+    needs: prepare
+    runs-on: ubuntu-latest
+    outputs:
+      release_id: ${{ steps.d.outputs.release_id }}
+      tag: ${{ steps.d.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: d
+        run: |
+          set -e
+          V=${{ needs.prepare.outputs.version }}
+          if [ "${{ needs.prepare.outputs.is_release }}" = true ]; then TAG="v$V"; else TAG="dryrun-${{ github.run_id }}"; fi
+          sed "s/VERSION/$V/g" .github/release-notes.md > notes.md
+          ID=$(gh api --method POST "repos/$GITHUB_REPOSITORY/releases" \
+            -f tag_name="$TAG" -f target_commitish="$GITHUB_SHA" -f name="Jorcord v$V" -F draft=true -F prerelease=false \
+            -F generate_release_notes=true -f body="$(cat notes.md)" --jq .id)
+          echo "release_id=$ID" >> "$GITHUB_OUTPUT"; echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
   # ---------------------------------------------------------------- web
   web:
-    needs: prepare
+    needs: [prepare, draft]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -71,9 +93,9 @@ jobs:
           cp apps/web/dist/index.html apps/web/dist/404.html
           mkdir -p out
           (cd apps/web/dist && zip -qr "$GITHUB_WORKSPACE/out/jorcord-web-v${{ needs.prepare.outputs.version }}.zip" .)
-      - uses: actions/upload-artifact@v4
-        with: { name: asset-web, path: out/*, if-no-files-found: error }
+      - run: .github/scripts/upload-assets.sh ${{ needs.draft.outputs.release_id }} out/*
       - uses: actions/upload-pages-artifact@v3
+        continue-on-error: true   # needs Actions artifact storage; Pages is best-effort
         with: { path: pages-dist }
 
   pages:
@@ -97,7 +119,7 @@ jobs:
 
   # ---------------------------------------------------------------- server + livekit bundles
   server-bundle:
-    needs: prepare
+    needs: [prepare, draft]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -146,8 +168,7 @@ jobs:
           (cd infra/livekit && cp -r README.md docker-compose.yml livekit.yaml ../../lk/jorcord-livekit-config/)
           tar -C lk -czf "out/jorcord-livekit-config-v$V.tar.gz" jorcord-livekit-config
           ls -la out
-      - uses: actions/upload-artifact@v4
-        with: { name: asset-server, path: out/*, if-no-files-found: error }
+      - run: .github/scripts/upload-assets.sh ${{ needs.draft.outputs.release_id }} out/*
 
   docker:
     needs: prepare
@@ -188,7 +209,7 @@ jobs:
 
   # ---------------------------------------------------------------- desktop
   desktop:
-    needs: prepare
+    needs: [prepare, draft]
     strategy:
       fail-fast: false
       matrix:
@@ -248,12 +269,13 @@ jobs:
             \( -name '*.msi' -o -name '*-setup.exe' -o -name '*.dmg' -o -name '*.AppImage' -o -name '*.deb' -o -name '*.rpm' \) \
             -exec cp -v {} out/ \;
           ls -la out
-      - uses: actions/upload-artifact@v4
-        with: { name: 'asset-desktop-${{ matrix.name }}', path: out/*, if-no-files-found: error }
+      - name: Upload to release
+        shell: bash
+        run: .github/scripts/upload-assets.sh ${{ needs.draft.outputs.release_id }} out/*
 
   # ---------------------------------------------------------------- android
   android:
-    needs: prepare
+    needs: [prepare, draft]
     runs-on: ubuntu-latest
     timeout-minutes: 50
     steps:
@@ -263,7 +285,13 @@ jobs:
         with: { node-version: 22, cache: pnpm }
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: 21 }
-      - uses: android-actions/setup-android@v3
+      - name: Android SDK (preinstalled on the runner; accept licenses, add platform 36)
+        run: |
+          export ANDROID_HOME=${ANDROID_HOME:-/usr/local/lib/android/sdk}
+          echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
+          SM=$(ls "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager | sort -V | tail -1)
+          yes | "$SM" --licenses > /dev/null || true
+          "$SM" "platforms;android-36" "build-tools;36.0.0" > /dev/null
       - uses: gradle/actions/setup-gradle@v4
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @jorcord/shared build --if-present
@@ -317,19 +345,12 @@ jobs:
           APKSIGNER=$(ls $ANDROID_HOME/build-tools/*/apksigner | tail -1)
           "$APKSIGNER" verify --print-certs "out/Jorcord-$V-android-universal.apk" | head -3
           echo "$SIGNING" > out/.signing; ls -la out
-      - uses: actions/upload-artifact@v4
-        with:
-          name: asset-android
-          path: |
-            out/*
-            out/.signing
-          include-hidden-files: true
-          if-no-files-found: error
+      - run: .github/scripts/upload-assets.sh ${{ needs.draft.outputs.release_id }} out/*.apk out/*.aab
 
   # ---------------------------------------------------------------- ios
   ios:
     # Unsigned: Apple signing needs your account. We package the unsigned archive as an .ipa that sideloaders can re-sign.
-    needs: prepare
+    needs: [prepare, draft]
     runs-on: macos-15
     timeout-minutes: 60
     steps:
@@ -363,43 +384,35 @@ jobs:
           cp -R "$RUNNER_TEMP/Jorcord.xcarchive/Products/Applications/App.app" ipa/Payload/
           (cd ipa && zip -qry "$GITHUB_WORKSPACE/out/Jorcord-${{ needs.prepare.outputs.version }}-ios-unsigned.ipa" Payload)
           ls -la out
-      - uses: actions/upload-artifact@v4
-        with: { name: asset-ios, path: out/*, if-no-files-found: error }
+      - run: .github/scripts/upload-assets.sh ${{ needs.draft.outputs.release_id }} out/*
 
   # ---------------------------------------------------------------- publish (single, non-draft release)
   release:
-    needs: [prepare, web, server-bundle, docker, desktop, android, ios]
-    if: always() && needs.prepare.result == 'success' && needs.web.result == 'success' && needs.server-bundle.result == 'success' && needs.desktop.result == 'success' && needs.android.result == 'success' && needs.docker.result == 'success'
+    needs: [prepare, draft, web, server-bundle, docker, desktop, android, ios]
+    if: always() && needs.draft.result == 'success' && needs.web.result == 'success' && needs.server-bundle.result == 'success' && needs.desktop.result == 'success' && needs.android.result == 'success' && needs.docker.result == 'success'
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with: { pattern: 'asset-*', path: collected, merge-multiple: true }
-      - name: Checksums and notes
+      - name: Checksums, notes, publish
         env:
           IOS_RESULT: ${{ needs.ios.result }}
+          ID: ${{ needs.draft.outputs.release_id }}
+          IS_RELEASE: ${{ needs.prepare.outputs.is_release }}
         run: |
           set -e
-          V=${{ needs.prepare.outputs.version }}
-          mkdir release
-          SIGNING=$(cat collected/.signing 2>/dev/null || echo unknown); rm -f collected/.signing
-          mv collected/* release/
-          sed "s/VERSION/$V/g" .github/release-notes.md > notes.md
-          { echo; echo "Android APKs in this release are signed with $SIGNING."; } >> notes.md
-          [ "$IOS_RESULT" = success ] || { echo; echo "**The iOS .ipa could not be built for this release** (CI job failed); build it yourself using docs/PLATFORMS.md."; } >> notes.md
-          (cd release && sha256sum * > SHA256SUMS.txt && cat SHA256SUMS.txt)
-      - uses: actions/upload-artifact@v4
-        with: { name: release-preview, path: 'release/*', retention-days: 7 }
-      - if: needs.prepare.outputs.is_release == 'true'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v${{ needs.prepare.outputs.version }}
-          name: Jorcord v${{ needs.prepare.outputs.version }}
-          body_path: notes.md
-          generate_release_notes: true
-          draft: false
-          prerelease: false
-          fail_on_unmatched_files: true
-          files: release/*
+          mkdir dl && cd dl
+          gh api "repos/$GITHUB_REPOSITORY/releases/$ID/assets?per_page=100" --jq '.[] | "\(.id) \(.name)"' > ../list.txt
+          while read -r aid name; do gh api -H "Accept: application/octet-stream" "repos/$GITHUB_REPOSITORY/releases/assets/$aid" > "$name"; done < ../list.txt
+          sha256sum * > ../SHA256SUMS.txt; cat ../SHA256SUMS.txt; cd ..
+          gh api --method POST -H "Content-Type: application/octet-stream" "https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/$ID/assets?name=SHA256SUMS.txt" --input SHA256SUMS.txt > /dev/null
+          BODY=$(gh api "repos/$GITHUB_REPOSITORY/releases/$ID" --jq .body)
+          {
+            printf '%s\n\n' "$BODY"
+            echo "Android APKs/AAB are signed with the release keystore from the \`ANDROID_KEYSTORE_B64\` secrets when configured, otherwise with an ephemeral CI keystore (then upgrading from an earlier release needs an uninstall first)."
+            [ "$IOS_RESULT" = success ] || { echo; echo "**The iOS .ipa could not be built for this release** (CI job failed); build it yourself using docs/PLATFORMS.md."; }
+          } > body.md
+          if [ "$IS_RELEASE" = true ]; then
+            gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/$ID" -F body=@body.md -F draft=false -F make_latest=true --jq .html_url
+          else
+            echo "Dry run OK, assets:"; cat list.txt
+            gh api --method DELETE "repos/$GITHUB_REPOSITORY/releases/$ID"
+          fi
