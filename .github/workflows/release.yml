@@ -5,6 +5,7 @@ name: Release
 on:
   push:
     tags: ['v*']
+    branches: ['claude/discord-clone-design-cdj43b']   # TEMP dry-run trigger (workflow_dispatch needs the file on the default branch)
   workflow_dispatch:
     inputs:
       publish_pages:
