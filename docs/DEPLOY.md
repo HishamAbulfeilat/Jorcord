@@ -26,8 +26,14 @@ The server runs migrations on boot. Compose refuses to start if a required secre
 Ports: `3000` API + WebSocket gateway, `7880` LiveKit signalling, `7881/tcp` and `50000-50200/udp` LiveKit media,
 `127.0.0.1:9001` MinIO console. Postgres, Redis and MinIO are not published.
 
-The web client (`apps/web`) is a static bundle: `pnpm --filter @jorcord/web build`, then serve `apps/web/dist` from any
-static host / reverse proxy and point it at `PUBLIC_URL`. Add that origin to `CORS_ORIGINS`.
+**The web app is served by the server itself.** The Docker image builds `apps/web` (`VITE_BASE=/`) into `/app/web` and sets
+`WEB_DIST=/app/web`, so `http://localhost:3000/` is the app (same origin: it talks to `/api/v1` and `/gateway` on the page's own
+origin, with no server-address screen and no CORS setup). Unknown browser navigations (deep links such as `/channels/x/y`) get
+`index.html`; API paths (`/api`, `/gateway`, `/files`, `/health`, `/voice`, `/oauth2`, `/interactions`, `/webhooks`, `/push`)
+keep their JSON 404s. Hashed assets are cached immutably; `index.html` and `sw.js` are always revalidated.
+Without Docker, run `VITE_BASE=/ pnpm --filter @jorcord/web build` and start the server with `WEB_DIST=apps/web/dist`
+(unset by default, so `pnpm dev` stays API-only; the release tarball ships the build in `web/` and `run.sh` sets it).
+To host the web client elsewhere (CDN, GitHub Pages: build with `VITE_STATIC_HOST=1`), add its origin to `CORS_ORIGINS`.
 
 ## Without Docker
 
@@ -114,8 +120,8 @@ livekit.example.com {
   reverse_proxy livekit:7880
 }
 ```
-Then `PUBLIC_URL=https://api.example.com`, `LIVEKIT_URL=wss://livekit.example.com`, `TRUST_PROXY=true`,
-`CORS_ORIGINS=https://app.example.com`.
+Then `PUBLIC_URL=https://api.example.com` (users open this URL: it serves the web app too), `LIVEKIT_URL=wss://livekit.example.com`,
+`TRUST_PROXY=true`. `CORS_ORIGINS` is only needed for web clients hosted on another origin.
 
 ## Operations
 

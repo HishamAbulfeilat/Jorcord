@@ -12,8 +12,17 @@ COPY packages/shared/package.json packages/shared/package.json
 COPY apps/server/package.json apps/server/package.json
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile --filter "@jorcord/server..."
 
+# Web client (apps/web) built for the server's own origin: no connect-to-server screen, API calls go to window.location.origin.
+# (Do not set VITE_STATIC_HOST here: that flag is only for static hosts such as GitHub Pages.)
+FROM base AS web
+COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
+COPY packages/shared packages/shared
+COPY apps/web apps/web
+RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile --filter "@jorcord/web..."
+RUN VITE_BASE=/ pnpm --filter @jorcord/web build
+
 FROM base AS runtime
-ENV NODE_ENV=production HOST=0.0.0.0 PORT=3000 DATA_DIR=/data
+ENV NODE_ENV=production HOST=0.0.0.0 PORT=3000 DATA_DIR=/data WEB_DIST=/app/web
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/packages/shared/node_modules ./packages/shared/node_modules
 COPY --from=deps /app/apps/server/node_modules ./apps/server/node_modules
@@ -22,6 +31,7 @@ COPY packages/shared ./packages/shared
 COPY apps/server/package.json apps/server/tsconfig.json ./apps/server/
 COPY apps/server/src ./apps/server/src
 COPY apps/server/migrations ./apps/server/migrations
+COPY --from=web /app/apps/web/dist ./web
 RUN mkdir -p /data && chown -R node:node /data
 USER node
 WORKDIR /app/apps/server

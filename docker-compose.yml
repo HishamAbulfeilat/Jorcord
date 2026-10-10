@@ -1,7 +1,8 @@
 # Jorcord backend stack: server + Postgres + Redis + LiveKit (files on a local volume; MinIO/S3 optional via `--profile s3`).
 #   cp .env.example .env   # (see docs/DEPLOY.md) set at least JWT_SECRET, POSTGRES_PASSWORD, LIVEKIT_API_SECRET, MINIO_ROOT_PASSWORD
 #   docker compose up -d --build
-# The web client is a static bundle (apps/web) served by any static host / reverse proxy; see docs/DEPLOY.md.
+# Then open http://localhost:3000 : the server image also serves the web app (WEB_DIST=/app/web), same origin, so no CORS setup is needed.
+# Other web hosts (GitHub Pages, a CDN) can still be used: add their origin to CORS_ORIGINS. See docs/DEPLOY.md.
 name: jorcord
 
 services:
@@ -19,6 +20,7 @@ services:
       NODE_ENV: production
       JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET (>= 32 random chars)}
       PUBLIC_URL: ${PUBLIC_URL:-http://localhost:3000}
+      # Only needed for web clients hosted elsewhere; the bundled web app is same-origin (PUBLIC_URL's origin is always allowed).
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173}
       TRUST_PROXY: ${TRUST_PROXY:-false}
       DATABASE_URL: postgres://jorcord:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/jorcord

@@ -129,12 +129,16 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: pnpm }
       - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @jorcord/shared build --if-present
+      - name: Build the web app for the server's own origin
+        run: VITE_BASE=/ pnpm --filter @jorcord/web build
       - name: Assemble server tarball
         run: |
           set -e
           V=${{ needs.prepare.outputs.version }}
           D=bundle/jorcord-server
           pnpm --filter @jorcord/server deploy --prod --legacy "$D"
+          cp -r apps/web/dist "$D/web"
           cp .env.docker.example "$D/.env.example"
           # compose file for the bundle: pull the published image instead of building from source
           grep -v 'build: { context' docker-compose.yml | sed "s|:\${JORCORD_VERSION:-latest}|:\${JORCORD_VERSION:-$V}|" > "$D/docker-compose.yml"
@@ -144,7 +148,7 @@ jobs:
           # Runs the Jorcord server directly with Node 22+. Reads ./.env if present. Data lives in ./data unless DATA_DIR is set.
           cd "$(dirname "$0")"
           [ -f .env ] && { set -a; . ./.env; set +a; }
-          export NODE_ENV="${NODE_ENV:-production}" DATA_DIR="${DATA_DIR:-$PWD/data}"
+          export NODE_ENV="${NODE_ENV:-production}" DATA_DIR="${DATA_DIR:-$PWD/data}" WEB_DIST="${WEB_DIST:-$PWD/web}"
           exec node_modules/.bin/tsx src/index.ts
           EOT
           sed -i 's/^          //' "$D/run.sh"
@@ -158,7 +162,8 @@ jobs:
             JWT_SECRET=\$(openssl rand -base64 48) ./run.sh        # listens on :3000
           Full stack (Postgres, Redis, LiveKit, MinIO):
             ./init-env.sh && docker compose up -d
-          Then open the Jorcord web/desktop/mobile app and enter http://localhost:3000 as the server address.
+          Then open http://localhost:3000 : the server serves the bundled web app from ./web (WEB_DIST). No server address or CORS setup needed.
+          Desktop/mobile apps: enter http://localhost:3000 as the server address.
           Migrations (migrations/) run automatically on boot.
           EOT
           sed -i 's/^          //' "$D/README.txt"

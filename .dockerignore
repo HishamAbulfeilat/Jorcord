@@ -4,7 +4,6 @@
 .git
 .github
 e2e
-apps/web
 packages/voice
 infra
 docs

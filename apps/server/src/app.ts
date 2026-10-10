@@ -34,6 +34,7 @@ import { createLiveKitControl } from './services/livekit';
 import { createMailer } from './services/mailer';
 import { createPush } from './services/push';
 import { PermCache } from './services/permcache';
+import { createWebApp, hasWebBuild } from './lib/webapp';
 import { securityHeaders, logSerializers, LOG_REDACT } from './lib/security';
 
 export interface BuildOptions { config?: Partial<Config>; memoryDb?: boolean; env?: NodeJS.ProcessEnv }
@@ -93,7 +94,13 @@ export async function buildApp(opts: BuildOptions = {}): Promise<{ app: FastifyI
     req.log.error({ err }, 'unhandled error');
     return reply.code(500).send({ code: 'INTERNAL', message: 'Internal server error' });
   });
-  app.setNotFoundHandler((_req, reply) => reply.code(404).send({ code: 'NOT_FOUND', message: 'Route not found' }));
+  // Optional same-origin web client (WEB_DIST). Real routes win; this only sees what nothing else matched.
+  let web = config.webDist ? createWebApp(config.webDist) : null;
+  if (config.webDist && !(await hasWebBuild(config.webDist))) { app.log.warn({ webDist: config.webDist }, 'WEB_DIST has no index.html: serving the API only'); web = null; }
+  app.setNotFoundHandler(async (req, reply) => {
+    if (web && await web.handle(req, reply)) return reply;
+    return reply.code(404).send({ code: 'NOT_FOUND', message: 'Route not found' });
+  });
 
   app.get('/health', async (_req, reply) => {
     try { await db.query('SELECT 1'); return { status: 'ok', db: db.kind, uptime: Math.round(process.uptime()), sessions: hub.sessions.size }; }

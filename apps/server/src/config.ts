@@ -17,6 +17,8 @@ export interface Config {
   livekit: { url: string; apiUrl: string; apiKey: string; apiSecret: string };
   tenorKey: string | null; giphyKey: string | null; unfurlOnSend: boolean; allowPrivateUnfurl: boolean;
   migrationsDir: string;
+  /** Directory with the built web client (apps/web/dist). null = API only (dev). The Docker image sets WEB_DIST=/app/web. */
+  webDist: string | null;
   /** SMTP connection URL (smtp://user:pass@host:587). Without it, mail is logged (dev) or dropped (prod). */
   smtpUrl: string | null; mailFrom: string;
   /** 'auto' = full-text search on Postgres, ILIKE on PGlite. */
@@ -88,6 +90,7 @@ export function loadConfig(overrides: Partial<Config> = {}, env: NodeJS.ProcessE
     tenorKey: env.TENOR_API_KEY || null, giphyKey: env.GIPHY_API_KEY || null,
     unfurlOnSend: true, allowPrivateUnfurl: false,
     migrationsDir: resolve(here, '../migrations'),
+    webDist: env.WEB_DIST?.trim() ? resolve(env.WEB_DIST.trim()) : null,
     smtpUrl: env.SMTP_URL || null, mailFrom: env.MAIL_FROM ?? 'Jorcord <no-reply@localhost>',
     searchMode: (['fts', 'ilike'].includes(env.SEARCH_MODE ?? '') ? env.SEARCH_MODE : 'auto') as Config['searchMode'],
     storage: {
