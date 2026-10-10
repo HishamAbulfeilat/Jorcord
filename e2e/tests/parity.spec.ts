@@ -260,3 +260,34 @@ test('GIF favorites: save an image from chat, find it under Favorites in the pic
   await expect(grid.getByText(/No favorites yet/)).toBeVisible();
   await A.page.keyboard.press('Escape');
 });
+
+test('connections: add a link, others see it on the profile, hiding removes it', async ({ browser }) => {
+  const B = await newUser(browser, 'Looker');
+  try {
+    const gid = await guildId(A.page);
+    const code = (await rest(A.page, 'POST', `/guilds/${gid}/invites`, {})).code;
+    await B.page.goto(`/invite/${code}`);
+    await B.page.getByRole('button', { name: /Accept Invite/ }).click();
+    await B.page.waitForURL(/\/channels\/\d+/);
+    await openUserSettings(A.page, 'Connections');
+    const dlg = A.page.getByRole('dialog', { name: 'User Settings' });
+    await dlg.getByLabel('Service').selectOption('github');
+    await dlg.getByLabel('Connection handle').fill('octo-cat');
+    await dlg.getByRole('button', { name: 'Add connection' }).click();
+    const row = dlg.getByTestId('connection-row');
+    await expect(row).toContainText('octo-cat'); await expect(row).toContainText('Not verified');
+    await expect(row.getByTestId('verify-code')).toContainText('jorcord-verify=');
+    await B.page.getByRole('complementary', { name: 'Members' }).getByRole('button', { name: /Parity/ }).click();
+    const link = B.page.getByTestId('profile-connections').getByRole('link', { name: /GitHub/ });
+    await expect(link).toHaveAttribute('href', 'https://github.com/octo-cat');
+    await expect(link).toHaveAttribute('rel', /noopener/);
+    await dlg.getByRole('switch', { name: 'Show on profile: GitHub' }).click();
+    await B.page.reload();
+    await B.page.getByRole('complementary', { name: 'Members' }).getByRole('button', { name: /Parity/ }).click();
+    await expect(B.page.getByTestId('profile-card')).toBeVisible();
+    await expect(B.page.getByTestId('profile-connections')).toHaveCount(0);
+    await dlg.getByRole('button', { name: 'Remove GitHub' }).click();
+    await expect(dlg.getByTestId('connection-row')).toHaveCount(0);
+    await closeSettings(A.page);
+  } finally { await B.ctx.close(); }
+});

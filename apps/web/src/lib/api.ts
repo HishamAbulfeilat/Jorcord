@@ -1,12 +1,12 @@
 /** Typed REST client written against docs/CONTRACT.md. All calls go through the swappable transport. */
 import type {
   Activity, Attachment, AuditEntry, AutoModRule, Channel, Emoji, Guild, GuildFull, Invite, Member, Message, Relationship, ReadState, Role, SelfUser, Sticker, User, VoiceToken, Id, Presence, OverwriteDTO,
-  Reminder, SoundboardSound, GifFavorite, GuildTemplate, GuildWidgetSettings, GuildInsights, ChannelFollow, Onboarding, OnboardingResponse, GuildSafety, SafetyPreset, Application, ApplicationCommand, CommandPermissionOverwrite, CommandOptionChoice, CreatePoll, ForumTag, InteractionOptionValue, ModalSubmitRow, OAuthAuthorizePreview, OAuthAuthorizeResult, ScheduledEvent, StageInstance,
+  Reminder, SoundboardSound, Connection, PublicConnection, GifFavorite, GuildTemplate, GuildWidgetSettings, GuildInsights, ChannelFollow, Onboarding, OnboardingResponse, GuildSafety, SafetyPreset, Application, ApplicationCommand, CommandPermissionOverwrite, CommandOptionChoice, CreatePoll, ForumTag, InteractionOptionValue, ModalSubmitRow, OAuthAuthorizePreview, OAuthAuthorizeResult, ScheduledEvent, StageInstance,
 } from '@jorcord/shared';
 import { send } from './transport';
 
 export interface AuthResult { user: SelfUser; accessToken: string; refreshToken: string }
-export interface UserProfile extends User { activities?: Activity[]; note?: string | null; mutualGuilds?: { id: Id; name: string; icon: string | null; nick?: string | null }[]; mutualFriends?: User[] }
+export interface UserProfile extends User { activities?: Activity[]; connections?: PublicConnection[]; note?: string | null; mutualGuilds?: { id: Id; name: string; icon: string | null; nick?: string | null }[]; mutualFriends?: User[] }
 export interface MessageQuery { limit?: number; before?: Id; after?: Id; around?: Id }
 export interface SearchQuery { q?: string; authorId?: Id; channelId?: Id; has?: string; before?: string }
 export interface SendMessageInput { content: string; replyTo?: Id | null; files?: File[]; nonce?: string; stickerIds?: Id[]; poll?: CreatePoll }
@@ -86,6 +86,12 @@ export const api = {
     gifFavorites: () => send<GifFavorite[]>({ method: 'GET', path: '/users/@me/gif-favorites' }).then((x) => arr<GifFavorite>(x)),
     addGifFavorite: (b: { url: string; preview?: string | null; title?: string | null; width?: number | null; height?: number | null }) => send<GifFavorite>({ method: 'POST', path: '/users/@me/gif-favorites', body: b }),
     removeGifFavorite: (id: Id) => send({ method: 'DELETE', path: `/users/@me/gif-favorites/${id}` }),
+    /** Profile connections: self-declared links, verified by placing a code on the linked page. */
+    connections: () => send<Connection[]>({ method: 'GET', path: '/users/@me/connections' }).then((x) => arr<Connection>(x)),
+    addConnection: (b: { type: string; handle: string; visible?: boolean }) => send<Connection>({ method: 'POST', path: '/users/@me/connections', body: b }),
+    patchConnection: (id: Id, b: { visible: boolean }) => send<Connection>({ method: 'PATCH', path: `/users/@me/connections/${id}`, body: b }),
+    deleteConnection: (id: Id) => send({ method: 'DELETE', path: `/users/@me/connections/${id}` }),
+    verifyConnection: (id: Id) => send<Connection>({ method: 'POST', path: `/users/@me/connections/${id}/verify` }),
     findByUsername: (username: string) => send<User[] | User>({ method: 'GET', path: '/users', query: { username } }).then((x) => (Array.isArray(x) ? x : x ? [x] : [])),
   },
   guilds: {

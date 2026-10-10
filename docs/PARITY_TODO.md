@@ -24,7 +24,7 @@ Rank = order in which this pass implements items (R1 first). `-` = not planned i
 | R14 | User-created guild templates (share code), widget, vanity URL claim UI, server insights/analytics | DONE (`routes/guildextras.ts`, `services/templates.ts`, `ServerExtrasTabs.tsx`, `TemplatePage.tsx`) | 2 | built-in presets only (`services/guilds.ts`); vanity PATCH exists |
 | R15 | GIF favorites, saved media | DONE (`routes/favorites.ts`, `gifFavorites.ts`, EmojiPicker Favorites tab) | 3 | `GET /gifs/*` only |
 | R16 | Account switching (multi-account) | todo | 3 | single session store (`lib/session.ts`) |
-| R17 | Connections on profile (links to Twitch/GitHub...) | todo | 2 | none |
+| R17 | Connections on profile (links to Twitch/GitHub...) | DONE (`routes/connections.ts`, `ConnectionsTab.tsx`; self-declared + verify-by-code, no third-party OAuth) | 2 | none |
 | R18 | Soundboard (guild sounds + play in voice) | DONE (`routes/soundboard.ts`, `components/Soundboard.tsx`) | 4 | upload/limits, play over gateway event, USE_SOUNDBOARD, per-user + global mute, voice dock button |
 | R19 | Message edit history | todo | 1 | `edited_at` only; Discord itself does not show history, skip |
 | R20 | Server boost levels page perks list | partial | 2 | boosts free/unlimited (`GuildSettings` boosts tab) |

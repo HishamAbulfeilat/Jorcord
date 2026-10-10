@@ -117,3 +117,25 @@ export const MAX_TEMPLATE_CHANNELS = 200;
 // ---------- GIF favorites / saved media ----------
 export interface GifFavorite { id: Id; url: string; preview: string | null; title: string | null; width: number | null; height: number | null; createdAt: string }
 export const MAX_GIF_FAVORITES = 250;
+
+// ---------- profile connections ----------
+/** Where a connection points. The server builds the URL from the handle (only `website` takes a full URL), so a profile can never link somewhere unexpected. */
+export interface ConnectionProvider { id: string; name: string; /** placeholder for the input */ example: string; pattern: RegExp; url(handle: string): string }
+const host = (u: string) => (h: string) => u.replace('{h}', encodeURIComponent(h));
+export const CONNECTION_PROVIDERS: ConnectionProvider[] = [
+  { id: 'github', name: 'GitHub', example: 'octocat', pattern: /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/, url: host('https://github.com/{h}') },
+  { id: 'twitch', name: 'Twitch', example: 'streamer_name', pattern: /^[A-Za-z0-9_]{3,25}$/, url: host('https://www.twitch.tv/{h}') },
+  { id: 'youtube', name: 'YouTube', example: '@channel', pattern: /^@[A-Za-z0-9._-]{3,30}$/, url: (h) => `https://www.youtube.com/${encodeURIComponent(h).replace('%40', '@')}` },
+  { id: 'x', name: 'X (Twitter)', example: 'username', pattern: /^[A-Za-z0-9_]{1,15}$/, url: host('https://x.com/{h}') },
+  { id: 'reddit', name: 'Reddit', example: 'username', pattern: /^[A-Za-z0-9_-]{3,20}$/, url: host('https://www.reddit.com/user/{h}') },
+  { id: 'steam', name: 'Steam', example: 'custom_id', pattern: /^[A-Za-z0-9_-]{2,32}$/, url: host('https://steamcommunity.com/id/{h}') },
+  { id: 'spotify', name: 'Spotify', example: 'user_id', pattern: /^[A-Za-z0-9_.-]{1,64}$/, url: host('https://open.spotify.com/user/{h}') },
+  { id: 'bluesky', name: 'Bluesky', example: 'name.bsky.social', pattern: /^[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$/, url: host('https://bsky.app/profile/{h}') },
+  { id: 'mastodon', name: 'Mastodon', example: 'name@instance.social', pattern: /^[A-Za-z0-9_]{1,30}@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$/, url: (h) => { const [n, i] = h.split('@'); return `https://${i}/@${encodeURIComponent(n!)}`; } },
+  { id: 'website', name: 'Website', example: 'https://example.com', pattern: /^https:\/\/[^\s/$.?#][^\s]*$/i, url: (h) => h },
+];
+export const MAX_CONNECTIONS = 20;
+export const connectionProvider = (id: string) => CONNECTION_PROVIDERS.find((p) => p.id === id);
+/** One link on a profile. `verified` = the owner proved control by placing their code on the linked page. */
+export interface PublicConnection { type: string; name: string; url: string; verified: boolean }
+export interface Connection extends PublicConnection { id: Id; handle: string; visible: boolean; createdAt: string; /** put this text on the linked page, then call verify */ verifyCode: string }

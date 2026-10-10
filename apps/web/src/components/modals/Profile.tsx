@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { MessageSquare, UserPlus, UserMinus, Settings } from 'lucide-react';
+import { BadgeCheck, MessageSquare, UserPlus, UserMinus, Settings } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useData } from '@/stores/data';
 import { useUI, toast, toastError } from '@/stores/ui';
@@ -67,6 +67,7 @@ export function ProfileCard({ userId, guildId, compact }: { userId: string; guil
           {u.bio && <><h4 className="mb-1 text-xs font-bold uppercase text-header">{t('About Me')}</h4><div className="mb-3 text-sm"><Markdown content={u.bio} guildId={guildId} /></div></>}
           <h4 className="mb-1 text-xs font-bold uppercase text-header">{t('Member Since')}</h4>
           <div className="mb-3 flex gap-3 text-sm"><span>{fmtStamp(new Date(u.createdAt).getTime()).replace(/ at .*/, '')}</span>{member && <span className="text-muted">• Joined {new Date(member.joinedAt).toLocaleDateString()}</span>}</div>
+          {!!q.data?.connections?.length && (<><h4 className="mb-1 text-xs font-bold uppercase text-header">{t('Connections')}</h4><ul className="mb-3 flex flex-wrap gap-1.5" data-testid="profile-connections">{q.data.connections.map((c) => <li key={c.url}><a href={c.url} target="_blank" rel="noopener noreferrer nofollow" className="flex items-center gap-1 rounded bg-active px-2 py-1 text-xs font-medium text-header hover:underline" title={c.verified ? t('Verified') : t('Not verified')}>{c.name}{c.verified && <BadgeCheck size={13} className="text-success" aria-label={t('Verified')} />}</a></li>)}</ul></>)}
           {guildId && myRoles.length > 0 && (<><h4 className="mb-1 text-xs font-bold uppercase text-header">{t('Roles')}</h4><ul className="flex flex-wrap gap-1">{myRoles.map((r) => <li key={r.id} className="flex items-center gap-1.5 rounded bg-active px-2 py-0.5 text-xs font-medium text-header">{r.icon ? <RoleIcon role={r} size={14} /> : <span className="h-3 w-3 rounded-full" style={{ background: r.color ? intToHex(r.color) : 'rgb(var(--muted))' }} />}{r.name}</li>)}</ul></>)}
           {!isMe && q.data && <NoteBox userId={userId} note={q.data.note} />}
           {!compact && q.data?.mutualFriends && q.data.mutualFriends.length > 0 && !isMe && (<><h4 className="mb-1 mt-3 text-xs font-bold uppercase text-header">{t('Mutual Friends')} — {q.data.mutualFriends.length}</h4><ul className="flex flex-wrap gap-1" data-testid="mutual-friends">{q.data.mutualFriends.map((f) => <li key={f.id} className="flex items-center gap-1 rounded bg-active py-0.5 pe-2 ps-0.5 text-xs"><Avatar user={f} size={18} />{displayName(f)}</li>)}</ul></>)}

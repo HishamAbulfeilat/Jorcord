@@ -2,8 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { VoiceSettingsForm } from '@/voice/VoiceSettings';
 import { useQuery } from '@tanstack/react-query';
-import { Accessibility, Bell, Globe, Keyboard, LogOut, Mic, Palette, Shield, User as UserIcon, UserCircle, Monitor, Radio, Laptop, Smile, Code2, Lock } from 'lucide-react';
+import { Link2, Accessibility, Bell, Globe, Keyboard, LogOut, Mic, Palette, Shield, User as UserIcon, UserCircle, Monitor, Radio, Laptop, Smile, Code2, Lock } from 'lucide-react';
 import { PrivacyTab } from './PrivacyTab';
+import { ConnectionsTab } from './ConnectionsTab';
 import { NotificationsTab, StreamerTab, DesktopTab, ServerSection, ThemePicker, ThemeColorsPicker } from './UserSettingsExtra';
 import { isTauri } from '@/lib/server';
 import { LOCALES } from '@/i18n';
@@ -28,7 +29,7 @@ export function UserSettings({ initialTab }: { initialTab?: string }) {
   const navigate = useNavigate();
   const [tab, setTabRaw] = useState(initialTab ?? lastTab); const setTab = (x: string) => { lastTab = x; setTabRaw(x); }; const close = () => { lastTab = 'account'; useUI.getState().openSettings(null); };
   const groups = [
-    { title: t('User Settings'), items: [{ id: 'account', label: t('My Account'), icon: UserIcon }, { id: 'profile', label: t('Profile'), icon: UserCircle }, { id: 'privacy', label: t('Privacy & Safety'), icon: Lock }, { id: 'security', label: t('Security & Devices'), icon: Shield }] },
+    { title: t('User Settings'), items: [{ id: 'account', label: t('My Account'), icon: UserIcon }, { id: 'profile', label: t('Profile'), icon: UserCircle }, { id: 'privacy', label: t('Privacy & Safety'), icon: Lock }, { id: 'connections', label: t('Connections'), icon: Link2 }, { id: 'security', label: t('Security & Devices'), icon: Shield }] },
     { title: t('App Settings'), items: [{ id: 'appearance', label: t('Appearance'), icon: Palette }, { id: 'accessibility', label: t('Accessibility'), icon: Accessibility }, { id: 'voice', label: t('Voice & Video'), icon: Mic }, { id: 'notifications', label: t('Notifications'), icon: Bell }, { id: 'keybinds', label: t('Keybinds'), icon: Keyboard }, { id: 'streamer', label: t('Streamer Mode'), icon: Radio }, { id: 'language', label: t('Language'), icon: Globe }, ...(isTauri() ? [{ id: 'desktop', label: t('Desktop App'), icon: Laptop }] : [])] },
     { title: t('Developers'), items: [{ id: 'developer', label: t('Developer Portal'), icon: Code2 }] },
     { items: [{ id: 'logout', label: t('Log Out'), icon: LogOut, danger: true }] },
@@ -38,6 +39,7 @@ export function UserSettings({ initialTab }: { initialTab?: string }) {
       {tab === 'account' && <Account go={setTab} />}
       {tab === 'profile' && <Profile />}
       {tab === 'privacy' && <PrivacyTab />}
+      {tab === 'connections' && <ConnectionsTab />}
       {tab === 'security' && <Security />}
       {tab === 'appearance' && <Appearance />}
       {tab === 'accessibility' && <A11y />}

@@ -3,6 +3,7 @@ import { z } from 'zod';
 import type { Relationship } from '@jorcord/shared';
 import { AVATAR_DECORATION_IDS, NAME_PLATE_IDS, PROFILE_EFFECT_IDS, snowflake } from '@jorcord/shared';
 import { bumpDaily } from './guildextras';
+import { publicConnections } from './connections';
 import { clearServerTag, setServerTag } from '../services/cosmetics';
 import type { Ctx } from '../ctx';
 import { ApiError, badRequest, forbidden, notFound } from '../errors';
@@ -171,7 +172,7 @@ export function userRoutes(app: FastifyInstance, ctx: Ctx) {
     const [note] = await ctx.db.query('SELECT note FROM user_notes WHERE user_id = $1 AND target_id = $2', [req.userId, id]);
     const [ar] = await ctx.db.query('SELECT presence, activities, privacy FROM users WHERE id = $1', [id]);
     const activities = id === req.userId ? (Array.isArray(ar?.activities) ? ar.activities : []) : ar ? publicActivities(ctx, id, ar) : [];
-    return { ...user, activities, mutualGuilds: mutual, mutualFriends: [...mf.values()], note: (note?.note as string | undefined) ?? null };
+    return { ...user, activities, connections: await publicConnections(ctx, id), mutualGuilds: mutual, mutualFriends: [...mf.values()], note: (note?.note as string | undefined) ?? null };
   });
 
   app.put('/users/@me/presence', async (req, reply) => {
