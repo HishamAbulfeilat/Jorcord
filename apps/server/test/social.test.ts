@@ -346,3 +346,35 @@ describe('age-restricted channels', () => {
     w.close();
   });
 });
+
+describe('automod presets and options', () => {
+  const mk = (owner: Client, gid: string, body: object) => api.req('POST', `/guilds/${gid}/automod/rules`, owner.token, { name: 'r', action: 'block', ...body });
+  it('preset words match whole words and leet-speak, allow-list and exempt channels apply, limits are configurable', async () => {
+    const { owner, guild, members: [a], general } = await guildWith('am');
+    const other = (await api.req('POST', `/guilds/${guild.id}/channels`, owner.token, { name: 'free', type: 'text' })).body;
+    expect((await mk(owner, guild.id, { trigger: 'keyword_preset', presets: [] })).status).toBe(400);
+    expect((await mk(a!, guild.id, { trigger: 'keyword_preset', presets: ['profanity'] })).status).toBe(403);
+    const rule = (await mk(owner, guild.id, { trigger: 'keyword_preset', presets: ['profanity'], allowList: ['shitake'], exemptChannels: [other.id], customMessage: 'Mind your language' })).body;
+    expect(rule.presets).toEqual(['profanity']);
+    const bad = await say(a!, general.id, 'what the 5h1t');
+    expect([bad.status, bad.body.message]).toEqual([400, 'Mind your language']);
+    expect((await say(a!, general.id, 'Classic Scunthorpe, assassin, shitake')).status).toBe(201); // whole words only, allow-list
+    expect((await say(a!, other.id, 'shit')).status).toBe(201); // exempt channel
+    expect((await say(owner, general.id, 'shit')).status).toBe(201); // managers exempt
+    await api.req('PATCH', `/guilds/${guild.id}/automod/rules/${rule.id}`, owner.token, { presets: ['sexual_content'] });
+    expect((await say(a!, general.id, 'shit')).status).toBe(201);
+    expect((await say(a!, general.id, 'free porn')).status).toBe(400);
+    await api.req('DELETE', `/guilds/${guild.id}/automod/rules/${rule.id}`, owner.token);
+    // configurable mention limit + timeout length
+    const ms = (await mk(owner, guild.id, { trigger: 'mention_spam', mentionLimit: 2, action: 'timeout', timeoutSeconds: 300 })).body;
+    const t1 = await api.register('mt1'), t2 = await api.register('mt2');
+    const code = (await api.req('POST', `/guilds/${guild.id}/invites`, owner.token, {})).body.code;
+    await api.req('POST', `/invites/${code}`, t1.token); await api.req('POST', `/invites/${code}`, t2.token);
+    expect((await say(a!, general.id, `<@${t1.id}>`)).status).toBe(201);
+    expect((await say(a!, general.id, `<@${t1.id}> <@${t2.id}>`)).status).toBe(400);
+    const [m] = await env.ctx.db.query('SELECT timeout_until FROM members WHERE guild_id = $1 AND user_id = $2', [guild.id, a!.id]);
+    const secs = (new Date(m.timeout_until).getTime() - Date.now()) / 1000;
+    expect(secs).toBeGreaterThan(250); expect(secs).toBeLessThan(310);
+    expect((await api.req('PATCH', `/guilds/${guild.id}/automod/rules/${ms.id}`, owner.token, { mentionLimit: 0 })).status).toBe(400);
+  });
+});

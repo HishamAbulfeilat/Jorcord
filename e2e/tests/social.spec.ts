@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { newUser, createServer, makeInvite, joinViaInvite, sendMessage, msg, rest, openUserSettings, closeSettings, clickMenu, type User } from './helpers';
+import { newUser, createServer, makeInvite, joinViaInvite, sendMessage, msg, rest, openUserSettings, openGuildSettings, closeSettings, clickMenu, type User } from './helpers';
 
 let A: User, B: User;
 test.describe.configure({ mode: 'serial' });
@@ -163,4 +163,23 @@ test('age-restricted channels show a gate until 18+ is confirmed (stored on the 
   await B.page.getByRole('dialog', { name: 'User Settings' }).getByRole('switch', { name: 'Allow access to age-restricted channels' }).click();
   await closeSettings(B.page);
   await expect(B.page.getByTestId('age-gate')).toBeVisible();
+});
+
+test('AutoMod preset rule created in settings blocks flagged words with the custom message', async () => {
+  await B.page.goto('/channels/@me'); // Bob is a plain member, Alice (owner) configures
+  await A.page.getByRole('navigation', { name: 'Servers' }).getByRole('button', { name: 'Social HQ' }).click();
+  await openGuildSettings(A.page, 'Social HQ', 'AutoMod');
+  const dlg = A.page.getByRole('dialog', { name: 'Social HQ' });
+  await dlg.getByLabel('Name', { exact: true }).fill('Clean chat');
+  await dlg.getByLabel('Trigger').selectOption('keyword_preset');
+  await dlg.getByLabel('Message shown to the sender (optional)').fill('Keep it civil');
+  await dlg.getByRole('button', { name: 'Create Rule' }).click();
+  await expect(dlg.getByText('Clean chat')).toBeVisible();
+  await closeSettings(A.page);
+  const gs = await rest(B.page, 'GET', '/users/@me/guilds'); const gid = gs.find((g: any) => g.name === 'Social HQ').id;
+  const chans = await rest(B.page, 'GET', `/guilds/${gid}/channels`); const general = chans.find((c: any) => c.name === 'general');
+  await B.page.goto(`/channels/${gid}/${general.id}`);
+  await sendMessage(B.page, 'what the 5h1t');
+  await expect(B.page.getByText('Keep it civil').first()).toBeVisible();
+  await expect(msg(B.page, 'what the 5h1t')).toHaveCount(0);
 });

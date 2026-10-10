@@ -14,7 +14,7 @@ Rank = order in which this pass implements items (R1 first). `-` = not planned i
 | R4 | Message forwarding | DONE (`routes/messages.ts`, `SocialModals.tsx`, `MessageItem.tsx`) | 4 | no `forward` in messages; no snapshot model |
 | R5 | Message reminders ("Remind me") + saved messages ("Saved for later") | DONE (`routes/social.ts`, `services/reminders.ts`, Inbox tabs) | 3 | no table/route |
 | R6 | Verification levels, raid protection, explicit-media filter, default notification level (Safety Setup) | todo | 4 | `Guild` has none; screening only |
-| R7 | AutoMod: keyword presets (profanity/sexual/slurs), mention-spam limit, allow-list, exempt channels, alert channel | partial | 3 | 4 triggers, `exemptRoles` only (`routes/guilds.ts` automod, `services/messages.ts`) |
+| R7 | AutoMod: keyword presets, mention-spam limit, allow-list, exempt channels, timeout length, custom message | DONE (`services/automod.ts`, `GuildSettings.tsx`); alert channel and regex still todo | 3 | 4 triggers, `exemptRoles` only (`routes/guilds.ts` automod, `services/messages.ts`) |
 | R8 | Avatar decorations, profile effects, name plates, server tag (guild tag beside name) | todo | 4 | only accent/banner/`themeColors` (`profileTheme.ts`) |
 | R9 | Activities / rich presence (Playing X, Listening, Streaming, Competing) shown in member list, profile and friends "Now Playing" | todo | 4 | `PRESENCE_UPDATE` has status+customStatus only |
 | R10 | Activity privacy (hide activity), Hide muted channels, sidebar "Show all/Hide" | todo | 3 | no setting |

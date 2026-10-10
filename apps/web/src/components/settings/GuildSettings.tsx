@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Ban, Bot, Compass, GripVertical, Hash, Webhook as WebhookIcon, Sticker as StickerIcon, Copy as CopyIcon, Link2, ListChecks, Rocket, Settings as Cog, Shield, Smile, Trash2, Users, ScrollText, Plus, Search, Crown } from 'lucide-react';
 import { Perm } from '@jorcord/shared';
-import type { AutoModRule, Channel } from '@jorcord/shared';
+import type { AutoModPreset, AutoModRule, Channel } from '@jorcord/shared';
 import { api } from '@/lib/api';
 import { useData, selfMember } from '@/stores/data';
 import { useUI, toast, toastError } from '@/stores/ui';
@@ -182,18 +182,36 @@ function InvitesTab({ guildId }: { guildId: string }) {
 
 function AutoMod({ guildId }: { guildId: string }) {
   const q = useQuery({ queryKey: ['automod', guildId], queryFn: () => api.guilds.automod(guildId) }); const qc = useQueryClient();
-  const [f, setF] = useState<{ name: string; trigger: AutoModRule['trigger']; keywords: string; action: AutoModRule['action'] }>({ name: '', trigger: 'keyword', keywords: '', action: 'block' });
+  const chans = useData((s) => s.guilds[guildId]?.channels);
+  const textChans = Object.values(chans ?? {}).filter((c) => c.type === 'text' || c.type === 'announcement' || c.type === 'forum');
+  const blank = { name: '', trigger: 'keyword' as AutoModRule['trigger'], keywords: '', allow: '', presets: ['profanity'] as AutoModPreset[], mentionLimit: 5, action: 'block' as AutoModRule['action'], timeoutMin: 1, message: '', exemptChannels: [] as string[] };
+  const [f, setF] = useState(blank);
   const refetch = () => qc.invalidateQueries({ queryKey: ['automod', guildId] });
+  const words = (v: string) => v.split(',').map((x) => x.trim()).filter(Boolean);
+  const togglePreset = (p: AutoModPreset) => setF({ ...f, presets: f.presets.includes(p) ? f.presets.filter((x) => x !== p) : [...f.presets, p] });
+  const PRESETS: [AutoModPreset, string][] = [['profanity', t('Profanity')], ['sexual_content', t('Sexual content')], ['slurs', t('Slurs')]];
+  const create = () => api.guilds.createAutomod(guildId, {
+    name: f.name, trigger: f.trigger, keywords: f.trigger === 'keyword' ? words(f.keywords) : [], action: f.action, enabled: true, exemptRoles: [],
+    ...(f.trigger === 'keyword' || f.trigger === 'keyword_preset' ? { allowList: words(f.allow) } : {}), ...(f.trigger === 'keyword_preset' ? { presets: f.presets } : {}),
+    ...(f.trigger === 'mention_spam' ? { mentionLimit: f.mentionLimit } : {}), ...(f.action === 'timeout' ? { timeoutSeconds: Math.round(f.timeoutMin * 60) } : {}),
+    ...(f.action === 'block' && f.message.trim() ? { customMessage: f.message.trim() } : {}), exemptChannels: f.exemptChannels,
+  }).then(() => { setF({ ...blank, trigger: f.trigger }); refetch(); }).catch(toastError);
   return (<>
     <H1>{t('AutoMod')}</H1>
     <p className="mb-4 text-sm text-muted">{t('Automatically moderate your server by blocking messages, timing out offenders, or alerting moderators.')}</p>
     <div className="mb-6 rounded-lg bg-side p-4">
       <h3 className="mb-3 font-bold text-header">{t('Create rule')}</h3>
       <div className="grid gap-3 sm:grid-cols-2"><Field label={t('Name')}><input className="field" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></Field>
-        <Field label={t('Trigger')}><select className="field" value={f.trigger} onChange={(e) => setF({ ...f, trigger: e.target.value as any })}><option value="keyword">{t('Block custom words')}</option><option value="spam">{t('Spam')}</option><option value="mention_spam">{t('Mention spam')}</option><option value="link">{t('Links')}</option></select></Field></div>
+        <Field label={t('Trigger')}><select className="field" value={f.trigger} onChange={(e) => setF({ ...f, trigger: e.target.value as any })}><option value="keyword">{t('Block custom words')}</option><option value="keyword_preset">{t('Commonly flagged words')}</option><option value="spam">{t('Spam')}</option><option value="mention_spam">{t('Mention spam')}</option><option value="link">{t('Links')}</option></select></Field></div>
       {f.trigger === 'keyword' && <Field label={t('Keywords (comma separated)')}><input className="field" value={f.keywords} onChange={(e) => setF({ ...f, keywords: e.target.value })} placeholder={t('word1, word2')} /></Field>}
+      {f.trigger === 'keyword_preset' && <fieldset className="mb-3"><legend className="label">{t('Word lists')}</legend><div className="flex flex-wrap gap-3">{PRESETS.map(([id, label]) => <label key={id} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={f.presets.includes(id)} onChange={() => togglePreset(id)} />{label}</label>)}</div></fieldset>}
+      {(f.trigger === 'keyword' || f.trigger === 'keyword_preset') && <Field label={t('Allowed words and phrases (comma separated)')}><input className="field" value={f.allow} onChange={(e) => setF({ ...f, allow: e.target.value })} /></Field>}
+      {f.trigger === 'mention_spam' && <Field label={t('Mentions per message before the rule triggers')}><input className="field !w-28" type="number" min={1} max={50} value={f.mentionLimit} onChange={(e) => setF({ ...f, mentionLimit: Math.min(50, Math.max(1, Number(e.target.value) || 1)) })} /></Field>}
       <Field label={t('Action')}><select className="field" value={f.action} onChange={(e) => setF({ ...f, action: e.target.value as any })}><option value="block">{t('Block message')}</option><option value="timeout">{t('Timeout member')}</option><option value="alert">{t('Send alert')}</option></select></Field>
-      <button disabled={!f.name.trim()} className="btn btn-primary" onClick={() => api.guilds.createAutomod(guildId, { name: f.name, trigger: f.trigger, keywords: f.keywords.split(',').map((x) => x.trim()).filter(Boolean), action: f.action, enabled: true, exemptRoles: [] }).then(() => { setF({ ...f, name: '', keywords: '' }); refetch(); }).catch(toastError)}>{t('Create Rule')}</button>
+      {f.action === 'timeout' && <Field label={t('Timeout length (minutes)')}><input className="field !w-28" type="number" min={1} max={10080} value={f.timeoutMin} onChange={(e) => setF({ ...f, timeoutMin: Math.min(10080, Math.max(1, Number(e.target.value) || 1)) })} /></Field>}
+      {f.action === 'block' && <Field label={t('Message shown to the sender (optional)')}><input className="field" maxLength={150} value={f.message} onChange={(e) => setF({ ...f, message: e.target.value })} /></Field>}
+      {textChans.length > 0 && <Field label={t('Exempt channels')}><select multiple aria-label={t('Exempt channels')} className="field h-24" value={f.exemptChannels} onChange={(e) => setF({ ...f, exemptChannels: [...e.target.selectedOptions].map((o) => o.value) })}>{textChans.map((c) => <option key={c.id} value={c.id}>#{c.name}</option>)}</select></Field>}
+      <button disabled={!f.name.trim() || (f.trigger === 'keyword_preset' && !f.presets.length)} className="btn btn-primary" onClick={() => void create()}>{t('Create Rule')}</button>
     </div>
     {q.isLoading && <Spinner />}
     <ul>{q.data?.map((r) => <li key={r.id} className="flex items-center gap-3 border-b border-divider/50 py-3"><div className="min-w-0 flex-1"><div className="font-semibold text-header">{r.name}</div><div className="truncate text-xs text-muted">{r.trigger} → {r.action}{r.keywords.length ? ` • ${r.keywords.join(', ')}` : ''}</div></div><Toggle label={`Enable ${r.name}`} checked={r.enabled} onChange={(v) => api.guilds.patchAutomod(guildId, r.id, { enabled: v }).then(refetch).catch(toastError)} /><button aria-label={t('Delete rule')} className="p-2 text-danger" onClick={() => api.guilds.deleteAutomod(guildId, r.id).then(refetch).catch(toastError)}><Trash2 size={16} /></button></li>)}</ul>
