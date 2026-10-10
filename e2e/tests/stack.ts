@@ -42,11 +42,13 @@ const newest = (dir: string, skip = /node_modules|dist/): number => {
   return t;
 };
 /** Build the web client if dist is missing or older than its sources (or packages/voice, packages/shared). */
+let built = false;
 export function ensureWebBuild(): string {
   const dist = join(root, 'apps/web/dist');
   const stamp = existsSync(join(dist, 'index.html')) ? statSync(join(dist, 'index.html')).mtimeMs : 0;
   const src = Math.max(newest(join(root, 'apps/web/src')), newest(join(root, 'packages/voice/src')), newest(join(root, 'packages/shared/src')));
-  if (!stamp || src > stamp) execSync('pnpm --filter @jorcord/web build', { cwd: root, stdio: 'inherit', env: { ...process.env, VITE_BASE: '/' }, timeout: 280_000 });
+  if (!built && (!stamp || src > stamp)) execSync('pnpm --filter @jorcord/web build', { cwd: root, stdio: 'inherit', env: { ...process.env, VITE_BASE: '/' }, timeout: 280_000 });
+  built = true;
   return dist;
 }
 
