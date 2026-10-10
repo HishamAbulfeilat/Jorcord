@@ -142,7 +142,7 @@ test('onboarding: rules screening for a new member', async ({ browser }) => {
 
 test('profile: theme, animated avatar and banner are saved and visible to others', async () => {
   await openUserSettings(A.page, 'Profile');
-  await A.page.getByRole('radio', { name: 'Sunset' }).click();
+  await A.page.getByRole('radio', { name: 'Sunset', exact: true }).click();
   await A.page.getByRole('button', { name: 'Avatar image' }).locator('xpath=following-sibling::input').setInputFiles({ name: 'a.gif', mimeType: 'image/gif', buffer: GIF });
   await A.page.locator('input[type=file]').filter({ hasNot: A.page.locator('x') }).last().setInputFiles({ name: 'b.png', mimeType: 'image/png', buffer: PNG });
   await A.page.getByRole('button', { name: 'Save Changes' }).click();
