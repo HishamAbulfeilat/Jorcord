@@ -13,13 +13,38 @@ Runs on web (installable PWA), desktop (Tauri) and Android/iOS (Capacitor).
 | `infra/livekit` | LiveKit server config |
 | `docs/` | `CONTRACT.md` (API), `DEPLOY.md`, `PLATFORMS.md`, `PARITY.md`, `PLAN.md` at root |
 
-## Quick start
+## Download
+
+Get everything from the [latest release](https://github.com/HishamAbulfeilat/Jorcord/releases/latest) (checksums in `SHA256SUMS.txt`).
+
+| Platform | File |
+|---|---|
+| Windows | `Jorcord_*_x64-setup.exe` or `.msi` |
+| macOS (Apple Silicon / Intel) | `Jorcord_*_aarch64.dmg` / `Jorcord_*_x64.dmg` (unsigned: right-click > Open) |
+| Linux | `.AppImage`, `.deb`, `.rpm` |
+| Android | `Jorcord-*-android-universal.apk` (any phone), per-ABI APKs, `.aab` |
+| iOS | `Jorcord-*-ios-unsigned.ipa` (re-sign with AltStore/Sideloadly, or TestFlight via `docs/PLATFORMS.md`) |
+| Web | hosted at https://hishamabulfeilat.github.io/Jorcord/ or self-host `jorcord-web-v*.zip` |
+| Server | `docker compose up` (below), image `ghcr.io/hishamabulfeilat/jorcord-server`, or `jorcord-server-v*.tar.gz` |
+
+## Quick start (run your own server)
+
+```
+git clone https://github.com/HishamAbulfeilat/Jorcord && cd Jorcord
+./scripts/init-env.sh        # writes .env with random secrets
+docker compose up -d         # server :3000, Postgres, Redis, LiveKit, MinIO
+```
+Open the web app (hosted copy, or the downloaded desktop/mobile app) and enter `http://localhost:3000` as the server address.
+Every client asks for a server on first launch; for a server on another machine use an HTTPS address and add the web app's origin to `CORS_ORIGINS` in `.env`.
+The hosted Pages site is HTTPS, so it can reach only HTTPS servers or `localhost`. Details: `docs/DEPLOY.md`; releasing: `docs/RELEASING.md`.
+
+## Development
 ```
 pnpm install
 pnpm --filter @jorcord/server dev     # :3000, no external services needed
 pnpm --filter @jorcord/web dev        # :5173
 cd infra/livekit/bin && ./livekit-server --config ../livekit.yaml   # voice/video (see infra/livekit/README.md)
 ```
-Tests: `pnpm -r test`, end-to-end: `pnpm e2e`. Production: `docker compose up` (see `docs/DEPLOY.md`).
+Tests: `pnpm -r test`, end-to-end: `pnpm e2e`.
 
 Jorcord is an independent project and is not affiliated with Discord. It uses its own name, logo and assets.
