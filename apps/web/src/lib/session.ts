@@ -29,7 +29,12 @@ export function startSession(token: string) {
   unsubs.push(gw.on('MESSAGE_DELETE', (d) => useMessages.getState().remove(d.channelId, d.id)));
   unsubs.push(gw.on('MESSAGE_REACTION_ADD', (d) => useMessages.getState().reaction(d.channelId, d.messageId, d.emoji, d.emojiId, 1, d.userId === useData.getState().me?.id)));
   unsubs.push(gw.on('MESSAGE_REACTION_REMOVE', (d) => useMessages.getState().reaction(d.channelId, d.messageId, d.emoji, d.emojiId, -1, d.userId === useData.getState().me?.id)));
-  unsubs.push(gw.on('CHANNEL_PINS_UPDATE', (d) => window.dispatchEvent(new CustomEvent('jorcord:pins', { detail: d.channelId }))));
+  unsubs.push(gw.on('CHANNEL_PINS_UPDATE', (d) => {
+    window.dispatchEvent(new CustomEvent('jorcord:pins', { detail: d.channelId }));
+    // keep the "pinned" mark of already loaded messages in sync for everyone in the channel
+    const loaded = useMessages.getState().ch[d.channelId]?.list; if (!loaded?.length) return;
+    api.messages.pins(d.channelId).then((pins) => { const ids = new Set(pins.map((p) => p.id)); for (const m of useMessages.getState().ch[d.channelId]?.list ?? []) if (m.pinned !== ids.has(m.id)) useMessages.getState().update({ ...m, pinned: ids.has(m.id) }); }).catch(() => {});
+  }));
   (gw as any).getToken = () => useAuth.getState().access;
   (gw as any).authFailed = () => {
     api.users.me().then((u) => { useData.getState().setMe(u); (gw as any).reconnect?.(useAuth.getState().access ?? token); }).catch(() => useAuth.getState().clear());

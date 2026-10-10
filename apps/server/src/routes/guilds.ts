@@ -182,6 +182,7 @@ export function guildRoutes(app: FastifyInstance, ctx: Ctx) {
     need(guildPerms(await guildAccess(ctx, req.userId, p.id)), Perm.MANAGE_EMOJIS);
     const rows = await ctx.db.query('UPDATE stickers SET name = $3 WHERE id = $1 AND guild_id = $2 RETURNING *', [p.stickerId, p.id, b.name]);
     if (!rows.length) throw notFound('Sticker');
+    await audit(ctx, p.id, req.userId, 'STICKER_UPDATE', p.stickerId, { name: b.name });
     return stickerRow(rows[0]);
   });
   app.delete('/guilds/:id/stickers/:stickerId', async (req, reply) => {

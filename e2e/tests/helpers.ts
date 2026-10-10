@@ -94,12 +94,12 @@ export const GIF = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEA
 
 export async function openUserSettings(page: Page, tab?: string | RegExp) {
   await page.getByRole('button', { name: 'User Settings' }).first().click();
-  if (tab) await page.getByRole('dialog', { name: 'User Settings' }).getByRole('button', { name: tab }).click();
+  if (tab) await page.getByRole('dialog', { name: 'User Settings' }).getByRole('button', { name: tab, exact: typeof tab === 'string' }).click();
 }
 export async function openGuildSettings(page: Page, name: string, tab?: string | RegExp) {
   await page.getByRole('button', { name: `${name} server menu` }).click();
   await clickMenu(page, 'Server Settings');
-  if (tab) await page.getByRole('dialog', { name }).getByRole('button', { name: tab }).click();
+  if (tab) await page.getByRole('dialog', { name }).getByRole('button', { name: tab, exact: typeof tab === 'string' }).click();
 }
 export const closeSettings = (page: Page) => page.getByRole('button', { name: 'Close settings' }).click();
 

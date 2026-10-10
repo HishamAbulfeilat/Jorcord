@@ -5,6 +5,8 @@ import type { Ctx } from '../ctx';
 import { ApiError, badRequest, forbidden, notFound } from '../errors';
 import { idSchema, limitParam, parse } from '../lib/ids';
 import { limitOrThrow } from '../lib/ratelimit';
+import { parseComponents } from '../lib/components';
+import { buildPoll } from '../services/polls';
 import { claimAttachments, saveUpload } from '../services/files';
 import { audit, visibleChannelRows } from '../services/guilds';
 import { createMessage, parseMentions, postSystemMessage } from '../services/messages';
@@ -18,6 +20,11 @@ const mm = z.object({ id: idSchema, mid: idSchema });
 const sendBody = z.object({
   content: z.string().max(LIMITS.maxMessageLength * 2).optional(), replyTo: idSchema.nullable().optional(),
   attachments: z.array(idSchema).max(10).optional(), stickerIds: z.array(idSchema).max(3).optional(),
+  /** Bots only: action rows of buttons / select menus (validated by lib/components). */
+  components: z.unknown().optional(),
+  /** Needs SEND_POLLS. */
+  poll: z.unknown().optional(),
+  flags: z.number().int().optional(),
 }).strict();
 const emojiParam = z.string().min(1).max(100);
 
@@ -33,7 +40,9 @@ export function messageRoutes(app: FastifyInstance, ctx: Ctx) {
   async function assertCanPostIn(a: Awaited<ReturnType<typeof channelAccess>>, userId: string) {
     const t = a.channel.type;
     if (t === 'category' || t === 'forum') throw badRequest('Cannot send messages in this channel type');
+    // Voice and stage channels carry a text chat: they take messages under the same SEND_MESSAGES rules (overwrites included).
     need(a.perms, t === 'thread' ? Perm.SEND_IN_THREADS : Perm.SEND_MESSAGES);
+    if (t === 'thread' && a.channel.archived && a.channel.locked && !has(a.perms, Perm.MANAGE_THREADS)) throw new ApiError(403, 'THREAD_LOCKED', 'This thread is locked').num(50083);
     if (t === 'dm') {
       const [blk] = await ctx.db.query(
         `SELECT 1 AS x FROM relationships r JOIN dm_participants p ON p.channel_id = $1 WHERE r.type = 'blocked' AND ((r.user_id = $2 AND r.other_id = p.user_id) OR (r.other_id = $2 AND r.user_id = p.user_id)) LIMIT 1`, [a.channel.id, userId]);
@@ -94,9 +103,21 @@ export function messageRoutes(app: FastifyInstance, ctx: Ctx) {
     } else body = parse(sendBody, req.body);
     if (body.attachments?.length) need(a.perms, Perm.ATTACH_FILES);
     if (body.replyTo) need(a.perms, Perm.READ_MESSAGE_HISTORY);
+    if ((body.flags ?? 0) & ~4) throw badRequest('Unsupported message flags');
+    let components;
+    if (body.components !== undefined) {
+      if (!req.isBot) throw new ApiError(403, 'USER_FORBIDDEN', 'Only bots can send components').num(20002);
+      components = parseComponents(body.components);
+    }
+    let pollInput: ReturnType<typeof buildPoll> | undefined;
+    if (body.poll !== undefined) {
+      if (a.channel.guild_id) need(a.perms, Perm.SEND_POLLS);
+      pollInput = buildPoll(body.poll);
+    }
     const attachments = await claimAttachments(ctx, req.userId, body.attachments ?? []);
     try {
-      const msg = await createMessage(ctx, { channel: a.channel, authorId: req.userId, content: body.content ?? '', replyTo: body.replyTo, attachments, stickerIds: body.stickerIds, senderPerms: a.perms, memberRoleIds: a.gp?.memberRoleIds });
+      const msg = await createMessage(ctx, { channel: a.channel, authorId: req.userId, content: body.content ?? '', replyTo: body.replyTo, attachments, stickerIds: body.stickerIds, senderPerms: a.perms, memberRoleIds: a.gp?.memberRoleIds,
+        components, flags: body.flags, applicationId: req.applicationId, poll: pollInput?.poll, pollExpiry: pollInput?.expiry });
       if (a.channel.type === 'thread') await joinThread(ctx, a.channel, req.userId).catch(() => {}); // posting in a thread follows it
       return reply.code(201).send(msg);
     } catch (e) {
@@ -107,15 +128,22 @@ export function messageRoutes(app: FastifyInstance, ctx: Ctx) {
 
   app.patch('/channels/:id/messages/:mid', async (req) => {
     const p = parse(mm, req.params);
-    const b = parse(z.object({ content: z.string().min(1).max(LIMITS.maxMessageLength) }).strict(), req.body);
+    const b = parse(z.object({ content: z.string().min(1).max(LIMITS.maxMessageLength).optional(), components: z.unknown().optional() }).strict(), req.body);
+    if (b.content === undefined && b.components === undefined) throw badRequest('Provide content and/or components');
     limitOrThrow(ctx.rl, `msg-edit:${req.userId}`, 15, 10_000, ctx.config.rateLimit);
     const a = await channelAccess(ctx, req.userId, p.id);
     const [m] = await ctx.db.query('SELECT * FROM messages WHERE id = $1 AND channel_id = $2', [p.mid, p.id]);
     if (!m) throw notFound('Message');
     if (m.author_id !== req.userId || m.webhook_id || !['default', 'reply'].includes(m.type)) throw forbidden('You can only edit your own messages');
-    const ment = await parseMentions(ctx, a.channel, b.content, a.perms);
-    await ctx.db.query('UPDATE messages SET content = $2, edited_at = now(), mentions = $3::jsonb, mention_roles = $4::jsonb, mention_everyone = $5, has_link = $6 WHERE id = $1',
-      [p.mid, b.content, JSON.stringify(ment.mentions), JSON.stringify(ment.mentionRoles), ment.mentionEveryone, /https?:\/\//i.test(b.content)]);
+    if (b.components !== undefined) {
+      if (!req.isBot || m.application_id !== req.applicationId) throw new ApiError(403, 'USER_FORBIDDEN', 'Only the owning bot can edit components').num(20002);
+      await ctx.db.query('UPDATE messages SET components = $2::jsonb, edited_at = now() WHERE id = $1', [p.mid, JSON.stringify(parseComponents(b.components))]);
+    }
+    if (b.content !== undefined) {
+      const ment = await parseMentions(ctx, a.channel, b.content, a.perms);
+      await ctx.db.query('UPDATE messages SET content = $2, edited_at = now(), mentions = $3::jsonb, mention_roles = $4::jsonb, mention_everyone = $5, has_link = $6 WHERE id = $1',
+        [p.mid, b.content, JSON.stringify(ment.mentions), JSON.stringify(ment.mentionRoles), ment.mentionEveryone, /https?:\/\//i.test(b.content)]);
+    }
     const [row] = await ctx.db.query('SELECT * FROM messages WHERE id = $1', [p.mid]);
     const dto = await messageDTO(ctx, row, req.userId);
     await ctx.hub.toChannel(p.id, 'MESSAGE_UPDATE', { ...dto, reactions: dto.reactions.map((r) => ({ ...r, me: false })) });
@@ -132,8 +160,10 @@ export function messageRoutes(app: FastifyInstance, ctx: Ctx) {
     const a = await channelAccess(ctx, req.userId, p.id);
     const [m] = await ctx.db.query('SELECT author_id FROM messages WHERE id = $1 AND channel_id = $2', [p.mid, p.id]);
     if (!m) throw notFound('Message');
-    if (m.author_id !== req.userId) { if (!a.channel.guild_id) throw forbidden(); need(a.perms, Perm.MANAGE_MESSAGES); }
+    const byMod = m.author_id !== req.userId;
+    if (byMod) { if (!a.channel.guild_id) throw forbidden(); need(a.perms, Perm.MANAGE_MESSAGES); }
     await removeMessages(a.channel, [p.mid]);
+    if (byMod) await audit(ctx, a.channel.guild_id, req.userId, 'MESSAGE_DELETE', p.mid, { channelId: p.id, authorId: m.author_id });
     return reply.code(204).send();
   });
   app.post('/channels/:id/messages/bulk-delete', async (req, reply) => {
@@ -208,6 +238,7 @@ export function messageRoutes(app: FastifyInstance, ctx: Ctx) {
     const rows = await ctx.db.query('UPDATE messages SET pinned = true WHERE id = $1 AND channel_id = $2 AND NOT pinned AND type IN (\'default\',\'reply\') RETURNING id', [p.mid, p.id]);
     if (rows.length) {
       await ctx.hub.toChannel(p.id, 'CHANNEL_PINS_UPDATE', { channelId: p.id });
+      if (a.channel.guild_id) await audit(ctx, a.channel.guild_id, req.userId, 'MESSAGE_PIN', p.mid, { channelId: p.id });
       await postSystemMessage(ctx, p.id, req.userId, 'pin', '').catch(() => {});
     } else {
       const [m] = await ctx.db.query('SELECT 1 AS x FROM messages WHERE id = $1 AND channel_id = $2', [p.mid, p.id]);
@@ -220,7 +251,7 @@ export function messageRoutes(app: FastifyInstance, ctx: Ctx) {
     const a = await channelAccess(ctx, req.userId, p.id);
     if (a.channel.guild_id) need(a.perms, Perm.MANAGE_MESSAGES);
     const rows = await ctx.db.query('UPDATE messages SET pinned = false WHERE id = $1 AND channel_id = $2 AND pinned RETURNING id', [p.mid, p.id]);
-    if (rows.length) await ctx.hub.toChannel(p.id, 'CHANNEL_PINS_UPDATE', { channelId: p.id });
+    if (rows.length) { await ctx.hub.toChannel(p.id, 'CHANNEL_PINS_UPDATE', { channelId: p.id }); if (a.channel.guild_id) await audit(ctx, a.channel.guild_id, req.userId, 'MESSAGE_UNPIN', p.mid, { channelId: p.id }); }
     return reply.code(204).send();
   });
 

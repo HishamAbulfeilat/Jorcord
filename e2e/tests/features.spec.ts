@@ -71,7 +71,7 @@ test('drag to reorder channels and categories persists', async () => {
   await expect(li('beta')).toBeVisible();
   await drag(A.page, li('beta'), li('general'), 'top');
   await expect.poll(async () => (await rest(A.page, 'GET', `/guilds/${gid}/channels`)).find((c: any) => c.name === 'beta').position).toBe(0);
-  await A.page.reload();
+  await A.page.reload(); await expect(li('beta')).toBeVisible();
   const order = await nav.locator('li[data-channel]').allInnerTexts();
   expect(order.findIndex((t) => /^beta/.test(t.trim()))).toBeLessThan(order.findIndex((t) => /^general/.test(t.trim())));
   // category order
@@ -89,7 +89,7 @@ test('server rail: reorder, folders by dropping a server on another, persists', 
   // merge: drop Second onto the centre of Third
   await drag(A.page, g('Second'), g('Third'), 'center');
   const folder = rail.locator('[data-folder]'); await expect(folder).toHaveCount(1);
-  await folder.getByRole('button').first().click();
+  const fb = folder.getByRole('button').first(); if ((await fb.getAttribute('aria-expanded')) !== 'true') await fb.click();
   await expect(folder.locator('[data-guild]')).toHaveCount(2);
   await A.page.waitForTimeout(1200); await A.page.reload();
   await expect(rail.locator('[data-folder]')).toHaveCount(1);
@@ -111,13 +111,13 @@ test('pins: channel pin shows in panel and for others, unpin; thread pins work t
   const mid = (await rest(A.page, 'GET', `/channels/${(await rest(A.page, 'GET', `/guilds/${gid}/channels`)).find((c: any) => c.name === 'general').id}/messages?limit=5`)).find((x: any) => x.content === 'pin me');
   const th = await rest(A.page, 'POST', `/channels/${mid.channelId}/messages/${mid.id}/threads`, { name: 'side' });
   const tm = await rest(A.page, 'POST', `/channels/${th.id}/messages`, { content: 'in thread' });
-  await rest(A.page, 'PUT', `/channels/${th.id}/pins/${tm.id}`);
+  await rest(A.page, 'PUT', `/channels/${th.id}/pins/${tm.id}`, {});
   expect((await rest(A.page, 'GET', `/channels/${th.id}/pins`)).length).toBe(1);
 });
 
 test('onboarding: rules screening for a new member', async ({ browser }) => {
   await createServer(A.page, 'Rules HQ'); const rg = await guildId(A.page);
-  const chans = await rest(A.page, 'GET', `/guilds/${rg}/channels`); const rules = chans.find((c: any) => c.name === 'rules');
+  const rules = await rest(A.page, 'POST', `/guilds/${rg}/channels`, { name: 'rules', type: 'text' });
   await rest(A.page, 'POST', `/channels/${rules.id}/messages`, { content: 'No spam please' });
   await rest(A.page, 'PATCH', `/guilds/${rg}`, { description: 'A tidy place', rulesChannelId: rules.id });
   const inv = await rest(A.page, 'POST', `/guilds/${rg}/invites`, {});
@@ -195,6 +195,7 @@ test('streamer mode masks private info; Go Live from the channel menu auto-enabl
 });
 
 test('notification settings: server level + timed mute are stored on the server', async () => {
+  await A.page.getByRole('navigation', { name: 'Servers' }).getByRole('button', { name: /^Feature HQ/ }).click();
   await A.page.getByRole('button', { name: 'Feature HQ server menu' }).click();
   await clickMenu(A.page, 'Notification Settings');
   await A.page.getByRole('radio', { name: 'Only @mentions' }).check();
@@ -239,7 +240,7 @@ test('i18n: Spanish strings and Arabic RTL layout', async () => {
   const rail = A.page.getByRole('navigation', { name: 'الخوادم' }); await expect(rail).toBeVisible();
   expect((await rail.boundingBox())!.x).toBeGreaterThan(700);
   expect(await A.page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-  await A.page.screenshot({ path: 'screenshots/desktop-rtl-arabic.png' });
+  await A.page.screenshot({ path: new URL('../screenshots/desktop-rtl-arabic.png', import.meta.url).pathname });
   await A.page.getByRole('button', { name: 'إعدادات المستخدم' }).click();
   await A.page.getByRole('button', { name: 'اللغة' }).click(); await A.page.getByRole('radio', { name: 'English (US)' }).check();
   await expect(A.page.locator('html')).toHaveAttribute('dir', 'ltr'); await closeSettings(A.page);

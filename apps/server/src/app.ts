@@ -14,6 +14,12 @@ import { Hub } from './gateway/hub';
 import { gatewayRoutes } from './gateway/ws';
 import { RateLimiter, installRateLimit } from './lib/ratelimit';
 import { authRoutes, publicAuthRoutes } from './routes/auth';
+import { applicationRoutes, oauthPublicRoutes } from './routes/applications';
+import { commandRoutes } from './routes/commands';
+import { eventRoutes } from './routes/events';
+import { interactionPublicRoutes, interactionRoutes } from './routes/interactions';
+import { pollRoutes } from './routes/polls';
+import { runSweeps } from './services/sweeper';
 import { channelRoutes, webhookPublicRoutes } from './routes/channels';
 import { guildRoutes } from './routes/guilds';
 import { invitePublicRoutes, memberRoutes } from './routes/members';
@@ -94,15 +100,22 @@ export async function buildApp(opts: BuildOptions = {}): Promise<{ app: FastifyI
     pushPublicRoutes(api, ctx);
     invitePublicRoutes(api, ctx);
     webhookPublicRoutes(api, ctx);
+    oauthPublicRoutes(api, ctx);
+    interactionPublicRoutes(api, ctx);
     fileRoutes(api, ctx);
     await api.register(async (scope) => voiceWebhookRoutes(scope, ctx));
     await api.register(async (priv) => {
       priv.addHook('preHandler', authenticate(ctx));
       authRoutes(priv, ctx); userRoutes(priv, ctx); guildRoutes(priv, ctx); channelRoutes(priv, ctx);
       memberRoutes(priv, ctx); messageRoutes(priv, ctx); miscRoutes(priv, ctx); voiceRoutes(priv, ctx); pushRoutes(priv, ctx);
+      applicationRoutes(priv, ctx); commandRoutes(priv, ctx); interactionRoutes(priv, ctx); pollRoutes(priv, ctx); eventRoutes(priv, ctx);
     });
   }, { prefix: '/api/v1' });
 
-  app.addHook('onClose', async () => { hub.close(); ctx.pcache.close(); rl.close(); await ctx.push.flush().catch(() => {}); await bus.close(); await state.close(); await db.close(); });
+  // Time-driven lifecycles (poll expiry, scheduled events, idle stages, thread auto-archive). Atomic UPDATEs make this safe on several nodes.
+  let sweeping = false;
+  const sweepTimer = config.sweepIntervalMs > 0 ? setInterval(() => { if (sweeping) return; sweeping = true; void runSweeps(ctx).finally(() => { sweeping = false; }); }, config.sweepIntervalMs) : null;
+  sweepTimer?.unref();
+  app.addHook('onClose', async () => { if (sweepTimer) clearInterval(sweepTimer); hub.close(); ctx.pcache.close(); rl.close(); await ctx.push.flush().catch(() => {}); await bus.close(); await state.close(); await db.close(); });
   return { app, ctx };
 }

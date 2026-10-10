@@ -131,6 +131,7 @@ export const MessageItem = memo(function MessageItem({ m, grouped, highlighted }
       {m.attachments.length > 0 && <div className="mt-1 flex flex-col items-start gap-1">{m.attachments.map((a) => <AttachmentView key={a.id} a={a} />)}</div>}
       {stickers && stickers.length > 0 && <div className="mt-1 flex gap-2">{stickers.map((s) => <img key={s.id} src={fileUrl(s.url) ?? s.url} alt={s.name} title={s.name} className="h-[160px] w-[160px] object-contain" />)}</div>}
       {m.embeds.length > 0 && <div className="mt-1 flex flex-col items-start gap-1">{m.embeds.map((e, i) => <EmbedView key={i} e={e} />)}</div>}
+      {m.pinned && <div className="mt-0.5 flex items-center gap-1 text-[11px] font-medium text-muted" data-testid="pinned-mark"><Pin size={11} aria-hidden />{t('Pinned')}</div>}
       <ReactionBar m={m} />
       {m.threadId && <button onClick={() => nav.go(m.guildId, m.threadId)} className="mt-1 flex items-center gap-1.5 rounded border border-divider bg-side px-2 py-1 text-sm text-link hover:underline"><MessagesSquare size={14} />View thread</button>}
     </>
@@ -152,7 +153,6 @@ export const MessageItem = memo(function MessageItem({ m, grouped, highlighted }
               {info.icon && <RoleIcon role={info.icon} size={16} className="self-center" />}
               {m.author.bot && <span className="self-center rounded bg-brand px-1 py-px text-[10px] font-bold uppercase leading-3 text-white">Bot</span>}
               <time dateTime={new Date(ts).toISOString()} title={fmtFull(ts)} className="text-xs font-medium text-muted">{fmtStamp(ts)}</time>
-              {m.pinned && <Pin size={12} aria-label={t('Pinned')} data-testid="pinned-mark" className="self-center text-muted" />}
             </div>
           )}
           {body}

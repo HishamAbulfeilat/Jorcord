@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { Perm, has, snowflake } from '@jorcord/shared';
+import { AUTO_ARCHIVE_DURATIONS, Perm, has, snowflake, type ForumTag } from '@jorcord/shared';
 import type { Ctx } from '../ctx';
 import { ApiError, badRequest, conflict, forbidden, notFound } from '../errors';
 import { assetUrl, idSchema, limitParam, parse } from '../lib/ids';
@@ -21,6 +21,8 @@ const chanFields = {
   name: z.string().trim().min(1).max(100), topic: z.string().max(1024).nullable(), nsfw: z.boolean(), slowmode: z.number().int().min(0).max(21600),
   bitrate: z.number().int().min(8000).max(510000).nullable(), userLimit: z.number().int().min(0).max(99).nullable(), parentId: idSchema.nullable(), position: z.number().int().min(0).max(10000),
 };
+const tagSchema = z.object({ id: idSchema.optional(), name: z.string().trim().min(1).max(20), emoji: z.string().max(64).nullable().optional(), moderated: z.boolean().optional() }).strict();
+const archiveDuration = z.number().int().refine((n) => (AUTO_ARCHIVE_DURATIONS as readonly number[]).includes(n), 'must be 60, 1440, 4320 or 10080');
 const createChannel = z.object({ ...chanFields, type: z.enum(GUILD_TYPES), overwrites: z.array(owSchema).max(100).optional() }).partial({ topic: true, nsfw: true, slowmode: true, bitrate: true, userLimit: true, parentId: true, position: true }).strict();
 
 export function channelRoutes(app: FastifyInstance, ctx: Ctx) {
@@ -111,23 +113,37 @@ export function channelRoutes(app: FastifyInstance, ctx: Ctx) {
     let allowed: z.ZodTypeAny;
     if (ch.type === 'thread') {
       if (ch.owner_id !== req.userId) need(a.perms, Perm.MANAGE_THREADS);
-      allowed = z.object({ name: chanFields.name, archived: z.boolean(), slowmode: chanFields.slowmode }).partial().strict();
+      allowed = z.object({ name: chanFields.name, archived: z.boolean(), slowmode: chanFields.slowmode, autoArchiveDuration: archiveDuration, locked: z.boolean(), appliedTags: z.array(idSchema).max(5) }).partial().strict();
     } else if (ch.type === 'group_dm') {
       allowed = z.object({ name: chanFields.name.nullable() }).partial().strict();
     } else if (ch.type === 'dm') throw forbidden('Cannot edit a DM');
     else {
       need(a.perms, Perm.MANAGE_CHANNELS);
-      allowed = z.object(chanFields).partial().strict();
+      allowed = ch.type === 'forum'
+        ? z.object({ ...chanFields, availableTags: z.array(tagSchema).max(20), requireTag: z.boolean(), defaultAutoArchiveDuration: archiveDuration }).partial().strict()
+        : z.object(chanFields).partial().strict();
     }
     const b = parse(allowed, req.body) as Record<string, any>;
+    if (ch.type === 'thread') {
+      // locked threads: only MANAGE_THREADS may (un)lock or unarchive; moderated forum tags need MANAGE_THREADS too
+      if ((b.locked !== undefined || (ch.locked && b.archived === false)) && !has(a.perms, Perm.MANAGE_THREADS)) throw forbidden('Missing permissions').num(50083);
+      if (b.appliedTags !== undefined) b.appliedTags = await checkAppliedTags(ch.parent_id, b.appliedTags, has(a.perms, Perm.MANAGE_THREADS), ch.applied_tags ?? []);
+    }
+    if (b.availableTags !== undefined) b.availableTags = await normaliseTags(id, ch.available_tags ?? [], b.availableTags);
     if (b.parentId !== undefined) await validateParent(ch.guild_id, b.parentId, ch.type);
-    const col: Record<string, string> = { name: 'name', topic: 'topic', nsfw: 'nsfw', slowmode: 'slowmode', bitrate: 'bitrate', userLimit: 'user_limit', parentId: 'parent_id', position: 'position', archived: 'archived' };
+    const col: Record<string, string> = { name: 'name', topic: 'topic', nsfw: 'nsfw', slowmode: 'slowmode', bitrate: 'bitrate', userLimit: 'user_limit', parentId: 'parent_id', position: 'position', archived: 'archived',
+      requireTag: 'require_tag', defaultAutoArchiveDuration: 'default_auto_archive', autoArchiveDuration: 'auto_archive_minutes', locked: 'locked', availableTags: 'available_tags', appliedTags: 'applied_tags' };
     const sets: string[] = [], vals: unknown[] = [id];
-    for (const [k, v] of Object.entries(b)) { if (!col[k]) continue; vals.push(v); sets.push(`${col[k]} = $${vals.length}`); }
+    for (const [k, v] of Object.entries(b)) { if (!col[k]) continue; vals.push(k === 'availableTags' || k === 'appliedTags' ? JSON.stringify(v) : v); sets.push(`${col[k]} = $${vals.length}${k === 'availableTags' || k === 'appliedTags' ? '::jsonb' : ''}`); }
+    if (ch.type === 'thread' && (b.archived === false || b.autoArchiveDuration !== undefined)) sets.push('activity_at = now()'); // unarchiving / changing the timer restarts the idle clock
+    if (b.availableTags !== undefined) { // tags removed from the catalogue disappear from posts
+      const keep = new Set((b.availableTags as ForumTag[]).map((t) => t.id));
+      for (const gone of (ch.available_tags as ForumTag[]).filter((t) => !keep.has(t.id))) await ctx.db.query(`UPDATE channels SET applied_tags = applied_tags - $2::text WHERE parent_id = $1 AND type = 'thread'`, [id, gone.id]);
+    }
     if (sets.length) { await ctx.db.query(`UPDATE channels SET ${sets.join(', ')} WHERE id = $1`, vals); await ctx.pcache.invalidate({ k: 'channel', channelId: id }); }
     const [row] = await ctx.db.query('SELECT * FROM channels WHERE id = $1', [id]);
     const dto = await channelDTO(ctx, row);
-    if (ch.guild_id) await audit(ctx, ch.guild_id, req.userId, ch.type === 'thread' ? 'THREAD_UPDATE' : 'CHANNEL_UPDATE', id, b);
+    if (ch.guild_id) await audit(ctx, ch.guild_id, req.userId, ch.type === 'thread' ? 'THREAD_UPDATE' : b.availableTags !== undefined ? 'FORUM_TAG_UPDATE' : 'CHANNEL_UPDATE', id, b);
     await ctx.hub.toChannel(id, ch.type === 'thread' ? 'THREAD_UPDATE' : 'CHANNEL_UPDATE', dto);
     return dto;
   });
@@ -151,7 +167,8 @@ export function channelRoutes(app: FastifyInstance, ctx: Ctx) {
     });
     void g;
     await ctx.pcache.invalidate({ k: 'channel', channelId: id });
-    await audit(ctx, ch.guild_id, req.userId, 'CHANNEL_DELETE', id, { name: ch.name, type: ch.type });
+    await audit(ctx, ch.guild_id, req.userId, ch.type === 'thread' ? 'THREAD_DELETE' : 'CHANNEL_DELETE', id, { name: ch.name, type: ch.type });
+    if (ch.type === 'thread') await ctx.hub.toGuild(ch.guild_id, 'THREAD_DELETE', { id, guildId: ch.guild_id, parentId: ch.parent_id ?? null });
     await ctx.hub.toGuild(ch.guild_id, 'CHANNEL_DELETE', { id, guildId: ch.guild_id });
     return reply.code(204).send();
   });
@@ -239,8 +256,30 @@ export function channelRoutes(app: FastifyInstance, ctx: Ctx) {
   });
 
   // ---------- threads & forums ----------
-  async function createThread(a: Awaited<ReturnType<typeof channelAccess>>, userId: string, id: string, name: string) {
+  /** Tag catalogue edit: keep ids of existing tags, mint ids for new ones. */
+  async function normaliseTags(_channelId: string, current: ForumTag[], incoming: z.infer<typeof tagSchema>[]): Promise<ForumTag[]> {
+    const known = new Map(current.map((t) => [t.id, t]));
+    const out = incoming.map((t) => {
+      if (t.id && !known.has(t.id)) throw badRequest('Unknown tag id', { id: t.id });
+      return { id: t.id ?? snowflake(), name: t.name, emoji: t.emoji ?? null, moderated: t.moderated ?? false };
+    });
+    if (new Set(out.map((t) => t.id)).size !== out.length) throw badRequest('Duplicate tag id');
+    if (new Set(out.map((t) => t.name.toLowerCase())).size !== out.length) throw badRequest('Duplicate tag name');
+    return out;
+  }
+  /** Applied tags must exist on the parent forum; applying/removing a moderated tag needs MANAGE_THREADS. */
+  async function checkAppliedTags(parentId: string | null, wanted: string[], canModerate: boolean, previous: string[] = []): Promise<string[]> {
+    const uniq = [...new Set(wanted)];
+    if (!parentId) return uniq.length ? (() => { throw badRequest('This channel has no tags'); })() : [];
+    const [p] = await ctx.db.query('SELECT available_tags, type FROM channels WHERE id = $1', [parentId]);
+    const tags = new Map(((p?.available_tags ?? []) as ForumTag[]).map((t) => [t.id, t]));
+    for (const t of uniq) if (!tags.has(t)) throw badRequest('Unknown tag', { id: t });
+    for (const t of [...uniq.filter((x) => !previous.includes(x)), ...previous.filter((x) => !uniq.includes(x))]) if (tags.get(t)?.moderated && !canModerate) throw forbidden('That tag can only be managed by moderators');
+    return uniq;
+  }
+  async function createThread(a: Awaited<ReturnType<typeof channelAccess>>, userId: string, id: string, name: string, o: { autoArchive?: number; appliedTags?: string[] } = {}) {
     await insertChannel(ctx.db, { id, guildId: a.channel.guild_id, type: 'thread', name, parentId: a.channel.id, ownerId: userId, slowmode: 0 });
+    await ctx.db.query('UPDATE channels SET auto_archive_minutes = $2, applied_tags = $3::jsonb, activity_at = now() WHERE id = $1', [id, o.autoArchive ?? a.channel.default_auto_archive ?? 1440, JSON.stringify(o.appliedTags ?? [])]);
     const [row] = await ctx.db.query('SELECT * FROM channels WHERE id = $1', [id]);
     const dto = await channelDTO(ctx, row);
     await ctx.db.query('INSERT INTO thread_members (thread_id, user_id) VALUES ($1,$2) ON CONFLICT DO NOTHING', [id, userId]);
@@ -249,14 +288,14 @@ export function channelRoutes(app: FastifyInstance, ctx: Ctx) {
   }
   app.post('/channels/:id/messages/:mid/threads', async (req, reply) => {
     const p = parse(z.object({ id: idSchema, mid: idSchema }), req.params);
-    const b = parse(z.object({ name: z.string().trim().min(1).max(100) }).strict(), req.body);
+    const b = parse(z.object({ name: z.string().trim().min(1).max(100), autoArchiveDuration: archiveDuration.optional() }).strict(), req.body);
     const a = await channelAccess(ctx, req.userId, p.id);
     if (!['text', 'announcement'].includes(a.channel.type)) throw badRequest('Threads can only be started in text channels');
     need(a.perms, Perm.CREATE_PUBLIC_THREADS, Perm.READ_MESSAGE_HISTORY);
     const [m] = await ctx.db.query('SELECT * FROM messages WHERE id = $1 AND channel_id = $2', [p.mid, p.id]);
     if (!m) throw notFound('Message');
     if (m.thread_id) throw conflict('Message already has a thread', 'THREAD_EXISTS');
-    const { dto } = await createThread(a, req.userId, p.mid, b.name); // thread id = message id (unique by construction)
+    const { dto } = await createThread(a, req.userId, p.mid, b.name, { autoArchive: b.autoArchiveDuration }); // thread id = message id (unique by construction)
     await ctx.db.query('UPDATE messages SET thread_id = $2 WHERE id = $1', [p.mid, p.mid]);
     const [fresh] = await ctx.db.query('SELECT * FROM messages WHERE id = $1', [p.mid]);
     await ctx.hub.toChannel(p.id, 'MESSAGE_UPDATE', await messageDTO(ctx, fresh, null));
@@ -266,11 +305,13 @@ export function channelRoutes(app: FastifyInstance, ctx: Ctx) {
 
   app.post('/channels/:id/forum/posts', async (req, reply) => {
     const { id } = parse(z.object({ id: idSchema }), req.params);
-    const b = parse(z.object({ name: z.string().trim().min(1).max(100), content: z.string().min(1) }).strict(), req.body);
+    const b = parse(z.object({ name: z.string().trim().min(1).max(100), content: z.string().min(1), appliedTags: z.array(idSchema).max(5).optional(), autoArchiveDuration: archiveDuration.optional() }).strict(), req.body);
     const a = await channelAccess(ctx, req.userId, id);
     if (a.channel.type !== 'forum') throw badRequest('Not a forum channel');
     need(a.perms, Perm.CREATE_PUBLIC_THREADS, Perm.SEND_MESSAGES);
-    const { row, dto } = await createThread(a, req.userId, snowflake(), b.name);
+    const tags = await checkAppliedTags(id, b.appliedTags ?? [], has(a.perms, Perm.MANAGE_THREADS));
+    if (a.channel.require_tag && !tags.length) throw badRequest('This forum requires at least one tag');
+    const { row, dto } = await createThread(a, req.userId, snowflake(), b.name, { autoArchive: b.autoArchiveDuration, appliedTags: tags });
     const message = await createMessage(ctx, { channel: row, authorId: req.userId, content: b.content, senderPerms: a.perms, memberRoleIds: a.gp?.memberRoleIds });
     return reply.code(201).send({ channel: dto, message });
   });

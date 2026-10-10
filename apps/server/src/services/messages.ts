@@ -1,4 +1,4 @@
-import { LIMITS, Perm, has, snowflake, type Attachment, type Message } from '@jorcord/shared';
+import { LIMITS, Perm, has, snowflake, type Attachment, type Component, type Message } from '@jorcord/shared';
 import type { Ctx } from '../ctx';
 import { ApiError, badRequest, forbidden } from '../errors';
 import { audit } from './guilds';
@@ -57,6 +57,11 @@ export interface NewMessage {
   memberRoleIds?: string[]; skipChecks?: boolean; threadId?: string | null;
   /** Per-message webhook identity override. */
   webhookUsername?: string | null; webhookAvatar?: string | null;
+  /** Platform pass: bot/interaction/poll extras. Validation happens in the caller (routes) via lib/components and services/polls. */
+  components?: Component[]; flags?: number; applicationId?: string | null; interaction?: { id: string; type: number; name: string | null; userId: string } | null;
+  poll?: { question: string; answers: { id: number; text: string; emoji: string | null }[]; allowMultiselect: boolean; layoutType: 1 } | null; pollExpiry?: Date | null;
+  /** Allow a message without content (deferred-response placeholder). */
+  allowEmpty?: boolean;
 }
 
 export async function createMessage(ctx: Ctx, m: NewMessage): Promise<Message> {
@@ -64,7 +69,7 @@ export async function createMessage(ctx: Ctx, m: NewMessage): Promise<Message> {
   const content = m.content;
   if (content.length > LIMITS.maxMessageLength) throw badRequest(`Message exceeds ${LIMITS.maxMessageLength} characters`);
   const attachments = m.attachments ?? [];
-  if (!content.trim() && !attachments.length && !(m.stickerIds?.length) && m.type !== 'join' && m.type !== 'thread_created') throw badRequest('Cannot send an empty message');
+  if (!content.trim() && !attachments.length && !(m.stickerIds?.length) && !m.components?.length && !m.poll && !m.allowEmpty && m.type !== 'join' && m.type !== 'thread_created' && m.type !== 'poll_result') throw badRequest('Cannot send an empty message');
   const ment = await parseMentions(ctx, channel, content, m.senderPerms);
   if (channel.guild_id && !m.skipChecks) await checkAutomod(ctx, channel.guild_id, m.authorId, m.memberRoleIds ?? [], m.senderPerms, content, ment.mentions.length + ment.mentionRoles.length);
   if (m.replyTo) {
@@ -79,12 +84,13 @@ export async function createMessage(ctx: Ctx, m: NewMessage): Promise<Message> {
   const id = snowflake();
   const type = m.type ?? (m.replyTo ? 'reply' : 'default');
   await ctx.db.query(
-    `INSERT INTO messages (id, channel_id, guild_id, author_id, content, type, reply_to, mention_everyone, mentions, mention_roles, attachments, sticker_ids, webhook_id, thread_id, has_link, has_image, has_file, webhook_username, webhook_avatar)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10::jsonb,$11::jsonb,$12::jsonb,$13,$14,$15,$16,$17,$18,$19)`,
+    `INSERT INTO messages (id, channel_id, guild_id, author_id, content, type, reply_to, mention_everyone, mentions, mention_roles, attachments, sticker_ids, webhook_id, thread_id, has_link, has_image, has_file, webhook_username, webhook_avatar, components, flags, application_id, interaction, poll, poll_expiry)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10::jsonb,$11::jsonb,$12::jsonb,$13,$14,$15,$16,$17,$18,$19,$20::jsonb,$21,$22,$23::jsonb,$24::jsonb,$25)`,
     [id, channel.id, channel.guild_id ?? null, m.authorId, content, type, m.replyTo ?? null, ment.mentionEveryone, JSON.stringify(ment.mentions),
       JSON.stringify(ment.mentionRoles), JSON.stringify(attachments), JSON.stringify(stickerIds), m.webhookId ?? null, m.threadId ?? null,
-      /https?:\/\//i.test(content), attachments.some((a) => a.contentType.startsWith('image/')), attachments.length > 0, m.webhookUsername ?? null, m.webhookAvatar ?? null]);
-  await ctx.db.query('UPDATE channels SET last_message_id = $2, archived = false WHERE id = $1', [channel.id, id]);
+      /https?:\/\//i.test(content), attachments.some((a) => a.contentType.startsWith('image/')), attachments.length > 0, m.webhookUsername ?? null, m.webhookAvatar ?? null,
+      JSON.stringify(m.components ?? []), m.flags ?? 0, m.applicationId ?? null, m.interaction ? JSON.stringify(m.interaction) : null, m.poll ? JSON.stringify(m.poll) : null, m.pollExpiry ?? null]);
+  await ctx.db.query('UPDATE channels SET last_message_id = $2, archived = false, activity_at = now() WHERE id = $1', [channel.id, id]);
   // author has read their own message
   await ctx.db.query(`INSERT INTO read_states (user_id, channel_id, last_read_id, mention_count) VALUES ($1,$2,$3,0)
     ON CONFLICT (user_id, channel_id) DO UPDATE SET last_read_id = EXCLUDED.last_read_id, mention_count = 0`, [m.authorId, channel.id, id]);

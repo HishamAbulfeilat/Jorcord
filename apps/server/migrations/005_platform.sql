@@ -57,7 +57,7 @@ CREATE TABLE IF NOT EXISTS interactions (
   id TEXT PRIMARY KEY, application_id TEXT NOT NULL REFERENCES applications(id) ON DELETE CASCADE,
   type INTEGER NOT NULL, token_hash TEXT NOT NULL, user_id TEXT NOT NULL, guild_id TEXT, channel_id TEXT,
   message_id TEXT, data JSONB, acked BOOLEAN NOT NULL DEFAULT false, ephemeral BOOLEAN NOT NULL DEFAULT false,
-  response_message_id TEXT, modal JSONB, deferred_update BOOLEAN NOT NULL DEFAULT false,
+  response_message_id TEXT, modal JSONB, deferred_update BOOLEAN NOT NULL DEFAULT false, deferred BOOLEAN NOT NULL DEFAULT false, followups INTEGER NOT NULL DEFAULT 0,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(), expires_at TIMESTAMPTZ NOT NULL
 );
 CREATE INDEX IF NOT EXISTS interactions_expiry_idx ON interactions (expires_at);

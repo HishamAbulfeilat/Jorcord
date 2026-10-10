@@ -1,3 +1,4 @@
+import { uninstallBot } from '../services/apps';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { ALL_PERMS, LIMITS, Perm, has, snowflake, type Invite } from '@jorcord/shared';
@@ -106,7 +107,9 @@ export function memberRoutes(app: FastifyInstance, ctx: Ctx) {
     const p = parse(z.object({ id: idSchema, roleId: idSchema }), req.params);
     const gp = await guildAccess(ctx, req.userId, p.id);
     need(guildPerms(gp), Perm.MANAGE_ROLES);
+    const [role0] = await ctx.db.query('SELECT managed_app_id FROM roles WHERE id = $1 AND guild_id = $2', [p.roleId, p.id]);
     if (p.roleId === p.id) throw badRequest('Cannot delete @everyone');
+    if (role0?.managed_app_id) throw badRequest('Integration roles are removed by removing the bot');
     const [role] = await ctx.db.query('SELECT * FROM roles WHERE id = $1 AND guild_id = $2', [p.roleId, p.id]);
     if (!role) throw notFound('Role');
     needOutrank(gp, role.position);
@@ -158,6 +161,7 @@ export function memberRoutes(app: FastifyInstance, ctx: Ctx) {
     if (b.nick !== undefined) {
       if (self) need(perms, Perm.CHANGE_NICKNAME); else { need(perms, Perm.MANAGE_NICKNAMES); needOutrankMember(actor, target); }
       await ctx.db.query('UPDATE members SET nick = $3 WHERE guild_id = $1 AND user_id = $2', [p.id, targetId, b.nick || null]);
+      await audit(ctx, p.id, req.userId, 'MEMBER_UPDATE', targetId, { nick: b.nick || null });
     }
     if (b.roles !== undefined) {
       need(perms, Perm.MANAGE_ROLES);
@@ -200,6 +204,7 @@ export function memberRoutes(app: FastifyInstance, ctx: Ctx) {
     await ctx.pcache.invalidate({ k: 'member', guildId, userId });
     await ctx.hub.toUser(userId, 'GUILD_DELETE', { id: guildId });
     await ctx.hub.toGuild(guildId, 'MEMBER_REMOVE', { guildId, userId });
+    await uninstallBot(ctx, guildId, userId); // bots: drop the install record + managed role
   }
   app.delete('/guilds/:id/members/:userId', async (req, reply) => {
     const p = parse(z.object({ id: idSchema, userId: idSchema }), req.params);

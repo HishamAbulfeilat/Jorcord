@@ -9,6 +9,7 @@ import { limitOrThrow } from '../lib/ratelimit';
 import { verifyPassword } from '../lib/crypto';
 import { verifyTotp } from '../lib/totp';
 import { clearVoiceState } from '../services/voice';
+import { uninstallBot } from '../services/apps';
 import { removeGroupRecipient } from '../services/dms';
 import { channelAccess } from '../services/perms';
 import { channelDTO, channelsDTO, getUser, GUILD_SELECT, guildDTO, selfUserDTO, userDTO, usersByIds } from '../services/serializers';
@@ -169,6 +170,7 @@ export function userRoutes(app: FastifyInstance, ctx: Ctx) {
     await ctx.pcache.invalidate({ k: 'member', guildId, userId: req.userId });
     await ctx.hub.toUser(req.userId, 'GUILD_DELETE', { id: guildId });
     await ctx.hub.toGuild(guildId, 'MEMBER_REMOVE', { guildId, userId: req.userId });
+    if (req.isBot) await uninstallBot(ctx, guildId, req.userId);
     return reply.code(204).send();
   });
 

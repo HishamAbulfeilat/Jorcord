@@ -1,5 +1,5 @@
 import { snowflakeTime } from '@jorcord/shared';
-import type { Attachment, Channel, Embed, Guild, Member, Message, OverwriteDTO, Reaction, Role, SelfUser, User } from '@jorcord/shared';
+import type { Attachment, Channel, Component, Embed, Guild, Member, Message, OverwriteDTO, Poll, Reaction, Role, SelfUser, User } from '@jorcord/shared';
 import type { Ctx } from '../ctx';
 import { iso } from '../lib/ids';
 
@@ -47,6 +47,11 @@ export async function channelsDTO(ctx: Ctx, rows: any[]): Promise<Channel[]> {
     overwrites: ows.filter((o) => o.channel_id === r.id).map(overwriteDTO), lastMessageId: r.last_message_id ?? null,
     ...(r.type === 'dm' || r.type === 'group_dm' ? { recipients: recips.filter((p) => p.channel_id === r.id).map((p) => users.get(p.user_id)!).filter(Boolean) } : {}),
     ownerId: r.owner_id ?? null, archived: r.archived, createdAt: iso(r.created_at)!,
+    ...(r.type === 'forum' ? { availableTags: r.available_tags ?? [], requireTag: !!r.require_tag, defaultAutoArchiveDuration: r.default_auto_archive ?? 1440 } : {}),
+    ...(r.type === 'thread' ? {
+      appliedTags: r.applied_tags ?? [], autoArchiveDuration: r.auto_archive_minutes ?? 1440, locked: !!r.locked,
+      archiveAt: r.archived ? null : new Date(new Date(r.activity_at ?? r.created_at).getTime() + (r.auto_archive_minutes ?? 1440) * 60_000).toISOString(),
+    } : {}),
   }));
 }
 export async function channelDTO(ctx: Ctx, row: any): Promise<Channel> { return (await channelsDTO(ctx, [row]))[0]!; }
@@ -83,6 +88,10 @@ export async function messagesDTO(ctx: Ctx, rows: any[], viewerId: string | null
   const refIds = withRef ? [...new Set(rows.map((r) => r.reply_to).filter(Boolean))] : [];
   const refRows = refIds.length ? await ctx.db.query('SELECT * FROM messages WHERE id = ANY($1::text[])', [refIds]) : [];
   const refs = new Map((await messagesDTO(ctx, refRows, viewerId, false)).map((m) => [m.id, m]));
+  const pollIds = rows.filter((r) => r.poll).map((r) => r.id);
+  const votes = pollIds.length ? await ctx.db.query(
+    'SELECT message_id, answer_id, count(*)::int AS n, bool_or(user_id = $2) AS me FROM poll_votes WHERE message_id = ANY($1::text[]) GROUP BY message_id, answer_id', [pollIds, viewerId ?? '']) : [];
+  const voters = pollIds.length ? await ctx.db.query('SELECT message_id, count(DISTINCT user_id)::int AS n FROM poll_votes WHERE message_id = ANY($1::text[]) GROUP BY message_id', [pollIds]) : [];
   return rows.map((r) => ({
     id: r.id, channelId: r.channel_id, guildId: r.guild_id ?? null,
     author: withWebhookIdentity(users.get(r.author_id), r) ?? { id: r.author_id, username: 'deleted', displayName: null, avatar: null, banner: null, accentColor: null, bio: null, pronouns: null, bot: false, createdAt: iso(r.created_at ?? new Date())! },
@@ -92,6 +101,17 @@ export async function messagesDTO(ctx: Ctx, rows: any[], viewerId: string | null
     attachments: r.attachments as Attachment[], embeds: r.embeds as Embed[],
     reactions: reacts.filter((x) => x.message_id === r.id).map((x): Reaction => ({ emoji: x.emoji, emojiId: x.emoji_id ?? null, count: x.count, me: !!x.me })),
     pinned: r.pinned, stickerIds: r.sticker_ids, threadId: r.thread_id ?? null, webhookId: r.webhook_id ?? null,
+    components: (r.components ?? []) as Component[], flags: r.flags ?? 0, applicationId: r.application_id ?? null, interaction: r.interaction ?? null,
+    poll: r.poll ? pollDTO(r, votes, voters) : null,
   }));
 }
 export async function messageDTO(ctx: Ctx, row: any, viewerId: string | null): Promise<Message> { return (await messagesDTO(ctx, [row], viewerId))[0]!; }
+
+/** Poll as clients see it: counts and `meVoted` are computed from poll_votes; `isFinalized` flips at expiry even before the sweeper posts the result. */
+export function pollDTO(r: any, votes: any[], voters: any[]): Poll {
+  const p = r.poll as { question: string; answers: { id: number; text: string; emoji: string | null }[]; allowMultiselect: boolean };
+  const mine = votes.filter((v) => v.message_id === r.id);
+  const answers = p.answers.map((a) => { const v = mine.find((x) => x.answer_id === a.id); return { id: a.id, text: a.text, emoji: a.emoji ?? null, count: v?.n ?? 0, meVoted: !!v?.me }; });
+  const expiry = r.poll_expiry ? new Date(r.poll_expiry) : new Date(0);
+  return { question: p.question, answers, allowMultiselect: p.allowMultiselect, layoutType: 1, expiry: expiry.toISOString(), isFinalized: !!r.poll_finalized || expiry.getTime() <= Date.now(), totalVotes: voters.find((x) => x.message_id === r.id)?.n ?? 0 };
+}

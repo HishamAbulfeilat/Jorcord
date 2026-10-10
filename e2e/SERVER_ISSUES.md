@@ -33,3 +33,12 @@ two do not drift (the client could just wait for `READ_STATE_UPDATE`).
 `gateway/ws.ts` calls `clearVoiceState` in the `close` handler once `sessionDetached` reports no attached sessions. If `sessionDetached` does not apply the
 5 minute resume window, a flaky network drops the user from the voice list for everyone although their LiveKit connection survives. The web client
 re-announces its voice state after the next `READY`, so it recovers, but other users would see a leave+join flicker. Please confirm the grace period is applied.
+
+## 6. Needs from the web UI work (new features)
+* **Join a DISCOVERABLE guild without an invite.** `GET /discover/guilds` lists them but there is no join endpoint. The Discover page joins via the guild's `vanityUrl` (`POST /invites/:vanity`); guilds without one show an error. Proposed: `POST /guilds/:id/join` (200 `GuildFull`, 404 unless `DISCOVERABLE`, same ban/limit checks as `POST /invites/:code`). The web client already calls it as a fallback (`api.guilds.joinDiscoverable`).
+* **No gateway events for stickers** (`STICKERS_UPDATE`) and no `PUT/DELETE` push on stickers; the web client re-fetches `GET /guilds/:id/stickers` when a message references an unknown sticker. Stickers can only be sent from the message's own guild (server filters by guild).
+* **Onboarding / rules screening is client-side only.** The welcome + rules modal is driven by `description` / `rulesChannelId` and a per-user acknowledgement kept in `users.settings.layout.onboarded`. The server does not gate posting until rules are accepted (Discord's "pending" member state). Proposed: `members.pending` flag + `PUT /guilds/:id/members/@me/screening`.
+* **Profile themes are a single `accentColor`** (`#rrggbb`); the web client derives a gradient and tint from it. A real two-colour theme would need `themeColors: [string, string]` on `User` (visible to others, unlike `settings`).
+* **Rail order / folders** are stored in `users.settings.layout` (PATCH `/users/@me {settings}` replaces the whole object, the client merges). Fine, but a dedicated `guild_order` would avoid clobbering concurrent settings writes.
+* **Custom status expiry** is client-side (`settings.layout.statusExpiresAt`); it only clears while a client of that user is running. Proposed: `customStatus.expiresAt` enforced server side.
+* Push payload fields used by the web service worker / Capacitor handler: `{kind,title,body,tag,channelId,guildId,messageId}`; FCM `data` must carry `channelId`/`guildId` (it does).
