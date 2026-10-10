@@ -10,6 +10,7 @@ import { cx, fileUrl, idColor, initials } from '@/lib/format';
 import { useDebounced, useIsMobile } from '@/lib/hooks';
 import { useNav } from '@/lib/nav';
 import { t, tn } from '@/i18n';
+import { AppDirectory } from './AppDirectory';
 
 type Found = Guild & { approxMembers?: number };
 
@@ -45,7 +46,7 @@ function Card({ g }: { g: Found }) {
 }
 
 export function DiscoveryPage() {
-  const [q, setQ] = useState(''); const dq = useDebounced(q, 300); const mobile = useIsMobile(); const setLeft = useUI((s) => s.setLeftDrawer);
+  const [tab, setTab] = useState<'servers' | 'apps'>('servers'); const [q, setQ] = useState(''); const dq = useDebounced(q, 300); const mobile = useIsMobile(); const setLeft = useUI((s) => s.setLeftDrawer);
   const res = useQuery({ queryKey: ['discover', dq], queryFn: () => api.guilds.discover(dq || undefined), retry: false });
   return (
     <div data-testid="discovery" className="flex h-full min-w-0 flex-1 flex-col bg-chat">
@@ -53,7 +54,11 @@ export function DiscoveryPage() {
         {mobile && <button aria-label={t('Open navigation')} onClick={() => setLeft(true)} className="flex h-11 w-11 items-center justify-center text-interactive"><Menu size={24} /></button>}
         <Compass size={24} className="text-muted" /><h1 className="text-base font-semibold text-header">{t('Discover')}</h1>
       </header>
+      <div role="tablist" aria-label={t('Discover')} className="flex gap-1 px-2 pt-2 md:px-4">
+        {([['servers', 'Servers'], ['apps', 'Apps']] as const).map(([id, label]) => <button key={id} role="tab" aria-selected={tab === id} onClick={() => setTab(id)} className={cx('rounded px-3 py-1.5 text-sm font-semibold', tab === id ? 'bg-hover text-header' : 'text-interactive hover:bg-hover')}>{t(label)}</button>)}
+      </div>
       <div className="scroller min-h-0 flex-1">
+        {tab === 'apps' ? <div className="pt-4"><AppDirectory /></div> : <>
         <div className="relative mb-6 flex flex-col items-center gap-3 bg-gradient-to-br from-brand to-[#eb459e] px-6 py-10 text-center text-white">
           <h2 className="text-3xl font-extrabold">{t('Find your community on Jorcord')}</h2>
           <p className="max-w-lg text-white/90">{t('From gaming, to music, to learning, there is a place for you.')}</p>
@@ -65,7 +70,7 @@ export function DiscoveryPage() {
           {res.isError && <Empty icon={<Compass size={40} />} title={t('Discovery is unavailable')}>{t('This server does not provide a directory.')}</Empty>}
           {res.data && !res.data.length && <Empty icon={<Compass size={40} />} title={dq ? t('No communities found') : t('Nothing to discover yet')}>{dq ? t('Try a different search term.') : t('Server owners can turn on Discovery in Server Settings.')}</Empty>}
           <ul className={cx('grid gap-4', 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3')}>{res.data?.map((g) => <Card key={g.id} g={g as Found} />)}</ul>
-        </div>
+        </div></>}
       </div>
     </div>
   );

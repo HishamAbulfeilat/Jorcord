@@ -3,8 +3,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Bot, Code2, Copy, KeyRound, Link2, Plus, Settings as Cog, Terminal, Trash2, TriangleAlert } from 'lucide-react';
-import { OAuthScopes } from '@jorcord/shared';
-import type { Application, OAuthScope, PermName } from '@jorcord/shared';
+import { DIRECTORY_CATEGORIES, OAuthScopes } from '@jorcord/shared';
+import type { Application, DirectoryCategory, OAuthScope, PermName } from '@jorcord/shared';
 import { create } from 'zustand';
 import { api } from '@/lib/api';
 import { useAuth } from '@/stores/auth';
@@ -157,7 +157,35 @@ function BotTab({ app }: { app: Application }) {
     <div className="mb-6"><span className="label">{t('Token')}</span><p className="mb-2 text-sm text-muted">{t('Tokens are stored hashed and can not be shown again. Resetting signs the bot out of the gateway immediately.')}</p>
       <button className="btn btn-primary" onClick={() => openModal({ kind: 'confirm', title: 'Reset bot token?', body: 'The current token stops working at once and the bot is disconnected from the gateway.', confirmLabel: 'Yes, do it!', danger: true, onConfirm: () => api.applications.resetToken(app.id).then((r) => setToken(app.id, r.token)).catch(toastError) })}><KeyRound size={14} />{t('Reset Token')}</button></div>
     <Row title={t('Public Bot')} desc={t('Anyone can add your bot to their server. When off, only you can.')}><Toggle label={t('Public Bot')} checked={app.botPublic} onChange={(v) => api.applications.patch(app.id, { botPublic: v }).then(() => qc.invalidateQueries({ queryKey: ['apps'] })).catch(toastError)} /></Row>
+    <DirectoryListing app={app} />
   </>);
+}
+
+/** Opt a public bot into the App Directory (Discover > Apps). */
+function DirectoryListing({ app }: { app: Application }) {
+  const qc = useQueryClient(); const d = app.directory;
+  const [summary, setSummary] = useState(d?.summary ?? ''); const [category, setCategory] = useState<DirectoryCategory>((d?.category as DirectoryCategory) ?? 'other'); const [tags, setTags] = useState((d?.tags ?? []).join(', '));
+  const [bits, setBits] = useState<Set<PermName>>(new Set(permissionNames(d?.permissions ?? '0'))); const [busy, setBusy] = useState(false);
+  const tagList = tags.split(/[,\s]+/).map((x) => x.trim().toLowerCase().replace(/^#/, '')).filter(Boolean);
+  const save = async (listed: boolean) => {
+    setBusy(true);
+    try { await api.applications.patch(app.id, { directorySummary: summary.trim(), directoryCategory: category, directoryTags: tagList, directoryPermissions: permissionBits(bits), directoryListed: listed }); await qc.invalidateQueries({ queryKey: ['apps'] }); toast(listed ? t('Saved') : t('Removed from the App Directory'), 'success'); } catch (e) { toastError(e); }
+    setBusy(false);
+  };
+  return (<section className="mt-8" data-testid="directory-listing" aria-label={t('App Directory')}>
+    <h2 className="mb-2 text-xs font-bold uppercase tracking-wide text-interactive">{t('App Directory')}</h2>
+    <p className="mb-3 text-sm text-muted">{t('List your public bot so people can find it under Discover > Apps and add it with one click. Needs a description of at least 10 characters (General Information) and a summary.')}</p>
+    {!app.botPublic && <p className="mb-3 text-sm text-warn">{t('Turn on Public Bot to list it.')}</p>}
+    <Field label={t('Summary (shown on the card, max 140 characters)')}><input className="field" maxLength={140} value={summary} onChange={(e) => setSummary(e.target.value)} /></Field>
+    <div className="grid gap-3 sm:grid-cols-2">
+      <Field label={t('Category')}><select className="field" aria-label={t('Category')} value={category} onChange={(e) => setCategory(e.target.value as DirectoryCategory)}>{DIRECTORY_CATEGORIES.map((c) => <option key={c.id} value={c.id}>{t(c.name)}</option>)}</select></Field>
+      <Field label={t('Tags (up to 5, comma separated)')}><input className="field" value={tags} onChange={(e) => setTags(e.target.value)} placeholder="dice, games" /></Field>
+    </div>
+    <details className="mb-4"><summary className="cursor-pointer text-sm font-medium text-header">{t('Suggested permissions')} ({bits.size})</summary>
+      <div className="mt-2 grid max-h-60 gap-1 overflow-y-auto sm:grid-cols-2">{PERMISSION_META.map((p) => <label key={p.name} className="flex cursor-pointer items-center gap-2 rounded bg-side p-2 text-sm"><input type="checkbox" className="h-4 w-4 accent-brand" checked={bits.has(p.name)} onChange={(e) => setBits((cur) => { const n = new Set(cur); if (e.target.checked) n.add(p.name); else n.delete(p.name); return n; })} />{p.label}</label>)}</div></details>
+    <div className="flex gap-2"><button className="btn btn-primary" disabled={busy || !app.botPublic} onClick={() => void save(true)}>{d?.listed ? t('Save Listing') : t('List in App Directory')}</button>
+      {d?.listed && <button className="btn btn-secondary" disabled={busy} onClick={() => void save(false)}>{t('Remove Listing')}</button>}</div>
+  </section>);
 }
 
 function CommandsTab({ app }: { app: Application }) {

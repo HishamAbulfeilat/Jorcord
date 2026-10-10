@@ -56,6 +56,8 @@ export interface Events {
   GUILD_SCHEDULED_EVENT_USER_REMOVE: { guildScheduledEventId: Id; userId: Id; guildId: Id };
   STAGE_INSTANCE_CREATE: StageInstance; STAGE_INSTANCE_UPDATE: StageInstance; STAGE_INSTANCE_DELETE: StageInstance;
   THREAD_DELETE: { id: Id; guildId: Id; parentId: Id | null };
+  /** A server's linked roles (criteria) changed: refetch GET /guilds/:id/linked-roles. Role grants themselves arrive as MEMBER_UPDATE. */
+  LINKED_ROLES_UPDATE: { guildId: Id };
   /** To the caller's own sessions: a private note about another user changed (`note: null` = removed). */
   /** To me: a DM became (or stopped being) a message request. */
   MESSAGE_REQUEST_UPDATE: { channelId: Id; request: boolean };

@@ -2,6 +2,7 @@ import { LIMITS, Perm, has, snowflake, type Attachment, type Component, type Emb
 import type { Ctx } from '../ctx';
 import { ApiError, badRequest, forbidden } from '../errors';
 import { checkAutomod } from './automod';
+import { noteMessage } from './linkedroles';
 import { applyMediaFilter, checkVerification } from './safety';
 import { loadGuildPerms, viewersAmong, permsFor, loadOverwrites } from './perms';
 import { channelDTO, messageDTO } from './serializers';
@@ -86,6 +87,7 @@ export async function createMessage(ctx: Ctx, m: NewMessage): Promise<Message> {
   if (channel.type === 'dm') await settleMessageRequest(ctx, channel, m.authorId, !channel.last_message_id);
   await ctx.hub.toChannel(channel.id, 'MESSAGE_CREATE', dto);
   await bumpMentionCounts(ctx, channel, m.authorId, ment, !channel.guild_id).catch((e) => ctx.log.warn({ err: e }, 'mention count failed'));
+  if (channel.guild_id && !m.skipChecks && !m.webhookId) void noteMessage(ctx, channel.guild_id, m.authorId).catch((e) => ctx.log.warn({ err: e }, 'linked role check failed')); // message_count criteria
   ctx.push.notifyMessage(channel, dto); // async + best effort; honours presence, DND, mute and block rules
   if (ctx.config.unfurlOnSend && has(m.senderPerms, Perm.EMBED_LINKS)) void unfurlMessage(ctx, row, channel).catch(() => {});
   return dto;

@@ -12,6 +12,7 @@ import { randomToken } from '../lib/crypto';
 import { limitOrThrow } from '../lib/ratelimit';
 import { audit, buildGuildFull } from '../services/guilds';
 import { trackVisibility } from '../services/visibility';
+import { refreshMember } from '../services/linkedroles';
 import { postSystemMessage } from '../services/messages';
 import { channelAccess, guildAccess, guildPerms, loadGuildPerm, need, needOutrank, needOutrankMember } from '../services/perms';
 import { GUILD_SELECT, guildDTO, liveStatus, memberDTO, membersDTO, roleDTO, usersByIds } from '../services/serializers';
@@ -55,6 +56,7 @@ export async function joinGuild(ctx: Ctx, userId: string, guildId: string, invit
     await announceJoin(ctx, guildId, userId);
     await bumpDaily(ctx, guildId, 'joins');
     await detectRaid(ctx, guildId).catch((e) => ctx.log.warn({ err: e }, 'raid detection failed'));
+    await refreshMember(ctx, guildId, userId).catch((e) => ctx.log.warn({ err: e }, 'linked role refresh failed')); // criteria such as account age can hold on day one
     if (full.systemChannelId) await postSystemMessage(ctx, full.systemChannelId, userId, 'join').catch((e) => ctx.log.warn({ err: e }, 'join message failed'));
   return full;
 }

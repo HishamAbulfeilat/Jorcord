@@ -47,6 +47,7 @@ export function guildMenu(gid: Id): MenuItem[] {
     { label: t('Hide Muted Channels'), icon: EyeOff, checked: !!ui().prefs.hideMutedChannels[gid], onClick: () => ui().setPref('hideMutedChannels', { ...ui().prefs.hideMutedChannels, [gid]: !ui().prefs.hideMutedChannels[gid] }) },
     ...(g.features.includes('ONBOARDING') ? [{ label: t('Channels & Roles'), icon: ListChecks, onClick: () => ui().openModal({ kind: 'customize', guildId: gid }) }] : []),
     ...(g.rulesChannelId || g.description ? [{ label: t('View Server Welcome'), icon: BookOpen, onClick: () => ui().openModal({ kind: 'onboarding', guildId: gid }) }] : []),
+    { label: t('Linked Roles'), icon: Link2, onClick: () => ui().openSettings({ kind: 'guild', guildId: gid, tab: 'linkedroles' }) },
     { label: t('Server Boost'), icon: Rocket, onClick: () => ui().openSettings({ kind: 'guild', guildId: gid, tab: 'boosts' }) },
     ...(canOpenGuildSettings(p) ? [{ label: t('Server Settings'), icon: Settings, onClick: () => ui().openSettings({ kind: 'guild', guildId: gid }) }] : []),
     ...(can(p, Perm.MANAGE_CHANNELS) ? [{ label: t('Create Channel'), icon: Plus, onClick: () => ui().openModal({ kind: 'createChannel', guildId: gid }) }, { label: t('Create Category'), icon: FolderPlus, onClick: () => ui().openModal({ kind: 'createCategory', guildId: gid }) }] : []),

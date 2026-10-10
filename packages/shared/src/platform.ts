@@ -58,6 +58,8 @@ export interface Application {
   id: Id; ownerId: Id; name: string; description: string; icon: string | null; botUser: User; botPublic: boolean; redirectUris: string[];
   /** Hex Ed25519 public key; Jorcord signs HTTP interaction deliveries and bots verify with this key. */
   publicKey: string; interactionsEndpointUrl: string | null; createdAt: string;
+  /** App Directory listing settings (additive). */
+  directory?: { listed: boolean; category: string; summary: string; tags: string[]; permissions: string };
   /** Privileged gateway intents the owner enabled (bitfield of Intents.GUILD_MEMBERS | GUILD_PRESENCES | MESSAGE_CONTENT). */ privilegedIntents?: number;
   /** Only present in the create response and in the bot token reset response: the one time the bot token / client secret is shown. */
   token?: string; clientSecret?: string;

@@ -7,6 +7,7 @@ import { ApiError, badRequest, notFound } from '../errors';
 import { idSchema, iso, parse } from '../lib/ids';
 import { limitOrThrow } from '../lib/ratelimit';
 import { safeGet } from '../lib/ssrf';
+import { refreshUserEverywhere } from '../services/linkedroles';
 
 const codeOf = (token: string) => `jorcord-verify=${token}`;
 export const connectionDTO = (r: any): Connection => ({ id: r.id, type: r.type, handle: r.handle, name: connectionProvider(r.type)?.name ?? r.type, url: r.url, verified: r.verified, visible: r.visible, createdAt: iso(r.created_at)!, verifyCode: codeOf(r.verify_token) });
@@ -68,6 +69,7 @@ export function connectionRoutes(app: FastifyInstance, ctx: Ctx) {
     } catch { /* unreachable or blocked: treated as "not found" */ }
     if (!found) throw new ApiError(422, 'VERIFICATION_FAILED', `Could not find ${codeOf(r.verify_token)} on ${r.url}. Add it to the page (for example your bio) and try again.`);
     const [u] = await ctx.db.query('UPDATE connections SET verified = true WHERE id = $1 RETURNING *', [id]);
+    void refreshUserEverywhere(ctx, req.userId).catch(() => {}); // linked roles that need a verified connection
     return connectionDTO(u);
   });
 }

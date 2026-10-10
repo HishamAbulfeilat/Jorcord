@@ -1,7 +1,7 @@
 /** Typed REST client written against docs/CONTRACT.md. All calls go through the swappable transport. */
 import type {
   Activity, Attachment, AuditEntry, AutoModRule, Channel, Emoji, Guild, GuildFull, Invite, Member, Message, Relationship, ReadState, Role, SelfUser, Sticker, User, VoiceToken, Id, Presence, OverwriteDTO,
-  Reminder, BoostSummary, SoundboardSound, Connection, PublicConnection, GifFavorite, GuildTemplate, GuildWidgetSettings, GuildInsights, ChannelFollow, Onboarding, OnboardingResponse, GuildSafety, SafetyPreset, Application, ApplicationCommand, CommandPermissionOverwrite, CommandOptionChoice, CreatePoll, ForumTag, InteractionOptionValue, ModalSubmitRow, OAuthAuthorizePreview, OAuthAuthorizeResult, ScheduledEvent, StageInstance,
+  Reminder, BoostSummary, LinkedRoleView, LinkedCriterion, RoleMetadataApp, DirectoryApp, DirectoryCategory, SoundboardSound, Connection, PublicConnection, GifFavorite, GuildTemplate, GuildWidgetSettings, GuildInsights, ChannelFollow, Onboarding, OnboardingResponse, GuildSafety, SafetyPreset, Application, ApplicationCommand, CommandPermissionOverwrite, CommandOptionChoice, CreatePoll, ForumTag, InteractionOptionValue, ModalSubmitRow, OAuthAuthorizePreview, OAuthAuthorizeResult, ScheduledEvent, StageInstance,
 } from '@jorcord/shared';
 import { send } from './transport';
 
@@ -31,7 +31,12 @@ const arr = <T>(x: any): T[] => (Array.isArray(x) ? x : Array.isArray(x?.items) 
 const enc = encodeURIComponent;
 export const emojiKey = (emoji: string, emojiId?: Id | null) => enc(emojiId ? `${emoji}:${emojiId}` : emoji);
 
+export interface DirectoryQuery { q?: string; category?: DirectoryCategory | ''; sort?: 'popular' | 'new'; limit?: number; offset?: number }
 export const api = {
+  directory: {
+    apps: (q: DirectoryQuery = {}) => { const p = new URLSearchParams(); if (q.q) p.set('q', q.q); if (q.category) p.set('category', q.category); if (q.sort) p.set('sort', q.sort); if (q.limit) p.set('limit', String(q.limit)); if (q.offset) p.set('offset', String(q.offset)); return send<{ items: DirectoryApp[]; total: number }>({ method: 'GET', path: `/directory/apps${p.size ? `?${p}` : ''}` }); },
+    categories: () => send<{ id: DirectoryCategory; name: string; count: number }[]>({ method: 'GET', path: '/directory/categories' }).then((x) => arr<{ id: DirectoryCategory; name: string; count: number }>(x)),
+  },
   auth: {
     register: (b: { email: string; username: string; password: string; displayName?: string }) => send<AuthResult>({ method: 'POST', path: '/auth/register', body: b, auth: false }),
     login: (b: { email: string; password: string; totp?: string }) => send<AuthResult>({ method: 'POST', path: '/auth/login', body: b, auth: false }),
@@ -132,6 +137,13 @@ export const api = {
     patchAutomod: (id: Id, rid: Id, b: Partial<AutoModRule>) => send<AutoModRule>({ method: 'PATCH', path: `/guilds/${id}/automod/rules/${rid}`, body: b }),
     testAutomod: (id: Id, b: { content: string; mentionCount?: number }) => send<AutoModTestResult[]>({ method: 'POST', path: `/guilds/${id}/automod/test`, body: b }).then((x) => arr<AutoModTestResult>(x)),
     deleteAutomod: (id: Id, rid: Id) => send({ method: 'DELETE', path: `/guilds/${id}/automod/rules/${rid}` }),
+    linkedRoles: (id: Id) => send<LinkedRoleView[]>({ method: 'GET', path: `/guilds/${id}/linked-roles` }).then((x) => arr<LinkedRoleView>(x)),
+    createLinkedRole: (id: Id, b: { roleId: Id; description?: string | null; criteria: LinkedCriterion[] }) => send<LinkedRoleView>({ method: 'POST', path: `/guilds/${id}/linked-roles`, body: b }),
+    patchLinkedRole: (id: Id, lid: Id, b: { description?: string | null; criteria?: LinkedCriterion[] }) => send<LinkedRoleView>({ method: 'PATCH', path: `/guilds/${id}/linked-roles/${lid}`, body: b }),
+    deleteLinkedRole: (id: Id, lid: Id) => send({ method: 'DELETE', path: `/guilds/${id}/linked-roles/${lid}` }),
+    refreshLinkedRoles: (id: Id) => send<LinkedRoleView[]>({ method: 'POST', path: `/guilds/${id}/linked-roles/refresh` }).then((x) => arr<LinkedRoleView>(x)),
+    syncLinkedRoles: (id: Id) => send<{ checked: number; changed: number }>({ method: 'POST', path: `/guilds/${id}/linked-roles/sync` }),
+    linkedRoleApps: (id: Id) => send<RoleMetadataApp[]>({ method: 'GET', path: `/guilds/${id}/linked-roles/apps` }).then((x) => arr<RoleMetadataApp>(x)),
     boost: (id: Id, count?: number) => send<Guild>({ method: 'POST', path: `/guilds/${id}/boosts`, body: count ? { count } : {} }),
     unboost: (id: Id) => send<BoostSummary>({ method: 'DELETE', path: `/guilds/${id}/boosts` }),
     boosts: (id: Id) => send<BoostSummary>({ method: 'GET', path: `/guilds/${id}/boosts` }),
@@ -186,7 +198,7 @@ export const api = {
     get: (id: Id) => send<Application>({ method: 'GET', path: `/applications/${id}` }),
     /** The response carries the bot token and client secret exactly once. */
     create: (b: { name: string; description?: string; botPublic?: boolean; redirectUris?: string[] }) => send<Application>({ method: 'POST', path: '/applications', body: b }),
-    patch: (id: Id, b: Partial<Pick<Application, 'name' | 'description' | 'icon' | 'botPublic' | 'redirectUris' | 'interactionsEndpointUrl'>>) => send<Application>({ method: 'PATCH', path: `/applications/${id}`, body: b }),
+    patch: (id: Id, b: Partial<Pick<Application, 'name' | 'description' | 'icon' | 'botPublic' | 'redirectUris' | 'interactionsEndpointUrl'>> & { directoryListed?: boolean; directoryCategory?: DirectoryCategory; directorySummary?: string; directoryTags?: string[]; directoryPermissions?: string }) => send<Application>({ method: 'PATCH', path: `/applications/${id}`, body: b }),
     delete: (id: Id) => send({ method: 'DELETE', path: `/applications/${id}` }),
     resetToken: (id: Id) => send<{ token: string }>({ method: 'POST', path: `/applications/${id}/bot/reset-token` }),
     resetSecret: (id: Id) => send<{ clientSecret: string }>({ method: 'POST', path: `/applications/${id}/reset-secret` }),

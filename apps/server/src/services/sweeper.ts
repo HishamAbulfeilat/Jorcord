@@ -4,6 +4,7 @@ import { sweepEvents } from './scheduled';
 import { endEmptyStages } from './stage';
 import { channelsDTO } from './serializers';
 import { fireDueReminders } from './reminders';
+import { syncGuild } from './linkedroles';
 
 /** Thread auto-archive: no activity for `auto_archive_minutes` -> archived (THREAD_UPDATE). Atomic, so multi-node safe. */
 export async function archiveIdleThreads(ctx: Ctx) {
@@ -27,6 +28,24 @@ async function pruneInteractions(ctx: Ctx) {
   await ctx.db.query(`DELETE FROM oauth_tokens WHERE expires_at < now()`);
 }
 
+/**
+ * Account/server age criteria become true with the passage of time and nothing else happens at that moment, so every 10 minutes a slice (300 members per
+ * server, rotating) of servers that have such linked roles is re-evaluated.
+ */
+const ageCursor = new Map<string, string>(); let lastAgePass = 0;
+export async function sweepLinkedRoles(ctx: Ctx, force = false) {
+  if (!force && Date.now() - lastAgePass < 600_000) return 0;
+  lastAgePass = Date.now();
+  const guilds = await ctx.db.query(`SELECT DISTINCT guild_id FROM linked_roles WHERE criteria @> '[{"type":"account_age_days"}]'::jsonb OR criteria @> '[{"type":"join_age_days"}]'::jsonb`);
+  let changed = 0;
+  for (const g of guilds) {
+    const r = await syncGuild(ctx, g.guild_id, 300, ageCursor.get(g.guild_id) ?? '');
+    if (r.next) ageCursor.set(g.guild_id, r.next); else ageCursor.delete(g.guild_id);
+    changed += r.changed;
+  }
+  return changed;
+}
+
 /** One pass of every time-driven lifecycle. Exposed for tests; the server runs it on an interval (config.sweepIntervalMs). */
 export async function runSweeps(ctx: Ctx) {
   const step = async (name: string, fn: () => Promise<unknown>) => { try { await fn(); } catch (e) { ctx.log.warn({ err: e, step: name }, 'sweep step failed'); } };
@@ -36,5 +55,6 @@ export async function runSweeps(ctx: Ctx) {
   await step('threads', () => archiveIdleThreads(ctx));
   await step('statuses', () => expireStatuses(ctx));
   await step('reminders', () => fireDueReminders(ctx));
+  await step('linked-roles', () => sweepLinkedRoles(ctx));
   await step('interactions', () => pruneInteractions(ctx));
 }

@@ -79,3 +79,91 @@ test('boosts: level page with perks and progress, boost + take back, booster rol
     await closeSettings(A.page);
   } finally { await B.ctx.close(); }
 });
+
+test('linked roles: define criteria in Settings; a member sees requirements and progress and earns the role', async ({ browser }) => {
+  const B = await newUser(browser, 'Earner');
+  try {
+    const gid = await guildId(A.page);
+    const chatty = await rest(A.page, 'POST', `/guilds/${gid}/roles`, { name: 'Chatterbox', color: 0x3498db });
+    await joinViaInvite(B.page, await makeInvite(A.page));
+    await openGuildSettings(A.page, 'Mod Lab', 'Linked Roles');
+    const dlg = A.page.getByRole('dialog', { name: 'Mod Lab' });
+    await dlg.getByRole('button', { name: 'Link a Role' }).click();
+    await dlg.getByLabel('Role', { exact: true }).selectOption(chatty.id);
+    await dlg.getByLabel('Description (optional)').fill('For people who talk a lot');
+    await dlg.getByLabel('Amount').fill('2'); // default requirement: messages
+    await dlg.getByRole('button', { name: 'Save', exact: true }).click();
+    const card = dlg.getByTestId('linked-role').filter({ hasText: 'Chatterbox' });
+    await expect(card).toContainText('Has sent at least 2 messages here');
+    await expect(card).toContainText('For people who talk a lot');
+    await closeSettings(A.page);
+    // the member sees the requirement and their progress (read-only: no editing controls)
+    await B.page.getByRole('button', { name: 'Mod Lab server menu' }).click();
+    await clickMenu(B.page, 'Linked Roles');
+    const bdlg = B.page.getByRole('dialog', { name: 'Mod Lab' });
+    const mine = bdlg.getByTestId('linked-role').filter({ hasText: 'Chatterbox' });
+    await expect(mine).toContainText('0 / 2 messages');
+    await expect(bdlg.getByRole('button', { name: 'Link a Role' })).toHaveCount(0);
+    await closeSettings(B.page);
+    await sendMessage(B.page, 'first one'); await expect(msg(B.page, 'first one')).toBeVisible();
+    await sendMessage(B.page, 'second one'); await expect(msg(B.page, 'second one')).toBeVisible();
+    await B.page.getByRole('button', { name: 'Mod Lab server menu' }).click();
+    await clickMenu(B.page, 'Linked Roles');
+    await bdlg.getByRole('button', { name: 'Check again' }).click();
+    await expect(mine).toContainText('You have this role');
+    await expect(mine).toContainText('2 / 2 messages');
+    await closeSettings(B.page);
+    // everyone sees the role on the member (managers can not hand it out by hand)
+    await expect.poll(async () => (await rest(A.page, 'GET', `/guilds/${gid}/members/${(await rest(B.page, 'GET', '/users/@me')).id}`)).roles).toContain(chatty.id);
+    // unlinking from Settings keeps the role on the member
+    await openGuildSettings(A.page, 'Mod Lab', 'Linked Roles');
+    await dlg.getByRole('button', { name: /Unlink Chatterbox/ }).click();
+    await expect(dlg.getByTestId('linked-role')).toHaveCount(0);
+    await closeSettings(A.page);
+  } finally { await B.ctx.close(); }
+});
+
+test('app directory: list a bot from the Developer Portal; people find it in Discover > Apps and start the add-bot flow', async ({ browser }) => {
+  const B = await newUser(browser, 'Shopper');
+  try {
+    await createServer(B.page, 'Shopper HQ');
+    const p = A.page;
+    await p.getByRole('button', { name: 'User Settings' }).first().click();
+    await p.getByRole('dialog', { name: 'User Settings' }).getByRole('button', { name: 'Developer Portal' }).click();
+    await p.getByRole('button', { name: 'New Application' }).click();
+    await p.getByLabel('Name').fill('Quizzy');
+    await p.getByRole('button', { name: 'Create', exact: true }).click();
+    await expect(p).toHaveURL(/\/developers\/\d+\/information/);
+    const appId = p.url().match(/developers\/(\d+)/)![1]!;
+    await p.getByLabel('Description').fill('Hosts trivia nights for your whole server');
+    await p.getByRole('button', { name: 'Save Changes' }).click();
+    await expect(p.getByText('Application saved')).toBeVisible();
+    await p.getByRole('link', { name: 'Bot', exact: true }).click();
+    const listing = p.getByTestId('directory-listing');
+    await listing.getByLabel(/^Summary/).fill('Trivia nights, scoreboards and streaks');
+    await listing.getByLabel('Category', { exact: true }).selectOption('games');
+    await listing.getByLabel(/^Tags/).fill('trivia, quiz');
+    await listing.getByRole('button', { name: 'List in App Directory' }).click();
+    await expect.poll(async () => (await rest(p, 'GET', `/applications/${appId}`)).directory).toMatchObject({ listed: true, category: 'games', tags: ['trivia', 'quiz'] });
+    // a shopper finds it
+    await B.page.getByRole('button', { name: 'Explore servers' }).click();
+    await B.page.getByRole('tab', { name: 'Apps' }).click();
+    const dir = B.page.getByTestId('app-directory');
+    await dir.getByLabel('Search apps').fill('quizzy');
+    const card = dir.locator(`[data-app-card="${appId}"]`);
+    await expect(card).toContainText('Trivia nights, scoreboards and streaks');
+    await expect(card).toContainText('#trivia');
+    await dir.getByRole('button', { name: /^Music/ }).click(); // other category: nothing
+    await expect(card).toHaveCount(0);
+    await dir.getByRole('button', { name: /^Games/ }).click();
+    await expect(card).toBeVisible();
+    await card.getByRole('button', { name: /Add Quizzy to a server/ }).click();
+    await expect(B.page).toHaveURL(new RegExp(`/oauth2/authorize\\?client_id=${appId}`));
+    await expect(B.page.getByText('Quizzy').first()).toBeVisible();
+    // private bots disappear from the directory
+    await rest(p, 'PATCH', `/applications/${appId}`, { botPublic: false });
+    await B.page.goBack(); await B.page.getByRole('tab', { name: 'Apps' }).click();
+    await dir.getByLabel('Search apps').fill('quizzy');
+    await expect(dir.getByText('No apps found')).toBeVisible();
+  } finally { await B.ctx.close(); }
+});
