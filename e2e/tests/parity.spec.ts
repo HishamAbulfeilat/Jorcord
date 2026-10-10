@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { newUser, createServer, openGuildSettings, openUserSettings, closeSettings, rest, guildId, sendMessage, msg, clickMenu, hoverMsg, type User } from './helpers';
+import { newUser, createServer, openGuildSettings, openUserSettings, closeSettings, rest, guildId, sendMessage, msg, clickMenu, hoverMsg, GIF, type User } from './helpers';
 
 let A: User;
 test.describe.configure({ mode: 'serial' });
@@ -236,4 +236,27 @@ test('server template link creates a copy, the widget is public, insights show a
     await expect.poll(async () => (await rest(A.page, 'GET', `/guilds/${gid}`)).vanityUrl).toBe(vanity);
     await closeSettings(A.page);
   } finally { await B.ctx.close(); }
+});
+
+test('GIF favorites: save an image from chat, find it under Favorites in the picker, remove it', async () => {
+  const gid = await guildId(A.page);
+  const general = (await rest(A.page, 'GET', `/guilds/${gid}/channels`)).find((c: any) => c.name === 'general');
+  await A.page.goto(`/channels/${gid}/${general.id}`);
+  await A.page.locator('input[type=file]').first().setInputFiles({ name: 'dancing.gif', mimeType: 'image/gif', buffer: GIF });
+  const box = A.page.getByRole('textbox', { name: /^Message/ });
+  await box.fill('dancing gif time'); await box.press('Enter');
+  const m = msg(A.page, 'dancing gif time');
+  await expect(m).toBeVisible();
+  await m.click({ button: 'right', position: { x: 300, y: 10 } });
+  await clickMenu(A.page, 'Add to GIF Favorites');
+  await expect.poll(async () => (await rest(A.page, 'GET', '/users/@me/gif-favorites')).length).toBe(1);
+  await A.page.getByRole('button', { name: 'Choose emoji or GIF' }).click();
+  await A.page.getByRole('button', { name: 'GIFs' }).click();
+  await A.page.getByRole('tab', { name: 'Favorites' }).click();
+  const grid = A.page.getByTestId('gif-grid');
+  await expect(grid.getByRole('button', { name: /dancing/ }).first()).toBeVisible();
+  await grid.getByRole('button', { name: 'Remove from favorites' }).first().click({ force: true });
+  await expect.poll(async () => (await rest(A.page, 'GET', '/users/@me/gif-favorites')).length).toBe(0);
+  await expect(grid.getByText(/No favorites yet/)).toBeVisible();
+  await A.page.keyboard.press('Escape');
 });

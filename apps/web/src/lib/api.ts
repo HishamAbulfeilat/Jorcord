@@ -1,7 +1,7 @@
 /** Typed REST client written against docs/CONTRACT.md. All calls go through the swappable transport. */
 import type {
   Activity, Attachment, AuditEntry, AutoModRule, Channel, Emoji, Guild, GuildFull, Invite, Member, Message, Relationship, ReadState, Role, SelfUser, Sticker, User, VoiceToken, Id, Presence, OverwriteDTO,
-  Reminder, SoundboardSound, GuildTemplate, GuildWidgetSettings, GuildInsights, ChannelFollow, Onboarding, OnboardingResponse, GuildSafety, SafetyPreset, Application, ApplicationCommand, CommandPermissionOverwrite, CommandOptionChoice, CreatePoll, ForumTag, InteractionOptionValue, ModalSubmitRow, OAuthAuthorizePreview, OAuthAuthorizeResult, ScheduledEvent, StageInstance,
+  Reminder, SoundboardSound, GifFavorite, GuildTemplate, GuildWidgetSettings, GuildInsights, ChannelFollow, Onboarding, OnboardingResponse, GuildSafety, SafetyPreset, Application, ApplicationCommand, CommandPermissionOverwrite, CommandOptionChoice, CreatePoll, ForumTag, InteractionOptionValue, ModalSubmitRow, OAuthAuthorizePreview, OAuthAuthorizeResult, ScheduledEvent, StageInstance,
 } from '@jorcord/shared';
 import { send } from './transport';
 
@@ -82,6 +82,10 @@ export const api = {
     setNote: (userId: Id, note: string) => send({ method: 'PUT', path: `/users/@me/notes/${userId}`, body: { note } }),
     /** Inbox: recent @mentions (user, my roles, @everyone) in channels I can read. */
     mentions: (q: { before?: Id; limit?: number; guildId?: Id; roles?: boolean; everyone?: boolean } = {}) => send<Message[]>({ method: 'GET', path: '/users/@me/mentions', query: { ...q, roles: q.roles === undefined ? undefined : String(q.roles), everyone: q.everyone === undefined ? undefined : String(q.everyone) } as any }).then((x) => arr<Message>(x)),
+    /** GIF favorites / saved media. */
+    gifFavorites: () => send<GifFavorite[]>({ method: 'GET', path: '/users/@me/gif-favorites' }).then((x) => arr<GifFavorite>(x)),
+    addGifFavorite: (b: { url: string; preview?: string | null; title?: string | null; width?: number | null; height?: number | null }) => send<GifFavorite>({ method: 'POST', path: '/users/@me/gif-favorites', body: b }),
+    removeGifFavorite: (id: Id) => send({ method: 'DELETE', path: `/users/@me/gif-favorites/${id}` }),
     findByUsername: (username: string) => send<User[] | User>({ method: 'GET', path: '/users', query: { username } }).then((x) => (Array.isArray(x) ? x : x ? [x] : [])),
   },
   guilds: {

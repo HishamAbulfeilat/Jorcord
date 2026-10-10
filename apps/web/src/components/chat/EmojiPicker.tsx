@@ -1,6 +1,6 @@
 import { memo, useCallback, useMemo, useRef, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { Search, Smile, Clock, Film, Sticker as StickerIcon } from 'lucide-react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Search, Smile, Clock, Film, Star, Sticker as StickerIcon } from 'lucide-react';
 import { fileUrl } from '@/lib/format';
 import { t } from '@/i18n';
 import { EMOJI_CATEGORIES, searchEmoji } from '@/lib/emoji';
@@ -23,7 +23,14 @@ export function EmojiPicker({ onPick, guildId, allowGif = false, allowSticker = 
   const results = q ? searchEmoji(q, 90) : null;
   const customHits = q ? custom.flatMap((g) => g.emojis.filter((e) => e.name.toLowerCase().includes(q.toLowerCase().replace(/^:/, '')))) : [];
   const rec = recent();
-  const gifs = useQuery({ queryKey: ['gifs', dq], queryFn: () => api.misc.gifs(dq || undefined), enabled: tab === 'gif', staleTime: 60_000 });
+  const [gifMode, setGifMode] = useState<'trending' | 'favorites'>('trending'); const qc = useQueryClient();
+  const gifs = useQuery({ queryKey: ['gifs', dq], queryFn: () => api.misc.gifs(dq || undefined), enabled: tab === 'gif' && gifMode === 'trending', staleTime: 60_000 });
+  const favs = useQuery({ queryKey: ['gif-favs'], queryFn: () => api.users.gifFavorites(), enabled: tab === 'gif', staleTime: 30_000 });
+  const favByUrl = useMemo(() => new Map((favs.data ?? []).map((f) => [f.url, f])), [favs.data]);
+  const toggleFav = (g: { url: string; preview?: string | null; title?: string | null }) => {
+    const ex = favByUrl.get(g.url);
+    (ex ? api.users.removeGifFavorite(ex.id) : api.users.addGifFavorite({ url: g.url, preview: g.preview && /^https:/.test(g.preview) ? g.preview : null, title: g.title || null })).then(() => qc.invalidateQueries({ queryKey: ['gif-favs'] })).catch(() => {});
+  };
   // Stable callbacks + module-level memo cells: hovering must not remount ~1800 buttons (that swallowed clicks).
   const onPickRef = useRef(onPick); onPickRef.current = onPick;
   const pick = useCallback((e: EmojiPick) => { if (e.char) pushRecent(e.char); onPickRef.current(e); }, []);
@@ -41,10 +48,24 @@ export function EmojiPicker({ onPick, guildId, allowGif = false, allowSticker = 
       {tab === 'sticker' ? (
         <StickerGrid guildId={guildId} q={q} onPick={(st) => pick({ name: st.name, sticker: st.id })} />
       ) : tab === 'gif' ? (
-        <div className="scroller min-h-0 flex-1 columns-2 gap-1 p-2">
-          {gifs.isLoading && <Spinner className="mx-auto mt-8" />}
-          {gifs.data?.length === 0 && <p className="p-4 text-center text-sm text-muted">No GIFs available. The server has no GIF provider configured.</p>}
-          {gifs.data?.map((g) => <button key={g.id} className="mb-1 block w-full overflow-hidden rounded" onClick={() => pick({ name: g.title ?? 'gif', gif: g.url })}><img src={g.preview || g.url} alt={g.title ?? 'GIF'} loading="lazy" className="w-full" /></button>)}
+        <div className="flex min-h-0 flex-1 flex-col">
+          <div className="flex gap-1 px-2 pb-1" role="tablist" aria-label={t('GIF source')}>
+            {(['trending', 'favorites'] as const).map((m) => <button key={m} role="tab" aria-selected={gifMode === m} onClick={() => setGifMode(m)} className={cx('rounded px-2 py-1 text-xs font-semibold', gifMode === m ? 'bg-active text-header' : 'text-interactive hover:bg-hover')}>{m === 'trending' ? t('Trending') : t('Favorites')}</button>)}
+          </div>
+          <div className="scroller min-h-0 flex-1 columns-2 gap-1 p-2" data-testid="gif-grid">
+            {gifMode === 'favorites' && favs.data?.length === 0 && <p className="p-4 text-center text-sm text-muted">{t('No favorites yet. Star a GIF, or right-click an image in chat.')}</p>}
+            {gifMode === 'favorites' && favs.data?.filter((f) => !dq || (f.title ?? '').toLowerCase().includes(dq.toLowerCase())).map((f) => (
+              <div key={f.id} className="group/g relative mb-1"><button className="block w-full overflow-hidden rounded" aria-label={f.title || 'GIF'} onClick={() => pick({ name: f.title ?? 'gif', gif: f.url })}><img src={fileUrl(f.preview ?? f.url) ?? f.url} alt={f.title ?? 'GIF'} loading="lazy" className="w-full" /></button>
+                <button aria-label={t('Remove from favorites')} onClick={() => toggleFav(f)} className="absolute end-1 top-1 rounded bg-black/60 p-1 text-warn opacity-0 focus:opacity-100 group-hover/g:opacity-100"><Star size={14} fill="currentColor" /></button></div>
+            ))}
+            {gifMode === 'trending' && gifs.isLoading && <Spinner className="mx-auto mt-8" />}
+            {gifMode === 'trending' && gifs.data?.length === 0 && <p className="p-4 text-center text-sm text-muted">No GIFs available. The server has no GIF provider configured.</p>}
+            {gifMode === 'trending' && gifs.data?.map((g) => {
+              const on = favByUrl.has(g.url);
+              return <div key={g.id} className="group/g relative mb-1"><button className="block w-full overflow-hidden rounded" aria-label={g.title || 'GIF'} onClick={() => pick({ name: g.title ?? 'gif', gif: g.url })}><img src={g.preview || g.url} alt={g.title ?? 'GIF'} loading="lazy" className="w-full" /></button>
+                <button aria-label={on ? t('Remove from favorites') : t('Add to favorites')} aria-pressed={on} onClick={() => toggleFav({ url: g.url, preview: g.preview, title: g.title })} className={cx('absolute end-1 top-1 rounded bg-black/60 p-1 focus:opacity-100 group-hover/g:opacity-100', on ? 'text-warn opacity-100' : 'text-white opacity-0')}><Star size={14} fill={on ? 'currentColor' : 'none'} /></button></div>;
+            })}
+          </div>
         </div>
       ) : (
         <div className="flex min-h-0 flex-1">

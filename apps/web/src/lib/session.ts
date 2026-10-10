@@ -53,6 +53,7 @@ export function startSession(token: string) {
   unsubs.push(gw.on('USER_NOTE_UPDATE', (d) => queryClient.setQueryData(['user', d.userId], (old: any) => (old ? { ...old, note: d.note } : old))));
   unsubs.push(gw.on('SOUNDBOARD_SOUNDS_UPDATE', (d) => queryClient.setQueryData(['sounds', d.guildId], d.sounds)));
   unsubs.push(gw.on('VOICE_CHANNEL_EFFECT_SEND', (d) => onVoiceEffect(d, meId())));
+  unsubs.push(gw.on('GIF_FAVORITES_UPDATE', () => { void queryClient.invalidateQueries({ queryKey: ['gif-favs'] }); }));
   unsubs.push(gw.on('INTERACTION_FAILED', onInteractionFailed));
   unsubs.push(gw.on('INTERACTION_MODAL', onInteractionModal));
   unsubs.push(gw.on('INTERACTION_AUTOCOMPLETE_RESULT', onAutocompleteResult));

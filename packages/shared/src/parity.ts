@@ -113,3 +113,7 @@ export interface GuildInsights {
   topChannels: { channelId: Id; name: string; count: number }[];
 }
 export const MAX_TEMPLATE_CHANNELS = 200;
+
+// ---------- GIF favorites / saved media ----------
+export interface GifFavorite { id: Id; url: string; preview: string | null; title: string | null; width: number | null; height: number | null; createdAt: string }
+export const MAX_GIF_FAVORITES = 250;
