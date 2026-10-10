@@ -40,3 +40,18 @@ export const AVATAR_DECORATION_IDS = ids(AVATAR_DECORATIONS), PROFILE_EFFECT_IDS
 /** The server tag a user chose to wear: shown beside their name everywhere. */
 export interface ServerTag { guildId: Id; tag: string; badge: string | null }
 export const SERVER_TAG_RE = /^[A-Za-z0-9]{3,4}$/;
+
+// ---------- safety ----------
+/** 0 none, 1 verified email, 2 + account older than 5 minutes, 3 + member for 10 minutes, 4 + verified email and account older than 7 days (Jorcord has no phone numbers, so "highest" uses account age instead). Members with a role are exempt. */
+export type VerificationLevel = 0 | 1 | 2 | 3 | 4;
+/** 0 off, 1 blur media from members without roles, 2 blur media from everyone. Without an image classifier the media is delivered as a spoiler (blurred until clicked) and only in channels that are not age-restricted. */
+export type ExplicitFilter = 0 | 1 | 2;
+export interface RaidProtection { enabled: boolean; /** joins that trip the alarm */ maxJoins: number; /** within this many seconds */ windowSeconds: number; /** invites stay paused this long */ lockMinutes: number }
+export const DEFAULT_RAID_PROTECTION: RaidProtection = { enabled: false, maxJoins: 10, windowSeconds: 60, lockMinutes: 60 };
+export interface GuildSafety {
+  verificationLevel: VerificationLevel; explicitFilter: ExplicitFilter; defaultNotifications: 'all' | 'mentions';
+  raidProtection: RaidProtection; invitesPausedUntil: string | null;
+  /** Safety Setup checklist: what is already done. */
+  checklist: { id: string; done: boolean }[]; score: number;
+}
+export type SafetyPreset = 'basic' | 'recommended' | 'strict';

@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { AUTO_ARCHIVE_DURATIONS, Perm, has, snowflake, type ForumTag } from '@jorcord/shared';
 import type { Ctx } from '../ctx';
+import { checkVerification } from '../services/safety';
 import { ApiError, badRequest, conflict, forbidden, notFound } from '../errors';
 import { assetUrl, idSchema, limitParam, parse } from '../lib/ids';
 import { randomToken, safeEqual } from '../lib/crypto';
@@ -292,6 +293,7 @@ export function channelRoutes(app: FastifyInstance, ctx: Ctx) {
     const a = await channelAccess(ctx, req.userId, p.id);
     if (!['text', 'announcement'].includes(a.channel.type)) throw badRequest('Threads can only be started in text channels');
     need(a.perms, Perm.CREATE_PUBLIC_THREADS, Perm.READ_MESSAGE_HISTORY);
+    await checkVerification(ctx, a.channel.guild_id, req.userId, a.perms);
     const [m] = await ctx.db.query('SELECT * FROM messages WHERE id = $1 AND channel_id = $2', [p.mid, p.id]);
     if (!m) throw notFound('Message');
     if (m.thread_id) throw conflict('Message already has a thread', 'THREAD_EXISTS');
@@ -309,6 +311,7 @@ export function channelRoutes(app: FastifyInstance, ctx: Ctx) {
     const a = await channelAccess(ctx, req.userId, id);
     if (a.channel.type !== 'forum') throw badRequest('Not a forum channel');
     need(a.perms, Perm.CREATE_PUBLIC_THREADS, Perm.SEND_MESSAGES);
+    await checkVerification(ctx, a.channel.guild_id, req.userId, a.perms);
     const tags = await checkAppliedTags(id, b.appliedTags ?? [], has(a.perms, Perm.MANAGE_THREADS));
     if (a.channel.require_tag && !tags.length) throw badRequest('This forum requires at least one tag');
     const { row, dto } = await createThread(a, req.userId, snowflake(), b.name, { autoArchive: b.autoArchiveDuration, appliedTags: tags });

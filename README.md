@@ -38,6 +38,12 @@ Then open **http://localhost:3000**: the server image includes the web app (same
 The desktop/mobile apps and the hosted Pages copy ask for a server address on first launch: enter `http://localhost:3000` (or your server's HTTPS address) and add that app's origin to `CORS_ORIGINS` in `.env`.
 The hosted Pages site is HTTPS, so it can reach only HTTPS servers or `localhost`. Details: `docs/DEPLOY.md`; releasing: `docs/RELEASING.md`.
 
+## Claude mods
+Optional add-ons for Claude Code in `mods/` (see `mods/README.md`). Install `agent-deck`, a live multi-agent and token/usage dashboard, from any terminal Claude Code session:
+```
+/plugin install agent-deck --marketplace HishamAbulfeilat/Jorcord
+```
+
 ## Development
 ```
 pnpm install

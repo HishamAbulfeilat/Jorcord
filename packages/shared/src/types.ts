@@ -34,6 +34,8 @@ export interface Guild {
   features: string[]; vanityUrl: string | null; createdAt: string;
   /** 3-4 character tag members may wear beside their name, and its badge icon id (TAG_BADGES). */
   tag?: string | null; tagBadge?: string | null;
+  /** Safety (see GuildSafety): enforced server-side. `invitesPausedUntil` is set while invites/joins are paused (raid protection or manual). */
+  verificationLevel?: 0 | 1 | 2 | 3 | 4; explicitFilter?: 0 | 1 | 2; defaultNotifications?: 'all' | 'mentions'; invitesPausedUntil?: string | null;
 }
 export interface Role { id: Id; guildId: Id; name: string; color: number; hoist: boolean; position: number; permissions: string; mentionable: boolean; icon: string | null }
 export interface OverwriteDTO { id: Id; type: 'role' | 'member'; allow: string; deny: string }

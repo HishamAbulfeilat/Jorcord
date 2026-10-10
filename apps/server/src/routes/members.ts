@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { ALL_PERMS, LIMITS, Perm, has, snowflake, type Invite } from '@jorcord/shared';
 import type { Ctx } from '../ctx';
 import { clearServerTag } from '../services/cosmetics';
+import { assertInvitesOpen, detectRaid } from '../services/safety';
 import { ApiError, badRequest, forbidden, notFound } from '../errors';
 import { idSchema, iso, limitParam, parse } from '../lib/ids';
 import { randomToken } from '../lib/crypto';
@@ -35,6 +36,7 @@ export async function joinGuild(ctx: Ctx, userId: string, guildId: string, invit
     if (banned) throw forbidden('You are banned from this server', 'BANNED');
     const [already] = await ctx.db.query('SELECT 1 AS x FROM members WHERE guild_id = $1 AND user_id = $2', [guildId, userId]);
     if (already) return buildGuildFull(ctx, guildId, userId);
+    await assertInvitesOpen(ctx, guildId);
     const [g] = await ctx.db.query('SELECT features, rules_channel_id FROM guilds WHERE id = $1', [guildId]);
     const screening = (g?.features as string[] | undefined)?.includes('MEMBER_SCREENING') === true;
     const [cnt] = await ctx.db.query('SELECT count(*)::int AS n FROM members WHERE user_id = $1', [userId]);
@@ -50,6 +52,7 @@ export async function joinGuild(ctx: Ctx, userId: string, guildId: string, invit
     const m = await memberDTO(ctx, guildId, userId);
     if (m) await ctx.hub.toGuild(guildId, 'MEMBER_ADD', m, { exclude: userId });
     await announceJoin(ctx, guildId, userId);
+    await detectRaid(ctx, guildId).catch((e) => ctx.log.warn({ err: e }, 'raid detection failed'));
     if (full.systemChannelId) await postSystemMessage(ctx, full.systemChannelId, userId, 'join').catch((e) => ctx.log.warn({ err: e }, 'join message failed'));
   return full;
 }

@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { LIMITS, Perm, has, snowflakeTime, type ForwardSnapshot } from '@jorcord/shared';
 import type { Ctx } from '../ctx';
+import { checkVerification } from '../services/safety';
 import { ApiError, badRequest, forbidden, notFound } from '../errors';
 import { idSchema, limitParam, parse } from '../lib/ids';
 import { limitOrThrow } from '../lib/ratelimit';
@@ -214,6 +215,7 @@ export function messageRoutes(app: FastifyInstance, ctx: Ctx) {
     limitOrThrow(ctx.rl, `react:${req.userId}`, 30, 10_000, ctx.config.rateLimit);
     const a = await channelAccess(ctx, req.userId, p.id);
     need(a.perms, Perm.ADD_REACTIONS, Perm.READ_MESSAGE_HISTORY);
+    if (a.channel.guild_id) await checkVerification(ctx, a.channel.guild_id, req.userId, a.perms);
     const e = parseEmoji(p.emoji);
     const [m] = await ctx.db.query('SELECT 1 AS x FROM messages WHERE id = $1 AND channel_id = $2', [p.mid, p.id]);
     if (!m) throw notFound('Message');

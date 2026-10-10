@@ -286,7 +286,12 @@ async function notifyMessage(ctx: Ctx, svc: PushService, channel: any, msg: Mess
     }
     if (msg.mentionRoles.length) for (const r of await ctx.db.query('SELECT DISTINCT user_id FROM member_roles WHERE guild_id = $1 AND role_id = ANY($2::text[])', [channel.guild_id, msg.mentionRoles])) add(r.user_id, 'role');
     if (msg.mentionEveryone) for (const r of await ctx.db.query('SELECT user_id FROM members WHERE guild_id = $1 LIMIT 5000', [channel.guild_id])) add(r.user_id, 'everyone');
-    for (const r of await ctx.db.query(`SELECT user_id FROM notification_settings WHERE scope = 'guild' AND target_id = $1 AND level = 'all' LIMIT 5000`, [channel.guild_id])) add(r.user_id, 'all');
+    const [gd] = await ctx.db.query('SELECT default_notifications FROM guilds WHERE id = $1', [channel.guild_id]);
+    // server default "all messages": everyone without an own level for this server hears every message; otherwise only those who chose "all"
+    const everyone = gd?.default_notifications === 'all';
+    for (const r of await ctx.db.query(
+      everyone ? `SELECT m.user_id FROM members m LEFT JOIN notification_settings n ON n.user_id = m.user_id AND n.scope = 'guild' AND n.target_id = m.guild_id WHERE m.guild_id = $1 AND (n.level IS NULL OR n.level = 'all') LIMIT 5000`
+        : `SELECT user_id FROM notification_settings WHERE scope = 'guild' AND target_id = $1 AND level = 'all' LIMIT 5000`, [channel.guild_id])) add(r.user_id, 'all');
   }
   cands.delete(authorId);
   if (!cands.size) return;
