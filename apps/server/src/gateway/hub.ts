@@ -2,7 +2,7 @@ import type { Events, EventName, Presence } from '@jorcord/shared';
 import { Op } from '@jorcord/shared';
 import type { WebSocket } from 'ws';
 import type { Ctx } from '../ctx';
-import { liveStatus } from '../services/serializers';
+import { liveStatus, publicActivities } from '../services/serializers';
 import { viewersAmong, getChannelLite } from '../services/perms';
 import { eventScope, shapeForIntents } from './intents';
 
@@ -86,9 +86,9 @@ export class Hub {
     return pref === 'invisible' ? 'offline' : ((pref as Presence) || 'online');
   }
   async broadcastPresence(userId: string) {
-    const [u] = await this.ctx.db.query('SELECT presence, custom_status FROM users WHERE id = $1', [userId]);
+    const [u] = await this.ctx.db.query('SELECT presence, custom_status, activities, privacy FROM users WHERE id = $1', [userId]);
     if (!u) return;
-    await this.toPresenceAudience(userId, 'PRESENCE_UPDATE', { userId, presence: this.publicPresence(userId, u.presence), customStatus: liveStatus(u.custom_status) });
+    await this.toPresenceAudience(userId, 'PRESENCE_UPDATE', { userId, presence: this.publicPresence(userId, u.presence), customStatus: liveStatus(u.custom_status), activities: publicActivities(this.ctx, userId, u) });
   }
 
   // ---- sessions ----

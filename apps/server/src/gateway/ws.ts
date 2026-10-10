@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import type { WebSocket } from 'ws';
 import { z } from 'zod';
-import { ALL_INTENTS, GatewayClose, HEARTBEAT_INTERVAL_MS, Intents, Op, PRIVILEGED_INTENTS, Perm, has, type Presence, type ReadyPayload, type VoiceStateUpdatePayload } from '@jorcord/shared';
+import { ALL_INTENTS, GatewayClose, HEARTBEAT_INTERVAL_MS, Intents, Op, PRIVILEGED_INTENTS, Perm, has, type Activity, type Presence, type ReadyPayload, type VoiceStateUpdatePayload } from '@jorcord/shared';
 import type { Ctx } from '../ctx';
 import { verifyGatewayToken } from '../auth';
 import { randomToken } from '../lib/crypto';
@@ -10,11 +10,14 @@ import { idSchema } from '../lib/ids';
 import { notFound } from '../errors';
 import { buildGuildFull } from '../services/guilds';
 import { channelPermsLite, guildAccess } from '../services/perms';
-import { channelsDTO, membersDTO, selfUserDTO } from '../services/serializers';
+import { channelsDTO, membersDTO, publicActivities, selfUserDTO } from '../services/serializers';
 import { updateVoiceState, clearVoiceAfterGrace } from '../services/voice';
 import { relationshipDTOs } from '../routes/users';
 import type { GwSession } from './hub';
 import { shapeReady } from './intents';
+import { activitiesSchema, normalizeActivities } from '../services/activities';
+
+const withActivities = (a: Activity[]) => (a.length ? { activities: a } : {});
 
 async function buildReady(ctx: Ctx, userId: string, sessionId: string): Promise<ReadyPayload> {
   const [u] = await ctx.db.query('SELECT * FROM users WHERE id = $1', [userId]);
@@ -26,12 +29,12 @@ async function buildReady(ctx: Ctx, userId: string, sessionId: string): Promise<
   const privateChannels = await channelsDTO(ctx, dms);
   const rs = await ctx.db.query('SELECT * FROM read_states WHERE user_id = $1', [userId]);
   const peers = await ctx.db.query(
-    `SELECT DISTINCT x.uid, u.presence FROM (
+    `SELECT DISTINCT x.uid, u.presence, u.activities, u.privacy FROM (
         SELECT m2.user_id AS uid FROM members m1 JOIN members m2 ON m1.guild_id = m2.guild_id WHERE m1.user_id = $1 AND m2.user_id <> $1
         UNION SELECT other_id FROM relationships WHERE user_id = $1 AND type = 'friend') x JOIN users u ON u.id = x.uid LIMIT 5000`, [userId]);
   if (ctx.config.redisUrl) ctx.hub.markOnline(await ctx.presence.onlineAmong(peers.map((p) => p.uid as string)));
-  const presences = peers.filter((p) => ctx.hub.isOnline(p.uid)).map((p) => ({ userId: p.uid as string, presence: ctx.hub.publicPresence(p.uid, p.presence) }));
-  presences.push({ userId, presence: (u.presence || 'online') as Presence }); // you are online to yourself (invisible stays invisible)
+  const presences = peers.filter((p) => ctx.hub.isOnline(p.uid)).map((p) => ({ userId: p.uid as string, presence: ctx.hub.publicPresence(p.uid, p.presence), ...withActivities(publicActivities(ctx, p.uid as string, p)) }));
+  presences.push({ userId, presence: (u.presence || 'online') as Presence, ...withActivities(Array.isArray(u.activities) ? u.activities : []) }); // you are online to yourself (invisible stays invisible)
   const visible = new Set<string>([...guilds.flatMap((g) => g.channels.map((c) => c.id)), ...privateChannels.map((c) => c.id)]);
   const voiceStates = (await ctx.voice.all()).filter((v) => v.channelId && visible.has(v.channelId));
   return {
@@ -155,8 +158,9 @@ export function gatewayRoutes(app: FastifyInstance, ctx: Ctx) {
       try {
         // re-validate the auth session so revoked tokens can't keep a socket alive
         if (op === Op.PRESENCE_UPDATE) {
-          const { presence } = z.object({ presence: z.enum(['online', 'idle', 'dnd', 'invisible']) }).parse(d);
-          await ctx.db.query('UPDATE users SET presence = $2 WHERE id = $1', [uid, presence]);
+          const { presence, activities } = z.object({ presence: z.enum(['online', 'idle', 'dnd', 'invisible']).optional(), activities: activitiesSchema.optional() }).refine((v) => v.presence || v.activities, 'presence or activities required').parse(d);
+          if (presence) await ctx.db.query('UPDATE users SET presence = $2 WHERE id = $1', [uid, presence]);
+          if (activities) await ctx.db.query('UPDATE users SET activities = $2::jsonb WHERE id = $1', [uid, JSON.stringify(normalizeActivities(activities))]);
           await ctx.hub.broadcastPresence(uid);
         } else if (op === Op.VOICE_STATE_UPDATE) {
           const v = z.object({ guildId: idSchema.nullable().optional(), channelId: idSchema.nullable(), selfMute: z.boolean().optional(), selfDeaf: z.boolean().optional(), video: z.boolean().optional(), streaming: z.boolean().optional() }).parse(d);
@@ -187,6 +191,7 @@ export function gatewayRoutes(app: FastifyInstance, ctx: Ctx) {
       s.socket = null; s.detachedAt = Date.now();
       void ctx.hub.sessionDetached(s).then(async (left) => {
         if (left > 0) return;
+        await ctx.db.query(`UPDATE users SET activities = '[]'::jsonb WHERE id = $1`, [s.userId]); // activities live and die with the connection
         clearVoiceAfterGrace(ctx, s.userId); // a flaky network must not eject someone whose LiveKit connection survives
         await ctx.hub.broadcastPresence(s.userId);
       }).catch((e) => ctx.log.warn({ err: e }, 'presence detach failed'));

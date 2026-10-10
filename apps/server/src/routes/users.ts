@@ -13,7 +13,7 @@ import { uninstallBot } from '../services/apps';
 import { removeGroupRecipient } from '../services/dms';
 import { channelAccess } from '../services/perms';
 import { canSendFriendRequest, normalizePrivacy, privacyOf } from '../services/privacy';
-import { liveStatus, channelDTO, channelsDTO, getUser, GUILD_SELECT, guildDTO, selfUserDTO, userDTO, usersByIds } from '../services/serializers';
+import { publicActivities, liveStatus, channelDTO, channelsDTO, getUser, GUILD_SELECT, guildDTO, selfUserDTO, userDTO, usersByIds } from '../services/serializers';
 
 const patchMe = z.object({
   displayName: z.string().trim().min(1).max(32).nullable(), bio: z.string().max(400).nullable(), pronouns: z.string().max(40).nullable(),
@@ -60,6 +60,7 @@ export function userRoutes(app: FastifyInstance, ctx: Ctx) {
     if (sets.length) await ctx.db.query(`UPDATE users SET ${sets.join(', ')} WHERE id = $1`, vals);
     const [row] = await ctx.db.query('SELECT * FROM users WHERE id = $1', [req.userId]);
     await ctx.hub.toPresenceAudience(req.userId, 'USER_UPDATE', userDTO(ctx, row));
+    if (b.privacy && 'showActivity' in (b.privacy as object)) await ctx.hub.broadcastPresence(req.userId); // the activity switch takes effect at once
     return selfUserDTO(ctx, row);
   });
 
@@ -163,7 +164,9 @@ export function userRoutes(app: FastifyInstance, ctx: Ctx) {
       `SELECT a.other_id FROM relationships a JOIN relationships b ON b.other_id = a.other_id AND b.user_id = $2 AND b.type = 'friend' WHERE a.user_id = $1 AND a.type = 'friend' LIMIT 100`, [req.userId, id])).map((r) => r.other_id as string);
     const mf = await usersByIds(ctx, mutualFriendIds);
     const [note] = await ctx.db.query('SELECT note FROM user_notes WHERE user_id = $1 AND target_id = $2', [req.userId, id]);
-    return { ...user, mutualGuilds: mutual, mutualFriends: [...mf.values()], note: (note?.note as string | undefined) ?? null };
+    const [ar] = await ctx.db.query('SELECT presence, activities, privacy FROM users WHERE id = $1', [id]);
+    const activities = id === req.userId ? (Array.isArray(ar?.activities) ? ar.activities : []) : ar ? publicActivities(ctx, id, ar) : [];
+    return { ...user, activities, mutualGuilds: mutual, mutualFriends: [...mf.values()], note: (note?.note as string | undefined) ?? null };
   });
 
   app.put('/users/@me/presence', async (req, reply) => {
@@ -254,8 +257,8 @@ export function userRoutes(app: FastifyInstance, ctx: Ctx) {
     const upsert = (u: string, o: string, t: string) => ctx.db.query(`INSERT INTO relationships (user_id, other_id, type) VALUES ($1,$2,$3) ON CONFLICT (user_id, other_id) DO UPDATE SET type = $3`, [u, o, t]);
     /** Sends `of`'s current presence to `to` (presence fan-out only covers existing friends/guild peers). */
     const tellPresence = async (to: string, of: string) => {
-      const [r] = await ctx.db.query('SELECT presence, custom_status FROM users WHERE id = $1', [of]);
-      if (r && ctx.hub.isOnline(of)) await ctx.hub.toUser(to, 'PRESENCE_UPDATE', { userId: of, presence: ctx.hub.publicPresence(of, r.presence), customStatus: liveStatus(r.custom_status) });
+      const [r] = await ctx.db.query('SELECT presence, custom_status, activities, privacy FROM users WHERE id = $1', [of]);
+      if (r && ctx.hub.isOnline(of)) await ctx.hub.toUser(to, 'PRESENCE_UPDATE', { userId: of, presence: ctx.hub.publicPresence(of, r.presence), customStatus: liveStatus(r.custom_status), activities: publicActivities(ctx, of, r) });
     };
     const push = async (u: string, o: string, t: Relationship['type']) => { const usr = await getUser(ctx, o); if (usr) await ctx.hub.toUser(u, 'RELATIONSHIP_ADD', { user: usr, type: t }); };
     if (type === 'blocked') {

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Channel, Emoji, Events, Guild, GuildFull, Id, Member, Presence, ReadState, Relationship, Role, SelfUser, Sticker, User, VoiceState } from '@jorcord/shared';
+import type { Activity, Channel, Emoji, Events, Guild, GuildFull, Id, Member, Presence, ReadState, Relationship, Role, SelfUser, Sticker, User, VoiceState } from '@jorcord/shared';
 import { compareId } from '@/lib/format';
 
 export interface GuildState {
@@ -15,6 +15,8 @@ export interface DataState {
   relationships: Record<Id, Relationship>;
   readStates: Record<Id, ReadState>;
   presences: Record<Id, Presence>;
+  /** Rich presence per user (empty/absent = nothing shown). */
+  activities: Record<Id, Activity[]>;
   users: Record<Id, User>;
   typing: Record<Id, Record<Id, number>>;
   voiceStates: Record<Id, VoiceState>;
@@ -30,7 +32,7 @@ export interface DataState {
   setTyping(channelId: Id, userId: Id): void;
 }
 
-const empty = { ready: false, me: null, guilds: {}, guildOrder: [], dms: {}, messageRequests: {}, relationships: {}, readStates: {}, presences: {}, users: {}, typing: {}, voiceStates: {} };
+const empty = { ready: false, me: null, guilds: {}, guildOrder: [], dms: {}, messageRequests: {}, relationships: {}, readStates: {}, presences: {}, activities: {}, users: {}, typing: {}, voiceStates: {} };
 const rec = <T extends { id: Id }>(xs: T[]): Record<Id, T> => Object.fromEntries(xs.map((x) => [x.id, x]));
 const toGuildState = (g: GuildFull): GuildState => {
   const { channels, roles, members, emojis, stickers, memberCount, ...guild } = g;
@@ -60,7 +62,8 @@ export const useData = create<DataState>((set, get) => ({
     for (const c of p.privateChannels) for (const r of c.recipients ?? []) users[r.id] = r;
     for (const r of p.relationships) users[r.user.id] = r.user;
     const presences: Record<Id, Presence> = {};
-    for (const x of p.presences ?? []) presences[x.userId] = x.presence;
+    const activities: Record<Id, Activity[]> = {};
+    for (const x of p.presences ?? []) { presences[x.userId] = x.presence; if (x.activities?.length) activities[x.userId] = x.activities; }
     // The server's READY lists peers only; we are obviously online ourselves (own status honoured unless invisible).
     if (!presences[p.user.id]) presences[p.user.id] = p.user.presence && p.user.presence !== 'invisible' ? p.user.presence : p.user.presence === 'invisible' ? 'invisible' : 'online';
     const vs: Record<Id, VoiceState> = {};
@@ -68,7 +71,7 @@ export const useData = create<DataState>((set, get) => ({
     set({
       ready: true, me: p.user, guilds, guildOrder: p.guilds.map((g) => g.id), users,
       dms: rec(p.privateChannels), messageRequests: Object.fromEntries((p.messageRequests ?? []).map((id) => [id, true as const])), relationships: Object.fromEntries(p.relationships.map((r) => [r.user.id, r])),
-      readStates: Object.fromEntries((p.readStates ?? []).map((r) => [r.channelId, r])), presences, voiceStates: vs, typing: {},
+      readStates: Object.fromEntries((p.readStates ?? []).map((r) => [r.channelId, r])), presences, activities, voiceStates: vs, typing: {},
     });
   },
   putGuild: (g) => set((s) => ({ guilds: { ...s.guilds, [g.id]: toGuildState(g) }, guildOrder: s.guildOrder.includes(g.id) ? s.guildOrder : [...s.guildOrder, g.id] })),
@@ -128,6 +131,7 @@ export const useData = create<DataState>((set, get) => ({
       case 'TYPING_START': { if (d.userId !== s.me?.id) get().setTyping(d.channelId, d.userId); return; }
       case 'PRESENCE_UPDATE': return set((st) => ({
         presences: { ...st.presences, [d.userId]: d.presence },
+        activities: d.activities === undefined ? st.activities : d.activities.length ? { ...st.activities, [d.userId]: d.activities } : omit(st.activities, d.userId),
         users: st.users[d.userId] && d.customStatus !== undefined ? { ...st.users, [d.userId]: { ...st.users[d.userId], customStatus: d.customStatus } } : st.users,
         // the server clears an expired status and broadcasts it: keep my own copy in sync too
         me: st.me && st.me.id === d.userId && d.customStatus !== undefined ? { ...st.me, customStatus: d.customStatus } : st.me,

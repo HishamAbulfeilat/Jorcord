@@ -14,6 +14,7 @@ import { RoleIcon } from '@/components/ui/RoleIcon';
 import { headerBackground, bodyBackground, isHexPair, isHex } from '@/lib/profileTheme';
 import { useStreamer } from '@/lib/streamer';
 import { t } from '@/i18n';
+import { ActivityCards } from '@/components/ui/ActivityLine';
 
 /** Private note about a user: saved on blur, visible only to me. */
 function NoteBox({ userId, note }: { userId: string; note: string | null | undefined }) {
@@ -61,6 +62,7 @@ export function ProfileCard({ userId, guildId, compact }: { userId: string; guil
           {(u.customStatus?.text || u.customStatus?.emoji) && <div className="mt-2 text-sm text-normal" data-testid="profile-status">{u.customStatus.emoji} {u.customStatus.text}</div>}
           {!compact && presence && <div className="mt-1 text-xs text-muted">{t(PRESENCE_LABEL[presence] ?? 'Offline')}</div>}
           <hr className="my-3 border-divider" />
+          <ActivityCards userId={userId} fallback={q.data?.activities} />
           {u.bio && <><h4 className="mb-1 text-xs font-bold uppercase text-header">{t('About Me')}</h4><div className="mb-3 text-sm"><Markdown content={u.bio} guildId={guildId} /></div></>}
           <h4 className="mb-1 text-xs font-bold uppercase text-header">{t('Member Since')}</h4>
           <div className="mb-3 flex gap-3 text-sm"><span>{fmtStamp(new Date(u.createdAt).getTime()).replace(/ at .*/, '')}</span>{member && <span className="text-muted">• Joined {new Date(member.joinedAt).toLocaleDateString()}</span>}</div>

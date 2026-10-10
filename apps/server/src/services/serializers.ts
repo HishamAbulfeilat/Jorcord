@@ -1,5 +1,5 @@
 import { snowflakeTime } from '@jorcord/shared';
-import type { Attachment, Channel, Component, Embed, Guild, Member, Message, OverwriteDTO, Poll, Reaction, Role, SelfUser, User } from '@jorcord/shared';
+import type { Activity, Attachment, Channel, Component, Embed, Guild, Member, Message, OverwriteDTO, Poll, Reaction, Role, SelfUser, User } from '@jorcord/shared';
 import type { Ctx } from '../ctx';
 import { iso } from '../lib/ids';
 import { normalizePrivacy } from './privacy';
@@ -11,6 +11,12 @@ export function liveStatus(cs: any): User['customStatus'] {
   if (!cs) return null;
   if (cs.expiresAt && Date.parse(cs.expiresAt) <= Date.now()) return null;
   return cs;
+}
+/** Activities others may see: nothing while offline/invisible or when the owner switched "share my activity" off. */
+export function publicActivities(ctx: Ctx, userId: string, row: { presence?: string; activities?: unknown; privacy?: unknown }): Activity[] {
+  if (!ctx.hub.isOnline(userId) || row.presence === 'invisible') return [];
+  if (!normalizePrivacy(row.privacy).showActivity) return [];
+  return Array.isArray(row.activities) ? (row.activities as Activity[]) : [];
 }
 export function userDTO(ctx: Ctx, r: any): User {
   return {

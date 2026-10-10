@@ -1,12 +1,12 @@
 /** Typed REST client written against docs/CONTRACT.md. All calls go through the swappable transport. */
 import type {
-  Attachment, AuditEntry, AutoModRule, Channel, Emoji, Guild, GuildFull, Invite, Member, Message, Relationship, ReadState, Role, SelfUser, Sticker, User, VoiceToken, Id, Presence, OverwriteDTO,
+  Activity, Attachment, AuditEntry, AutoModRule, Channel, Emoji, Guild, GuildFull, Invite, Member, Message, Relationship, ReadState, Role, SelfUser, Sticker, User, VoiceToken, Id, Presence, OverwriteDTO,
   Reminder, SoundboardSound, Application, ApplicationCommand, CommandPermissionOverwrite, CommandOptionChoice, CreatePoll, ForumTag, InteractionOptionValue, ModalSubmitRow, OAuthAuthorizePreview, OAuthAuthorizeResult, ScheduledEvent, StageInstance,
 } from '@jorcord/shared';
 import { send } from './transport';
 
 export interface AuthResult { user: SelfUser; accessToken: string; refreshToken: string }
-export interface UserProfile extends User { note?: string | null; mutualGuilds?: { id: Id; name: string; icon: string | null; nick?: string | null }[]; mutualFriends?: User[] }
+export interface UserProfile extends User { activities?: Activity[]; note?: string | null; mutualGuilds?: { id: Id; name: string; icon: string | null; nick?: string | null }[]; mutualFriends?: User[] }
 export interface MessageQuery { limit?: number; before?: Id; after?: Id; around?: Id }
 export interface SearchQuery { q?: string; authorId?: Id; channelId?: Id; has?: string; before?: string }
 export interface SendMessageInput { content: string; replyTo?: Id | null; files?: File[]; nonce?: string; stickerIds?: Id[]; poll?: CreatePoll }
@@ -50,6 +50,9 @@ export const api = {
     me: () => send<SelfUser>({ method: 'GET', path: '/users/@me' }),
     patchMe: (b: Partial<{ displayName: string | null; bio: string | null; pronouns: string | null; avatar: string | null; banner: string | null; accentColor: string | null; themeColors: [string, string] | null; customStatus: User['customStatus']; theme: SelfUser['theme']; settings: Record<string, unknown>; privacy: { allowDmsFromServerMembers?: boolean; messageRequests?: boolean; showActivity?: boolean; friendRequests?: Partial<SelfUser['privacy']['friendRequests']> } }>) => send<SelfUser>({ method: 'PATCH', path: '/users/@me', body: b }),
     get: (id: Id) => send<UserProfile>({ method: 'GET', path: `/users/${id}` }),
+    /** Rich presence: replace my activities (<= 5). */
+    setActivities: (activities: Omit<Activity, 'startedAt'>[] & Partial<Pick<Activity, 'startedAt'>>[]) => send<{ activities: Activity[] }>({ method: 'PUT', path: '/users/@me/activities', body: { activities } }),
+    clearActivities: () => send({ method: 'DELETE', path: '/users/@me/activities' }),
     setPresence: (presence: Presence) => send({ method: 'PUT', path: '/users/@me/presence', body: { presence } }),
     guilds: () => send<Guild[]>({ method: 'GET', path: '/users/@me/guilds' }).then((x) => arr<Guild>(x)),
     leaveGuild: (id: Id) => send({ method: 'DELETE', path: `/users/@me/guilds/${id}` }),

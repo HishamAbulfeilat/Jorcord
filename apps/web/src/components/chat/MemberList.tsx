@@ -7,6 +7,7 @@ import { groupMembers, roleColor, roleIcon } from '@/lib/perms';
 import { RoleIcon } from '@/components/ui/RoleIcon';
 import { PRESENCE_LABEL } from '@/components/ui/Avatar';
 import { t } from '@/i18n';
+import { ActivityLine } from '@/components/ui/ActivityLine';
 import { Avatar } from '@/components/ui/Avatar';
 import { displayName } from '@/lib/format';
 import { useMenuTrigger } from '@/components/ui/ContextMenu';
@@ -25,6 +26,7 @@ function MemberRow({ m, roles, guildId, ownerId }: { m: Member; roles: Role[]; g
         <Avatar user={u} memberAvatar={m.avatar} size={32} presence ring="rgb(var(--side))" />
         <span className="min-w-0 flex-1 leading-tight">
           <span className="flex items-center gap-1"><span className="truncate font-medium" style={{ color: roleColor(m, roles) ?? 'rgb(var(--interactive))' }}>{displayName(u, m)}</span>{(() => { const ri = roleIcon(m, roles); return ri ? <RoleIcon role={ri} size={14} /> : null; })()}{ownerId === m.user.id && <Crown size={13} className="shrink-0 text-warn" aria-label="Server owner" />}{u.bot && <span className="rounded bg-brand px-1 text-[10px] font-bold uppercase text-white">Bot</span>}{m.pending && <span data-testid="pending-badge" className="rounded bg-active px-1 text-[10px] font-bold uppercase text-muted" title={t('Has not accepted the server rules yet')}>{t('Pending')}</span>}</span>
+          <ActivityLine userId={u.id} />
           {(u.customStatus?.text || u.customStatus?.emoji) && <span className="block truncate text-xs text-muted">{u.customStatus.emoji} {u.customStatus.text}</span>}
         </span>
       </button>

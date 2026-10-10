@@ -16,8 +16,8 @@ Rank = order in which this pass implements items (R1 first). `-` = not planned i
 | R6 | Verification levels, raid protection, explicit-media filter, default notification level (Safety Setup) | todo | 4 | `Guild` has none; screening only |
 | R7 | AutoMod: keyword presets, mention-spam limit, allow-list, exempt channels, timeout length, custom message | DONE (`services/automod.ts`, `GuildSettings.tsx`); alert channel and regex still todo | 3 | 4 triggers, `exemptRoles` only (`routes/guilds.ts` automod, `services/messages.ts`) |
 | R8 | Avatar decorations, profile effects, name plates, server tag (guild tag beside name) | todo | 4 | only accent/banner/`themeColors` (`profileTheme.ts`) |
-| R9 | Activities / rich presence (Playing X, Listening, Streaming, Competing) shown in member list, profile and friends "Now Playing" | todo | 4 | `PRESENCE_UPDATE` has status+customStatus only |
-| R10 | Activity privacy (hide activity), Hide muted channels, sidebar "Show all/Hide" | todo | 3 | no setting |
+| R9 | Activities / rich presence (Playing X, Listening, Streaming, Competing) shown in member list, profile and friends "Now Playing" | DONE (`routes/activities.ts`, `ActivityLine.tsx`, bot-sdk `setActivity`) | 4 | `PRESENCE_UPDATE` has status+customStatus only |
+| R10 | Activity privacy (hide activity) DONE; Hide muted channels, sidebar "Show all/Hide" todo | 3 | no setting |
 | R11 | Announcement channels: follow + crosspost | todo | 3 | channel type exists, no routes |
 | R12 | NSFW age-gate interstitial | DONE (`services/agegate.ts`, `ChatView.tsx` AgeGate) | 3 | `nsfw` flag stored, no gate in web |
 | R13 | Server welcome screen (channel list) + onboarding questions (channels & roles prompts) | partial | 3 | rules screening + welcome modal done (`ExtraModals.tsx` OnboardingModal); no questions/default channels |

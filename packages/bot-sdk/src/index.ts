@@ -116,6 +116,9 @@ export class Bot {
     if (!h) return;
     Promise.resolve().then(() => h(ix)).catch((e) => this.emit('error', e));
   }
+  /** Rich presence for the bot itself ("Playing X", "Listening to X"...). Pass [] to clear. Cleared by the server when the bot disconnects. */
+  setActivities(activities: { type: 'playing' | 'streaming' | 'listening' | 'watching' | 'competing'; name: string; details?: string; state?: string; url?: string; startedAt?: string }[]) { return this.rest.request('PUT', '/users/@me/activities', { activities }); }
+  setActivity(type: 'playing' | 'streaming' | 'listening' | 'watching' | 'competing', name: string, extra: { details?: string; state?: string; url?: string } = {}) { return this.setActivities([{ type, name, ...extra }]); }
   async applicationId(): Promise<string> { return (this.appId ??= (await this.rest.get<{ id: string }>('/applications/@me')).id); }
   /** Bulk-overwrite this bot's commands (global, or for one guild it is installed in). Idempotent. */
   async registerCommands(commands: SlashCommand[], o: { guildId?: string } = {}): Promise<ApplicationCommand[]> {

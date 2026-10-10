@@ -7,6 +7,9 @@ import { useData } from '@/stores/data';
 import { toastError } from '@/stores/ui';
 import { H1, H3 } from './SettingsLayout';
 import { Row, Toggle } from '@/components/ui/primitives';
+import { ACTIVITY_TYPES } from '@/lib/activity';
+import { toast } from '@/stores/ui';
+import type { ActivityType } from '@jorcord/shared';
 import { t } from '@/i18n';
 
 type Patch = { [K in keyof Privacy]?: Privacy[K] extends object ? Partial<Privacy[K]> : Privacy[K] };
@@ -20,6 +23,11 @@ export function PrivacyTab() {
   const fr = p.friendRequests;
   return (<>
     <H1>{t('Privacy & Safety')}</H1>
+    <H3>{t('Activity')}</H3>
+    <Row title={t('Share my activity')} desc={t('Show what you are playing, listening to or streaming in member lists, your friends list and your profile.')}>
+      <Toggle label={t('Share my activity')} checked={p.showActivity} disabled={busy} onChange={(v) => void save({ showActivity: v })} />
+    </Row>
+    <ActivityEditor />
     <H3>{t('Direct Messages')}</H3>
     <Row title={t('Allow direct messages from server members')} desc={t('People you only share a server with can start a conversation. Friends can always message you.')}>
       <Toggle label={t('Allow direct messages from server members')} checked={p.allowDmsFromServerMembers} disabled={busy} onChange={(v) => void save({ allowDmsFromServerMembers: v })} />
@@ -44,4 +52,24 @@ export function PrivacyTab() {
         onChange={(v) => { setBusy(true); (v ? api.users.confirmAge() : api.users.unconfirmAge()).then(() => useData.setState((st) => ({ me: st.me ? { ...st.me, ageConfirmed: v } : st.me }))).catch(toastError).finally(() => setBusy(false)); }} />
     </Row>
 </>);
+}
+
+/** Manual activity (there is no game detection on the web): shows up like any other rich presence. */
+function ActivityEditor() {
+  const mine = useData((s) => (s.me ? s.activities[s.me.id] : undefined));
+  const [type, setType] = useState<ActivityType>('playing'); const [name, setName] = useState(''); const [details, setDetails] = useState('');
+  const set = () => api.users.setActivities([{ type, name: name.trim(), details: details.trim() || null }]).then((r) => { if (useData.getState().me) useData.setState((st) => ({ activities: { ...st.activities, [st.me!.id]: r.activities } })); toast(t('Activity updated'), 'success'); }).catch(toastError);
+  const clear = () => api.users.clearActivities().then(() => { useData.setState((st) => { const { [st.me!.id]: _, ...rest } = st.activities; return { activities: rest }; }); }).catch(toastError);
+  return (
+    <div className="mb-4 rounded-lg bg-side p-3" data-testid="activity-editor">
+      <div className="mb-2 text-sm text-muted">{t('Set an activity by hand. Bots and apps can do the same through the API.')}</div>
+      <div className="flex flex-wrap items-end gap-2">
+        <label className="text-xs font-bold uppercase text-header">{t('Type')}<select aria-label={t('Activity type')} className="field mt-1 !w-auto" value={type} onChange={(e) => setType(e.target.value as ActivityType)}>{ACTIVITY_TYPES.map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}</select></label>
+        <label className="min-w-[140px] flex-1 text-xs font-bold uppercase text-header">{t('Name')}<input aria-label={t('Activity name')} className="field mt-1" maxLength={128} value={name} onChange={(e) => setName(e.target.value)} /></label>
+        <label className="min-w-[140px] flex-1 text-xs font-bold uppercase text-header">{t('Details')}<input aria-label={t('Activity details')} className="field mt-1" maxLength={128} value={details} onChange={(e) => setDetails(e.target.value)} /></label>
+        <button className="btn btn-primary btn-lg" disabled={!name.trim()} onClick={set}>{t('Set activity')}</button>
+        {mine?.length ? <button className="btn btn-secondary btn-lg" onClick={clear}>{t('Clear')}</button> : null}
+      </div>
+    </div>
+  );
 }

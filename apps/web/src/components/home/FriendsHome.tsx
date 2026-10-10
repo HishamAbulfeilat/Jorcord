@@ -12,6 +12,7 @@ import { useIsMobile } from '@/lib/hooks';
 import { useMenuTrigger } from '@/components/ui/ContextMenu';
 import { Logo } from '@/components/ui/Logo';
 import { t } from '@/i18n';
+import { ActivityLine } from '@/components/ui/ActivityLine';
 
 type Tab = 'online' | 'all' | 'pending' | 'blocked' | 'add';
 
@@ -26,7 +27,7 @@ function FriendRow({ r }: { r: Relationship }) {
       <button onClick={(e) => open({ kind: 'user', userId: r.user.id, rect: e.currentTarget.getBoundingClientRect() })} className="flex min-w-0 flex-1 items-center gap-3 text-start">
         <Avatar user={u} size={32} presence ring="rgb(var(--chat))" />
         <span className="min-w-0 leading-tight"><span className="block truncate font-semibold text-header">{displayName(u)} <span className="hidden text-sm font-normal text-muted group-hover/f:inline">{u.username}</span></span>
-          <span className="block truncate text-sm text-muted">{r.type === 'incoming' ? 'Incoming Friend Request' : r.type === 'outgoing' ? 'Outgoing Friend Request' : r.type === 'blocked' ? 'Blocked' : u.customStatus?.text || PRESENCE_LABEL[presence ?? 'offline']}</span></span>
+          <ActivityLine userId={r.user.id} className="block truncate text-sm text-muted" /><span className="block truncate text-sm text-muted">{r.type === 'incoming' ? 'Incoming Friend Request' : r.type === 'outgoing' ? 'Outgoing Friend Request' : r.type === 'blocked' ? 'Blocked' : u.customStatus?.text || PRESENCE_LABEL[presence ?? 'offline']}</span></span>
       </button>
       <div className="flex gap-2">
         {r.type === 'friend' && <><IconBtn label={t('Message')} onClick={() => openDmWith(r.user.id)}><MessageSquare size={18} /></IconBtn><IconBtn label={t('More')} onClick={(e) => { const b = e.currentTarget.getBoundingClientRect(); openMenu(b.left - 180, b.bottom, userMenu(r.user.id)); }}><MoreVertical size={18} /></IconBtn></>}
