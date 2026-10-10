@@ -298,6 +298,10 @@ export const register: Register = on => {
         await $.ui.close({ id: PANE })
         return { text: 'Agent Deck closed. /deck opens it again.' }
       }
+      if (arg === 'text' || arg === 'status') {
+        const now = await $.clock.now()
+        return { text: textSummary(await read($, core), now) }
+      }
       if (arg === 'reset') {
         const now = await $.clock.now()
         await update($, core, c => ({ ...makeCore(now), today: c.today }))
