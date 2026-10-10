@@ -13,6 +13,8 @@ export async function safePost(rawUrl: string, body: string, headers: Record<str
   if (url.protocol !== 'http:' && url.protocol !== 'https:') throw new Error('SSRF_BLOCKED');
   if (url.username || url.password) throw new Error('SSRF_BLOCKED');
   if (!opts.allowPrivate) {
+    const port = url.port ? Number(url.port) : url.protocol === 'https:' ? 443 : 80;
+    if (![80, 443, 8080, 8443].includes(port)) throw new Error('SSRF_BLOCKED'); // no port scanning of public hosts via the interactions endpoint
     const host = url.hostname.replace(/^\[|\]$/g, '');
     if (net.isIP(host) && isPrivateIp(host)) throw new Error('SSRF_BLOCKED');
   }

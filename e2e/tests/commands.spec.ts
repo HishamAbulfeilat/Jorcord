@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { newUser, createServer, makeInvite, joinViaInvite, rest, guildId, msg, type User } from './helpers';
+import { newUser, createServer, makeInvite, joinViaInvite, rest, guildId, msg, openGuildSettings, closeSettings, type User } from './helpers';
 import { Bot } from './bot';
 
 let A: User, B: User, gid: string, bot: Bot;
@@ -200,4 +200,27 @@ test('command permissions: a denied command is refused by the server even from a
   await B.page.reload(); await expect(box(B)).toBeVisible(); await box(B).fill('/sec');
   await expect(B.page.getByRole('listbox', { name: 'Suggestions' })).toHaveCount(0); // the fresh catalog hides it
   await box(B).fill('');
+});
+
+test('server settings: command permissions page lists the app, saves an override, and the server enforces it', async () => {
+  const p = A.page; const general = (await rest(p, 'GET', `/guilds/${gid}/channels`)).find((c: any) => c.name === 'general');
+  const cmd = await bot.rest('POST', `/applications/${bot.appId}/guilds/${gid}/commands`, { name: 'gated', description: 'Gated by settings' });
+  await p.reload(); await expect(box(A)).toBeVisible();
+  await openGuildSettings(p, 'Slash HQ', 'Command Permissions');
+  const dlg = p.getByRole('dialog', { name: 'Slash HQ' });
+  await expect(dlg.getByRole('heading', { name: 'Command Permissions' })).toBeVisible();
+  await dlg.getByTestId('cmdperm-command').selectOption({ label: '/gated' });
+  await expect(dlg.getByTestId('cmdperm-empty')).toBeVisible();
+  await dlg.getByTestId('cmdperm-type').selectOption('3'); await dlg.getByTestId('cmdperm-target').selectOption({ label: '#general' });
+  await dlg.getByRole('button', { name: 'Add', exact: true }).click();
+  await expect(dlg.getByTestId('cmdperm-list')).toContainText('#general');
+  await dlg.getByLabel('Permission for #general').selectOption('deny');
+  await p.getByRole('button', { name: 'Save Changes' }).click();
+  await expect(p.getByRole('status').getByText('Command permissions saved')).toBeVisible();
+  const saved = await rest(p, 'GET', `/applications/${bot.appId}/guilds/${gid}/commands/${cmd.id}/permissions`);
+  expect(saved.permissions).toEqual([{ id: general.id, type: 3, permission: false }]);
+  await dlg.getByLabel('Remove override for #general').click();
+  await p.getByRole('button', { name: 'Save Changes' }).click();
+  await expect.poll(async () => (await rest(p, 'GET', `/applications/${bot.appId}/guilds/${gid}/commands/${cmd.id}/permissions`)).permissions).toEqual([]);
+  await closeSettings(p);
 });

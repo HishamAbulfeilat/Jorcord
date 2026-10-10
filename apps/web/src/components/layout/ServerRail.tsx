@@ -1,4 +1,5 @@
-import { createContext, useContext, useMemo, useState } from 'react';
+import { createContext, useContext, useMemo, useRef, useState } from 'react';
+import { useRovingTabindex } from '@/lib/hooks';
 import { Compass, Folder as FolderIcon, FolderOpen, Plus } from 'lucide-react';
 import { DndContext, MouseSensor, TouchSensor, closestCenter, pointerWithin, useDroppable, useSensor, useSensors, type CollisionDetection, type DragEndEvent, type DragOverEvent } from '@dnd-kit/core';
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
@@ -110,6 +111,7 @@ function MiniGuild({ id }: { id: string }) {
 }
 
 export function ServerRail({ onNavigate }: { onNavigate?: () => void }) {
+  const railRef = useRef<HTMLElement>(null); useRovingTabindex(railRef, 'button[aria-label]:not([aria-haspopup=dialog])');
   const order = useData((s) => s.guildOrder); const layout = useLayout();
   const items = useMemo(() => layout.items(), [order, layout.order, layout.folders]); // eslint-disable-line
   const dms = useData((s) => s.dms); const readStates = useData((s) => s.readStates);
@@ -145,7 +147,7 @@ export function ServerRail({ onNavigate }: { onNavigate?: () => void }) {
   };
 
   return (
-    <nav aria-label={t('Servers')} className="scroller-hide flex h-full w-[72px] shrink-0 flex-col items-center gap-2 overflow-y-auto bg-rail pb-3" style={{ paddingTop: 'calc(12px + var(--sat))' }} onClick={onNavigate}>
+    <nav ref={railRef} aria-label={t('Servers')} className="scroller-hide flex h-full w-[72px] shrink-0 flex-col items-center gap-2 overflow-y-auto bg-rail pb-3" style={{ paddingTop: 'calc(12px + var(--sat))' }} onClick={onNavigate}>
       <div className="relative flex w-full justify-center">
         <Pill active={isHome} unread={false} />
         <Tip text={t('Direct Messages')}>

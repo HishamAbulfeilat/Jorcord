@@ -45,8 +45,9 @@ export interface Events {
   INTERACTION_MODAL: { interactionId: Id; applicationId: Id; modal: Modal };
   APPLICATION_COMMAND_CREATE: ApplicationCommand; APPLICATION_COMMAND_UPDATE: ApplicationCommand; APPLICATION_COMMAND_DELETE: ApplicationCommand;
   APPLICATION_UPDATE: Omit<Application, 'token' | 'clientSecret'>;
-  MESSAGE_POLL_VOTE_ADD: { userId: Id; channelId: Id; messageId: Id; answerId: number };
-  MESSAGE_POLL_VOTE_REMOVE: { userId: Id; channelId: Id; messageId: Id; answerId: number };
+  /** `count` = the answer's new vote total, `totalVotes` = distinct voters after this change (the percent base). Both optional for older servers. */
+  MESSAGE_POLL_VOTE_ADD: { userId: Id; channelId: Id; messageId: Id; answerId: number; count?: number; totalVotes?: number };
+  MESSAGE_POLL_VOTE_REMOVE: { userId: Id; channelId: Id; messageId: Id; answerId: number; count?: number; totalVotes?: number };
   GUILD_SCHEDULED_EVENT_CREATE: ScheduledEvent; GUILD_SCHEDULED_EVENT_UPDATE: ScheduledEvent; GUILD_SCHEDULED_EVENT_DELETE: ScheduledEvent;
   GUILD_SCHEDULED_EVENT_USER_ADD: { guildScheduledEventId: Id; userId: Id; guildId: Id };
   GUILD_SCHEDULED_EVENT_USER_REMOVE: { guildScheduledEventId: Id; userId: Id; guildId: Id };
@@ -57,7 +58,22 @@ export interface Events {
 export type EventName = keyof Events;
 
 /** `token` is a user access token, or `Bot <token>` for an application's bot. */
-export interface IdentifyPayload { token: string; sessionId?: string; seq?: number; properties?: { os?: string; client?: string } }
+export interface IdentifyPayload { token: string; sessionId?: string; seq?: number; properties?: { os?: string; client?: string }; /** Bots only: bitfield of {@link Intents}. Omitted = legacy unfiltered stream. Ignored for user sessions. */ intents?: number }
+
+/**
+ * Gateway intents (bots): opt-in event filtering. Bit positions follow Discord's public table where an equivalent exists.
+ * GUILD_MEMBERS, GUILD_PRESENCES and MESSAGE_CONTENT are privileged: the application owner must enable them (PATCH /applications/:id `privilegedIntents`).
+ */
+export const Intents = {
+  GUILDS: 1 << 0, GUILD_MEMBERS: 1 << 1, GUILD_EMOJIS_AND_STICKERS: 1 << 3, GUILD_VOICE_STATES: 1 << 7, GUILD_PRESENCES: 1 << 8,
+  GUILD_MESSAGES: 1 << 9, GUILD_MESSAGE_REACTIONS: 1 << 10, GUILD_MESSAGE_TYPING: 1 << 11,
+  DIRECT_MESSAGES: 1 << 12, DIRECT_MESSAGE_REACTIONS: 1 << 13, DIRECT_MESSAGE_TYPING: 1 << 14,
+  MESSAGE_CONTENT: 1 << 15, GUILD_SCHEDULED_EVENTS: 1 << 16, GUILD_MESSAGE_POLLS: 1 << 24, DIRECT_MESSAGE_POLLS: 1 << 25,
+} as const;
+export const PRIVILEGED_INTENTS: number = Intents.GUILD_MEMBERS | Intents.GUILD_PRESENCES | Intents.MESSAGE_CONTENT;
+export const ALL_INTENTS: number = Object.values(Intents).reduce((a, b) => a | b, 0);
+/** Gateway close codes for IDENTIFY problems. */
+export const GatewayClose = { INVALID_INTENTS: 4013, DISALLOWED_INTENTS: 4014 } as const;
 export interface VoiceStateUpdatePayload { guildId: Id | null; channelId: Id | null; selfMute?: boolean; selfDeaf?: boolean; video?: boolean; streaming?: boolean }
 export const HEARTBEAT_INTERVAL_MS = 30_000;
 /** Gateway op REQUEST_MEMBERS: `query` is a username/display-name/nick prefix; `userIds` fetches specific members; neither lists members by id after `after`. */

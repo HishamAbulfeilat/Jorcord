@@ -7,7 +7,7 @@ import { idSchema, limitParam, parse } from '../lib/ids';
 import { limitOrThrow } from '../lib/ratelimit';
 import { audit } from '../services/guilds';
 import { channelAccess, need } from '../services/perms';
-import { finalizePoll, pollBlocked } from '../services/polls';
+import { finalizePoll, pollBlocked, pollTally } from '../services/polls';
 import { messageDTO, usersByIds } from '../services/serializers';
 
 const pm = z.object({ id: idSchema, mid: idSchema });
@@ -20,6 +20,7 @@ export function pollRoutes(app: FastifyInstance, ctx: Ctx) {
     limitOrThrow(ctx.rl, `poll-vote:${req.userId}`, 30, 10_000, ctx.config.rateLimit);
     const a = await channelAccess(ctx, req.userId, p.id);
     need(a.perms, Perm.READ_MESSAGE_HISTORY);
+    if (a.gp?.timedOut) throw forbidden('You cannot vote while timed out or before accepting the server rules');
     const want = [...new Set(b.answerIds)];
     const events = await ctx.db.tx(async (q) => {
       const [m] = await q.query('SELECT * FROM messages WHERE id = $1 AND channel_id = $2 AND poll IS NOT NULL FOR UPDATE', [p.mid, p.id]); // serialises concurrent votes of one poll
@@ -34,7 +35,10 @@ export function pollRoutes(app: FastifyInstance, ctx: Ctx) {
       for (const x of add) await q.query('INSERT INTO poll_votes (message_id, user_id, answer_id) VALUES ($1,$2,$3)', [p.mid, req.userId, x]);
       return [...del.map((x) => ['MESSAGE_POLL_VOTE_REMOVE', x] as const), ...add.map((x) => ['MESSAGE_POLL_VOTE_ADD', x] as const)];
     });
-    for (const [t, answerId] of events) await ctx.hub.toChannel(p.id, t, { userId: req.userId, channelId: p.id, messageId: p.mid, answerId });
+    if (events.length) {
+      const tally = await pollTally(ctx, p.mid);
+      for (const [t, answerId] of events) await ctx.hub.toChannel(p.id, t, { userId: req.userId, channelId: p.id, messageId: p.mid, answerId, count: tally.counts.get(answerId) ?? 0, totalVotes: tally.totalVotes });
+    }
     const [row] = await ctx.db.query('SELECT * FROM messages WHERE id = $1', [p.mid]);
     return messageDTO(ctx, row, req.userId);
   });
@@ -44,11 +48,15 @@ export function pollRoutes(app: FastifyInstance, ctx: Ctx) {
     limitOrThrow(ctx.rl, `poll-vote:${req.userId}`, 30, 10_000, ctx.config.rateLimit);
     const a = await channelAccess(ctx, req.userId, p.id);
     need(a.perms, Perm.READ_MESSAGE_HISTORY);
+    if (a.gp?.timedOut) throw forbidden('You cannot vote while timed out or before accepting the server rules');
     const [m] = await ctx.db.query('SELECT * FROM messages WHERE id = $1 AND channel_id = $2 AND poll IS NOT NULL', [p.mid, p.id]);
     if (!m) throw notFound('Message');
     if (m.poll_finalized || new Date(m.poll_expiry).getTime() <= Date.now()) throw pollBlocked();
     const del = await ctx.db.query('DELETE FROM poll_votes WHERE message_id = $1 AND user_id = $2 RETURNING answer_id', [p.mid, req.userId]);
-    for (const d of del) await ctx.hub.toChannel(p.id, 'MESSAGE_POLL_VOTE_REMOVE', { userId: req.userId, channelId: p.id, messageId: p.mid, answerId: d.answer_id });
+    if (del.length) {
+      const tally = await pollTally(ctx, p.mid);
+      for (const d of del) await ctx.hub.toChannel(p.id, 'MESSAGE_POLL_VOTE_REMOVE', { userId: req.userId, channelId: p.id, messageId: p.mid, answerId: d.answer_id, count: tally.counts.get(d.answer_id) ?? 0, totalVotes: tally.totalVotes });
+    }
     return messageDTO(ctx, m, req.userId);
   });
 

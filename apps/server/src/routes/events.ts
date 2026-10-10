@@ -22,12 +22,14 @@ const ep = z.object({ id: idSchema, eid: idSchema });
 
 export function eventRoutes(app: FastifyInstance, ctx: Ctx) {
   /** Discord's per-entity-type permission rules (public docs, guild-scheduled-event "Permissions"). */
-  async function checkEventPerms(userId: string, guildId: string, entityType: number, channelId: string | null, mode: 'create' | 'modify', creatorId?: string) {
+  async function checkEventPerms(userId: string, guildId: string, entityType: number, channelId: string | null, mode: 'create' | 'modify', creatorId?: string, lenientChannel = false) {
     const gp = await guildAccess(ctx, userId, guildId);
     const guildP = guildPerms(gp);
     if (mode === 'create') need(guildP, Perm.CREATE_EVENTS); else if (creatorId === userId) { if (!has(guildP, Perm.CREATE_EVENTS) && !has(guildP, Perm.MANAGE_EVENTS)) throw forbidden(); } else need(guildP, Perm.MANAGE_EVENTS);
     if (entityType === ET.EXTERNAL) return;
-    const a = await channelAccess(ctx, userId, channelId!);
+    let a: Awaited<ReturnType<typeof channelAccess>>;
+    try { a = await channelAccess(ctx, userId, channelId!); }
+    catch (e) { if (lenientChannel && e instanceof ApiError && e.status === 404) return; throw e; } // cleanup of an event whose channel is gone/hidden still needs the guild-level rights checked above
     if (a.channel.guild_id !== guildId) throw notFound('Channel');
     if (entityType === ET.STAGE_INSTANCE) { if (a.channel.type !== 'stage') throw badRequest('channelId must be a stage channel'); need(a.perms, Perm.MANAGE_CHANNELS, Perm.MUTE_MEMBERS, Perm.MOVE_MEMBERS); }
     else { if (a.channel.type !== 'voice') throw badRequest('channelId must be a voice channel'); need(a.perms, Perm.VIEW_CHANNEL, Perm.CONNECT); }
@@ -124,7 +126,7 @@ export function eventRoutes(app: FastifyInstance, ctx: Ctx) {
   app.delete('/guilds/:id/scheduled-events/:eid', async (req, reply) => {
     const p = parse(ep, req.params);
     const cur = await load(p.id, p.eid);
-    await checkEventPerms(req.userId, p.id, cur.entity_type, cur.channel_id, 'modify', cur.creator_id).catch((e) => { if (e instanceof ApiError && e.status === 404) return; throw e; }); // a deleted channel must not block cleanup
+    await checkEventPerms(req.userId, p.id, cur.entity_type, cur.channel_id, 'modify', cur.creator_id, true); // a deleted channel must not block cleanup, but non-members / missing rights always fail
     if (cur.stage_instance_id) await endStage(ctx, cur.channel_id, req.userId);
     await ctx.db.query('DELETE FROM guild_scheduled_events WHERE id = $1', [p.eid]);
     await publishEvent(ctx, 'GUILD_SCHEDULED_EVENT_DELETE', cur);

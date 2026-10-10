@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { Perm, has } from '@jorcord/shared';
 import {
   ComponentType, INTERACTION_ACK_DEADLINE_MS, INTERACTION_TOKEN_TTL_MS, InteractionCallbackType as CB, InteractionType as IT, MessageFlags, CommandType,
   snowflake, type Component, type Interaction, type Message,
@@ -98,6 +99,7 @@ export async function invoke(ctx: Ctx, userId: string, raw: unknown, access: (ch
   const a = await access(b.channelId);
   const channel = a.channel;
   if (['category', 'forum'].includes(channel.type)) throw badRequest('Interactions cannot be used in this channel');
+  if (a.gp?.timedOut) throw forbidden('You cannot use apps while timed out or before accepting the server rules').num(50013); // read-only members must not trigger bot actions (role pickers, ticket buttons...)
   const [userRow] = await ctx.db.query('SELECT * FROM users WHERE id = $1', [userId]);
   const mustReach = async (app: any) => { // bot must be able to act where the interaction happens
     if (channel.guild_id) { if (!(await isInstalled(ctx, app.id, channel.guild_id))) throw forbidden('The application is not installed in this server', 'MISSING_ACCESS').num(50001); }
@@ -126,6 +128,7 @@ export async function invoke(ctx: Ctx, userId: string, raw: unknown, access: (ch
       data.targetId = b.data.targetId; resolved = { users: { [b.data.targetId]: userDTO(ctx, u) } };
     } else if (cmd.type === CommandType.MESSAGE) {
       if (!b.data.targetId) throw badRequest('targetId is required');
+      if (!has(a.perms, Perm.READ_MESSAGE_HISTORY)) throw forbidden('Missing permissions').num(50013); // the target message is handed to the app: needs history access
       const [m] = await ctx.db.query('SELECT * FROM messages WHERE id = $1 AND channel_id = $2', [b.data.targetId, channel.id]);
       if (!m) throw notFound('Message');
       data.targetId = b.data.targetId; resolved = { messages: { [m.id]: await messageDTO(ctx, m, userId) } };
@@ -137,6 +140,7 @@ export async function invoke(ctx: Ctx, userId: string, raw: unknown, access: (ch
   }
 
   if (b.type === IT.MESSAGE_COMPONENT) {
+    if (channel.guild_id && !has(a.perms, Perm.READ_MESSAGE_HISTORY)) throw forbidden('Missing permissions').num(50013);
     const [m] = await ctx.db.query('SELECT * FROM messages WHERE id = $1 AND channel_id = $2', [b.messageId, channel.id]);
     let msgDto: Message | null = null, appId: string | null = null, comps: Component[] = [];
     if (m) { msgDto = await messageDTO(ctx, m, userId); appId = m.application_id; comps = m.components ?? []; }

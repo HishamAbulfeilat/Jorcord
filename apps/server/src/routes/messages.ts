@@ -42,7 +42,7 @@ export function messageRoutes(app: FastifyInstance, ctx: Ctx) {
     if (t === 'category' || t === 'forum') throw badRequest('Cannot send messages in this channel type');
     // Voice and stage channels carry a text chat: they take messages under the same SEND_MESSAGES rules (overwrites included).
     need(a.perms, t === 'thread' ? Perm.SEND_IN_THREADS : Perm.SEND_MESSAGES);
-    if (t === 'thread' && a.channel.archived && a.channel.locked && !has(a.perms, Perm.MANAGE_THREADS)) throw new ApiError(403, 'THREAD_LOCKED', 'This thread is locked').num(50083);
+    if (t === 'thread' && a.channel.locked && !has(a.perms, Perm.MANAGE_THREADS)) throw new ApiError(403, 'THREAD_LOCKED', 'This thread is locked').num(50083);
     if (t === 'dm') {
       const [blk] = await ctx.db.query(
         `SELECT 1 AS x FROM relationships r JOIN dm_participants p ON p.channel_id = $1 WHERE r.type = 'blocked' AND ((r.user_id = $2 AND r.other_id = p.user_id) OR (r.other_id = $2 AND r.user_id = p.user_id)) LIMIT 1`, [a.channel.id, userId]);

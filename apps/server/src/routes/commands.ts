@@ -28,7 +28,10 @@ export function commandRoutes(app: FastifyInstance, ctx: Ctx) {
     return { guildId: gid, key: gid ?? '' };
   }
   const emit = async (name: 'APPLICATION_COMMAND_CREATE' | 'APPLICATION_COMMAND_UPDATE' | 'APPLICATION_COMMAND_DELETE', row: any) => {
-    if (row.guild_id) await ctx.hub.toGuild(row.guild_id, name, commandDTO(row)); // global commands are fetched on demand, not broadcast
+    if (row.guild_id) { await ctx.hub.toGuild(row.guild_id, name, commandDTO(row)); return; }
+    // global command: every server the application is installed in learns about it (members re-read the catalogue)
+    const dto = commandDTO(row);
+    for (const g of await ctx.db.query('SELECT guild_id FROM application_installs WHERE application_id = $1', [row.application_id])) await ctx.hub.toGuild(g.guild_id, name, dto);
   };
 
   async function upsert(q: Pick<Ctx['db'], 'query'>, appId: string, scope: { guildId: string | null; key: string }, c: ParsedCommand, enforceLimit = true) {

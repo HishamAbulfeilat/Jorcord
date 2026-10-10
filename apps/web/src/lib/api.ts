@@ -1,7 +1,7 @@
 /** Typed REST client written against docs/CONTRACT.md. All calls go through the swappable transport. */
 import type {
   Attachment, AuditEntry, AutoModRule, Channel, Emoji, Guild, GuildFull, Invite, Member, Message, Relationship, ReadState, Role, SelfUser, Sticker, User, VoiceToken, Id, Presence, OverwriteDTO,
-  Application, ApplicationCommand, CommandOptionChoice, CreatePoll, ForumTag, InteractionOptionValue, ModalSubmitRow, OAuthAuthorizePreview, OAuthAuthorizeResult, ScheduledEvent, StageInstance,
+  Application, ApplicationCommand, CommandPermissionOverwrite, CommandOptionChoice, CreatePoll, ForumTag, InteractionOptionValue, ModalSubmitRow, OAuthAuthorizePreview, OAuthAuthorizeResult, ScheduledEvent, StageInstance,
 } from '@jorcord/shared';
 import { send } from './transport';
 
@@ -11,6 +11,7 @@ export interface MessageQuery { limit?: number; before?: Id; after?: Id; around?
 export interface SearchQuery { q?: string; authorId?: Id; channelId?: Id; has?: string; before?: string }
 export interface SendMessageInput { content: string; replyTo?: Id | null; files?: File[]; nonce?: string; stickerIds?: Id[]; poll?: CreatePoll }
 export interface CreateEventInput { name: string; description?: string | null; entityType: number; channelId?: Id | null; scheduledStartTime: string; scheduledEndTime?: string | null; location?: string | null; privacyLevel?: 2 }
+export interface CommandPermissionSet { commandId: Id; applicationId: Id; guildId: Id; permissions: CommandPermissionOverwrite[] }
 export interface CommandCatalog { commands: ApplicationCommand[]; applications: { id: Id; name: string; icon: string | null; botUserId: Id }[] }
 export interface ScreeningInfo { enabled: boolean; rulesChannelId: Id | null; description: string | null; pending: boolean }
 export type InteractionInput =
@@ -132,6 +133,10 @@ export const api = {
     resetSecret: (id: Id) => send<{ clientSecret: string }>({ method: 'POST', path: `/applications/${id}/reset-secret` }),
     installs: (id: Id) => send<{ guildId: Id; scopes: string[]; installedAt: string }[]>({ method: 'GET', path: `/applications/${id}/installs` }).then((x) => arr<{ guildId: Id; scopes: string[]; installedAt: string }>(x)),
     commands: (id: Id, guildId?: Id) => send<ApplicationCommand[]>({ method: 'GET', path: guildId ? `/applications/${id}/guilds/${guildId}/commands` : `/applications/${id}/commands` }).then((x) => arr<ApplicationCommand>(x)),
+    /** Per-command role/user/channel overrides in a guild (`cid` = application id edits the app-wide default). User sessions with MANAGE_GUILD + MANAGE_ROLES only. */
+    commandPermissions: (id: Id, guildId: Id) => send<CommandPermissionSet[]>({ method: 'GET', path: `/applications/${id}/guilds/${guildId}/commands/permissions` }).then((x) => arr<CommandPermissionSet>(x)),
+    getCommandPermissions: (id: Id, guildId: Id, cid: Id) => send<CommandPermissionSet>({ method: 'GET', path: `/applications/${id}/guilds/${guildId}/commands/${cid}/permissions` }),
+    putCommandPermissions: (id: Id, guildId: Id, cid: Id, permissions: CommandPermissionOverwrite[]) => send<CommandPermissionSet>({ method: 'PUT', path: `/applications/${id}/guilds/${guildId}/commands/${cid}/permissions`, body: { permissions } }),
     deleteCommand: (id: Id, cid: Id, guildId?: Id) => send({ method: 'DELETE', path: guildId ? `/applications/${id}/guilds/${guildId}/commands/${cid}` : `/applications/${id}/commands/${cid}` }),
   },
   oauth: {

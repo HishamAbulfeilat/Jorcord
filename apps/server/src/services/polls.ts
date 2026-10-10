@@ -41,4 +41,10 @@ export async function finalizeDuePolls(ctx: Ctx, limit = 100) {
   for (const r of due) await finalizePoll(ctx, r.id).catch((e) => ctx.log.warn({ err: e }, 'poll finalize failed'));
   return due.length;
 }
+/** Current per-answer counts and the number of distinct voters (the percent base), for vote events. */
+export async function pollTally(ctx: Ctx, messageId: string): Promise<{ counts: Map<number, number>; totalVotes: number }> {
+  const rows = await ctx.db.query('SELECT answer_id, count(*)::int AS n FROM poll_votes WHERE message_id = $1 GROUP BY answer_id', [messageId]);
+  const [t] = await ctx.db.query('SELECT count(DISTINCT user_id)::int AS n FROM poll_votes WHERE message_id = $1', [messageId]);
+  return { counts: new Map(rows.map((r) => [r.answer_id as number, r.n as number])), totalVotes: t?.n ?? 0 };
+}
 export const pollBlocked = () => new ApiError(400, 'POLL_VOTING_BLOCKED', 'This poll has ended').num(520000);

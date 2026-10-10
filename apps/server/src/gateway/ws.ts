@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import type { WebSocket } from 'ws';
 import { z } from 'zod';
-import { HEARTBEAT_INTERVAL_MS, Op, Perm, has, type Presence, type ReadyPayload, type VoiceStateUpdatePayload } from '@jorcord/shared';
+import { ALL_INTENTS, GatewayClose, HEARTBEAT_INTERVAL_MS, Intents, Op, PRIVILEGED_INTENTS, Perm, has, type Presence, type ReadyPayload, type VoiceStateUpdatePayload } from '@jorcord/shared';
 import type { Ctx } from '../ctx';
 import { verifyGatewayToken } from '../auth';
 import { randomToken } from '../lib/crypto';
@@ -14,6 +14,7 @@ import { channelsDTO, membersDTO, selfUserDTO } from '../services/serializers';
 import { updateVoiceState, clearVoiceAfterGrace } from '../services/voice';
 import { relationshipDTOs } from '../routes/users';
 import type { GwSession } from './hub';
+import { shapeReady } from './intents';
 
 async function buildReady(ctx: Ctx, userId: string, sessionId: string): Promise<ReadyPayload> {
   const [u] = await ctx.db.query('SELECT * FROM users WHERE id = $1', [userId]);
@@ -46,6 +47,7 @@ const requestMembersSchema = z.object({
 /** Gateway REQUEST_MEMBERS: replies with GUILD_MEMBERS_CHUNK to the asking session only. Requires guild membership. */
 async function requestMembers(ctx: Ctx, session: GwSession, d: unknown) {
   const p = requestMembersSchema.parse(d);
+  if (session.intents != null && !(session.intents & Intents.GUILD_MEMBERS)) throw Object.assign(new Error('REQUEST_MEMBERS needs the GUILD_MEMBERS intent'), { code: 'MISSING_INTENT' });
   await guildAccess(ctx, session.userId, p.guildId);
   const limit = p.limit ?? 100;
   let rows: any[];
@@ -64,7 +66,7 @@ async function requestMembers(ctx: Ctx, session: GwSession, d: unknown) {
 }
 
 const frameSchema = z.object({ op: z.number().int(), d: z.unknown().optional() });
-const identifySchema = z.object({ token: z.string().max(4096), sessionId: z.string().max(100).optional(), seq: z.number().int().min(0).optional() }).passthrough();
+const identifySchema = z.object({ token: z.string().max(4096), sessionId: z.string().max(100).optional(), seq: z.number().int().min(0).optional(), intents: z.number().int().min(0).max(0x7fffffff).optional() }).passthrough();
 
 export function gatewayRoutes(app: FastifyInstance, ctx: Ctx) {
   const wsLimiter = new RateLimiter();
@@ -104,10 +106,18 @@ export function gatewayRoutes(app: FastifyInstance, ctx: Ctx) {
       if (p.data.sessionId && p.data.seq !== undefined) {
         if (await tryResume(claims.userId, p.data.sessionId, p.data.seq)) return;
       }
-      const s: GwSession = { id: randomToken(16), userId: claims.userId, authSessionId: claims.sessionId, seq: 0, buffer: [], socket: null, detachedAt: null };
+      // Intents apply to bots only; a user session always receives everything it is entitled to.
+      let intents: number | null = null;
+      if (claims.sessionId.startsWith('bot:') && p.data.intents !== undefined) {
+        if ((p.data.intents & ~ALL_INTENTS) !== 0) return socket.close(GatewayClose.INVALID_INTENTS, 'invalid intents');
+        const [appRow] = await ctx.db.query('SELECT privileged_intents FROM applications WHERE id = $1', [claims.sessionId.slice(4)]);
+        if ((p.data.intents & PRIVILEGED_INTENTS & ~(appRow?.privileged_intents ?? 0)) !== 0) return socket.close(GatewayClose.DISALLOWED_INTENTS, 'disallowed intents: enable the privileged intents for this application first');
+        intents = p.data.intents;
+      }
+      const s: GwSession = { id: randomToken(16), userId: claims.userId, authSessionId: claims.sessionId, seq: 0, buffer: [], socket: null, detachedAt: null, intents };
       ctx.hub.sessions.set(s.id, s);
       await attach(s);
-      ctx.hub.sendTo(s, 'READY', await buildReady(ctx, s.userId, s.id));
+      ctx.hub.sendTo(s, 'READY', shapeReady(s, await buildReady(ctx, s.userId, s.id)));
     }
 
     async function tryResume(userId: string, sessionId: string, seq: number): Promise<boolean> {

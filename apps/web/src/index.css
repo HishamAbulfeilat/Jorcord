@@ -16,6 +16,8 @@
   --link: 0 168 252; --danger: 218 55 60; --danger-hover: 162 43 47; --success: 35 165 89; --warn: 240 178 50;
   --divider: 63 65 71; --mention: 201 205 251; --mention-bg: 88 101 242;
   --composer: 56 58 64;
+  /* text-safe variants of the status colours (>= 4.5:1 on every surface of the theme); the base tokens stay for fills/borders */
+  --danger-text: 255 140 144; --warn-text: 240 178 50; --success-text: 60 200 115;
   color-scheme: dark;
 }
 [data-theme="light"] {
@@ -24,6 +26,7 @@
   --text: 49 51 56; --muted: 92 94 102; --header: 6 6 7; --interactive: 78 80 88; --interactive-hover: 6 6 7;
   --link: 0 108 231; --divider: 225 226 228; --mention: 80 92 220; --mention-bg: 88 101 242;
   --composer: 235 237 239;
+  --danger-text: 180 25 30; --warn-text: 120 75 0; --success-text: 18 100 48;
   color-scheme: light;
 }
 [data-theme="amoled"] {
@@ -119,3 +122,21 @@ html[data-vv="kb"], html[data-vv="kb"] body, html[data-vv="kb"] #root { height: 
 .streamer-blur:hover, .streamer-blur:focus { filter: blur(0); }
 /* members/messages of a hover-animated avatar */
 img[data-still] { image-rendering: auto; }
+
+/* status colours as TEXT use the contrast-safe tokens; backgrounds (bg-danger etc.) keep the brand values */
+.text-danger { color: rgb(var(--danger-text)); }
+.text-warn { color: rgb(var(--warn-text)); }
+.text-success { color: rgb(var(--success-text)); }
+
+/* Increased contrast: user toggle (data-contrast) or OS preference. Real token changes instead of a pixel filter, so focus rings/borders also strengthen. */
+:root[data-contrast="more"], :root[data-contrast="more"][data-theme] { --muted: 200 204 210; --interactive: 225 228 232; --divider: 120 124 132; --text: 242 243 245; }
+:root[data-contrast="more"][data-theme="light"] { --muted: 60 62 68; --interactive: 40 42 48; --divider: 120 124 132; --text: 6 6 7; }
+@media (prefers-contrast: more) {
+  :root:not([data-theme="light"]) { --muted: 200 204 210; --interactive: 225 228 232; --divider: 120 124 132; --text: 242 243 245; }
+  :root[data-theme="light"] { --muted: 60 62 68; --interactive: 40 42 48; --divider: 120 124 132; --text: 6 6 7; }
+  *:focus-visible { outline-width: 3px; }
+}
+@media (forced-colors: active) {
+  *:focus-visible { outline: 2px solid Highlight; }
+  .btn, .field { border: 1px solid ButtonText; }
+}

@@ -1,6 +1,7 @@
+import { createHash } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { ALL_PERMS, OAuthScopes, Perm, snowflake, type OAuthAuthorizePreview, type OAuthAuthorizeResult, type OAuthScope } from '@jorcord/shared';
+import { ALL_PERMS, OAuthScopes, PRIVILEGED_INTENTS, Perm, snowflake, type OAuthAuthorizePreview, type OAuthAuthorizeResult, type OAuthScope } from '@jorcord/shared';
 import type { Ctx } from '../ctx';
 import { ApiError, badRequest, forbidden, notFound, unauthorized } from '../errors';
 import { generateAppKeys } from '../lib/interactionSig';
@@ -13,10 +14,16 @@ import { pingInteractionsEndpoint } from '../services/interactions';
 import { guildAccess, guildPerms, need } from '../services/perms';
 import { userDTO } from '../services/serializers';
 
-const redirectUri = z.string().max(512).refine((s) => { try { const u = new URL(s); return (u.protocol === 'https:' || u.protocol === 'http:') && !u.username && !u.password && !u.hash; } catch { return false; } }, 'must be an absolute http(s) URL without credentials or fragment');
+const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]']);
+/** https only (http is allowed for loopback development): an http redirect would leak the authorization code to the network. */
+const redirectUri = z.string().max(512).refine((s) => { try { const u = new URL(s); return (u.protocol === 'https:' || (u.protocol === 'http:' && LOOPBACK.has(u.hostname))) && !u.username && !u.password && !u.hash; } catch { return false; } }, 'must be an absolute https URL (http only for localhost) without credentials or fragment');
+const pkceChallenge = z.string().regex(/^[A-Za-z0-9_-]{43}$/, 'code_challenge must be a base64url SHA-256 (43 chars)');
+const pkceVerifier = z.string().regex(/^[A-Za-z0-9\-._~]{43,128}$/, 'invalid code_verifier');
 const appFields = {
   name: z.string().trim().min(1).max(32).regex(/^[^\u0000-\u001f\u007f]+$/), description: z.string().max(400), icon: assetUrl.nullable(),
   redirectUris: z.array(redirectUri).max(10), botPublic: z.boolean(), interactionsEndpointUrl: z.string().max(512).url().nullable(),
+  /** Privileged gateway intents (GUILD_MEMBERS | GUILD_PRESENCES | MESSAGE_CONTENT) this bot may request at IDENTIFY. */
+  privilegedIntents: z.number().int().min(0).refine((n) => (n & ~PRIVILEGED_INTENTS) === 0, 'only privileged intent bits may be set'),
 };
 const MAX_APPS_PER_USER = 25;
 
@@ -62,11 +69,14 @@ export function applicationRoutes(app: FastifyInstance, ctx: Ctx) {
     const { id } = parse(z.object({ id: idSchema }), req.params);
     const b = parse(z.object(appFields).partial().strict(), req.body);
     const row = await ownedApp(req, id);
+    if (b.interactionsEndpointUrl) limitOrThrow(ctx.rl, `ix-endpoint-verify:${req.userId}`, 10, 60_000, ctx.config.rateLimit); // each attempt makes the server issue an outbound request
     if (b.interactionsEndpointUrl) await pingInteractionsEndpoint(ctx, row, b.interactionsEndpointUrl); // must answer a signed PING with {type:1}
     const sets: string[] = [], vals: unknown[] = [id];
-    const col: Record<string, string> = { name: 'name', description: 'description', icon: 'icon', redirectUris: 'redirect_uris', botPublic: 'bot_public', interactionsEndpointUrl: 'interactions_endpoint_url' };
+    const col: Record<string, string> = { name: 'name', description: 'description', icon: 'icon', redirectUris: 'redirect_uris', botPublic: 'bot_public', interactionsEndpointUrl: 'interactions_endpoint_url', privilegedIntents: 'privileged_intents' };
     for (const [k, v] of Object.entries(b)) { vals.push(k === 'redirectUris' ? JSON.stringify(v) : v); sets.push(`${col[k]} = $${vals.length}${k === 'redirectUris' ? '::jsonb' : ''}`); }
+    const dropped = b.privilegedIntents !== undefined && (row.privileged_intents & ~b.privilegedIntents) !== 0;
     if (sets.length) await ctx.db.query(`UPDATE applications SET ${sets.join(', ')} WHERE id = $1`, vals);
+    if (dropped) ctx.hub.disconnectAuthSession(`bot:${id}`); // sessions that rely on a switched-off privileged intent must re-identify
     if (b.name !== undefined || b.icon !== undefined) await ctx.db.query('UPDATE users SET display_name = COALESCE($2, display_name), username = COALESCE($2, username), avatar = CASE WHEN $4 THEN $3 ELSE avatar END WHERE id = $1', [row.bot_user_id, b.name ?? null, b.icon ?? null, b.icon !== undefined]);
     return applicationDTO(ctx, (await getApplication(ctx, id))!);
   });
@@ -132,17 +142,18 @@ export function applicationRoutes(app: FastifyInstance, ctx: Ctx) {
     const q = parse(z.object({ clientId: idSchema, scope: scopeParam, permissions: permsParam }), req.query);
     const scopes = parseScopes(q.scope);
     const row = await getApplication(ctx, q.clientId);
-    if (!row || (scopes.includes('bot') && !row.bot_public && row.owner_id !== req.userId)) throw notFound('Application');
+    if (!row || ((scopes.includes('bot') || scopes.includes('applications.commands')) && !row.bot_public && row.owner_id !== req.userId)) throw notFound('Application');
     const a = await applicationDTO(ctx, row);
     return { application: { id: a.id, name: a.name, description: a.description, icon: a.icon, botUser: a.botUser }, scopes, permissions: (BigInt(q.permissions) & ALL_PERMS).toString(), guilds: await authorizableGuilds(req.userId) };
   });
 
   app.post('/oauth2/authorize', async (req, reply): Promise<OAuthAuthorizeResult> => {
-    const b = parse(z.object({ clientId: idSchema, scope: scopeParam, permissions: permsParam.optional(), guildId: idSchema.optional(), redirectUri: z.string().max(512).optional(), state: z.string().max(512).optional() }).strict(), req.body);
+    const b = parse(z.object({ clientId: idSchema, scope: scopeParam, permissions: permsParam.optional(), guildId: idSchema.optional(), redirectUri: z.string().max(512).optional(), state: z.string().max(512).optional(), codeChallenge: pkceChallenge.optional(), codeChallengeMethod: z.literal('S256').optional() }).strict(), req.body);
+    if (!!b.codeChallenge !== !!b.codeChallengeMethod) throw badRequest('codeChallenge and codeChallengeMethod (S256) go together');
     limitOrThrow(ctx.rl, `oauth-authz:${req.userId}`, 20, 60_000, ctx.config.rateLimit);
     const scopes = parseScopes(b.scope);
     const row = await getApplication(ctx, b.clientId);
-    if (!row || (scopes.includes('bot') && !row.bot_public && row.owner_id !== req.userId)) throw notFound('Application');
+    if (!row || ((scopes.includes('bot') || scopes.includes('applications.commands')) && !row.bot_public && row.owner_id !== req.userId)) throw notFound('Application');
     const out: OAuthAuthorizeResult = {};
     if (scopes.includes('bot') || scopes.includes('applications.commands')) {
       if (!b.guildId) throw badRequest('guildId is required for the bot and applications.commands scopes');
@@ -164,7 +175,7 @@ export function applicationRoutes(app: FastifyInstance, ctx: Ctx) {
       const uris: string[] = row.redirect_uris ?? [];
       if (!b.redirectUri || !uris.includes(b.redirectUri)) throw new ApiError(400, 'INVALID_REDIRECT_URI', 'redirectUri must exactly match a registered redirect URI');
       const code = randomToken(24);
-      await ctx.db.query('INSERT INTO oauth_codes (code_hash, application_id, user_id, scopes, redirect_uri, expires_at) VALUES ($1,$2,$3,$4::jsonb,$5, now() + interval \'10 minutes\')', [sha256(code), row.id, req.userId, JSON.stringify(scopes), b.redirectUri]);
+      await ctx.db.query('INSERT INTO oauth_codes (code_hash, application_id, user_id, scopes, redirect_uri, code_challenge, expires_at) VALUES ($1,$2,$3,$4::jsonb,$5,$6, now() + interval \'10 minutes\')', [sha256(code), row.id, req.userId, JSON.stringify(scopes), b.redirectUri, b.codeChallenge ?? null]);
       out.code = code; out.redirectUri = b.redirectUri; if (b.state) out.state = b.state;
     }
     void buildGuildFull; void audit;
@@ -180,11 +191,13 @@ export function oauthPublicRoutes(app: FastifyInstance, ctx: Ctx) {
     return row;
   }
   app.post('/oauth2/token', async (req) => {
-    const b = parse(z.object({ clientId: idSchema, clientSecret: z.string().min(1).max(200), grantType: z.literal('authorization_code'), code: z.string().min(1).max(200), redirectUri: z.string().max(512) }).strict(), req.body);
+    const b = parse(z.object({ clientId: idSchema, clientSecret: z.string().min(1).max(200), grantType: z.literal('authorization_code'), code: z.string().min(1).max(200), redirectUri: z.string().max(512), codeVerifier: pkceVerifier.optional() }).strict(), req.body);
     limitOrThrow(ctx.rl, `oauth-token:${req.ip}`, 30, 60_000, ctx.config.rateLimit);
     const row = await authClient(b.clientId, b.clientSecret);
     const [c] = await ctx.db.query('UPDATE oauth_codes SET used = true WHERE code_hash = $1 AND application_id = $2 AND NOT used AND expires_at > now() RETURNING *', [sha256(b.code), row.id]); // atomic single use
     if (!c || c.redirect_uri !== b.redirectUri) throw new ApiError(400, 'INVALID_GRANT', 'Invalid, used or expired code');
+    // PKCE: a code issued with a challenge is worthless without the matching verifier (the code is already burned above, so a wrong guess cannot be retried)
+    if (c.code_challenge && (!b.codeVerifier || !safeEqual(c.code_challenge, createHash('sha256').update(b.codeVerifier).digest('base64url')))) throw new ApiError(400, 'INVALID_GRANT', 'code_verifier does not match the code_challenge');
     const token = `jco_${randomToken(32)}`;
     await ctx.db.query(`INSERT INTO oauth_tokens (token_hash, application_id, user_id, scopes, expires_at) VALUES ($1,$2,$3,$4::jsonb, now() + interval '7 days')`, [sha256(token), row.id, c.user_id, JSON.stringify(c.scopes)]);
     return { accessToken: token, tokenType: 'Bearer', expiresIn: 7 * 86400, scope: (c.scopes as string[]).join(' ') };

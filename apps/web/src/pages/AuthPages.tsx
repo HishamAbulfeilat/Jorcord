@@ -16,7 +16,7 @@ export function Shell({ title, sub, children, footer }: { title: string; sub: st
         <div className="mb-5 flex flex-col items-center text-center"><Logo size={48} className="mb-3" /><h1 className="text-2xl font-semibold text-[#f2f3f5]">{title}</h1><p className="mt-1 text-[#b5bac1]">{sub}</p></div>
         {children}
         <div className="mt-3 text-sm text-[#949ba4]">{footer}</div>
-        {(isNative() || getServerUrl()) && getServerUrl() && <div data-testid="server-line" className="mt-4 border-t border-[#3f4147] pt-3 text-xs text-[#949ba4]">{t('Server')}: <span className="text-[#dbdee1]">{getServerUrl().replace(/^https?:\/\//, '')}</span> · <Link to="/connect" className="text-[#00a8fc] hover:underline">{t('Change server')}</Link></div>}
+        {(isNative() || getServerUrl()) && getServerUrl() && <div data-testid="server-line" className="mt-4 border-t border-[#3f4147] pt-3 text-xs text-[#949ba4]">{t('Server')}: <span className="text-[#dbdee1]">{getServerUrl().replace(/^https?:\/\//, '')}</span> · <Link to="/connect" className="text-[#00a8fc] underline">{t('Change server')}</Link></div>}
       </main>
     </div>
   );
@@ -43,7 +43,7 @@ export function LoginPage() {
     }
   };
   return (
-    <Shell title={t('Welcome back!')} sub={mfa ? t('Enter the 6-digit code from your authenticator app.') : t("We're so excited to see you again!")} footer={<>{t('Need an account?')} <Link to="/register" className="text-[#00a8fc] hover:underline">{t('Register')}</Link></>}>
+    <Shell title={t('Welcome back!')} sub={mfa ? t('Enter the 6-digit code from your authenticator app.') : t("We're so excited to see you again!")} footer={<>{t('Need an account?')} <Link to="/register" className="text-[#00a8fc] underline">{t('Register')}</Link></>}>
       <form onSubmit={submit} noValidate>
         {!mfa ? (<>
           <label className="mb-5 block"><span className={labelCls}>{t('Email')} <span className="text-[#f23f43]">*</span></span><input className={inputCls} type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} required autoFocus /></label>
@@ -51,10 +51,10 @@ export function LoginPage() {
         </>) : (
           <label className="mb-2 block"><span className={labelCls}>{t('Authentication code')}</span><input className={inputCls} inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]*" maxLength={8} value={totp} onChange={(e) => setTotp(e.target.value.replace(/\s/g, ''))} autoFocus /></label>
         )}
-        {!mfa && <Link to="/forgot-password" className="mb-1 mt-2 inline-block text-sm text-[#00a8fc] hover:underline">{t('Forgot your password?')}</Link>}
+        {!mfa && <Link to="/forgot-password" className="mb-1 mt-2 inline-block text-sm text-[#00a8fc] underline">{t('Forgot your password?')}</Link>}
         {err && <p role="alert" className="mb-2 text-sm text-[#f23f43]">{err}</p>}
         <button disabled={busy || !email || !password || (mfa && totp.length < 6)} className="mt-4 flex h-11 w-full items-center justify-center rounded-[3px] bg-[#5865f2] font-medium text-white hover:bg-[#4752c4] disabled:opacity-60">{busy ? <Spinner className="text-white" /> : mfa ? t('Verify') : t('Log In')}</button>
-        {mfa && <button type="button" className="mt-3 text-sm text-[#00a8fc] hover:underline" onClick={() => { setMfa(false); setTotp(''); }}>{t('Back')}</button>}
+        {mfa && <button type="button" className="mt-3 text-sm text-[#00a8fc] underline" onClick={() => { setMfa(false); setTotp(''); }}>{t('Back')}</button>}
       </form>
     </Shell>
   );
@@ -70,7 +70,7 @@ export function RegisterPage() {
   };
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement>) => setF({ ...f, [k]: e.target.value });
   return (
-    <Shell title={t('Create an account')} sub={t('Free forever. No Nitro required.')} footer={<Link to="/login" className="text-[#00a8fc] hover:underline">{t('Already have an account?')}</Link>}>
+    <Shell title={t('Create an account')} sub={t('Free forever. No Nitro required.')} footer={<Link to="/login" className="text-[#00a8fc] underline">{t('Already have an account?')}</Link>}>
       <form onSubmit={submit}>
         <label className="mb-4 block"><span className={labelCls}>{t('Email')} *</span><input className={inputCls} type="email" autoComplete="email" value={f.email} onChange={set('email')} required autoFocus /></label>
         <label className="mb-4 block"><span className={labelCls}>{t('Display Name')}</span><input className={inputCls} value={f.displayName} onChange={set('displayName')} maxLength={32} /></label>
@@ -91,7 +91,7 @@ export function ForgotPasswordPage() {
     try { await api.auth.forgotPassword(email); setDone(true); } catch (ex) { setErr((ex as Error).message); } setBusy(false);
   };
   return (
-    <Shell title="Forgot your password?" sub="Enter your email and we will send a reset link." footer={<Link to="/login" className="text-[#00a8fc] hover:underline">Back to login</Link>}>
+    <Shell title="Forgot your password?" sub="Enter your email and we will send a reset link." footer={<Link to="/login" className="text-[#00a8fc] underline">Back to login</Link>}>
       {done ? <p role="status" className="text-[#dbdee1]">If an account exists for <b>{email}</b>, a reset link is on its way. Check your inbox.</p> : (
         <form onSubmit={submit}>
           <label className="mb-4 block"><span className={labelCls}>Email</span><input className={inputCls} type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoFocus /></label>
@@ -112,7 +112,7 @@ export function ResetPasswordPage() {
     catch (ex) { setErr((ex as Error).message || 'This reset link is invalid or has expired.'); setBusy(false); }
   };
   return (
-    <Shell title="Reset password" sub="Choose a new password. All other sessions will be signed out." footer={<Link to="/login" className="text-[#00a8fc] hover:underline">Back to login</Link>}>
+    <Shell title="Reset password" sub="Choose a new password. All other sessions will be signed out." footer={<Link to="/login" className="text-[#00a8fc] underline">Back to login</Link>}>
       {!token ? <p role="alert" className="text-[#f23f43]">This reset link is missing its token.</p> : done ? <p role="status" className="text-[#dbdee1]">Password updated. Redirecting to login…</p> : (
         <form onSubmit={submit}>
           <label className="mb-4 block"><span className={labelCls}>New password</span><input className={inputCls} type="password" autoComplete="new-password" minLength={8} value={pw} onChange={(e) => setPw(e.target.value)} required autoFocus /></label>
@@ -135,7 +135,7 @@ export function VerifyEmailPage() {
     return () => { dead = true; };
   }, [token]);
   return (
-    <Shell title={state === 'ok' ? 'Email verified' : state === 'error' ? 'Verification failed' : 'Verifying…'} sub="" footer={<Link to={authed ? '/channels/@me' : '/login'} className="text-[#00a8fc] hover:underline">{authed ? 'Continue to Jorcord' : 'Go to login'}</Link>}>
+    <Shell title={state === 'ok' ? 'Email verified' : state === 'error' ? 'Verification failed' : 'Verifying…'} sub="" footer={<Link to={authed ? '/channels/@me' : '/login'} className="text-[#00a8fc] underline">{authed ? 'Continue to Jorcord' : 'Go to login'}</Link>}>
       {state === 'working' && <div className="flex justify-center"><Spinner /></div>}
       {state === 'ok' && <p role="status" className="text-[#dbdee1]">Thanks! Your email address is verified.</p>}
       {state === 'error' && <p role="alert" className="text-[#f23f43]">{msg || 'This verification link is invalid or has expired.'}</p>}

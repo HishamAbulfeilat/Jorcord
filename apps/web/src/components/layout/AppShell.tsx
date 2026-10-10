@@ -124,11 +124,13 @@ export function AppShell({ base = '' }: { base?: string }) {
     <BaseCtx.Provider value={base}>
      <VoiceRoot>
       <div ref={ref} className="relative flex h-full flex-col bg-rail">
+        <a href="#main" onClick={(e) => { e.preventDefault(); const m = document.getElementById('main'); (m?.querySelector<HTMLElement>('[role=textbox], textarea') ?? m)?.focus(); }}
+          className="fixed start-2 top-2 z-[200] -translate-y-24 rounded bg-brand px-3 py-2 text-sm font-semibold text-white focus:translate-y-0">{t('Skip to chat')}</a>
         <ConnectionBanner />
         <MobileVoiceBar />
         <div className="relative flex min-h-0 flex-1">
           {!mobile && <><ServerRail /><Sidebar /></>}
-          <main id="main" className="relative flex min-w-0 flex-1 flex-col bg-chat md:rounded-ss-lg" style={{ paddingInlineStart: 'var(--sal)', paddingInlineEnd: 'var(--sar)' }}>{main}</main>
+          <main id="main" tabIndex={-1} className="relative flex min-w-0 flex-1 flex-col bg-chat md:rounded-ss-lg" style={{ paddingInlineStart: 'var(--sal)', paddingInlineEnd: 'var(--sar)' }}>{main}</main>
           {mobile && (
             <>
               <div aria-hidden className={cx('fixed inset-0 z-40 bg-black/60 transition-opacity', left ? 'opacity-100' : 'pointer-events-none opacity-0')} onClick={() => setLeft(false)} />

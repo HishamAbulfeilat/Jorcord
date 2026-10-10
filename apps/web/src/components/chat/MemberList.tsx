@@ -1,4 +1,5 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
+import { useRovingTabindex } from '@/lib/hooks';
 import { useData } from '@/stores/data';
 import { useUI } from '@/stores/ui';
 import { api } from '@/lib/api';
@@ -32,6 +33,7 @@ function MemberRow({ m, roles, guildId, ownerId }: { m: Member; roles: Role[]; g
 }
 
 export function MemberList({ guildId }: { guildId: string }) {
+  const asideRef = useRef<HTMLElement>(null); useRovingTabindex(asideRef, 'li > button');
   const g = useData((s) => s.guilds[guildId]); const presences = useData((s) => s.presences);
   useEffect(() => {
     if (!g || g.membersLoaded || Object.keys(g.members).length >= g.memberCount) return;
@@ -41,7 +43,7 @@ export function MemberList({ guildId }: { guildId: string }) {
   if (!g) return null;
   const roles = Object.values(g.roles);
   return (
-    <aside aria-label={t('Members')} className="scroller h-full w-60 shrink-0 bg-side pb-4">
+    <aside ref={asideRef} aria-label={t('Members')} className="scroller h-full w-60 shrink-0 bg-side pb-4">
       {groups.map((gr) => (
         <section key={gr.id} aria-label={gr.name}>
           <h3 className="px-4 pb-1 pt-6 text-xs font-bold uppercase tracking-wide text-muted">{gr.id === 'online' || gr.id === 'offline' ? t(PRESENCE_LABEL[gr.id] ?? gr.name) : gr.name} — {gr.members.length}</h3>

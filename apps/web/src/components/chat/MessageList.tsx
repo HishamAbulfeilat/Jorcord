@@ -175,7 +175,7 @@ export function MessageList({ channel, lastReadSnapshot }: { channel: Channel; l
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
-      <div ref={scroller} onScroll={onScroll} className="scroller min-h-0 flex-1 overflow-x-hidden" role="log" aria-live="polite" aria-label={`Messages in ${channel.name ?? 'conversation'}`} tabIndex={0} data-testid="message-scroller">
+      <div ref={scroller} onScroll={onScroll} className="scroller min-h-0 flex-1 overflow-x-hidden" role="log" aria-live="polite" aria-relevant="additions" aria-label={`Messages in ${channel.name ?? 'conversation'}`} tabIndex={0} data-testid="message-scroller">
         <div style={{ height: virt.getTotalSize(), position: 'relative', width: '100%' }}>
           {state.loading && state.list.length > 0 && <div className="absolute inset-x-0 top-0 z-10 flex justify-center py-2"><Spinner /></div>}
           {virt.getVirtualItems().map((v) => {

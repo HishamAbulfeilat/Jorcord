@@ -33,7 +33,7 @@ function useThemeEffects() {
     r.dataset.theme = prefs.theme; r.dataset.density = prefs.density; r.dataset.reduceMotion = String(prefs.reducedMotion);
     r.style.setProperty('--font-scale', String(prefs.fontScale));
     document.querySelector('meta[name=theme-color]')?.setAttribute('content', prefs.theme === 'light' ? '#e3e5e8' : prefs.theme === 'amoled' ? '#000000' : '#1e1f22');
-    r.style.filter = prefs.highContrast ? 'contrast(1.15)' : '';
+    if (prefs.highContrast) r.dataset.contrast = 'more'; else delete r.dataset.contrast;
     syncStatusBar(prefs.theme);
   }, [prefs]);
   useEffect(() => { if (me?.theme && me.theme !== useUI.getState().prefs.theme && !localStorage.getItem('jorcord.prefs.v1')) useUI.getState().setPref('theme', me.theme); }, [me?.theme]);

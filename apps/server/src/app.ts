@@ -47,6 +47,12 @@ export async function buildApp(opts: BuildOptions = {}): Promise<{ app: FastifyI
     },
     trustProxy: config.trustProxy, bodyLimit: 1_048_576, genReqId: () => crypto.randomUUID(),
   });
+  // Bot libraries and curl always send content-type: application/json, even with no body: treat an empty body as {} (poisoned-prototype protection stays on).
+  const defaultJson = app.getDefaultJsonParser('error', 'error');
+  app.addContentTypeParser('application/json', { parseAs: 'string' }, (req, body, done) => {
+    if (typeof body === 'string' && body.trim() === '') return done(null, {});
+    defaultJson(req, body as string, done);
+  });
   const db = await createDb({ ...config, memory: opts.memoryDb });
   await migrate(db, config.migrationsDir, app.log);
   const bus = await createBus(config.redisUrl);

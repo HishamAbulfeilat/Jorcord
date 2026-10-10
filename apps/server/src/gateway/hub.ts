@@ -4,6 +4,7 @@ import type { WebSocket } from 'ws';
 import type { Ctx } from '../ctx';
 import { liveStatus } from '../services/serializers';
 import { viewersAmong, getChannelLite } from '../services/perms';
+import { eventScope, shapeForIntents } from './intents';
 
 type Envelope =
   | { kind: 'users'; ids: string[]; t: string; d: unknown }
@@ -17,6 +18,8 @@ export interface GwSession {
   id: string; userId: string; authSessionId: string; seq: number;
   buffer: { s: number; t: string; d: unknown; at: number }[];
   socket: WebSocket | null; detachedAt: number | null;
+  /** Bots: the intents bitfield given at IDENTIFY. null = unfiltered (user sessions, legacy bots). */
+  intents?: number | null;
 }
 
 /** Gateway session registry and event fan-out. Publishing goes through the EventBus so multiple nodes work. */
@@ -132,6 +135,12 @@ export class Hub {
     }
     const tset = new Set(targets);
     if ('exclude' in e && e.exclude) tset.delete(e.exclude);
-    for (const s of bySession) if (tset.has(s.userId)) this.sendTo(s, e.t, e.d);
+    const mine = bySession.filter((s) => tset.has(s.userId));
+    const scope = mine.some((s) => s.intents != null) ? await eventScope(this.ctx, e.t, e.d) : null;
+    for (const s of mine) {
+      if (s.intents == null) { this.sendTo(s, e.t, e.d); continue; }
+      const out = shapeForIntents(s, e.t, e.d, scope);
+      if (out) this.sendTo(s, e.t, out.d);
+    }
   }
 }

@@ -18,21 +18,25 @@ export function interactionRoutes(app: FastifyInstance, ctx: Ctx) {
 /** App side: the interaction token (15 minutes) is the credential. */
 export function interactionPublicRoutes(app: FastifyInstance, ctx: Ctx) {
   const tp = z.object({ id: z.string().regex(/^\d{1,20}$/), token: z.string().min(20).max(100) });
-  const load = async (params: unknown) => {
-    const p = parse(tp, params);
+  const load = async (req: { params: unknown; ip: string }) => {
+    const p = parse(tp, req.params);
+    // The id is guessable (snowflake) and the route is unauthenticated: never charge a per-interaction bucket before the token is proven,
+    // or anyone could exhaust it and stop the real app from answering inside the 3s window. Unverified calls are limited per source IP only.
+    limitOrThrow(ctx.rl, `ix-ip:${req.ip}`, 600, 60_000, ctx.config.rateLimit);
+    const row = await loadInteraction(ctx, p.id, p.token);
     limitOrThrow(ctx.rl, `ix-app:${p.id}`, 60, 60_000, ctx.config.rateLimit);
-    return loadInteraction(ctx, p.id, p.token);
+    return row;
   };
   app.post('/interactions/:id/:token/callback', async (req, reply) => {
-    const row = await load(req.params);
+    const row = await load(req);
     await applyCallback(ctx, row, req.body);
     return reply.code(204).send();
   });
-  app.post('/interactions/:id/:token/messages', async (req, reply) => reply.code(201).send(await createFollowup(ctx, await load(req.params), req.body)));
-  app.get('/interactions/:id/:token/messages/:mid', async (req) => getFollowup(ctx, await load(req.params), parse(z.object({ mid: z.union([z.literal('@original'), z.string().regex(/^\d{1,20}$/)]) }), req.params).mid));
-  app.patch('/interactions/:id/:token/messages/:mid', async (req) => editFollowup(ctx, await load(req.params), parse(z.object({ mid: z.union([z.literal('@original'), z.string().regex(/^\d{1,20}$/)]) }), req.params).mid, req.body));
+  app.post('/interactions/:id/:token/messages', async (req, reply) => reply.code(201).send(await createFollowup(ctx, await load(req), req.body)));
+  app.get('/interactions/:id/:token/messages/:mid', async (req) => getFollowup(ctx, await load(req), parse(z.object({ mid: z.union([z.literal('@original'), z.string().regex(/^\d{1,20}$/)]) }), req.params).mid));
+  app.patch('/interactions/:id/:token/messages/:mid', async (req) => editFollowup(ctx, await load(req), parse(z.object({ mid: z.union([z.literal('@original'), z.string().regex(/^\d{1,20}$/)]) }), req.params).mid, req.body));
   app.delete('/interactions/:id/:token/messages/:mid', async (req, reply) => {
-    await deleteFollowup(ctx, await load(req.params), parse(z.object({ mid: z.union([z.literal('@original'), z.string().regex(/^\d{1,20}$/)]) }), req.params).mid);
+    await deleteFollowup(ctx, await load(req), parse(z.object({ mid: z.union([z.literal('@original'), z.string().regex(/^\d{1,20}$/)]) }), req.params).mid);
     return reply.code(204).send();
   });
 }

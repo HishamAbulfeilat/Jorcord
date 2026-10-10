@@ -1,4 +1,5 @@
-import { useMemo } from 'react';
+import { useMemo, useRef } from 'react';
+import { useRovingTabindex } from '@/lib/hooks';
 import { CalendarDays, ChevronDown, ChevronRight, Hash, Megaphone, MessagesSquare, Plus, Radio, UserPlus, Volume2, Settings, X, Lock, Volume1, Video, VolumeX, MicOff } from 'lucide-react';
 import { useVoiceSnapshot } from '@jorcord/voice/react';
 import { joinVoice } from '@/voice/controller';
@@ -105,8 +106,8 @@ function ChannelRow({ c, guildId, canManage, canInvite }: { c: Channel; guildId:
           <span className={cx('truncate text-[16px] leading-5', emph ? 'font-semibold' : 'font-medium')}>{c.name}</span>
         </button>
         <span className="flex items-center gap-1 pe-2">
-          {canInvite && c.type !== 'voice' && <button aria-label={t('Create Invite')} onClick={() => open({ kind: 'invite', guildId, channelId: c.id })} className="hidden text-interactive hover:text-header group-hover:block md:group-hover:block"><UserPlus size={16} /></button>}
-          {canManage && <button aria-label={t('Edit Channel')} onClick={() => open({ kind: 'channelSettings', channelId: c.id })} className="hidden text-interactive hover:text-header group-hover:block"><Settings size={16} /></button>}
+          {canInvite && c.type !== 'voice' && <button aria-label={t('Create Invite')} onClick={() => open({ kind: 'invite', guildId, channelId: c.id })} className="hidden text-interactive hover:text-header group-hover:block group-focus-within:block"><UserPlus size={16} /></button>}
+          {canManage && <button aria-label={t('Edit Channel')} onClick={() => open({ kind: 'channelSettings', channelId: c.id })} className="hidden text-interactive hover:text-header group-hover:block group-focus-within:block"><Settings size={16} /></button>}
           {mentions > 0 && <Badge n={mentions} />}
         </span>
       </div>
@@ -127,6 +128,7 @@ function CategorySection({ cat, items, collapsed, toggle, canManage, onAdd, rend
 }
 
 export function ChannelSidebar({ guildId }: { guildId: string }) {
+  const listRef = useRef<HTMLDivElement>(null); useRovingTabindex(listRef, '[data-channel] > div > button:first-child');
   const g = useData((s) => s.guilds[guildId]?.guild);
   const channels = useData((s) => s.guilds[guildId]?.channels);
   const { uncategorized, categories } = useSidebarChannels(guildId);
@@ -165,7 +167,7 @@ export function ChannelSidebar({ guildId }: { guildId: string }) {
         <ChevronDown size={18} />
       </button>
       <EventsEntry guildId={guildId} />
-      <div className="scroller min-h-0 flex-1 pb-4 pt-2" role="navigation" aria-label={t('Channels')}>
+      <div ref={listRef} className="scroller min-h-0 flex-1 pb-4 pt-2" role="navigation" aria-label={t('Channels')}>
         <DndContext sensors={sensors} collisionDetection={collision} onDragEnd={onEnd}>
           <SortableContext items={uncategorized.map((c) => c.id)} strategy={verticalListSortingStrategy}><ul className="mb-1">{uncategorized.map(row)}</ul></SortableContext>
           <SortableContext items={categories.map(({ cat }) => CAT + cat.id)} strategy={verticalListSortingStrategy}>
@@ -190,7 +192,7 @@ function CategoryHeader({ cat, collapsed, toggle, canManage, onAdd, dragProps }:
         {collapsed ? <ChevronRight size={12} strokeWidth={3} className="rtl:rotate-180" /> : <ChevronDown size={12} strokeWidth={3} />}
         <span className="truncate text-xs font-bold uppercase tracking-wide">{cat.name}</span>
       </button>
-      {canManage && <Tip text={t('Create Channel')} side="top"><button aria-label={t('Create channel in {name}', { name: cat.name ?? '' })} onClick={onAdd} className="text-interactive hover:text-header"><Plus size={18} /></button></Tip>}
+      {canManage && <Tip text={t('Create Channel')} side="top"><button aria-label={t('Create channel in {name}', { name: cat.name ?? '' })} onClick={onAdd} className="flex h-6 w-6 items-center justify-center rounded text-interactive hover:text-header"><Plus size={18} /></button></Tip>}
     </div>
   );
 }

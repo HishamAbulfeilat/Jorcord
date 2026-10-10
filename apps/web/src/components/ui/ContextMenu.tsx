@@ -33,11 +33,24 @@ export function ContextMenuHost() {
   }, [menu, mobile]);
   useEffect(() => {
     if (!menu) return;
-    const k = (e: KeyboardEvent) => { if (e.key === 'Escape') close(); };
+    const prev = document.activeElement as HTMLElement | null;
+    const items = () => [...(ref.current?.querySelectorAll<HTMLElement>('[role=menuitem]:not([disabled])') ?? [])];
+    requestAnimationFrame(() => { if (!ref.current?.contains(document.activeElement)) items()[0]?.focus({ preventScroll: true }); });
+    const k = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { close(); return; }
+      if (e.key === 'Tab') { close(); return; }
+      const list = items(); if (!list.length || !ref.current) return;
+      const i = list.indexOf(document.activeElement as HTMLElement);
+      const go = (j: number) => { e.preventDefault(); e.stopPropagation(); list[(j + list.length) % list.length]?.focus(); };
+      const rtl = document.dir === 'rtl';
+      if (e.key === 'ArrowDown') go(i + 1); else if (e.key === 'ArrowUp') go(i < 0 ? -1 : i - 1);
+      else if (e.key === 'Home') go(0); else if (e.key === 'End') go(list.length - 1);
+      else if (e.key === (rtl ? 'ArrowLeft' : 'ArrowRight') && (document.activeElement as HTMLElement | null)?.getAttribute('aria-haspopup') === 'menu') { e.preventDefault(); (document.activeElement as HTMLElement).click(); requestAnimationFrame(() => (document.activeElement as HTMLElement | null)?.parentElement?.querySelector<HTMLElement>('[role=menuitem] ~ div [role=menuitem], div [role=menuitem]')?.focus()); }
+    };
     const c = (e: Event) => { if (!ref.current?.contains(e.target as Node)) close(); };
-    window.addEventListener('keydown', k); window.addEventListener('mousedown', c); window.addEventListener('blur', close); window.addEventListener('resize', close);
+    window.addEventListener('keydown', k, true); window.addEventListener('mousedown', c); window.addEventListener('blur', close); window.addEventListener('resize', close);
     const sc = () => close(); window.addEventListener('wheel', sc, { passive: true });
-    return () => { window.removeEventListener('keydown', k); window.removeEventListener('mousedown', c); window.removeEventListener('blur', close); window.removeEventListener('resize', close); window.removeEventListener('wheel', sc); };
+    return () => { setTimeout(() => { const ae = document.activeElement; if ((!ae || ae === document.body) && prev?.isConnected) prev.focus({ preventScroll: true }); }, 0); window.removeEventListener('keydown', k, true); window.removeEventListener('mousedown', c); window.removeEventListener('blur', close); window.removeEventListener('resize', close); window.removeEventListener('wheel', sc); };
   }, [menu, close]);
   if (!menu) return null;
   const list = (
@@ -56,7 +69,7 @@ function Item({ it, mobile, close, openedAt }: { it: MenuItem; mobile: boolean; 
   const Icon = it.icon;
   return (
     <div className="relative" onMouseEnter={() => it.children && setSub(true)} onMouseLeave={() => setSub(false)}>
-      <button role="menuitem" disabled={it.disabled} onClick={() => { if (Date.now() - openedAt < 400) return; /* finger-lift after a long press */ if (it.children) { setSub((v) => (mobile ? !v : true)); return; } close(); it.onClick?.(); }}
+      <button role="menuitem" tabIndex={-1} aria-haspopup={it.children ? 'menu' : undefined} aria-expanded={it.children ? sub : undefined} disabled={it.disabled} onClick={() => { if (Date.now() - openedAt < 400) return; /* finger-lift after a long press */ if (it.children) { setSub((v) => (mobile ? !v : true)); return; } close(); it.onClick?.(); }}
         className={cx('flex w-full items-center justify-between gap-2 rounded px-2 py-1.5 text-start font-medium disabled:opacity-40', mobile && 'min-h-[44px] text-base',
           it.danger ? 'text-danger hover:bg-danger hover:text-white' : 'text-interactive hover:bg-brand hover:text-white')}>
         <span className="flex min-w-0 items-center gap-2">{Icon && <Icon size={16} className="shrink-0" />}<span className="truncate">{it.label}</span></span>

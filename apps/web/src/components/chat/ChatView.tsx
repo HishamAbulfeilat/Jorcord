@@ -150,7 +150,7 @@ function MobileMembers({ open, close, guildId, dm }: { open: boolean; close: () 
   return (
     <>
       <div className={cx('fixed inset-0 z-40 bg-black/60 transition-opacity', open ? 'opacity-100' : 'pointer-events-none opacity-0')} onClick={close} aria-hidden />
-      <div role="dialog" aria-label={t('Members')} aria-hidden={!open} className={cx('drawer fixed inset-y-0 end-0 z-50 flex w-[85%] max-w-[320px] flex-col bg-side safe-top', open ? 'translate-x-0' : 'translate-x-full rtl:-translate-x-full')}>
+      <div role="dialog" aria-label={t('Members')} aria-hidden={!open} {...{ inert: open ? undefined : ('' as any) }} className={cx('drawer fixed inset-y-0 end-0 z-50 flex w-[85%] max-w-[320px] flex-col bg-side safe-top', open ? 'translate-x-0' : 'translate-x-full rtl:-translate-x-full')}>
         <div className="flex h-12 items-center justify-between px-4"><span className="font-bold text-header">{t('Members')}</span><button aria-label={t('Close members')} onClick={close} className="flex h-11 w-11 items-center justify-center"><X size={22} /></button></div>
         <div className="min-h-0 flex-1 [&>aside]:w-full">{guildId ? <MemberList guildId={guildId} /> : dm ? <DmMemberPanel channelId={dm} /> : null}</div>
       </div>

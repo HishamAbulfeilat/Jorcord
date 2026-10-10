@@ -4,7 +4,7 @@ export function Tip({ text, children, side = 'right' }: { text: string; children
   return (
     <span className="group/tip relative inline-flex">
       {children}
-      <span role="tooltip" className={`pointer-events-none absolute z-50 hidden whitespace-nowrap rounded bg-float px-3 py-1.5 text-sm font-semibold text-header shadow-high group-hover/tip:md:block ${pos}`}>{text}</span>
+      <span role="tooltip" className={`pointer-events-none absolute z-50 hidden whitespace-nowrap rounded bg-float px-3 py-1.5 text-sm font-semibold text-header shadow-high group-hover/tip:md:block group-focus-within/tip:md:block ${pos}`}>{text}</span>
     </span>
   );
 }

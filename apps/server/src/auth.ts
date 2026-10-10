@@ -11,7 +11,8 @@ declare module 'fastify' {
 }
 
 /** Endpoints that only make sense for human accounts (sessions, MFA, relationships, push, account deletion, app/OAuth management). */
-const BOT_BLOCKED = /^(\w+ \/api\/v1\/(auth\/|users\/@me\/(relationships|push-devices|notification-settings|export)|oauth2\/authorize|push\/)|DELETE \/api\/v1\/users\/@me\/?$|POST \/api\/v1\/(applications\/?$|interactions\/?$)|GET \/api\/v1\/applications\/?$)/;
+const BOT_BLOCKED = /^(\w+ \/api\/v1\/(auth\/|users\/@me\/(relationships|push-devices|notification-settings|export)|oauth2\/authorize|push\/)|DELETE \/api\/v1\/users\/@me\/?$|POST \/api\/v1\/(applications\/?$|interactions\/?$)|GET \/api\/v1\/applications\/?$|POST \/api\/v1\/(invites\/[^/]+|discover\/guilds\/[^/]+\/join|guilds\/?|guilds\/[^/]+\/(join|boosts))\/?$)/;
+// ^ bots enter servers only through the OAuth2 install flow (consent + managed role + MANAGE_GUILD), never by invite/discovery join, and cannot create servers or boost
 
 /** Verifies the bearer JWT and that its session is still live (so logout/revoke is immediate). */
 export function authenticate(ctx: Ctx) {

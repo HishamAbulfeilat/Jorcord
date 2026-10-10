@@ -19,6 +19,7 @@ import { DndContext, MouseSensor, TouchSensor, closestCenter, useSensor, useSens
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { CAT, applyChannelDrop, layoutOf, orderDiff } from '@/lib/channelOrder';
+import { CommandPermissions } from './CommandPermissions';
 import { WebhooksList } from './Webhooks';
 import { publicOrigin } from '@/lib/server';
 import { t, T } from '@/i18n';
@@ -31,7 +32,7 @@ export function GuildSettings({ guildId, initialTab }: { guildId: string; initia
   const items = useMemo(() => {
     const it = (id: string, label: string, icon: any, ok: boolean) => (ok ? [{ id, label: t(label), icon }] : []);
     return [
-      { title: g?.guild.name ?? 'Server', items: [...it('overview', T('Overview'), Cog, can(perms, Perm.MANAGE_GUILD)), ...it('roles', T('Roles'), Shield, can(perms, Perm.MANAGE_ROLES)), ...it('channels', T('Channels'), Hash, can(perms, Perm.MANAGE_CHANNELS)), ...it('emoji', T('Emoji'), Smile, can(perms, Perm.MANAGE_EMOJIS)), ...it('stickers', T('Stickers'), StickerIcon, can(perms, Perm.MANAGE_EMOJIS)), ...it('integrations', T('Integrations'), WebhookIcon, can(perms, Perm.MANAGE_WEBHOOKS)), ...it('boosts', T('Server Boost'), Rocket, true)] },
+      { title: g?.guild.name ?? 'Server', items: [...it('overview', T('Overview'), Cog, can(perms, Perm.MANAGE_GUILD)), ...it('roles', T('Roles'), Shield, can(perms, Perm.MANAGE_ROLES)), ...it('channels', T('Channels'), Hash, can(perms, Perm.MANAGE_CHANNELS)), ...it('emoji', T('Emoji'), Smile, can(perms, Perm.MANAGE_EMOJIS)), ...it('stickers', T('Stickers'), StickerIcon, can(perms, Perm.MANAGE_EMOJIS)), ...it('integrations', T('Integrations'), WebhookIcon, can(perms, Perm.MANAGE_WEBHOOKS)), ...it('commands', T('Command Permissions'), Bot, can(perms, Perm.MANAGE_GUILD) && can(perms, Perm.MANAGE_ROLES)), ...it('boosts', T('Server Boost'), Rocket, true)] },
       { title: t('Moderation'), items: [...it('members', T('Members'), Users, can(perms, Perm.KICK_MEMBERS) || can(perms, Perm.MANAGE_ROLES) || can(perms, Perm.MANAGE_GUILD)), ...it('invites', T('Invites'), Link2, can(perms, Perm.MANAGE_GUILD) || can(perms, Perm.CREATE_INVITE)), ...it('automod', T('AutoMod'), Bot, can(perms, Perm.MANAGE_GUILD)), ...it('audit', T('Audit Log'), ScrollText, can(perms, Perm.VIEW_AUDIT_LOG)), ...it('bans', T('Bans'), Ban, can(perms, Perm.BAN_MEMBERS))] },
       ...(isOwner ? [{ items: [{ id: 'delete', label: t('Delete Server'), icon: Trash2, danger: true }] }] : []),
     ].filter((gr) => gr.items.length);
@@ -47,6 +48,7 @@ export function GuildSettings({ guildId, initialTab }: { guildId: string; initia
       {tab === 'emoji' && <EmojiTab guildId={guildId} />}
       {tab === 'stickers' && <StickersTab guildId={guildId} />}
       {tab === 'integrations' && <IntegrationsTab guildId={guildId} />}
+      {tab === 'commands' && <CommandPermissions guildId={guildId} />}
       {tab === 'boosts' && <Boosts guildId={guildId} />}
       {tab === 'members' && <MembersTab guildId={guildId} />}
       {tab === 'invites' && <InvitesTab guildId={guildId} />}
