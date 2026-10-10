@@ -1,0 +1,222 @@
+Servers	Servidores	Serveurs	Server	Sunucular	الخوادم
+Direct Messages	Mensajes directos	Messages privés	Direktnachrichten	Doğrudan Mesajlar	الرسائل المباشرة
+Add a Server	Añadir un servidor	Ajouter un serveur	Server hinzufügen	Sunucu Ekle	إضافة خادم
+Explore servers	Explorar servidores	Explorer les serveurs	Server entdecken	Sunucuları keşfet	استكشاف الخوادم
+Explore Discoverable Servers	Explorar servidores públicos	Explorer les serveurs publics	Öffentliche Server entdecken	Keşfedilebilir sunucuları keşfet	استكشاف الخوادم العامة
+Channels	Canales	Salons	Kanäle	Kanallar	القنوات
+No channels yet.	Aún no hay canales.	Aucun salon pour l'instant.	Noch keine Kanäle.	Henüz kanal yok.	لا توجد قنوات بعد.
+Create Channel	Crear canal	Créer un salon	Kanal erstellen	Kanal Oluştur	إنشاء قناة
+Create Category	Crear categoría	Créer une catégorie	Kategorie erstellen	Kategori Oluştur	إنشاء فئة
+Create Invite	Crear invitación	Créer une invitation	Einladung erstellen	Davet Oluştur	إنشاء دعوة
+Invite People	Invitar personas	Inviter des personnes	Personen einladen	Kişileri Davet Et	دعوة أشخاص
+Edit Channel	Editar canal	Modifier le salon	Kanal bearbeiten	Kanalı Düzenle	تعديل القناة
+Mark As Read	Marcar como leído	Marquer comme lu	Als gelesen markieren	Okundu Olarak İşaretle	تحديد كمقروء
+Mute Server	Silenciar servidor	Mettre le serveur en sourdine	Server stummschalten	Sunucuyu Sessize Al	كتم الخادم
+Unmute Server	Dejar de silenciar servidor	Réactiver le serveur	Server-Stummschaltung aufheben	Sunucu Sesini Aç	إلغاء كتم الخادم
+Mute Channel	Silenciar canal	Mettre le salon en sourdine	Kanal stummschalten	Kanalı Sessize Al	كتم القناة
+Unmute Channel	Dejar de silenciar canal	Réactiver le salon	Kanal-Stummschaltung aufheben	Kanal Sesini Aç	إلغاء كتم القناة
+Notification Settings	Ajustes de notificaciones	Paramètres de notification	Benachrichtigungseinstellungen	Bildirim Ayarları	إعدادات الإشعارات
+Server Settings	Ajustes del servidor	Paramètres du serveur	Servereinstellungen	Sunucu Ayarları	إعدادات الخادم
+Leave Server	Salir del servidor	Quitter le serveur	Server verlassen	Sunucudan Ayrıl	مغادرة الخادم
+Copy Link	Copiar enlace	Copier le lien	Link kopieren	Bağlantıyı Kopyala	نسخ الرابط
+Copy Server ID	Copiar ID del servidor	Copier l'identifiant du serveur	Server-ID kopieren	Sunucu Kimliğini Kopyala	نسخ معرّف الخادم
+Copy Channel ID	Copiar ID del canal	Copier l'identifiant du salon	Kanal-ID kopieren	Kanal Kimliğini Kopyala	نسخ معرّف القناة
+Copy User ID	Copiar ID de usuario	Copier l'identifiant de l'utilisateur	Nutzer-ID kopieren	Kullanıcı Kimliğini Kopyala	نسخ معرّف المستخدم
+Copy Message Link	Copiar enlace del mensaje	Copier le lien du message	Nachrichtenlink kopieren	Mesaj Bağlantısını Kopyala	نسخ رابط الرسالة
+Copy Text	Copiar texto	Copier le texte	Text kopieren	Metni Kopyala	نسخ النص
+Move Up	Subir	Monter	Nach oben	Yukarı Taşı	نقل لأعلى
+Move Down	Bajar	Descendre	Nach unten	Aşağı Taşı	نقل لأسفل
+Folder	Carpeta	Dossier	Ordner	Klasör	مجلد
+Folder Settings	Ajustes de la carpeta	Paramètres du dossier	Ordnereinstellungen	Klasör Ayarları	إعدادات المجلد
+Folder Name	Nombre de la carpeta	Nom du dossier	Ordnername	Klasör Adı	اسم المجلد
+Folder Color	Color de la carpeta	Couleur du dossier	Ordnerfarbe	Klasör Rengi	لون المجلد
+Ungroup Servers	Desagrupar servidores	Dissocier les serveurs	Server trennen	Sunucuları Ayır	فصل الخوادم
+Create Folder	Crear carpeta	Créer un dossier	Ordner erstellen	Klasör Oluştur	إنشاء مجلد
+Remove From Folder	Quitar de la carpeta	Retirer du dossier	Aus Ordner entfernen	Klasörden Çıkar	إزالة من المجلد
+Move To Folder	Mover a carpeta	Déplacer vers un dossier	In Ordner verschieben	Klasöre Taşı	نقل إلى مجلد
+Friends	Amigos	Amis	Freunde	Arkadaşlar	الأصدقاء
+Online	En línea	En ligne	Online	Çevrimiçi	متصل
+Offline	Desconectado	Hors ligne	Offline	Çevrimdışı	غير متصل
+Idle	Ausente	Inactif	Abwesend	Boşta	خامل
+Do Not Disturb	No molestar	Ne pas déranger	Bitte nicht stören	Rahatsız Etmeyin	عدم الإزعاج
+Invisible	Invisible	Invisible	Unsichtbar	Görünmez	غير مرئي
+All	Todos	Tous	Alle	Tümü	الكل
+Pending	Pendientes	En attente	Ausstehend	Bekleyen	قيد الانتظار
+Blocked	Bloqueados	Bloqués	Blockiert	Engellenen	المحظورون
+Add Friend	Añadir amigo	Ajouter un ami	Freund hinzufügen	Arkadaş Ekle	إضافة صديق
+Send Friend Request	Enviar solicitud de amistad	Envoyer une demande d'ami	Freundschaftsanfrage senden	Arkadaşlık İsteği Gönder	إرسال طلب صداقة
+Message	Mensaje	Message	Nachricht	Mesaj	رسالة
+Search	Buscar	Rechercher	Suchen	Ara	بحث
+Members	Miembros	Membres	Mitglieder	Üyeler	الأعضاء
+Member List	Lista de miembros	Liste des membres	Mitgliederliste	Üye Listesi	قائمة الأعضاء
+Pinned Messages	Mensajes fijados	Messages épinglés	Angeheftete Nachrichten	Sabitlenmiş Mesajlar	الرسائل المثبتة
+Pinned	Fijado	Épinglé	Angeheftet	Sabitlendi	مثبّتة
+Unpin	Desfijar	Désépingler	Lösen	Sabitlemeyi Kaldır	إلغاء التثبيت
+Threads	Hilos	Fils	Threads	Konular	سلاسل الرسائل
+Search Results	Resultados de búsqueda	Résultats de recherche	Suchergebnisse	Arama Sonuçları	نتائج البحث
+Reply	Responder	Répondre	Antworten	Yanıtla	رد
+Edit Message	Editar mensaje	Modifier le message	Nachricht bearbeiten	Mesajı Düzenle	تعديل الرسالة
+Delete Message	Eliminar mensaje	Supprimer le message	Nachricht löschen	Mesajı Sil	حذف الرسالة
+Add Reaction	Añadir reacción	Ajouter une réaction	Reaktion hinzufügen	Tepki Ekle	إضافة تفاعل
+Mark Unread	Marcar como no leído	Marquer comme non lu	Als ungelesen markieren	Okunmadı Olarak İşaretle	تحديد كغير مقروء
+Mute	Silenciar	Muet	Stummschalten	Sessize Al	كتم
+Unmute	Activar sonido	Réactiver	Stummschaltung aufheben	Sesi Aç	إلغاء الكتم
+Deafen	Ensordecer	Mettre en sourdine le casque	Taubschalten	Sağırlaştır	كتم السماعة
+Undeafen	Dejar de ensordecer	Réactiver le casque	Taubschaltung aufheben	Sağırlaştırmayı Kaldır	إلغاء كتم السماعة
+Disconnect	Desconectar	Se déconnecter	Trennen	Bağlantıyı Kes	قطع الاتصال
+Go Live	Ir en directo	Passer en direct	Live gehen	Canlı Yayına Geç	بدء البث
+Live	En directo	En direct	Live	Canlı	مباشر
+Voice Settings	Ajustes de voz	Paramètres vocaux	Spracheinstellungen	Ses Ayarları	إعدادات الصوت
+Stop Streaming	Detener la transmisión	Arrêter le stream	Stream beenden	Yayını Durdur	إيقاف البث
+User Settings	Ajustes de usuario	Paramètres utilisateur	Benutzereinstellungen	Kullanıcı Ayarları	إعدادات المستخدم
+App Settings	Ajustes de la aplicación	Paramètres de l'application	App-Einstellungen	Uygulama Ayarları	إعدادات التطبيق
+My Account	Mi cuenta	Mon compte	Mein Konto	Hesabım	حسابي
+Profile	Perfil	Profil	Profil	Profil	الملف الشخصي
+Security & Devices	Seguridad y dispositivos	Sécurité et appareils	Sicherheit & Geräte	Güvenlik ve Cihazlar	الأمان والأجهزة
+Appearance	Apariencia	Apparence	Darstellung	Görünüm	المظهر
+Accessibility	Accesibilidad	Accessibilité	Barrierefreiheit	Erişilebilirlik	إمكانية الوصول
+Voice & Video	Voz y vídeo	Voix et vidéo	Sprache & Video	Ses ve Görüntü	الصوت والفيديو
+Notifications	Notificaciones	Notifications	Benachrichtigungen	Bildirimler	الإشعارات
+Keybinds	Atajos de teclado	Raccourcis clavier	Tastenkürzel	Tuş Atamaları	اختصارات لوحة المفاتيح
+Language	Idioma	Langue	Sprache	Dil	اللغة
+Streamer Mode	Modo streamer	Mode streamer	Streamer-Modus	Yayıncı Modu	وضع البث
+Desktop App	Aplicación de escritorio	Application de bureau	Desktop-App	Masaüstü Uygulaması	تطبيق سطح المكتب
+Log Out	Cerrar sesión	Se déconnecter	Abmelden	Çıkış Yap	تسجيل الخروج
+Log In	Iniciar sesión	Se connecter	Anmelden	Giriş Yap	تسجيل الدخول
+Register	Registrarse	S'inscrire	Registrieren	Kayıt Ol	إنشاء حساب
+Welcome back!	¡Te damos la bienvenida!	Content de vous revoir !	Willkommen zurück!	Tekrar hoş geldin!	مرحبًا بعودتك!
+Create an account	Crear una cuenta	Créer un compte	Konto erstellen	Hesap oluştur	إنشاء حساب
+Email	Correo electrónico	E-mail	E-Mail	E-posta	البريد الإلكتروني
+Password	Contraseña	Mot de passe	Passwort	Şifre	كلمة المرور
+Username	Nombre de usuario	Nom d'utilisateur	Benutzername	Kullanıcı Adı	اسم المستخدم
+Display Name	Nombre para mostrar	Nom d'affichage	Anzeigename	Görünen Ad	الاسم المعروض
+Continue	Continuar	Continuer	Weiter	Devam	متابعة
+Forgot your password?	¿Olvidaste tu contraseña?	Mot de passe oublié ?	Passwort vergessen?	Şifreni mi unuttun?	هل نسيت كلمة المرور؟
+Need an account?	¿Necesitas una cuenta?	Besoin d'un compte ?	Brauchst du ein Konto?	Hesaba mı ihtiyacın var?	تحتاج إلى حساب؟
+Already have an account?	¿Ya tienes una cuenta?	Vous avez déjà un compte ?	Du hast schon ein Konto?	Zaten hesabın var mı?	لديك حساب بالفعل؟
+Connect to a server	Conectar a un servidor	Se connecter à un serveur	Mit einem Server verbinden	Bir sunucuya bağlan	الاتصال بخادم
+Server address	Dirección del servidor	Adresse du serveur	Serveradresse	Sunucu adresi	عنوان الخادم
+Connect	Conectar	Connecter	Verbinden	Bağlan	اتصال
+Change server	Cambiar de servidor	Changer de serveur	Server wechseln	Sunucuyu değiştir	تغيير الخادم
+Server	Servidor	Serveur	Server	Sunucu	الخادم
+Cancel	Cancelar	Annuler	Abbrechen	İptal	إلغاء
+Save	Guardar	Enregistrer	Speichern	Kaydet	حفظ
+Save Changes	Guardar cambios	Enregistrer les modifications	Änderungen speichern	Değişiklikleri Kaydet	حفظ التغييرات
+Reset	Restablecer	Réinitialiser	Zurücksetzen	Sıfırla	إعادة تعيين
+Done	Hecho	Terminé	Fertig	Bitti	تم
+Close	Cerrar	Fermer	Schließen	Kapat	إغلاق
+Back	Atrás	Retour	Zurück	Geri	رجوع
+Next	Siguiente	Suivant	Weiter	İleri	التالي
+Edit	Editar	Modifier	Bearbeiten	Düzenle	تعديل
+Delete	Eliminar	Supprimer	Löschen	Sil	حذف
+Remove	Quitar	Retirer	Entfernen	Kaldır	إزالة
+Create	Crear	Créer	Erstellen	Oluştur	إنشاء
+Join	Unirse	Rejoindre	Beitreten	Katıl	انضمام
+Open	Abrir	Ouvrir	Öffnen	Aç	فتح
+Retry	Reintentar	Réessayer	Erneut versuchen	Yeniden dene	إعادة المحاولة
+Upload	Subir	Téléverser	Hochladen	Yükle	رفع
+Name	Nombre	Nom	Name	Ad	الاسم
+Clear	Borrar	Effacer	Löschen	Temizle	مسح
+Confirm	Confirmar	Confirmer	Bestätigen	Onayla	تأكيد
+Roles	Roles	Rôles	Rollen	Roller	الأدوار
+Overview	Resumen	Vue d'ensemble	Übersicht	Genel Bakış	نظرة عامة
+Emoji	Emojis	Émojis	Emojis	Emojiler	الرموز التعبيرية
+Stickers	Pegatinas	Autocollants	Sticker	Çıkartmalar	الملصقات
+Integrations	Integraciones	Intégrations	Integrationen	Entegrasyonlar	التكاملات
+Invites	Invitaciones	Invitations	Einladungen	Davetler	الدعوات
+Bans	Bloqueos	Bannissements	Sperren	Yasaklamalar	الحظر
+Audit Log	Registro de auditoría	Journal d'audit	Audit-Protokoll	Denetim Kaydı	سجل التدقيق
+Moderation	Moderación	Modération	Moderation	Moderasyon	الإشراف
+Delete Server	Eliminar servidor	Supprimer le serveur	Server löschen	Sunucuyu Sil	حذف الخادم
+Server Boost	Mejora del servidor	Boost du serveur	Server-Boost	Sunucu Takviyesi	تعزيز الخادم
+Rules Channel	Canal de reglas	Salon des règles	Regelkanal	Kurallar Kanalı	قناة القواعد
+Enable Discovery	Activar descubrimiento	Activer la découverte	Entdecken aktivieren	Keşfi Etkinleştir	تفعيل الاكتشاف
+Discover	Descubrir	Découvrir	Entdecken	Keşfet	اكتشف
+Featured communities	Comunidades destacadas	Communautés à la une	Empfohlene Communities	Öne çıkan topluluklar	مجتمعات مميزة
+Search results	Resultados de búsqueda	Résultats de recherche	Suchergebnisse	Arama sonuçları	نتائج البحث
+Explore communities	Explorar comunidades	Explorer les communautés	Communities entdecken	Toplulukları keşfet	استكشاف المجتمعات
+Find your community on Jorcord	Encuentra tu comunidad en Jorcord	Trouvez votre communauté sur Jorcord	Finde deine Community auf Jorcord	Jorcord'da topluluğunu bul	اعثر على مجتمعك في Jorcord
+Welcome to {name}	Te damos la bienvenida a {name}	Bienvenue sur {name}	Willkommen bei {name}	{name} sunucusuna hoş geldin	مرحبًا بك في {name}
+Review the rules	Revisa las reglas	Consultez les règles	Regeln lesen	Kuralları gözden geçir	راجع القواعد
+I have read and agree to the rules	He leído y acepto las reglas	J'ai lu et j'accepte les règles	Ich habe die Regeln gelesen und stimme zu	Kuralları okudum ve kabul ediyorum	لقد قرأت القواعد وأوافق عليها
+Complete	Completar	Terminer	Abschließen	Tamamla	إكمال
+Get Started	Empezar	Commencer	Los geht's	Başla	ابدأ
+Maybe later	Quizá más tarde	Peut-être plus tard	Vielleicht später	Belki sonra	ربما لاحقًا
+Start here	Empieza aquí	Commencez ici	Starte hier	Buradan başla	ابدأ من هنا
+Set Custom Status	Establecer estado personalizado	Définir un statut personnalisé	Eigenen Status setzen	Özel Durum Ayarla	تعيين حالة مخصصة
+Edit Custom Status	Editar estado personalizado	Modifier le statut personnalisé	Eigenen Status bearbeiten	Özel Durumu Düzenle	تعديل الحالة المخصصة
+Clear Custom Status	Borrar estado personalizado	Effacer le statut personnalisé	Eigenen Status löschen	Özel Durumu Temizle	مسح الحالة المخصصة
+Set a custom status	Establece un estado personalizado	Définir un statut personnalisé	Eigenen Status festlegen	Özel bir durum belirle	تعيين حالة مخصصة
+Clear after	Borrar después de	Effacer après	Löschen nach	Şu süre sonra temizle	مسح بعد
+Don't clear	No borrar	Ne pas effacer	Nicht löschen	Temizleme	عدم المسح
+Today	Hoy	Aujourd'hui	Heute	Bugün	اليوم
+Keyboard Shortcuts	Atajos de teclado	Raccourcis clavier	Tastenkürzel	Klavye Kısayolları	اختصارات لوحة المفاتيح
+Navigation	Navegación	Navigation	Navigation	Gezinme	التنقل
+Messaging	Mensajería	Messagerie	Nachrichten	Mesajlaşma	المراسلة
+Voice	Voz	Voix	Sprache	Ses	الصوت
+Text formatting	Formato de texto	Mise en forme du texte	Textformatierung	Metin biçimlendirme	تنسيق النص
+Search shortcuts	Buscar atajos	Rechercher des raccourcis	Kürzel suchen	Kısayol ara	ابحث في الاختصارات
+Customize keybinds	Personalizar atajos	Personnaliser les raccourcis	Kürzel anpassen	Tuş atamalarını özelleştir	تخصيص الاختصارات
+Quick switcher	Selector rápido	Sélecteur rapide	Schnellwechsler	Hızlı geçiş	المبدّل السريع
+Send message	Enviar mensaje	Envoyer le message	Nachricht senden	Mesaj gönder	إرسال الرسالة
+Push Notifications	Notificaciones push	Notifications push	Push-Benachrichtigungen	Anlık Bildirimler	الإشعارات الفورية
+Push on this device	Push en este dispositivo	Push sur cet appareil	Push auf diesem Gerät	Bu cihazda anlık bildirim	الإشعارات الفورية على هذا الجهاز
+Registered devices	Dispositivos registrados	Appareils enregistrés	Registrierte Geräte	Kayıtlı cihazlar	الأجهزة المسجلة
+Receive push notifications	Recibir notificaciones push	Recevoir les notifications push	Push-Benachrichtigungen erhalten	Anlık bildirim al	تلقي الإشعارات الفورية
+Enable Desktop Notifications	Activar notificaciones de escritorio	Activer les notifications de bureau	Desktop-Benachrichtigungen aktivieren	Masaüstü Bildirimlerini Etkinleştir	تفعيل إشعارات سطح المكتب
+Message Sounds	Sonidos de mensajes	Sons des messages	Nachrichtentöne	Mesaj Sesleri	أصوات الرسائل
+All Messages	Todos los mensajes	Tous les messages	Alle Nachrichten	Tüm Mesajlar	كل الرسائل
+Only @mentions	Solo @menciones	@mentions uniquement	Nur @Erwähnungen	Yalnızca @bahsetmeler	الإشارات @ فقط
+Nothing	Nada	Rien	Nichts	Hiçbir şey	لا شيء
+Use my default	Usar mi valor predeterminado	Utiliser mon réglage par défaut	Meinen Standard verwenden	Varsayılanımı kullan	استخدام الإعداد الافتراضي
+Muted	Silenciado	En sourdine	Stummgeschaltet	Sessize alındı	مكتوم
+Mute duration	Duración del silencio	Durée de la sourdine	Dauer der Stummschaltung	Sessize alma süresi	مدة الكتم
+Until I turn it back on	Hasta que lo reactive	Jusqu'à ce que je le réactive	Bis ich es wieder einschalte	Tekrar açana kadar	حتى أعيد تشغيله
+For 15 Minutes	Durante 15 minutos	Pendant 15 minutes	15 Minuten lang	15 Dakika	لمدة 15 دقيقة
+For 1 Hour	Durante 1 hora	Pendant 1 heure	1 Stunde lang	1 Saat	لمدة ساعة
+For 3 Hours	Durante 3 horas	Pendant 3 heures	3 Stunden lang	3 Saat	لمدة 3 ساعات
+For 8 Hours	Durante 8 horas	Pendant 8 heures	8 Stunden lang	8 Saat	لمدة 8 ساعات
+For 24 Hours	Durante 24 horas	Pendant 24 heures	24 Stunden lang	24 Saat	لمدة 24 ساعة
+Enable Streamer Mode	Activar modo streamer	Activer le mode streamer	Streamer-Modus aktivieren	Yayıncı Modunu Etkinleştir	تفعيل وضع البث
+Hide personal information	Ocultar información personal	Masquer les informations personnelles	Persönliche Informationen ausblenden	Kişisel bilgileri gizle	إخفاء المعلومات الشخصية
+Hide invite links	Ocultar enlaces de invitación	Masquer les liens d'invitation	Einladungslinks ausblenden	Davet bağlantılarını gizle	إخفاء روابط الدعوة
+Disable sounds	Desactivar sonidos	Désactiver les sons	Töne deaktivieren	Sesleri kapat	تعطيل الأصوات
+Disable notifications	Desactivar notificaciones	Désactiver les notifications	Benachrichtigungen deaktivieren	Bildirimleri kapat	تعطيل الإشعارات
+Streamer Mode is on	El modo streamer está activado	Le mode streamer est activé	Streamer-Modus ist aktiv	Yayıncı Modu açık	وضع البث قيد التشغيل
+Launch at login	Iniciar al arrancar el sistema	Lancer à la connexion	Beim Anmelden starten	Oturum açıldığında başlat	التشغيل عند تسجيل الدخول
+Check for updates	Buscar actualizaciones	Rechercher des mises à jour	Nach Updates suchen	Güncellemeleri denetle	التحقق من وجود تحديثات
+Dark	Oscuro	Sombre	Dunkel	Koyu	داكن
+Light	Claro	Clair	Hell	Açık	فاتح
+Theme	Tema	Thème	Design	Tema	السمة
+Profile Theme	Tema del perfil	Thème du profil	Profildesign	Profil Teması	سمة الملف الشخصي
+Banner	Banner	Bannière	Banner	Afiş	الشعار
+Avatar	Avatar	Avatar	Avatar	Avatar	الصورة الرمزية
+About Me	Sobre mí	À propos de moi	Über mich	Hakkımda	نبذة عني
+Pronouns	Pronombres	Pronoms	Pronomen	Zamirler	الضمائر
+Edit Profile	Editar perfil	Modifier le profil	Profil bearbeiten	Profili Düzenle	تعديل الملف الشخصي
+Role Icon	Icono del rol	Icône du rôle	Rollensymbol	Rol Simgesi	أيقونة الدور
+Webhook name	Nombre del webhook	Nom du webhook	Webhook-Name	Webhook adı	اسم الويب هوك
+New Webhook	Nuevo webhook	Nouveau webhook	Neuer Webhook	Yeni Webhook	ويب هوك جديد
+Copy URL	Copiar URL	Copier l'URL	URL kopieren	URL'yi Kopyala	نسخ الرابط
+New Category	Nueva categoría	Nouvelle catégorie	Neue Kategorie	Yeni Kategori	فئة جديدة
+New Channel	Nuevo canal	Nouveau salon	Neuer Kanal	Yeni Kanal	قناة جديدة
+Join a Server	Unirse a un servidor	Rejoindre un serveur	Server beitreten	Bir Sunucuya Katıl	الانضمام إلى خادم
+Create Your Server	Crea tu servidor	Créez votre serveur	Erstelle deinen Server	Sunucunu Oluştur	أنشئ خادمك
+Server Name	Nombre del servidor	Nom du serveur	Servername	Sunucu Adı	اسم الخادم
+Find or start a conversation	Buscar o iniciar una conversación	Trouver ou commencer une conversation	Unterhaltung suchen oder beginnen	Sohbet bul veya başlat	ابحث عن محادثة أو ابدأها
+Where would you like to go?	¿A dónde quieres ir?	Où voulez-vous aller ?	Wohin möchtest du?	Nereye gitmek istersin?	إلى أين تريد الذهاب؟
+No conversations yet. Find a friend and say hi.	Aún no hay conversaciones. Busca a un amigo y saluda.	Aucune conversation. Trouvez un ami et dites bonjour.	Noch keine Unterhaltungen. Finde einen Freund und sag Hallo.	Henüz sohbet yok. Bir arkadaş bul ve merhaba de.	لا توجد محادثات بعد. ابحث عن صديق وقل مرحبًا.
+Loading…	Cargando…	Chargement…	Wird geladen…	Yükleniyor…	جارٍ التحميل…
+Connecting…	Conectando…	Connexion…	Verbinden…	Bağlanıyor…	جارٍ الاتصال…
+Reconnecting…	Reconectando…	Reconnexion…	Verbindung wird wiederhergestellt…	Yeniden bağlanıyor…	جارٍ إعادة الاتصال…
+Open navigation	Abrir navegación	Ouvrir la navigation	Navigation öffnen	Gezinmeyi aç	فتح التنقل
+Set status	Establecer estado	Définir le statut	Status festlegen	Durum ayarla	تعيين الحالة
+Status	Estado	Statut	Status	Durum	الحالة
+Custom Status	Estado personalizado	Statut personnalisé	Eigener Status	Özel Durum	الحالة المخصصة
+Accept	Aceptar	Accepter	Annehmen	Kabul Et	قبول
+Ignore	Ignorar	Ignorer	Ignorieren	Yoksay	تجاهل
+Block	Bloquear	Bloquer	Blockieren	Engelle	حظر
+Unblock	Desbloquear	Débloquer	Blockierung aufheben	Engeli Kaldır	إلغاء الحظر
+Kick	Expulsar	Expulser	Kicken	At	طرد
+Ban	Vetar	Bannir	Bannen	Yasakla	حظر
+Typing…	Escribiendo…	En train d'écrire…	Schreibt…	Yazıyor…	يكتب…
