@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { LIMITS, Perm, snowflake } from '@jorcord/shared';
+import { LIMITS, Perm, SERVER_TAG_RE, TAG_BADGE_IDS, snowflake } from '@jorcord/shared';
+import { syncGuildTag } from '../services/cosmetics';
 import type { Ctx } from '../ctx';
 import { ApiError, badRequest, conflict, forbidden, notFound } from '../errors';
 import { assetUrl, idSchema, iso, limitParam, parse } from '../lib/ids';
@@ -15,6 +16,7 @@ const patchGuild = z.object({
   name: z.string().trim().min(2).max(100), icon: assetUrl.nullable(), banner: assetUrl.nullable(), description: z.string().max(1000).nullable(),
   systemChannelId: idSchema.nullable(), rulesChannelId: idSchema.nullable(), discoverable: z.boolean(), memberScreening: z.boolean(),
   vanityUrl: z.string().regex(/^[a-z0-9-]{3,32}$/).nullable(),
+  tag: z.string().regex(SERVER_TAG_RE, 'tag must be 3-4 letters or digits').nullable(), tagBadge: z.enum(TAG_BADGE_IDS).nullable(),
 }).partial().strict();
 
 export async function getGuildDTO(ctx: Ctx, id: string) {
@@ -59,7 +61,7 @@ export function guildRoutes(app: FastifyInstance, ctx: Ctx) {
       const v = b[k];
       if (v) { const [c] = await ctx.db.query(`SELECT 1 AS x FROM channels WHERE id = $1 AND guild_id = $2 AND type IN ('text','announcement')`, [v, id]); if (!c) throw badRequest(`${k} must be a text channel of this guild`); }
     }
-    const col: Record<string, string> = { name: 'name', icon: 'icon', banner: 'banner', description: 'description', systemChannelId: 'system_channel_id', rulesChannelId: 'rules_channel_id', vanityUrl: 'vanity_url' };
+    const col: Record<string, string> = { name: 'name', icon: 'icon', banner: 'banner', description: 'description', systemChannelId: 'system_channel_id', rulesChannelId: 'rules_channel_id', vanityUrl: 'vanity_url', tag: 'tag', tagBadge: 'tag_badge' };
     const sets: string[] = [], vals: unknown[] = [id];
     for (const [k, v] of Object.entries(b)) { if (!col[k]) continue; vals.push(v); sets.push(`${col[k]} = $${vals.length}`); }
     if (b.discoverable !== undefined || b.memberScreening !== undefined) {
@@ -75,6 +77,7 @@ export function guildRoutes(app: FastifyInstance, ctx: Ctx) {
     try { if (sets.length) await ctx.db.query(`UPDATE guilds SET ${sets.join(', ')} WHERE id = $1`, vals); }
     catch (e: any) { if (e?.code === '23505' || /unique|duplicate/i.test(String(e?.message))) throw conflict('Vanity URL taken'); throw e; }
     await audit(ctx, id, req.userId, 'GUILD_UPDATE', id, b);
+    if (b.tag !== undefined || b.tagBadge !== undefined) await syncGuildTag(ctx, id);
     const dto = (await getGuildDTO(ctx, id))!;
     await ctx.hub.toGuild(id, 'GUILD_UPDATE', dto);
     return dto;
@@ -85,6 +88,7 @@ export function guildRoutes(app: FastifyInstance, ctx: Ctx) {
     const gp = await guildAccess(ctx, req.userId, id);
     if (!gp.isOwner) throw forbidden('Only the owner can delete a guild');
     const members = (await ctx.db.query('SELECT user_id FROM members WHERE guild_id = $1', [id])).map((r) => r.user_id as string);
+    await ctx.db.query(`UPDATE users SET server_tag = NULL WHERE server_tag->>'guildId' = $1`, [id]);
     await ctx.db.tx(async (q) => {
       await q.query('DELETE FROM messages WHERE guild_id = $1', [id]);
       await q.query('DELETE FROM guilds WHERE id = $1', [id]);

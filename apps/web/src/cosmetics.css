@@ -1,0 +1,33 @@
+/* Free cosmetics catalog: original CSS art (ids match AVATAR_DECORATIONS / PROFILE_EFFECTS / NAME_PLATES in @jorcord/shared). */
+.deco { position: absolute; inset: -13%; border-radius: 9999px; pointer-events: none; z-index: 1; --w: 4px;
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - var(--w) - 1px), #000 calc(100% - var(--w))); mask: radial-gradient(farthest-side, transparent calc(100% - var(--w) - 1px), #000 calc(100% - var(--w))); }
+@keyframes deco-spin { to { transform: rotate(360deg); } }
+@keyframes deco-pulse { 0%, 100% { opacity: .75; } 50% { opacity: 1; } }
+.deco-aurora { background: conic-gradient(#5865f2, #57f287, #00b0f4, #eb459e, #5865f2); animation: deco-spin 6s linear infinite; }
+.deco-sunset { background: conic-gradient(#ff7a18, #af002d, #ffd452, #ff7a18); animation: deco-spin 9s linear infinite; }
+.deco-neon { background: conic-gradient(#ff2bd6, #00f0ff, #ff2bd6); filter: drop-shadow(0 0 3px #ff2bd6); animation: deco-pulse 1.6s ease-in-out infinite; }
+.deco-frost { background: conic-gradient(#e6f8ff, #7ec8ff, #ffffff, #7ec8ff, #e6f8ff); animation: deco-spin 14s linear infinite; }
+.deco-ember { background: conic-gradient(#ff4d00, #ffb300, #ff4d00, #b30000, #ff4d00); filter: drop-shadow(0 0 3px #ff6a00); animation: deco-pulse .9s ease-in-out infinite; }
+.deco-wreath { background: repeating-conic-gradient(#2e8b57 0 11deg, #8be37a 11deg 22deg); }
+.deco-halo { background: repeating-conic-gradient(#ffd24a 0 7deg, transparent 7deg 30deg); animation: deco-spin 20s linear infinite; }
+.deco-pixel { -webkit-mask: none; mask: none; border: var(--w) dashed #ffcf33; border-radius: 22%; box-shadow: 0 0 0 1px #00000040; }
+
+.fx { position: absolute; inset: 0; pointer-events: none; overflow: hidden; border-radius: inherit; }
+@keyframes fx-fall { to { background-position: 0 120px; } }
+@keyframes fx-rise { to { background-position: 0 -120px; } }
+@keyframes fx-twinkle { 0%, 100% { opacity: .15; } 50% { opacity: 1; } }
+@keyframes fx-drift { to { background-position: 60px -40px; } }
+.fx-sparkles { background-image: radial-gradient(2px 2px at 20px 30px, #fff, transparent), radial-gradient(2px 2px at 90px 70px, #ffe27a, transparent), radial-gradient(3px 3px at 150px 25px, #fff, transparent), radial-gradient(2px 2px at 60px 100px, #bfe8ff, transparent); background-size: 180px 120px; animation: fx-twinkle 2.4s ease-in-out infinite; }
+.fx-snowfall { background-image: radial-gradient(2px 2px at 20px 30px, #fff, transparent), radial-gradient(3px 3px at 80px 70px, #fff, transparent), radial-gradient(2px 2px at 140px 20px, #fff, transparent), radial-gradient(2px 2px at 110px 100px, #fff, transparent); background-size: 160px 120px; animation: fx-fall 7s linear infinite; }
+.fx-confetti { background-image: radial-gradient(3px 3px at 20px 20px, #ff5d73, transparent), radial-gradient(3px 3px at 70px 60px, #ffd24a, transparent), radial-gradient(3px 3px at 120px 30px, #4de1c1, transparent), radial-gradient(3px 3px at 150px 90px, #7b8cff, transparent); background-size: 170px 120px; animation: fx-fall 4s linear infinite; }
+.fx-rain { background-image: linear-gradient(180deg, transparent, #9fd3ff99), linear-gradient(180deg, transparent, #9fd3ff66); background-size: 1px 14px, 1px 10px; background-position: 0 0, 0 0; background-repeat: repeat; mask: repeating-linear-gradient(90deg, transparent 0 18px, #000 18px 19px, transparent 19px 41px); -webkit-mask: repeating-linear-gradient(90deg, transparent 0 18px, #000 18px 19px, transparent 19px 41px); animation: fx-fall 0.9s linear infinite; }
+.fx-fireflies { background-image: radial-gradient(3px 3px at 30px 40px, #f6ff7a, transparent), radial-gradient(2px 2px at 110px 80px, #d7ff6a, transparent), radial-gradient(3px 3px at 160px 30px, #f6ff7a, transparent); background-size: 190px 120px; filter: drop-shadow(0 0 3px #f6ff7a); animation: fx-twinkle 3s ease-in-out infinite, fx-drift 14s linear infinite; }
+.fx-bubbles { background-image: radial-gradient(circle 7px at 30px 90px, transparent 5px, #ffffff80 6px, transparent 7px), radial-gradient(circle 5px at 100px 50px, transparent 3px, #ffffff80 4px, transparent 5px), radial-gradient(circle 9px at 150px 100px, transparent 7px, #ffffff66 8px, transparent 9px); background-size: 180px 120px; animation: fx-rise 8s linear infinite; }
+
+.plate { border-radius: 8px; }
+.plate-sunrise { background: linear-gradient(90deg, #ff9a5a55, #ff5f7a44 70%, transparent); }
+.plate-ocean { background: linear-gradient(90deg, #1fb6ff55, #2f6bff44 70%, transparent); }
+.plate-forest { background: linear-gradient(90deg, #3ddc8455, #1f8f5c44 70%, transparent); }
+.plate-nebula { background: linear-gradient(90deg, #b06bff55, #ff5fd244 70%, transparent); }
+.plate-gold { background: linear-gradient(90deg, #ffd86a66, #c9962b44 70%, transparent); }
+.plate-mono { background: linear-gradient(90deg, #ffffff22, #ffffff0d 70%, transparent); }

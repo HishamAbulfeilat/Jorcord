@@ -1,7 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { Relationship } from '@jorcord/shared';
-import { snowflake } from '@jorcord/shared';
+import { AVATAR_DECORATION_IDS, NAME_PLATE_IDS, PROFILE_EFFECT_IDS, snowflake } from '@jorcord/shared';
+import { clearServerTag, setServerTag } from '../services/cosmetics';
 import type { Ctx } from '../ctx';
 import { ApiError, badRequest, forbidden, notFound } from '../errors';
 import { assetUrl, idSchema, iso, parse } from '../lib/ids';
@@ -22,6 +23,8 @@ const patchMe = z.object({
     .refine((v) => !v?.expiresAt || (Date.parse(v.expiresAt) > Date.now() && Date.parse(v.expiresAt) < Date.now() + 366 * 86400_000), 'expiresAt must be in the future (within a year)'),
   themeColors: z.tuple([z.string().regex(/^#[0-9a-fA-F]{6}$/), z.string().regex(/^#[0-9a-fA-F]{6}$/)]).nullable(),
   theme: z.enum(['dark', 'light', 'amoled']),
+  avatarDecoration: z.enum(AVATAR_DECORATION_IDS).nullable(), profileEffect: z.enum(PROFILE_EFFECT_IDS).nullable(), namePlate: z.enum(NAME_PLATE_IDS).nullable(),
+  serverTagGuildId: idSchema.nullable(),
   settings: z.record(z.unknown()).refine((v) => JSON.stringify(v).length <= 16_384, 'settings too large'),
   privacy: z.object({
     allowDmsFromServerMembers: z.boolean(), messageRequests: z.boolean(), showActivity: z.boolean(),
@@ -29,7 +32,7 @@ const patchMe = z.object({
   }).partial().strict(),
 }).partial().strict();
 
-const COLS: Record<string, string> = { displayName: 'display_name', bio: 'bio', pronouns: 'pronouns', avatar: 'avatar', banner: 'banner', accentColor: 'accent_color', customStatus: 'custom_status', themeColors: 'theme_colors', theme: 'theme', settings: 'settings' };
+const COLS: Record<string, string> = { displayName: 'display_name', bio: 'bio', pronouns: 'pronouns', avatar: 'avatar', banner: 'banner', accentColor: 'accent_color', customStatus: 'custom_status', themeColors: 'theme_colors', theme: 'theme', settings: 'settings', avatarDecoration: 'avatar_decoration', profileEffect: 'profile_effect', namePlate: 'name_plate' };
 
 export async function relationshipDTOs(ctx: Ctx, userId: string): Promise<Relationship[]> {
   const rows = await ctx.db.query('SELECT other_id, type FROM relationships WHERE user_id = $1 ORDER BY created_at', [userId]);
@@ -57,6 +60,7 @@ export function userRoutes(app: FastifyInstance, ctx: Ctx) {
       const next = normalizePrivacy({ ...cur, ...inc, friendRequests: { ...cur.friendRequests, ...(inc.friendRequests ?? {}) } });
       vals.push(JSON.stringify(next)); sets.push(`privacy = $${vals.length}::jsonb`);
     }
+    if (b.serverTagGuildId !== undefined) await setServerTag(ctx, req.userId, b.serverTagGuildId as string | null);
     if (sets.length) await ctx.db.query(`UPDATE users SET ${sets.join(', ')} WHERE id = $1`, vals);
     const [row] = await ctx.db.query('SELECT * FROM users WHERE id = $1', [req.userId]);
     await ctx.hub.toPresenceAudience(req.userId, 'USER_UPDATE', userDTO(ctx, row));
@@ -187,6 +191,7 @@ export function userRoutes(app: FastifyInstance, ctx: Ctx) {
     if (!g || !m) throw notFound('Guild');
     if (g.owner_id === req.userId) throw new ApiError(400, 'OWNER_CANNOT_LEAVE', 'Transfer ownership or delete the guild instead');
     await ctx.db.query('DELETE FROM members WHERE guild_id = $1 AND user_id = $2', [guildId, req.userId]);
+    await clearServerTag(ctx, guildId, req.userId);
     await ctx.pcache.invalidate({ k: 'member', guildId, userId: req.userId });
     await ctx.hub.toUser(req.userId, 'GUILD_DELETE', { id: guildId });
     await ctx.hub.toGuild(guildId, 'MEMBER_REMOVE', { guildId, userId: req.userId });

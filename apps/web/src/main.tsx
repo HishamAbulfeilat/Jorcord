@@ -6,6 +6,7 @@ import { registerSW } from 'virtual:pwa-register';
 import App from './App';
 import { ErrorBoundary } from './components/ui/ErrorBoundary';
 import './index.css';
+import './cosmetics.css';
 
 import { queryClient as qc } from './lib/queryClient';
 import { isNative } from './lib/server';

@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { ALL_PERMS, LIMITS, Perm, has, snowflake, type Invite } from '@jorcord/shared';
 import type { Ctx } from '../ctx';
+import { clearServerTag } from '../services/cosmetics';
 import { ApiError, badRequest, forbidden, notFound } from '../errors';
 import { idSchema, iso, limitParam, parse } from '../lib/ids';
 import { randomToken } from '../lib/crypto';
@@ -226,6 +227,7 @@ export function memberRoutes(app: FastifyInstance, ctx: Ctx) {
 
   async function removeMember(guildId: string, userId: string) {
     await ctx.db.query('DELETE FROM members WHERE guild_id = $1 AND user_id = $2', [guildId, userId]);
+    await clearServerTag(ctx, guildId, userId);
     await ctx.pcache.invalidate({ k: 'member', guildId, userId });
     await ctx.hub.toUser(userId, 'GUILD_DELETE', { id: guildId });
     await ctx.hub.toGuild(guildId, 'MEMBER_REMOVE', { guildId, userId });

@@ -14,6 +14,7 @@ import { RoleIcon } from '@/components/ui/RoleIcon';
 import { headerBackground, bodyBackground, isHexPair, isHex } from '@/lib/profileTheme';
 import { useStreamer } from '@/lib/streamer';
 import { t } from '@/i18n';
+import { ProfileEffect, ServerTagBadge, plateClass } from '@/components/ui/Cosmetics';
 import { ActivityCards } from '@/components/ui/ActivityLine';
 
 /** Private note about a user: saved on blur, visible only to me. */
@@ -45,7 +46,7 @@ export function ProfileCard({ userId, guildId, compact }: { userId: string; guil
   const myRoles = member && roles ? member.roles.map((r) => roles[r]).filter((r) => r && r.id !== guildId).sort((a, b) => b.position - a.position) : [];
   return (
     <div className="overflow-hidden rounded-lg bg-[rgb(var(--modal-alt))]" style={{ background: bodyBackground(u) }} data-theme-pair={isHexPair(u.themeColors) ? 'on' : 'off'} data-testid="profile-card" {...trig}>
-      <div className={compact ? 'h-[60px]' : 'h-[100px]'} data-banner={banner ? 'image' : isHexPair(u.themeColors) ? 'theme' : 'gradient'} style={{ background: headerBackground(u, banner, accent) }} />
+      <div className={cx("relative", compact ? 'h-[60px]' : 'h-[100px]')} data-banner={banner ? 'image' : isHexPair(u.themeColors) ? 'theme' : 'gradient'} style={{ background: headerBackground(u, banner, accent) }}><ProfileEffect id={u.profileEffect} /></div>
       <div className="relative px-4 pb-4">
         <div className="-mt-10 mb-1 flex items-end justify-between"><div className="rounded-full border-[6px] border-[rgb(var(--modal-alt))]"><Avatar user={u} memberAvatar={member?.avatar} size={80} presence ring="rgb(var(--modal-alt))" online={presence} /></div>
           {isMe ? <button className="btn btn-secondary" onClick={() => { closeAll(); openSettings({ kind: 'user', tab: 'profile' }); }}><Settings size={14} />{t('Edit Profile')}</button> : (
@@ -57,7 +58,7 @@ export function ProfileCard({ userId, guildId, compact }: { userId: string; guil
             </div>)}
         </div>
         <div className="rounded-lg bg-[rgb(var(--rail)/0.5)] p-3">
-          <div className="text-xl font-bold leading-6 text-header">{displayName(u, member)}</div>
+          <div className={cx("text-xl font-bold leading-6 text-header", plateClass(u.namePlate), u.namePlate && "px-2 py-1 -mx-1")}>{displayName(u, member)} <ServerTagBadge tag={u.serverTag} className="align-middle" /></div>
           <div className="text-sm text-normal">{u.username}{u.pronouns && <span className="text-muted"> • {u.pronouns}</span>}</div>
           {(u.customStatus?.text || u.customStatus?.emoji) && <div className="mt-2 text-sm text-normal" data-testid="profile-status">{u.customStatus.emoji} {u.customStatus.text}</div>}
           {!compact && presence && <div className="mt-1 text-xs text-muted">{t(PRESENCE_LABEL[presence] ?? 'Offline')}</div>}

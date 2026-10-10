@@ -5,6 +5,7 @@ import { Moon, Minus } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useUI } from '@/stores/ui';
 import { t, T } from '@/i18n';
+import { AvatarDecoration } from './Cosmetics';
 
 export const isAnimatedUrl = (u: string | null | undefined) => !!u && /\.(gif|apng|webp)(\?|#|$)/i.test(u);
 const stills = new Map<string, string | null>();
@@ -39,8 +40,9 @@ export function PresenceDot({ presence, size = 10, ring = 'rgb(var(--side))', cl
   );
 }
 
-interface Props { user?: Pick<User, 'id' | 'username' | 'displayName' | 'avatar'> | null; size?: number; presence?: boolean; ring?: string; className?: string; memberAvatar?: string | null; online?: Presence }
-export function Avatar({ user, size = 40, presence, ring, className = '', memberAvatar, online }: Props) {
+interface Props { user?: Pick<User, 'id' | 'username' | 'displayName' | 'avatar'> & { avatarDecoration?: string | null } | null; /** override the decoration (previews) */ decoration?: string | null; size?: number; presence?: boolean; ring?: string; className?: string; memberAvatar?: string | null; online?: Presence }
+export function Avatar({ user, size = 40, presence, ring, className = '', memberAvatar, online, decoration }: Props) {
+  const liveDeco = useData((s) => (user ? s.users[user.id]?.avatarDecoration : undefined));
   const live = useData((s) => (presence && user ? s.presences[user.id] : undefined));
   const url = fileUrl(memberAvatar ?? user?.avatar);
   const autoplay = useUI((s) => s.prefs.autoplayGifs); const [hover, setHover] = useState(false);
@@ -55,6 +57,7 @@ export function Avatar({ user, size = 40, presence, ring, className = '', member
           {initials(name).slice(0, 2)}
         </span>
       )}
+      <AvatarDecoration id={decoration !== undefined ? decoration : user?.avatarDecoration ?? liveDeco} size={size} />
       {presence && <PresenceDot presence={online ?? live} size={Math.max(8, Math.round(size * 0.28))} ring={ring} />}
     </span>
   );

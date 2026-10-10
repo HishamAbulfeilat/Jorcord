@@ -48,7 +48,7 @@ export const api = {
   },
   users: {
     me: () => send<SelfUser>({ method: 'GET', path: '/users/@me' }),
-    patchMe: (b: Partial<{ displayName: string | null; bio: string | null; pronouns: string | null; avatar: string | null; banner: string | null; accentColor: string | null; themeColors: [string, string] | null; customStatus: User['customStatus']; theme: SelfUser['theme']; settings: Record<string, unknown>; privacy: { allowDmsFromServerMembers?: boolean; messageRequests?: boolean; showActivity?: boolean; friendRequests?: Partial<SelfUser['privacy']['friendRequests']> } }>) => send<SelfUser>({ method: 'PATCH', path: '/users/@me', body: b }),
+    patchMe: (b: Partial<{ displayName: string | null; bio: string | null; pronouns: string | null; avatar: string | null; banner: string | null; accentColor: string | null; themeColors: [string, string] | null; avatarDecoration: string | null; profileEffect: string | null; namePlate: string | null; serverTagGuildId: Id | null; customStatus: User['customStatus']; theme: SelfUser['theme']; settings: Record<string, unknown>; privacy: { allowDmsFromServerMembers?: boolean; messageRequests?: boolean; showActivity?: boolean; friendRequests?: Partial<SelfUser['privacy']['friendRequests']> } }>) => send<SelfUser>({ method: 'PATCH', path: '/users/@me', body: b }),
     get: (id: Id) => send<UserProfile>({ method: 'GET', path: `/users/${id}` }),
     /** Rich presence: replace my activities (<= 5). */
     setActivities: (activities: Omit<Activity, 'startedAt'>[] & Partial<Pick<Activity, 'startedAt'>>[]) => send<{ activities: Activity[] }>({ method: 'PUT', path: '/users/@me/activities', body: { activities } }),

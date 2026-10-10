@@ -3,6 +3,7 @@ import { CornerUpLeft, Hash, LogIn, MoreHorizontal, Pencil, Pin, Reply, SmilePlu
 import type { Message } from '@jorcord/shared';
 import { Perm } from '@jorcord/shared';
 import { Avatar } from '@/components/ui/Avatar';
+import { ServerTagBadge } from '@/components/ui/Cosmetics';
 import { Markdown } from './Markdown';
 import { AttachmentView, EmbedView } from './Attachments';
 import { Forward as ForwardIcon } from 'lucide-react';
@@ -158,7 +159,7 @@ export const MessageItem = memo(function MessageItem({ m, grouped, highlighted }
         <div className="min-w-0 flex-1">
           {(!grouped || m.replyTo || m.interaction) && (
             <div className="flex items-baseline gap-2 leading-[1.375rem]">
-              <button onClick={openUser} {...userTrig} className="truncate font-medium text-header hover:underline" style={{ color: info.color }}>{info.name}</button>
+              <button onClick={openUser} {...userTrig} className="truncate font-medium text-header hover:underline" style={{ color: info.color }}>{info.name}</button><ServerTagBadge tag={info.user.serverTag} className="ms-1 align-middle" />
               {info.icon && <RoleIcon role={info.icon} size={16} className="self-center" />}
               {m.author.bot && <span className="self-center rounded bg-brand px-1 py-px text-[10px] font-bold uppercase leading-3 text-white">Bot</span>}
               <time dateTime={new Date(ts).toISOString()} title={fmtFull(ts)} className="text-xs font-medium text-muted">{fmtStamp(ts)}</time>

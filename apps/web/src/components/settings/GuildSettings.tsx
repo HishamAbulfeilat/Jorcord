@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Volume2, Ban, Bot, Compass, GripVertical, Hash, Webhook as WebhookIcon, Sticker as StickerIcon, Copy as CopyIcon, Link2, ListChecks, Rocket, Settings as Cog, Shield, Smile, Trash2, Users, ScrollText, Plus, Search, Crown } from 'lucide-react';
+import { Tag, Volume2, Ban, Bot, Compass, GripVertical, Hash, Webhook as WebhookIcon, Sticker as StickerIcon, Copy as CopyIcon, Link2, ListChecks, Rocket, Settings as Cog, Shield, Smile, Trash2, Users, ScrollText, Plus, Search, Crown } from 'lucide-react';
 import { Perm } from '@jorcord/shared';
 import type { AutoModPreset, AutoModRule, Channel } from '@jorcord/shared';
 import { api } from '@/lib/api';
@@ -24,6 +24,7 @@ import { WebhooksList } from './Webhooks';
 import { publicOrigin } from '@/lib/server';
 import { t, T } from '@/i18n';
 import { SoundboardTab } from '@/components/Soundboard';
+import { ServerTagEditor } from './CosmeticsPicker';
 import { AUDIT_FILTER_GROUPS, actionLabel, entryDetail, entryType } from '@/lib/audit';
 
 export function GuildSettings({ guildId, initialTab }: { guildId: string; initialTab?: string }) {
@@ -33,7 +34,7 @@ export function GuildSettings({ guildId, initialTab }: { guildId: string; initia
   const items = useMemo(() => {
     const it = (id: string, label: string, icon: any, ok: boolean) => (ok ? [{ id, label: t(label), icon }] : []);
     return [
-      { title: g?.guild.name ?? 'Server', items: [...it('overview', T('Overview'), Cog, can(perms, Perm.MANAGE_GUILD)), ...it('roles', T('Roles'), Shield, can(perms, Perm.MANAGE_ROLES)), ...it('channels', T('Channels'), Hash, can(perms, Perm.MANAGE_CHANNELS)), ...it('emoji', T('Emoji'), Smile, can(perms, Perm.MANAGE_EMOJIS)), ...it('stickers', T('Stickers'), StickerIcon, can(perms, Perm.MANAGE_EMOJIS)), ...it('soundboard', T('Soundboard'), Volume2, can(perms, Perm.MANAGE_EMOJIS)), ...it('integrations', T('Integrations'), WebhookIcon, can(perms, Perm.MANAGE_WEBHOOKS)), ...it('commands', T('Command Permissions'), Bot, can(perms, Perm.MANAGE_GUILD) && can(perms, Perm.MANAGE_ROLES)), ...it('boosts', T('Server Boost'), Rocket, true)] },
+      { title: g?.guild.name ?? 'Server', items: [...it('overview', T('Overview'), Cog, can(perms, Perm.MANAGE_GUILD)), ...it('roles', T('Roles'), Shield, can(perms, Perm.MANAGE_ROLES)), ...it('channels', T('Channels'), Hash, can(perms, Perm.MANAGE_CHANNELS)), ...it('emoji', T('Emoji'), Smile, can(perms, Perm.MANAGE_EMOJIS)), ...it('stickers', T('Stickers'), StickerIcon, can(perms, Perm.MANAGE_EMOJIS)), ...it('soundboard', T('Soundboard'), Volume2, can(perms, Perm.MANAGE_EMOJIS)), ...it('servertag', T('Server Tag'), Tag, can(perms, Perm.MANAGE_GUILD)), ...it('integrations', T('Integrations'), WebhookIcon, can(perms, Perm.MANAGE_WEBHOOKS)), ...it('commands', T('Command Permissions'), Bot, can(perms, Perm.MANAGE_GUILD) && can(perms, Perm.MANAGE_ROLES)), ...it('boosts', T('Server Boost'), Rocket, true)] },
       { title: t('Moderation'), items: [...it('members', T('Members'), Users, can(perms, Perm.KICK_MEMBERS) || can(perms, Perm.MANAGE_ROLES) || can(perms, Perm.MANAGE_GUILD)), ...it('invites', T('Invites'), Link2, can(perms, Perm.MANAGE_GUILD) || can(perms, Perm.CREATE_INVITE)), ...it('automod', T('AutoMod'), Bot, can(perms, Perm.MANAGE_GUILD)), ...it('audit', T('Audit Log'), ScrollText, can(perms, Perm.VIEW_AUDIT_LOG)), ...it('bans', T('Bans'), Ban, can(perms, Perm.BAN_MEMBERS))] },
       ...(isOwner ? [{ items: [{ id: 'delete', label: t('Delete Server'), icon: Trash2, danger: true }] }] : []),
     ].filter((gr) => gr.items.length);
@@ -49,6 +50,7 @@ export function GuildSettings({ guildId, initialTab }: { guildId: string; initia
       {tab === 'emoji' && <EmojiTab guildId={guildId} />}
       {tab === 'stickers' && <StickersTab guildId={guildId} />}
       {tab === 'soundboard' && <SoundboardTab guildId={guildId} />}
+      {tab === 'servertag' && <ServerTagTab guildId={guildId} />}
       {tab === 'integrations' && <IntegrationsTab guildId={guildId} />}
       {tab === 'commands' && <CommandPermissions guildId={guildId} />}
       {tab === 'boosts' && <Boosts guildId={guildId} />}
@@ -295,3 +297,12 @@ function IntegrationsTab({ guildId }: { guildId: string }) {
   </>);
 }
 void Compass; void CopyIcon; void publicOrigin;
+
+function ServerTagTab({ guildId }: { guildId: string }) {
+  const gd = useData((s) => s.guilds[guildId])!.guild; const init = { tag: gd.tag ?? '', badge: gd.tagBadge ?? null };
+  const [f, setF] = useState(init); const [busy, setBusy] = useState(false);
+  const valid = f.tag === '' || /^[A-Za-z0-9]{3,4}$/.test(f.tag);
+  const save = async () => { setBusy(true); try { const u = await api.guilds.patch(guildId, { tag: f.tag ? f.tag.toUpperCase() : null, tagBadge: f.tag ? f.badge : null } as any); useData.getState().apply('GUILD_UPDATE', { ...gd, ...u }); toast(t('Server tag saved'), 'success'); } catch (e) { toastError(e); } setBusy(false); };
+  return (<><H1>{t('Server Tag')}</H1><ServerTagEditor tag={f.tag} badge={f.badge} onChange={setF} />{!valid && <p className="text-sm text-danger">{t('A tag is 3 or 4 letters or digits.')}</p>}
+    <SaveBar dirty={valid && (f.tag !== init.tag || f.badge !== init.badge)} busy={busy} onSave={save} onReset={() => setF(init)} /></>);
+}

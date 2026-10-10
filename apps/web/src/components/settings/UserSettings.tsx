@@ -20,6 +20,8 @@ import { Avatar } from '@/components/ui/Avatar';
 import { cx, fileUrl, idColor } from '@/lib/format';
 import { logout } from '@/lib/auth';
 import { ProfileCard } from '@/components/modals/Profile';
+import { CosmeticsPicker } from './CosmeticsPicker';
+import { ProfileEffect, ServerTagBadge, plateClass } from '@/components/ui/Cosmetics';
 
 let lastTab = 'account';
 export function UserSettings({ initialTab }: { initialTab?: string }) {
@@ -68,10 +70,10 @@ function Account({ go }: { go: (t: string) => void }) {
 
 function Profile() {
   const me = useData((s) => s.me)!;
-  const init = { displayName: me.displayName ?? '', pronouns: me.pronouns ?? '', bio: me.bio ?? '', avatar: me.avatar, banner: me.banner, accentColor: me.accentColor ?? '#5865f2', themeColors: (isHexPair(me.themeColors) ? me.themeColors : null) as ThemePair | null };
+  const init = { displayName: me.displayName ?? '', pronouns: me.pronouns ?? '', bio: me.bio ?? '', avatar: me.avatar, banner: me.banner, accentColor: me.accentColor ?? '#5865f2', themeColors: (isHexPair(me.themeColors) ? me.themeColors : null) as ThemePair | null, avatarDecoration: me.avatarDecoration ?? null, profileEffect: me.profileEffect ?? null, namePlate: me.namePlate ?? null, serverTagGuildId: me.serverTag?.guildId ?? null };
   const [f, setF] = useState(init); const [busy, setBusy] = useState(false);
   const dirty = JSON.stringify(f) !== JSON.stringify(init);
-  const save = async () => { setBusy(true); try { const u = await api.users.patchMe({ displayName: f.displayName || null, pronouns: f.pronouns || null, bio: f.bio || null, avatar: f.avatar, banner: f.banner, accentColor: f.accentColor, themeColors: f.themeColors }); useData.getState().apply('USER_UPDATE', { ...me, ...u }); toast(t('Profile saved'), 'success'); } catch (e) { toastError(e); } setBusy(false); };
+  const save = async () => { setBusy(true); try { const u = await api.users.patchMe({ displayName: f.displayName || null, pronouns: f.pronouns || null, bio: f.bio || null, avatar: f.avatar, banner: f.banner, accentColor: f.accentColor, themeColors: f.themeColors, avatarDecoration: f.avatarDecoration, profileEffect: f.profileEffect, namePlate: f.namePlate, serverTagGuildId: f.serverTagGuildId }); useData.getState().apply('USER_UPDATE', { ...me, ...u }); toast(t('Profile saved'), 'success'); } catch (e) { toastError(e); } setBusy(false); };
   return (<>
     <H1>{t('Profile')}</H1>
     <div className="flex flex-col gap-8 lg:flex-row"><div className="min-w-0 flex-1">
@@ -81,6 +83,7 @@ function Profile() {
       <div className="mb-4"><span className="label">{t('Banner')}</span><div className="relative h-24 overflow-hidden rounded-lg" style={{ background: f.banner ? `center/cover url(${fileUrl(f.banner)})` : f.accentColor }}><label className="absolute inset-0 flex cursor-pointer items-center justify-center bg-black/40 text-sm font-semibold text-white opacity-0 hover:opacity-100 focus-within:opacity-100">{t('Change banner')}<input type="file" accept="image/*" className="sr-only" onChange={async (e) => { const file = e.target.files?.[0]; e.target.value = ''; if (!file) return; try { const url = await api.files.uploadImage(file); setF((s) => ({ ...s, banner: url })); } catch (err) { toastError(err); } }} /></label></div>{f.banner && <button className="mt-1 text-sm text-link" onClick={() => setF({ ...f, banner: null })}>{t('Remove banner')}</button>}</div>
       <ThemePicker value={f.accentColor} onChange={(c) => setF({ ...f, accentColor: c })} />
       <ThemeColorsPicker value={f.themeColors} onChange={(c) => setF({ ...f, themeColors: c })} />
+      <CosmeticsPicker me={me} value={f} onChange={(v) => setF({ ...f, ...v })} />
       <div className="mb-4"><span className="label">{t('Custom Status')}</span><button type="button" className="btn btn-secondary" onClick={() => useUI.getState().openModal({ kind: 'customStatus' })}><Smile size={16} />{me.customStatus?.text || me.customStatus?.emoji ? `${me.customStatus.emoji ?? ''} ${me.customStatus.text ?? ''}`.trim() : t('Set a custom status')}</button></div>
       <Field label={t('About Me')} hint={t('You can use markdown and links.')}><textarea className="field min-h-[110px]" value={f.bio} maxLength={190} onChange={(e) => setF({ ...f, bio: e.target.value })} /></Field>
     </div>
@@ -89,9 +92,10 @@ function Profile() {
   </>);
 }
 function PreviewCard({ me, f }: { me: any; f: any }) {
-  return <div className="overflow-hidden rounded-lg bg-[rgb(var(--modal-alt))]"><div className="h-[60px]" data-testid="preview-banner" style={{ background: headerBackground({ banner: f.banner, themeColors: f.themeColors, accentColor: f.accentColor }, f.banner ? fileUrl(f.banner) : null, f.accentColor) }} />
-    <div className="px-4 pb-4"><div className="-mt-10 mb-2 w-fit rounded-full border-[6px] border-[rgb(var(--modal-alt))]"><Avatar user={{ ...me, avatar: f.avatar }} size={80} /></div>
-      <div className="rounded-lg bg-[rgb(var(--rail)/0.5)] p-3"><div className="text-xl font-bold text-header">{f.displayName || me.username}</div><div className="text-sm">{me.username}{f.pronouns && <span className="text-muted"> • {f.pronouns}</span>}</div>{f.bio && <><hr className="my-3 border-divider" /><div className="text-xs font-bold uppercase text-header">{t('About Me')}</div><p className="whitespace-pre-wrap text-sm">{f.bio}</p></>}</div></div></div>;
+  const tg = useData((s) => (f.serverTagGuildId ? s.guilds[f.serverTagGuildId]?.guild : undefined));
+  return <div className="overflow-hidden rounded-lg bg-[rgb(var(--modal-alt))]"><div className="relative h-[60px]" data-testid="preview-banner" style={{ background: headerBackground({ banner: f.banner, themeColors: f.themeColors, accentColor: f.accentColor }, f.banner ? fileUrl(f.banner) : null, f.accentColor) }}><ProfileEffect id={f.profileEffect} /></div>
+    <div className="px-4 pb-4"><div className="-mt-10 mb-2 w-fit rounded-full border-[6px] border-[rgb(var(--modal-alt))]"><Avatar user={{ ...me, avatar: f.avatar }} size={80} decoration={f.avatarDecoration} /></div>
+      <div className="rounded-lg bg-[rgb(var(--rail)/0.5)] p-3"><div className={`text-xl font-bold text-header ${plateClass(f.namePlate)} ${f.namePlate ? 'px-2 py-1 -mx-1' : ''}`} data-testid="preview-name">{f.displayName || me.username}{tg?.tag && <> <ServerTagBadge tag={{ guildId: tg.id, tag: tg.tag, badge: tg.tagBadge ?? null }} /></>}</div><div className="text-sm">{me.username}{f.pronouns && <span className="text-muted"> • {f.pronouns}</span>}</div>{f.bio && <><hr className="my-3 border-divider" /><div className="text-xs font-bold uppercase text-header">{t('About Me')}</div><p className="whitespace-pre-wrap text-sm">{f.bio}</p></>}</div></div></div>;
 }
 
 function Security() {

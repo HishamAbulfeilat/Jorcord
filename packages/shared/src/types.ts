@@ -1,3 +1,4 @@
+import type { ServerTag } from './parity';
 import type { Component, FieldErrors, ForumTag, Poll } from './platform';
 /** Wire types shared by server and clients. IDs are snowflake strings; bigints (permissions) travel as strings. */
 export type Id = string;
@@ -10,6 +11,8 @@ export interface User {
   customStatus?: { text: string | null; emoji: string | null; /** ISO time; the server clears the status then */ expiresAt?: string | null } | null;
   /** Two-colour profile theme (#rrggbb pair), visible to others. */
   themeColors?: [string, string] | null;
+  /** Cosmetics (ids from AVATAR_DECORATIONS / PROFILE_EFFECTS / NAME_PLATES) and the server tag the user wears. */
+  avatarDecoration?: string | null; profileEffect?: string | null; namePlate?: string | null; serverTag?: ServerTag | null;
   presence?: Presence;
 }
 /** Private to the owner; enforced server-side. */
@@ -29,6 +32,8 @@ export interface Guild {
   id: Id; name: string; icon: string | null; banner: string | null; description: string | null;
   ownerId: Id; systemChannelId: Id | null; rulesChannelId: Id | null; boostLevel: number; boostCount: number;
   features: string[]; vanityUrl: string | null; createdAt: string;
+  /** 3-4 character tag members may wear beside their name, and its badge icon id (TAG_BADGES). */
+  tag?: string | null; tagBadge?: string | null;
 }
 export interface Role { id: Id; guildId: Id; name: string; color: number; hoist: boolean; position: number; permissions: string; mentionable: boolean; icon: string | null }
 export interface OverwriteDTO { id: Id; type: 'role' | 'member'; allow: string; deny: string }

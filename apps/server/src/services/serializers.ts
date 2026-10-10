@@ -22,7 +22,8 @@ export function userDTO(ctx: Ctx, r: any): User {
   return {
     id: r.id, username: r.username, displayName: r.display_name ?? null, avatar: r.avatar ?? null, banner: r.banner ?? null,
     accentColor: r.accent_color ?? null, bio: r.bio ?? null, pronouns: r.pronouns ?? null, bot: !!r.bot,
-    createdAt: iso(r.created_at)!, customStatus: liveStatus(r.custom_status), themeColors: r.theme_colors ?? null, presence: ctx.hub.publicPresence(r.id, r.presence),
+    createdAt: iso(r.created_at)!, customStatus: liveStatus(r.custom_status), themeColors: r.theme_colors ?? null,
+    avatarDecoration: r.avatar_decoration ?? null, profileEffect: r.profile_effect ?? null, namePlate: r.name_plate ?? null, serverTag: r.server_tag ?? null, presence: ctx.hub.publicPresence(r.id, r.presence),
   };
 }
 export function selfUserDTO(ctx: Ctx, r: any): SelfUser {
@@ -41,7 +42,7 @@ export function guildDTO(r: any): Guild {
   return {
     id: r.id, name: r.name, icon: r.icon ?? null, banner: r.banner ?? null, description: r.description ?? null, ownerId: r.owner_id,
     systemChannelId: r.system_channel_id ?? null, rulesChannelId: r.rules_channel_id ?? null,
-    boostLevel: boostLevel(r.boost_count ?? 0), boostCount: r.boost_count ?? 0, features: r.features ?? [], vanityUrl: r.vanity_url ?? null, createdAt: iso(r.created_at)!,
+    boostLevel: boostLevel(r.boost_count ?? 0), boostCount: r.boost_count ?? 0, features: r.features ?? [], vanityUrl: r.vanity_url ?? null, createdAt: iso(r.created_at)!, tag: r.tag ?? null, tagBadge: r.tag_badge ?? null,
   };
 }
 export const roleDTO = (r: any): Role => ({ id: r.id, guildId: r.guild_id, name: r.name, color: r.color, hoist: r.hoist, position: r.position, permissions: r.permissions, mentionable: r.mentionable, icon: r.icon ?? null });
