@@ -119,7 +119,8 @@ function onMessageCreate(m: Message) {
   if (mentioned || isDm) data.setRead(m.channelId, rs?.lastReadId ?? null, (rs?.mentionCount ?? 0) + 1);
   const prefs = useUI.getState().prefs;
   const muted = prefs.mutedChannels[m.channelId] || (m.guildId && prefs.mutedGuilds[m.guildId]);
-  const level = gn?.level ?? prefs.defaultNotify;
+  const guildDefault = m.guildId && data.guilds[m.guildId]?.guild.defaultNotifications === 'all' ? 'all' : undefined; // the server's "all messages" default applies until I choose my own
+  const level = gn?.level ?? guildDefault ?? prefs.defaultNotify;
   const wants = !muted && (isDm || (level !== 'none' && (mentioned || level === 'all')) || (gn?.level == null && mentioned));
   const streaming = streamerActive();
   if (wants) {

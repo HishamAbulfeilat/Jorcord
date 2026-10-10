@@ -84,3 +84,34 @@ test('cosmetics: pick a decoration, effect, plate and server tag; others see the
     await expect(msg(B.page, 'tagged hello').getByTestId('server-tag')).toHaveText('LAB1');
   } finally { await B.ctx.close(); }
 });
+
+test('safety: Safety Setup applies a preset; verification level blocks an unverified member and invites can be paused', async ({ browser }) => {
+  const B = await newUser(browser, 'Newbie');
+  try {
+    const gid = await guildId(A.page);
+    const code = (await rest(A.page, 'POST', `/guilds/${gid}/invites`, {})).code;
+    await B.page.goto(`/invite/${code}`);
+    await B.page.getByRole('button', { name: /Accept Invite/ }).click();
+    await B.page.waitForURL(/\/channels\/\d+/);
+    await openGuildSettings(A.page, 'Sound Lab', 'Safety Setup');
+    const dlg = A.page.getByRole('dialog', { name: 'Sound Lab' });
+    await expect(dlg.getByTestId('safety-score')).toHaveText('20%');
+    await dlg.getByRole('button', { name: /Recommended/ }).click();
+    await expect(dlg.getByTestId('safety-score')).toHaveText('80%');
+    await dlg.getByRole('radio', { name: 'Low' }).click();
+    await expect.poll(async () => (await rest(A.page, 'GET', `/guilds/${gid}/safety`)).verificationLevel).toBe(1);
+    // the unverified newcomer cannot talk
+    await sendMessage(B.page, 'can I talk?');
+    await expect(B.page.getByText(/verified email/i).first()).toBeVisible();
+    await expect(msg(B.page, 'can I talk?')).toHaveCount(0);
+    // pausing invites refuses new joiners
+    await dlg.getByRole('switch', { name: 'Pause invites' }).click();
+    await expect.poll(async () => (await rest(A.page, 'GET', `/guilds/${gid}/safety`)).invitesPausedUntil).toBeTruthy();
+    const C = await newUser(browser, 'Late');
+    await C.page.goto(`/invite/${code}`);
+    await C.page.getByRole('button', { name: /Accept Invite/ }).click();
+    await expect(C.page.getByText(/paused/i).first()).toBeVisible();
+    await C.ctx.close();
+    await closeSettings(A.page);
+  } finally { await B.ctx.close(); }
+});
