@@ -1,4 +1,4 @@
-import { Headphones, MicOff, PhoneOff, Volume2, ArrowRightLeft, Radio } from 'lucide-react';
+import { VolumeX, Headphones, MicOff, PhoneOff, Volume2, ArrowRightLeft, Radio } from 'lucide-react';
 import { Perm } from '@jorcord/shared';
 import type { MenuItem } from '@/stores/ui';
 import { useData, findChannel } from '@/stores/data';
@@ -8,6 +8,7 @@ import { can } from '@/lib/perms';
 import { myChannelPerms } from '@/lib/session';
 import { userMenu } from '@/lib/menus';
 import { getVoiceClient } from './controller';
+import { useUI } from '@/stores/ui';
 import { t } from '@/i18n';
 
 /** Context menu for a person in a voice channel: local volume, server-side moderation, then the usual user menu. */
@@ -18,6 +19,10 @@ export function voiceUserMenu(userId: string, channelId: string): MenuItem[] {
   if (userId !== me) {
     const client = getVoiceClient(); const cur = Math.round(client.getUserVolume(userId) * 100);
     items.push({ label: `User Volume (${cur}%)`, icon: Volume2, children: [0, 25, 50, 100, 150, 200].map((v) => ({ label: `${v}%`, checked: v === cur, onClick: () => client.setUserVolume(userId, v / 100) })) });
+  }
+  if (userId !== me) {
+    const sm = !!useUI.getState().prefs.soundboardMutedUsers[userId];
+    items.push({ label: sm ? 'Unmute Soundboard Sounds' : 'Mute Soundboard Sounds', icon: VolumeX, checked: sm, onClick: () => { const p = useUI.getState().prefs; useUI.getState().setPref('soundboardMutedUsers', { ...p.soundboardMutedUsers, [userId]: !sm }); } });
   }
   if (guildId) {
     const perms = myChannelPerms(channelId); const mod: MenuItem[] = [];

@@ -18,6 +18,7 @@ import { usePlatform } from '@/stores/platform';
 import { isEphemeral } from '@/stores/messages';
 import { onAutocompleteResult, onInteractionFailed, onInteractionModal, settleForMessage } from './interactions';
 import { queryClient } from './queryClient';
+import { onVoiceEffect } from './soundboard';
 import { useSocial } from '@/stores/social';
 import { setRateLimitNotifier } from './transport';
 import { toast } from '@/stores/ui';
@@ -50,6 +51,8 @@ export function startSession(token: string) {
     window.dispatchEvent(new CustomEvent('jorcord:reminder', { detail: r }));
   }));
   unsubs.push(gw.on('USER_NOTE_UPDATE', (d) => queryClient.setQueryData(['user', d.userId], (old: any) => (old ? { ...old, note: d.note } : old))));
+  unsubs.push(gw.on('SOUNDBOARD_SOUNDS_UPDATE', (d) => queryClient.setQueryData(['sounds', d.guildId], d.sounds)));
+  unsubs.push(gw.on('VOICE_CHANNEL_EFFECT_SEND', (d) => onVoiceEffect(d, meId())));
   unsubs.push(gw.on('INTERACTION_FAILED', onInteractionFailed));
   unsubs.push(gw.on('INTERACTION_MODAL', onInteractionModal));
   unsubs.push(gw.on('INTERACTION_AUTOCOMPLETE_RESULT', onAutocompleteResult));

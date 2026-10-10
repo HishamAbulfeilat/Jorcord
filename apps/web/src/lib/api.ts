@@ -1,7 +1,7 @@
 /** Typed REST client written against docs/CONTRACT.md. All calls go through the swappable transport. */
 import type {
   Attachment, AuditEntry, AutoModRule, Channel, Emoji, Guild, GuildFull, Invite, Member, Message, Relationship, ReadState, Role, SelfUser, Sticker, User, VoiceToken, Id, Presence, OverwriteDTO,
-  Reminder, Application, ApplicationCommand, CommandPermissionOverwrite, CommandOptionChoice, CreatePoll, ForumTag, InteractionOptionValue, ModalSubmitRow, OAuthAuthorizePreview, OAuthAuthorizeResult, ScheduledEvent, StageInstance,
+  Reminder, SoundboardSound, Application, ApplicationCommand, CommandPermissionOverwrite, CommandOptionChoice, CreatePoll, ForumTag, InteractionOptionValue, ModalSubmitRow, OAuthAuthorizePreview, OAuthAuthorizeResult, ScheduledEvent, StageInstance,
 } from '@jorcord/shared';
 import { send } from './transport';
 
@@ -133,6 +133,12 @@ export const api = {
     deleteEvent: (id: Id, eid: Id) => send({ method: 'DELETE', path: `/guilds/${id}/scheduled-events/${eid}` }),
     eventInterest: (id: Id, eid: Id, on: boolean) => send({ method: on ? 'PUT' : 'DELETE', path: `/guilds/${id}/scheduled-events/${eid}/users/@me` }),
     eventUsers: (id: Id, eid: Id) => send<{ user: User }[]>({ method: 'GET', path: `/guilds/${id}/scheduled-events/${eid}/users`, query: { limit: 100 } }).then((x) => arr<{ user: User }>(x)),
+    sounds: (id: Id) => send<SoundboardSound[]>({ method: 'GET', path: `/guilds/${id}/soundboard-sounds` }).then((x) => arr<SoundboardSound>(x)),
+    createSound: (id: Id, b: { name: string; url: string; emoji?: string | null; volume?: number }) => send<SoundboardSound>({ method: 'POST', path: `/guilds/${id}/soundboard-sounds`, body: b }),
+    patchSound: (id: Id, sid: Id, b: Partial<{ name: string; emoji: string | null; volume: number }>) => send<SoundboardSound>({ method: 'PATCH', path: `/guilds/${id}/soundboard-sounds/${sid}`, body: b }),
+    deleteSound: (id: Id, sid: Id) => send({ method: 'DELETE', path: `/guilds/${id}/soundboard-sounds/${sid}` }),
+    /** Play a clip into the voice channel I am connected to. */
+    playSound: (channelId: Id, soundId: Id) => send({ method: 'POST', path: `/channels/${channelId}/send-soundboard-sound`, body: { soundId } }),
     stageInstances: (id: Id) => send<StageInstance[]>({ method: 'GET', path: `/guilds/${id}/stage-instances` }).then((x) => arr<StageInstance>(x)),
   },
   stages: {

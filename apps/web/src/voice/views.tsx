@@ -21,6 +21,7 @@ import { NetBars } from './tiles';
 import { getVoiceClient, joinVoice, leaveVoice } from './controller';
 import { setCurrentChannel } from '@/lib/session';
 import { useState } from 'react';
+import { SoundboardButton } from '@/components/Soundboard';
 import { t } from '@/i18n';
 import { StageBar, canModerateStage } from './StageBar';
 import { VoiceChatPanel } from '@/components/chat/VoiceChat';
@@ -123,11 +124,12 @@ export function VoiceDock() {
       {conn === 'connected' && snap.connection?.rttMs != null && <div data-testid="voice-dock-ping" className="mt-0.5 text-[11px] text-muted">{snap.connection.rttMs} ms{snap.connection.packetLossPct ? ` · ${snap.connection.packetLossPct}% ${t('loss')}` : ''}</div>}
       {details && !diag && <ConnectionPopover onClose={() => setDetails(false)} onDisconnect={() => { setDetails(false); void leaveVoice(); }} onDiagnostics={() => { setDetails(false); setDiag(true); }} />}
       {diag && <DiagnosticsPanel onClose={() => setDiag(false)} />}
-      <div className="relative mt-2 grid grid-cols-3 gap-1.5">
+      <div className="relative mt-2 grid grid-cols-4 gap-1.5">
         <button aria-label={snap.cameraOn ? 'Turn Off Camera' : 'Turn On Camera'} aria-pressed={snap.cameraOn} onClick={() => getVoiceClient().setCamera(!snap.cameraOn).catch(() => {})} className={cx('flex h-8 items-center justify-center rounded bg-[rgb(var(--active))] text-header hover:bg-[rgb(var(--divider))]', snap.cameraOn && '!bg-white !text-black')}>{snap.cameraOn ? <Camera size={18} /> : <CameraOff size={18} />}</button>
         {snap.platform.canScreenShare
           ? <button aria-label={snap.screenOn ? 'Stop Streaming' : 'Share Your Screen'} aria-pressed={snap.screenOn} onClick={() => { if (snap.screenOn) void getVoiceClient().stopScreenShare(); else setPop(true); }} className={cx('flex h-8 items-center justify-center gap-1 rounded bg-[rgb(var(--active))] text-[13px] font-semibold text-header hover:bg-[rgb(var(--divider))]', snap.screenOn && '!bg-danger !text-white')}><MonitorUp size={18} /><span className="max-sm:hidden">{snap.screenOn ? t('Live') : t('Go Live')}</span></button>
           : <span aria-hidden className="hidden" />}
+        {ch?.guildId && conn === 'connected' && <SoundboardButton channelId={ch.id} guildId={ch.guildId} />}
         <button aria-label={t('Voice Settings')} onClick={() => openModal({ kind: 'voiceSettings' })} className="flex h-8 items-center justify-center rounded bg-[rgb(var(--active))] text-header hover:bg-[rgb(var(--divider))]"><Headphones size={18} /></button>
         {(pop || globalPop) && !barMounted && <ScreenSharePopover onClose={() => setPop(false)} />}
       </div>

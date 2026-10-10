@@ -1,5 +1,6 @@
 /** Gateway protocol: JSON over WebSocket at /gateway. Opcode model mirrors Discord's. */
 import type { Application, ApplicationCommand, Interaction, Modal, ScheduledEvent, StageInstance, CommandOptionChoice } from './platform';
+import type { SoundboardSound } from './parity';
 import type { Channel, Guild, Id, Member, Message, Presence, ReadState, Relationship, Reminder, Role, SelfUser, User, VoiceState, Emoji, Sticker } from './types';
 
 export const Op = { DISPATCH: 0, HEARTBEAT: 1, IDENTIFY: 2, PRESENCE_UPDATE: 3, VOICE_STATE_UPDATE: 4, RESUME: 6, RECONNECT: 7, REQUEST_MEMBERS: 8, TYPING: 9, HELLO: 10, HEARTBEAT_ACK: 11 } as const;
@@ -63,6 +64,9 @@ export interface Events {
   /** To me: my saved-for-later list changed on another session. */
   SAVED_UPDATE: { channelId: Id; messageId: Id; saved: boolean };
   USER_NOTE_UPDATE: { userId: Id; note: string | null };
+  /** Soundboard: a guild's sound list changed / someone played a sound in a voice channel (sent to the people in that channel). */
+  SOUNDBOARD_SOUNDS_UPDATE: { guildId: Id; sounds: SoundboardSound[] };
+  VOICE_CHANNEL_EFFECT_SEND: { guildId: Id | null; channelId: Id; userId: Id; sound: SoundboardSound };
   GUILD_MEMBERS_CHUNK: { guildId: Id; members: Member[]; notFound: Id[]; chunkIndex: number; chunkCount: number; nonce?: string };
 }
 export type EventName = keyof Events;

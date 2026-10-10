@@ -13,6 +13,8 @@ export interface Prefs {
   keybinds: Record<string, string>;
   streamerMode: boolean; streamerAuto: boolean; streamerHidePersonal: boolean; streamerHideInvites: boolean; streamerNoSounds: boolean; streamerNoNotifications: boolean;
   mutedChannels: Record<Id, boolean>; mutedGuilds: Record<Id, boolean>; collapsedCategories: Record<Id, boolean>;
+  /** Soundboard: silence everything / one person's sounds (local), and playback gain 0-100. */
+  soundboardMuted: boolean; soundboardMutedUsers: Record<Id, boolean>; soundboardVolume: number;
 }
 /** First-run language: the browser's, when we ship that translation. */
 export function detectLanguage(): string {
@@ -35,6 +37,7 @@ export const defaultPrefs: Prefs = {
   keybinds: defaultKeybinds,
   streamerMode: false, streamerAuto: true, streamerHidePersonal: true, streamerHideInvites: true, streamerNoSounds: true, streamerNoNotifications: true,
   mutedChannels: {}, mutedGuilds: {}, collapsedCategories: {},
+  soundboardMuted: false, soundboardMutedUsers: {}, soundboardVolume: 100,
 };
 
 export type RightPanel = 'members' | 'search' | 'pins' | 'threads' | null;

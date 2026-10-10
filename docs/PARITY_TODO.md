@@ -25,7 +25,7 @@ Rank = order in which this pass implements items (R1 first). `-` = not planned i
 | R15 | GIF favorites, saved media | todo | 3 | `GET /gifs/*` only |
 | R16 | Account switching (multi-account) | todo | 3 | single session store (`lib/session.ts`) |
 | R17 | Connections on profile (links to Twitch/GitHub...) | todo | 2 | none |
-| R18 | Soundboard (guild sounds + play in voice) | todo | 4 | `USE_SOUNDBOARD` bit only; UI part lives in voice (other agent) |
+| R18 | Soundboard (guild sounds + play in voice) | DONE (`routes/soundboard.ts`, `components/Soundboard.tsx`) | 4 | upload/limits, play over gateway event, USE_SOUNDBOARD, per-user + global mute, voice dock button |
 | R19 | Message edit history | todo | 1 | `edited_at` only; Discord itself does not show history, skip |
 | R20 | Server boost levels page perks list | partial | 2 | boosts free/unlimited (`GuildSettings` boosts tab) |
 | R21 | Linked roles, integrations (Twitch/YouTube), app directory | todo | 1 | skip |
