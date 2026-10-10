@@ -128,7 +128,7 @@ function ThreadBanner({ channel }: { channel: Channel }) {
   return (
     <div role="status" data-testid="thread-banner" className="mx-4 mb-2 flex items-center gap-2 rounded-md bg-side px-3 py-2 text-sm text-muted">
       {channel.archived ? <Archive size={16} aria-hidden /> : <Lock size={16} aria-hidden />}
-      <span className="min-w-0 flex-1">{channel.archived ? (channel.locked ? t('This thread is archived and locked.') : t('This thread is archived.')) : t('This thread is locked: once it is archived only moderators can reopen it.')}</span>
+      <span className="min-w-0 flex-1">{channel.archived ? (channel.locked ? t('This thread is archived and locked.') : t('This thread is archived.')) : t('This thread is locked: only moderators can send messages or reopen it.')}</span>
       {channel.archived && (!channel.locked || manage) && <button className="btn btn-primary" onClick={unarchive}>{t('Unarchive')}</button>}
     </div>
   );

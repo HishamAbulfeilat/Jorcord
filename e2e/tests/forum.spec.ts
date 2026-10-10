@@ -97,10 +97,12 @@ test('thread lifecycle: owner settings, moderator lock, archive/unarchive, delet
   await A.page.getByRole('dialog', { name: 'Thread Settings' }).getByRole('switch', { name: 'Lock thread' }).click();
   await A.page.getByRole('dialog', { name: 'Thread Settings' }).getByRole('button', { name: 'Save Changes' }).click();
   await expect(B.page.getByTestId('thread-banner')).toContainText('This thread is locked');
-  await expect(B.page.getByRole('textbox', { name: /^Message/ })).toBeEnabled();   // an open locked thread still takes messages
+  await expect(B.page.getByRole('textbox', { name: 'This thread is locked.' })).toBeDisabled();   // locked: no posting without MANAGE_THREADS
   await expect(B.page.getByRole('heading', { name: 'Password reset help', exact: true }).locator('..').getByLabel('Locked')).toBeVisible();
-  await sendMessage(B.page, 'still talking');
-  await expect(msg(A.page, 'still talking')).toBeVisible();
+  expect(String(await rest(B.page, 'POST', `/channels/${tid}/messages`, { content: 'nope' }).catch((e: Error) => e.message))).toContain('403');
+  await expect(A.page.getByRole('textbox', { name: /^Message/ })).toBeEnabled();   // moderators can still type
+  await sendMessage(A.page, 'moderator speaking');
+  await expect(msg(B.page, 'moderator speaking')).toBeVisible();
   // archive: Bob cannot unarchive a locked thread, Alice can
   await A.page.getByRole('button', { name: 'Thread Settings' }).click();
   await A.page.getByRole('dialog', { name: 'Thread Settings' }).getByRole('button', { name: 'Archive Thread' }).click();

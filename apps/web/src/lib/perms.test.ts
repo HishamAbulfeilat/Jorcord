@@ -84,8 +84,9 @@ describe('composerState: screening and locked threads', () => {
     expect(composerState(p, { type: 'text' }, { pending: true })).toMatchObject({ canSend: false, canAttach: false, reason: 'Accept the server rules to start chatting.' });
     expect(composerState(p, { type: 'text' }, { pending: false }).canSend).toBe(true);
   });
-  it('locking only bites once the thread is archived (Discord semantics)', () => {
-    expect(composerState(p, { type: 'thread', locked: true }).canSend).toBe(true);
+  it('a locked thread blocks posting without MANAGE_THREADS, open or archived', () => {
+    expect(composerState(p, { type: 'thread', locked: true })).toMatchObject({ canSend: false, reason: 'This thread is locked.' });
+    expect(composerState(p | Perm.MANAGE_THREADS, { type: 'thread', locked: true }).canSend).toBe(true);
     expect(composerState(p, { type: 'thread', locked: true, archived: true })).toMatchObject({ canSend: false, reason: 'This thread is archived and locked.' });
     expect(composerState(p, { type: 'thread', archived: true })).toMatchObject({ canSend: false, reason: 'This thread is archived.' });
   });

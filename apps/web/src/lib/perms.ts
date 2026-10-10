@@ -36,10 +36,11 @@ export const canOpenGuildSettings = (perms: bigint) => canAny(perms, Perm.MANAGE
 export function composerState(perms: bigint, channel: Pick<Channel, 'type' | 'archived'> & { locked?: boolean }, opts: { pending?: boolean } = {}): { canView: boolean; canSend: boolean; canAttach: boolean; canEmbed: boolean; reason?: string } {
   const canView = has(perms, Perm.VIEW_CHANNEL);
   const isThread = channel.type === 'thread';
-  // "locked" only matters once a thread is archived: then just MANAGE_THREADS may unarchive it or post (server: 403 errorCode 50083).
+  // A locked thread (open or archived) takes no messages from anyone without MANAGE_THREADS (server: 403 errorCode 50083).
   // An archived thread that is not locked is reopened by whoever posts, but the client asks for an explicit Unarchive first.
-  const canSend = has(perms, isThread ? Perm.SEND_IN_THREADS : Perm.SEND_MESSAGES) && !channel.archived && !opts.pending && channel.type !== 'category';
-  const reason = !canSend ? (opts.pending ? 'Accept the server rules to start chatting.' : channel.archived ? (channel.locked ? 'This thread is archived and locked.' : 'This thread is archived.') : 'You do not have permission to send messages in this channel.') : undefined;
+  const lockedOut = isThread && !!channel.locked && !has(perms, Perm.MANAGE_THREADS);
+  const canSend = has(perms, isThread ? Perm.SEND_IN_THREADS : Perm.SEND_MESSAGES) && !channel.archived && !lockedOut && !opts.pending && channel.type !== 'category';
+  const reason = !canSend ? (opts.pending ? 'Accept the server rules to start chatting.' : channel.archived ? (channel.locked ? 'This thread is archived and locked.' : 'This thread is archived.') : lockedOut ? 'This thread is locked.' : 'You do not have permission to send messages in this channel.') : undefined;
   return { canView, canSend, canAttach: canSend && has(perms, Perm.ATTACH_FILES), canEmbed: has(perms, Perm.EMBED_LINKS), reason };
 }
 
