@@ -73,7 +73,7 @@ describe('AutoMod v3', () => {
     expect(log.embeds[0]).toMatchObject({ type: 'rich', title: 'AutoMod: Spoilers', description: 'a SPOILER here' });
     expect(log.embeds[0].author).toBe(u.username);
     const fields = Object.fromEntries(log.embeds[0].fields.map((f: any) => [f.name, f.value]));
-    expect(fields.User).toContain(u.id); expect(fields.Channel).toBe(`<#${general.id}>`); expect(fields.Action).toBe('alert');
+    expect(fields.User).toContain(u.id); expect(fields.Channel).toBe('#general'); expect(fields.Action).toBe('alert');
     expect(log.mentions).toEqual([]); // the alert never pings anyone
   });
 

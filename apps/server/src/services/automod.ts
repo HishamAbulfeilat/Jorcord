@@ -104,12 +104,13 @@ async function sendAlert(ctx: Ctx, r: any, guildId: string, userId: string, chan
     const [g] = await ctx.db.query('SELECT owner_id FROM guilds WHERE id = $1', [guildId]);
     const [u] = await ctx.db.query('SELECT username FROM users WHERE id = $1', [userId]);
     if (!ch || !g || (ch.type !== 'text' && ch.type !== 'announcement')) return;
-    const where = channelId ? `<#${channelId}>` : 'unknown';
+    const [src] = channelId ? await ctx.db.query('SELECT name FROM channels WHERE id = $1', [channelId]) : [];
+    const where = src ? `#${src.name}` : 'unknown';
     const taken = test ? 'none (test mode)' : actions.map((a) => ({ block: 'blocked message', timeout: `timed out ${r.timeout_seconds ?? 60}s`, alert: 'alert', warn: 'warned' }[a])).join(', ');
     const embed: Embed = {
       type: 'rich', title: `${test ? '[Test] ' : ''}AutoMod: ${String(r.name).slice(0, 80)}`, color: test ? 0xfaa61a : 0xed4245, author: u?.username ?? userId,
       description: content.slice(0, 500) || '(no text)', footer: `Rule trigger: ${r.trigger}`,
-      fields: [{ name: 'User', value: `<@${userId}> (${u?.username ?? 'unknown'}, ${userId})`, inline: true }, { name: 'Channel', value: where, inline: true }, { name: 'Action', value: taken, inline: true }],
+      fields: [{ name: 'User', value: `${u?.username ?? 'unknown'} (${userId})`, inline: true }, { name: 'Channel', value: where, inline: true }, { name: 'Action', value: taken, inline: true }],
     };
     await createMessage(ctx, { channel: ch, authorId: g.owner_id, content: '', senderPerms: 0n, skipChecks: true, allowEmpty: true, webhookId: 'automod', webhookUsername: 'AutoMod', embeds: [embed] });
   } catch (e) { ctx.log.warn({ err: e }, 'automod alert failed'); }
