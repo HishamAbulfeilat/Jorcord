@@ -76,6 +76,9 @@ export function ChatView({ channel }: { channel: Channel }) {
   if (snapshot.current.cid !== cid) snapshot.current = { cid, v: useData.getState().readStates[cid]?.lastReadId ?? null };
   const [drag, setDrag] = useState(false); const [dropped, setDropped] = useState<File[]>([]); const depth = useRef(0);
   const isDm = !gid;
+  const parentNsfw = useData((s) => (channel.type === 'thread' && gid && channel.parentId ? !!s.guilds[gid]?.channels[channel.parentId]?.nsfw : false));
+  const ageOk = useData((s) => !!s.me?.ageConfirmed);
+  const gated = !!gid && (channel.nsfw || parentNsfw) && !ageOk;
 
   useEffect(() => { setCurrentChannel(cid); if (gid) setLast(gid, cid); return () => setCurrentChannel(null); }, [cid, gid, setLast]);
   useEffect(() => { useUI.getState().setEditing(null); }, [cid]);
@@ -100,12 +103,14 @@ export function ChatView({ channel }: { channel: Channel }) {
       <div className="flex min-h-0 flex-1">
         <div className="relative flex min-w-0 flex-1 flex-col">
           {isDm && <DmCallPanel channel={channel} />}
-          <MessageList key={cid} channel={channel} lastReadSnapshot={snapshot.current.v} />
-          <div className="relative"><TypingIndicator channelId={cid} guildId={gid} /></div>
-          <ThreadBanner channel={channel} />
-          <ScreeningBanner guildId={gid} />
-          {isDm && <MessageRequestBanner channel={channel} />}
-          <Composer key={'c' + cid} channel={channel} stagedExternal={dropped} />
+          {gated ? <AgeGate channel={channel} /> : (<>
+            <MessageList key={cid} channel={channel} lastReadSnapshot={snapshot.current.v} />
+            <div className="relative"><TypingIndicator channelId={cid} guildId={gid} /></div>
+            <ThreadBanner channel={channel} />
+            <ScreeningBanner guildId={gid} />
+            {isDm && <MessageRequestBanner channel={channel} />}
+            <Composer key={'c' + cid} channel={channel} stagedExternal={dropped} />
+          </>)}
           {drag && (
             <div className="pointer-events-none absolute inset-0 z-40 flex items-center justify-center bg-brand/20 backdrop-blur-sm" aria-hidden>
               <div className="flex flex-col items-center gap-2 rounded-xl border-2 border-dashed border-brand bg-chat/90 px-10 py-8 text-header"><Upload size={40} className="text-brand" /><div className="text-lg font-bold">Upload to {isDm ? dmName(channel, undefined) : `#${channel.name}`}</div><div className="text-sm text-muted">{t('You can add comments before uploading.')}</div></div>
@@ -139,6 +144,23 @@ function ThreadBanner({ channel }: { channel: Channel }) {
 }
 
 /** New members of a screened server are read-only until they accept the rules. */
+/** Age-restricted channel interstitial: the person attests they are 18+ (saved on the account), or goes back. */
+function AgeGate({ channel }: { channel: Channel }) {
+  const nav = useNav(); const [busy, setBusy] = useState(false);
+  const yes = async () => { setBusy(true); try { await api.users.confirmAge(); useData.setState((s) => ({ me: s.me ? { ...s.me, ageConfirmed: true } : s.me })); } catch (e) { toastError(e); } finally { setBusy(false); } };
+  return (
+    <div role="alertdialog" aria-labelledby="age-title" data-testid="age-gate" className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-8 text-center">
+      <div className="flex h-16 w-16 items-center justify-center rounded-full bg-danger/20 text-2xl font-extrabold text-danger" aria-hidden>18+</div>
+      <h2 id="age-title" className="text-xl font-bold text-header">{t('This channel is age-restricted')}</h2>
+      <p className="max-w-sm text-sm text-muted">{t('#{name} may contain content that is not appropriate for everyone. Are you 18 or older?', { name: channel.name ?? '' })}</p>
+      <div className="mt-2 flex gap-2">
+        <button className="btn btn-secondary" onClick={() => nav.go(channel.guildId)}>{t('No, take me back')}</button>
+        <button className="btn btn-danger" disabled={busy} onClick={() => void yes()}>{t('Yes, I am 18 or older')}</button>
+      </div>
+    </div>
+  );
+}
+
 /** A DM from someone who is not a friend: nothing is shared until the recipient accepts (replying also accepts). */
 function MessageRequestBanner({ channel }: { channel: Channel }) {
   const isRequest = useData((s) => !!s.messageRequests[channel.id]); const me = useData((s) => s.me);

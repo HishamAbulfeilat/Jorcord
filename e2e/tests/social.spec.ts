@@ -141,3 +141,26 @@ test('save for later, remind me: Inbox tabs, live reminder toast when due', asyn
   await expect(inbox.getByText('Nothing saved yet')).toBeVisible();
   await expect.poll(async () => (await rest(B.page, 'GET', '/users/@me/saved')).length).toBe(0);
 });
+
+test('age-restricted channels show a gate until 18+ is confirmed (stored on the account, revocable in Privacy & Safety)', async () => {
+  const gs = await rest(A.page, 'GET', '/users/@me/guilds'); const gid = gs.find((g: any) => g.name === 'Social HQ').id;
+  const ch = await rest(A.page, 'POST', `/guilds/${gid}/channels`, { name: 'after-dark', type: 'text', nsfw: true });
+  await B.page.goto(`/channels/${gid}/${ch.id}`);
+  const gate = B.page.getByTestId('age-gate');
+  await expect(gate).toBeVisible();
+  await expect(B.page.getByRole('textbox', { name: /^Message/ })).toHaveCount(0);
+  // the server refuses too
+  await expect(rest(B.page, 'GET', `/channels/${ch.id}/messages`)).rejects.toThrow(/AGE_RESTRICTED/);
+  await gate.getByRole('button', { name: 'No, take me back' }).click();
+  await expect(B.page.getByTestId('age-gate')).toHaveCount(0);
+  await B.page.goto(`/channels/${gid}/${ch.id}`);
+  await B.page.getByTestId('age-gate').getByRole('button', { name: /Yes, I am 18/ }).click();
+  await sendMessage(B.page, 'adults only');
+  await expect(msg(B.page, 'adults only')).toBeVisible();
+  await B.page.reload();
+  await expect(msg(B.page, 'adults only')).toBeVisible();   // persisted
+  await openUserSettings(B.page, 'Privacy & Safety');
+  await B.page.getByRole('dialog', { name: 'User Settings' }).getByRole('switch', { name: 'Allow access to age-restricted channels' }).click();
+  await closeSettings(B.page);
+  await expect(B.page.getByTestId('age-gate')).toBeVisible();
+});

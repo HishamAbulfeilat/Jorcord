@@ -38,5 +38,10 @@ export function PrivacyTab() {
       <Toggle label={t('Server members')} checked={fr.serverMembers} disabled={busy} onChange={(v) => void save({ friendRequests: { serverMembers: v } })} />
     </Row>
     <p className="mt-2 text-sm text-muted">{t('Turn all three off to stop receiving friend requests. You can still accept requests you already received.')}</p>
-  </>);
+      <H3>{t('Age-restricted content')}</H3>
+    <Row title={t('Allow access to age-restricted channels')} desc={t('You confirmed that you are 18 or older. Switch off to be asked again.')}>
+      <Toggle label={t('Allow access to age-restricted channels')} checked={!!me.ageConfirmed} disabled={busy}
+        onChange={(v) => { setBusy(true); (v ? api.users.confirmAge() : api.users.unconfirmAge()).then(() => useData.setState((st) => ({ me: st.me ? { ...st.me, ageConfirmed: v } : st.me }))).catch(toastError).finally(() => setBusy(false)); }} />
+    </Row>
+</>);
 }

@@ -19,7 +19,7 @@ Rank = order in which this pass implements items (R1 first). `-` = not planned i
 | R9 | Activities / rich presence (Playing X, Listening, Streaming, Competing) shown in member list, profile and friends "Now Playing" | todo | 4 | `PRESENCE_UPDATE` has status+customStatus only |
 | R10 | Activity privacy (hide activity), Hide muted channels, sidebar "Show all/Hide" | todo | 3 | no setting |
 | R11 | Announcement channels: follow + crosspost | todo | 3 | channel type exists, no routes |
-| R12 | NSFW age-gate interstitial | todo | 3 | `nsfw` flag stored, no gate in web |
+| R12 | NSFW age-gate interstitial | DONE (`services/agegate.ts`, `ChatView.tsx` AgeGate) | 3 | `nsfw` flag stored, no gate in web |
 | R13 | Server welcome screen (channel list) + onboarding questions (channels & roles prompts) | partial | 3 | rules screening + welcome modal done (`ExtraModals.tsx` OnboardingModal); no questions/default channels |
 | R14 | User-created guild templates (share code), widget, vanity URL claim UI, server insights/analytics | partial/todo | 2 | built-in presets only (`services/guilds.ts`); vanity PATCH exists |
 | R15 | GIF favorites, saved media | todo | 3 | `GET /gifs/*` only |

@@ -63,6 +63,9 @@ export const api = {
     removeRelationship: (userId: Id) => send({ method: 'DELETE', path: `/users/@me/relationships/${userId}` }),
     readStates: () => send<ReadState[]>({ method: 'GET', path: '/users/@me/read-states' }).then((x) => arr<ReadState>(x)),
     /** Friend request by username: the contract addresses relationships by user id, so resolve through a username lookup. */
+    /** Self-attest 18+ (unlocks age-restricted channels); `unconfirmAge` locks them again. */
+    confirmAge: () => send({ method: 'POST', path: '/users/@me/age-confirm', body: { confirm: true } }),
+    unconfirmAge: () => send({ method: 'DELETE', path: '/users/@me/age-confirm' }),
     /** Saved for later. */
     savedIds: () => send<Id[]>({ method: 'GET', path: '/users/@me/saved/ids' }).then((x) => arr<Id>(x)),
     saved: (q: { limit?: number; offset?: number } = {}) => send<Message[]>({ method: 'GET', path: '/users/@me/saved', query: q }).then((x) => arr<Message>(x)),
