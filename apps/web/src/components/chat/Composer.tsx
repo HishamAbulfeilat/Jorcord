@@ -200,7 +200,7 @@ export function Composer({ channel, stagedExternal }: { channel: Channel; staged
           {suggest.items.map((it, i) => (
             <li key={it.key} role="option" aria-selected={i === suggest.index}>
               <button onMouseDown={(e) => { e.preventDefault(); applySuggest(suggest, i); }} onMouseEnter={() => setSuggest({ ...suggest, index: i })} className={cx('touch flex w-full items-center gap-2 rounded px-2 py-1 text-start md:min-h-[34px]', i === suggest.index ? 'bg-hover' : '')}>
-                {it.avatar ? <Avatar user={it.avatar} size={24} /> : it.icon?.startsWith('http') || it.icon?.startsWith('/') ? <img src={it.icon} alt="" className="h-6 w-6 object-contain" /> : <span className="flex h-6 w-6 items-center justify-center text-lg">{it.icon === '#' ? <Hash size={18} className="text-muted" /> : it.icon}</span>}
+                {it.avatar ? <Avatar user={it.avatar} size={24} /> : it.icon?.startsWith('http') || it.icon?.startsWith('/') ? <img loading="lazy" decoding="async" src={it.icon} alt="" className="h-6 w-6 object-contain" /> : <span className="flex h-6 w-6 items-center justify-center text-lg">{it.icon === '#' ? <Hash size={18} className="text-muted" /> : it.icon}</span>}
                 <span className="font-medium text-header" style={{ color: it.color }}>{it.label}</span>{it.sub && <span className="min-w-0 flex-1 truncate text-sm text-muted">{it.sub}</span>}{it.app && <span className="ms-auto shrink-0 text-xs text-muted">{it.app}</span>}
               </button>
             </li>

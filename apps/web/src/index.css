@@ -16,6 +16,7 @@
   --link: 0 168 252; --danger: 218 55 60; --danger-hover: 162 43 47; --success: 35 165 89; --warn: 240 178 50;
   --divider: 63 65 71; --mention: 201 205 251; --mention-bg: 88 101 242;
   --composer: 56 58 64;
+  --rail-btn: 49 51 56; --scroll: 26 27 30;
   /* text-safe variants of the status colours (>= 4.5:1 on every surface of the theme); the base tokens stay for fills/borders */
   --danger-text: 255 140 144; --warn-text: 240 178 50; --success-text: 60 200 115;
   color-scheme: dark;
@@ -26,13 +27,14 @@
   --text: 49 51 56; --muted: 92 94 102; --header: 6 6 7; --interactive: 78 80 88; --interactive-hover: 6 6 7;
   --link: 0 108 231; --divider: 225 226 228; --mention: 80 92 220; --mention-bg: 88 101 242;
   --composer: 235 237 239;
+  --rail-btn: 255 255 255; --scroll: 196 198 204;
   --danger-text: 180 25 30; --warn-text: 120 75 0; --success-text: 18 100 48;
   color-scheme: light;
 }
 [data-theme="amoled"] {
   --rail: 0 0 0; --side: 8 8 9; --chat: 0 0 0; --float: 24 24 27; --chat-hover: 12 12 13;
   --input: 22 22 24; --modal: 12 12 13; --modal-alt: 0 0 0; --hover: 24 24 26; --active: 38 38 41;
-  --divider: 36 36 40; --composer: 24 24 26;
+  --divider: 36 36 40; --composer: 24 24 26; --rail-btn: 24 24 27; --scroll: 58 58 63;
 }
 [data-density="compact"] .msg-cozy { padding-top: 0 !important; }
 [data-reduce-motion="true"] *, [data-reduce-motion="true"] *::before, [data-reduce-motion="true"] *::after {
@@ -60,9 +62,9 @@ a:hover { text-decoration: underline; }
 ::selection { background: rgb(var(--brand) / .45); }
 
 /* scrollbars */
-.scroller { overflow-y: auto; scrollbar-width: thin; scrollbar-color: rgb(var(--rail)) transparent; }
+.scroller { overflow-y: auto; scrollbar-width: thin; scrollbar-color: rgb(var(--scroll)) transparent; }
 .scroller::-webkit-scrollbar { width: 8px; height: 8px; }
-.scroller::-webkit-scrollbar-thumb { background: rgb(var(--rail)); border-radius: 8px; border: 2px solid transparent; background-clip: padding-box; min-height: 40px; }
+.scroller::-webkit-scrollbar-thumb { background: rgb(var(--scroll)); border-radius: 8px; border: 2px solid transparent; background-clip: padding-box; min-height: 40px; }
 .scroller::-webkit-scrollbar-track { background: transparent; }
 .scroller-hide { scrollbar-width: none; }
 .scroller-hide::-webkit-scrollbar { display: none; }

@@ -51,8 +51,8 @@ function GuildButton({ id, inFolder }: { id: string; inFolder?: boolean }) {
       <Pill active={active} unread={unread && !muted} />
       <Tip text={g.name}>
         <button aria-label={g.name + (mentions ? `, ${mentions} mentions` : unread ? ', unread' : '')} aria-current={active ? 'page' : undefined} onClick={() => nav.go(id, last)}
-          className={cx('group relative flex h-12 w-12 items-center justify-center overflow-hidden transition-all duration-150 hover:rounded-2xl', active ? 'rounded-2xl bg-brand text-white' : 'rounded-3xl bg-chat text-normal hover:bg-brand hover:text-white', muted && 'opacity-60', mergeTarget === id && 'rounded-2xl ring-2 ring-brand', inFolder && 'h-10 w-10')}>
-          {icon ? <img src={icon} alt="" className="h-full w-full object-cover" draggable={false} /> : <span className="text-[15px] font-medium">{initials(g.name)}</span>}
+          className={cx('group relative flex h-12 w-12 items-center justify-center overflow-hidden transition-all duration-150 hover:rounded-2xl', active ? 'rounded-2xl bg-brand text-white' : 'rounded-3xl bg-[rgb(var(--rail-btn))] text-normal hover:bg-brand hover:text-white', muted && 'opacity-60', mergeTarget === id && 'rounded-2xl ring-2 ring-brand', inFolder && 'h-10 w-10')}>
+          {icon ? <img loading="lazy" decoding="async" src={icon} alt="" className="h-full w-full object-cover" draggable={false} /> : <span className="text-[15px] font-medium">{initials(g.name)}</span>}
           <span ref={setMergeRef} aria-hidden className="absolute inset-x-0 top-1/4 bottom-1/4" />
         </button>
       </Tip>
@@ -107,7 +107,7 @@ function FolderButton({ item, open }: { item: Extract<RailItem, { kind: 'folder'
 
 function MiniGuild({ id }: { id: string }) {
   const g = useData((s) => s.guilds[id]?.guild); const icon = fileUrl(g?.icon);
-  return <span className="flex h-4 w-4 items-center justify-center overflow-hidden rounded-full bg-chat text-[7px] font-bold text-normal">{icon ? <img src={icon} alt="" className="h-full w-full object-cover" /> : initials(g?.name ?? '?').slice(0, 1)}</span>;
+  return <span className="flex h-4 w-4 items-center justify-center overflow-hidden rounded-full bg-chat text-[7px] font-bold text-normal">{icon ? <img loading="lazy" decoding="async" src={icon} alt="" className="h-full w-full object-cover" /> : initials(g?.name ?? '?').slice(0, 1)}</span>;
 }
 
 export function ServerRail({ onNavigate }: { onNavigate?: () => void }) {
@@ -166,8 +166,8 @@ export function ServerRail({ onNavigate }: { onNavigate?: () => void }) {
           </SortableContext>
         </DndContext>
       </MergeCtx.Provider>
-      <Tip text={t('Add a Server')}><button aria-label={t('Add a Server')} onClick={() => open({ kind: 'createServer' })} className="flex h-12 w-12 items-center justify-center rounded-3xl bg-chat text-success transition-all hover:rounded-2xl hover:bg-success hover:text-white"><Plus size={24} /></button></Tip>
-      <Tip text={t('Explore Discoverable Servers')}><button aria-label={t('Explore servers')} onClick={() => nav.to('/discover')} className="flex h-12 w-12 items-center justify-center rounded-3xl bg-chat text-success transition-all hover:rounded-2xl hover:bg-success hover:text-white"><Compass size={24} /></button></Tip>
+      <Tip text={t('Add a Server')}><button aria-label={t('Add a Server')} onClick={() => open({ kind: 'createServer' })} className="flex h-12 w-12 items-center justify-center rounded-3xl bg-[rgb(var(--rail-btn))] text-success transition-all hover:rounded-2xl hover:bg-success hover:text-white"><Plus size={24} /></button></Tip>
+      <Tip text={t('Explore Discoverable Servers')}><button aria-label={t('Explore servers')} onClick={() => nav.to('/discover')} className="flex h-12 w-12 items-center justify-center rounded-3xl bg-[rgb(var(--rail-btn))] text-success transition-all hover:rounded-2xl hover:bg-success hover:text-white"><Compass size={24} /></button></Tip>
     </nav>
   );
 }

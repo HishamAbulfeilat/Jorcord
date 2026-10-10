@@ -8,7 +8,8 @@ import { useUI, toast, toastError, defaultKeybinds } from '@/stores/ui';
 import { useLayout } from '@/stores/layout';
 import { useNotif, setMuted, mutedNow, DEFAULT_GUILD_NOTIFY } from '@/stores/notif';
 import { Modal, Field, Spinner, Toggle, Row } from '@/components/ui/primitives';
-import { EmojiPicker } from '@/components/chat/EmojiPicker';
+import { lazyNamed, Lazy } from '@/lib/lazy';
+const EmojiPicker = lazyNamed(() => import('@/components/chat/EmojiPicker'), 'EmojiPicker');
 import { Markdown } from '@/components/chat/Markdown';
 import { IconPicker } from './ModalHost';
 import { ChannelIcon } from '@/components/layout/ChannelSidebar';
@@ -48,7 +49,7 @@ export function CustomStatusModal({ close }: { close: () => void }) {
         <button type="button" aria-label={t('Select emoji')} aria-expanded={picker} onClick={() => setPicker((v) => !v)} className="flex h-10 w-11 shrink-0 items-center justify-center text-xl text-interactive hover:text-header">{emoji || <Smile size={22} />}</button>
         <input id="cs-text" className="h-10 min-w-0 flex-1 bg-transparent px-1 text-normal outline-none placeholder:text-muted" value={text} maxLength={128} onChange={(e) => setText(e.target.value)} placeholder={t('Support has arrived!')} autoFocus />
         {(text || emoji) && <button type="button" aria-label={t('Clear')} onClick={() => { setText(''); setEmoji(''); }} className="px-2 text-interactive hover:text-header"><X size={16} /></button>}
-        {picker && <div className="absolute start-0 top-11 z-10"><EmojiPicker onPick={(e) => { if (e.char) setEmoji(e.char); setPicker(false); }} /></div>}
+        {picker && <div className="absolute start-0 top-11 z-10"><Lazy><EmojiPicker onPick={(e: any) => { if (e.char) setEmoji(e.char); setPicker(false); }} /></Lazy></div>}
       </div>
       {me.customStatus?.expiresAt && <p className="mb-2 text-xs text-muted" data-testid="status-expiry">{t('Clears {time}', { time: fmtStamp(new Date(me.customStatus.expiresAt).getTime()) })}</p>}
       <Field label={t('Clear after')}>

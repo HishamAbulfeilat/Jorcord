@@ -11,7 +11,8 @@ import { Avatar } from '@/components/ui/Avatar';
 import { cx, copyText, displayName, fileUrl, inviteUrl, initials } from '@/lib/format';
 import { useNav } from '@/lib/nav';
 import { ProfileCard } from './Profile';
-import { ChannelSettings } from '@/components/settings/ChannelSettings';
+import { lazyNamed, Lazy } from '@/lib/lazy';
+const ChannelSettings = lazyNamed(() => import('@/components/settings/ChannelSettings'), 'ChannelSettings');
 import { goto } from '@/lib/menus';
 import { joinDiscoverable } from '@/components/home/DiscoveryPage';
 import { myChannelPerms } from '@/lib/session';
@@ -224,7 +225,7 @@ export function ModalHost() {
     case 'voiceSettings': return <VoiceSettingsModal onClose={close} />;
     case 'reactors': return <Reactors spec={m} close={close} />;
     case 'leaveGuild': return <LeaveGuild guildId={m.guildId} close={close} />;
-    case 'channelSettings': return <ChannelSettings channelId={m.channelId} close={close} />;
+    case 'channelSettings': return <Lazy><ChannelSettings channelId={m.channelId} close={close} /></Lazy>;
     case 'interactionModal': return <InteractionModal key={m.interactionId} spec={m.modal} channelId={m.channelId} interactionId={m.interactionId} close={close} />;
     case 'createPoll': return <CreatePollModal channelId={m.channelId} close={close} />;
     case 'pollVoters': return <PollVotersModal channelId={m.channelId} messageId={m.messageId} answerId={m.answerId} close={close} />;

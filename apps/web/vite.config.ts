@@ -14,7 +14,24 @@ export default defineConfig({
       '/gateway': { target, ws: true, changeOrigin: true },
     },
   },
-  build: { chunkSizeWarningLimit: 1200 },
+  build: {
+    chunkSizeWarningLimit: 600,
+    rollupOptions: {
+      output: {
+        // vendor chunks cache independently of app code (an app deploy no longer invalidates react / livekit / hljs)
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return undefined;
+          if (/livekit-client|@livekit|protobuf|ts-debounce|events|loglevel|jose|sdp/.test(id)) return 'vendor-livekit';
+          if (id.includes('highlight.js')) return 'vendor-hljs';
+          if (/react-router|@remix-run/.test(id)) return 'vendor-router';
+          if (/@dnd-kit/.test(id)) return 'vendor-dnd';
+          if (/@tanstack/.test(id)) return 'vendor-query';
+          if (/react-dom|\/react\/|scheduler/.test(id)) return 'vendor-react';
+          return undefined;
+        },
+      },
+    },
+  },
   test: { environment: 'jsdom', include: ['src/**/*.test.ts', 'src/**/*.test.tsx'] },
   plugins: [
     react(),
@@ -37,7 +54,15 @@ export default defineConfig({
         importScripts: ['push-sw.js'],
         navigateFallbackDenylist: [/^\/api/, /^\/gateway/, /^\/files/],
         globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
+        // the 4.8 MB RNNoise/WASM chunk is only needed when someone enables noise suppression: cache it on first use instead of on install
+        globIgnores: ['**/noise_suppression-*.js'],
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
+        runtimeCaching: [
+          { urlPattern: ({ url }) => /\/assets\/noise_suppression-.*\.js$/.test(url.pathname), handler: 'CacheFirst', options: { cacheName: 'jorcord-noise', expiration: { maxEntries: 2 } } },
+          // avatars / attachments / emoji are content-addressed by id: serve from cache, bounded
+          { urlPattern: ({ url, request }) => request.destination === 'image' && /^\/(api\/)?files\//.test(url.pathname), handler: 'StaleWhileRevalidate', options: { cacheName: 'jorcord-images', expiration: { maxEntries: 300, maxAgeSeconds: 30 * 24 * 3600 }, cacheableResponse: { statuses: [200] } } },
+          { urlPattern: ({ url }) => url.origin === 'https://fonts.gstatic.com', handler: 'CacheFirst', options: { cacheName: 'jorcord-fonts', expiration: { maxEntries: 20 } } },
+        ],
       },
     }),
   ],

@@ -29,7 +29,7 @@ export function ReactionBar({ m }: { m: Message }) {
           <button key={`${r.emoji}:${r.emojiId}`} aria-pressed={r.me} aria-label={`${r.emoji} ${r.count}`} onClick={() => toggle(r)}
             onContextMenu={(e) => { e.preventDefault(); openModal({ kind: 'reactors', channelId: m.channelId, messageId: m.id, emoji: r.emoji, emojiId: r.emojiId }); }}
             className={cx('flex h-6 items-center gap-1.5 rounded-md border px-1.5 text-sm md:h-6', r.me ? 'border-brand bg-brand/20 text-[rgb(var(--mention))]' : 'border-transparent bg-[rgb(var(--active)/0.6)] text-interactive hover:border-[rgb(var(--interactive)/0.5)]')}>
-            {custom ? <img src={custom} alt={r.emoji} className="h-4 w-4" /> : <span className="text-base leading-none">{r.emoji}</span>}
+            {custom ? <img loading="lazy" decoding="async" src={custom} alt={r.emoji} className="h-4 w-4" /> : <span className="text-base leading-none">{r.emoji}</span>}
             <span className="text-xs font-semibold">{r.count}</span>
           </button>
         );

@@ -119,7 +119,7 @@ export const MessageItem = memo(function MessageItem({ m, grouped, highlighted }
     return (
       <div className={cx(base, 'flex items-center gap-3 py-1.5')} {...trig} id={`msg-${m.id}`}>
         <span className="flex w-10 justify-end"><Icon size={18} className={m.type === 'join' ? 'text-success' : 'text-muted'} /></span>
-        <span className="text-[15px] text-muted"><button className="font-medium text-header hover:underline" onClick={openUser}>{info.name}</button> {SYSTEM[m.type]('').trim()} <span className="ms-1 text-xs">{fmtStamp(ts)}</span></span>
+        <span className="text-[15px] text-muted"><button className="font-medium text-header hover:underline" onClick={openUser}>{info.name}</button> {SYSTEM[m.type]('').trim()} <span className="ms-1 whitespace-nowrap text-xs">{fmtStamp(ts)}</span></span>
       </div>
     );
   }
@@ -132,7 +132,7 @@ export const MessageItem = memo(function MessageItem({ m, grouped, highlighted }
         </div>
       ) : null}
       {m.attachments.length > 0 && <div className="mt-1 flex flex-col items-start gap-1">{m.attachments.map((a) => <AttachmentView key={a.id} a={a} />)}</div>}
-      {stickers && stickers.length > 0 && <div className="mt-1 flex gap-2">{stickers.map((s) => <img key={s.id} src={fileUrl(s.url) ?? s.url} alt={s.name} title={s.name} className="h-[160px] w-[160px] object-contain" />)}</div>}
+      {stickers && stickers.length > 0 && <div className="mt-1 flex gap-2">{stickers.map((s) => <img loading="lazy" decoding="async" key={s.id} src={fileUrl(s.url) ?? s.url} alt={s.name} title={s.name} className="h-[160px] w-[160px] object-contain" />)}</div>}
       {m.embeds.length > 0 && <div className="mt-1 flex flex-col items-start gap-1">{m.embeds.map((e, i) => <EmbedView key={i} e={e} />)}</div>}
       {m.pinned && <div className="mt-0.5 flex items-center gap-1 text-[11px] font-medium text-muted" data-testid="pinned-mark"><Pin size={11} aria-hidden />{t('Pinned')}</div>}
       {m.poll && <PollView m={m} />}

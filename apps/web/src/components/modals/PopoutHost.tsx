@@ -2,12 +2,15 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useUI } from '@/stores/ui';
 import { ProfileCard } from './Profile';
-import { EmojiPicker } from '@/components/chat/EmojiPicker';
+import { lazyNamed, Lazy } from '@/lib/lazy';
+const EmojiPicker = lazyNamed(() => import('@/components/chat/EmojiPicker'), 'EmojiPicker');
 import { useIsMobile } from '@/lib/hooks';
 
 export function PopoutHost() {
   const p = useUI((s) => s.popout); const close = useUI((s) => s.closePopout); const mobile = useIsMobile();
   const ref = useRef<HTMLDivElement>(null); const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
+  const [size, setSize] = useState(0); // lazy content (emoji picker) changes the popout's size after first paint: re-place it
+  useEffect(() => { const el = ref.current; if (!p || !el || typeof ResizeObserver === 'undefined') return; const ro = new ResizeObserver(() => setSize(el.offsetWidth * 10000 + el.offsetHeight)); ro.observe(el); return () => ro.disconnect(); }, [p]);
   useLayoutEffect(() => {
     if (!p || !ref.current || mobile) return;
     const w = ref.current.offsetWidth, h = ref.current.offsetHeight, r = p.rect;
@@ -17,7 +20,7 @@ export function PopoutHost() {
     if (top < 8) top = p.kind === 'emoji' ? r.bottom + 8 : 8;
     top = Math.max(8, Math.min(top, window.innerHeight - h - 8));
     setPos({ left, top });
-  }, [p, mobile]);
+  }, [p, mobile, size]);
   useEffect(() => {
     if (!p) { setPos(null); return; }
     const k = (e: KeyboardEvent) => { if (e.key === 'Escape') close(); };
@@ -27,7 +30,7 @@ export function PopoutHost() {
   }, [p, close]);
   if (!p) return null;
   const content = p.kind === 'user' ? <div className="w-[min(340px,100vw-16px)] shadow-elev"><ProfileCard userId={p.userId} guildId={p.guildId} compact /></div>
-    : <EmojiPicker guildId={p.guildId} allowGif allowSticker={p.stickers} onPick={(e) => { p.onPick(e); close(); }} />;
+    : <Lazy><EmojiPicker guildId={p.guildId} allowGif allowSticker={p.stickers} onPick={(e: any) => { p.onPick(e); close(); }} /></Lazy>;
   if (mobile) return createPortal(
     <div className="fixed inset-0 z-[70] flex items-end bg-black/50" onMouseDown={(e) => { if (e.target === e.currentTarget) close(); }}>
       <div ref={ref} className="safe-bottom w-full animate-slideUp rounded-t-2xl bg-[rgb(var(--modal-alt))] p-2">{p.kind === 'user' ? <div className="mx-auto max-w-sm">{content}</div> : <div className="[&>div]:!w-full">{content}</div>}</div>

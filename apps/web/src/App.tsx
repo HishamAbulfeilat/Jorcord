@@ -6,21 +6,24 @@ import { useUI } from '@/stores/ui';
 import { api } from '@/lib/api';
 import { startSession, endSession } from '@/lib/session';
 import { AppShell } from '@/components/layout/AppShell';
-import { LoginPage, RegisterPage, ForgotPasswordPage, ResetPasswordPage, VerifyEmailPage } from '@/pages/AuthPages';
-import { InvitePage } from '@/pages/InvitePage';
-import { DemoPage } from '@/pages/DemoPage';
-import { DeveloperPortal } from '@/pages/DeveloperPortal';
-import { OAuthAuthorize } from '@/pages/OAuthAuthorize';
+import { lazyNamed, Lazy } from '@/lib/lazy';
+// route-level code splitting: only the shell + the page being opened are downloaded
+const auth = () => import('@/pages/AuthPages');
+const LoginPage = lazyNamed(auth, 'LoginPage'), RegisterPage = lazyNamed(auth, 'RegisterPage'), ForgotPasswordPage = lazyNamed(auth, 'ForgotPasswordPage'), ResetPasswordPage = lazyNamed(auth, 'ResetPasswordPage'), VerifyEmailPage = lazyNamed(auth, 'VerifyEmailPage');
+const InvitePage = lazyNamed(() => import('@/pages/InvitePage'), 'InvitePage');
+const DemoPage = lazyNamed(() => import('@/pages/DemoPage'), 'DemoPage');
+const DeveloperPortal = lazyNamed(() => import('@/pages/DeveloperPortal'), 'DeveloperPortal');
+const OAuthAuthorize = lazyNamed(() => import('@/pages/OAuthAuthorize'), 'OAuthAuthorize');
+const ServerSetupPage = lazyNamed(() => import('@/pages/ServerSetup'), 'ServerSetupPage');
+const UserSettings = lazyNamed(() => import('@/components/settings/UserSettings'), 'UserSettings');
+const GuildSettings = lazyNamed(() => import('@/components/settings/GuildSettings'), 'GuildSettings');
 import { ModalHost } from '@/components/modals/ModalHost';
 import { PopoutHost } from '@/components/modals/PopoutHost';
 import { ContextMenuHost } from '@/components/ui/ContextMenu';
 import { Toasts } from '@/components/ui/Toasts';
-import { UserSettings } from '@/components/settings/UserSettings';
-import { GuildSettings } from '@/components/settings/GuildSettings';
 import { Logo } from '@/components/ui/Logo';
 import { Spinner } from '@/components/ui/primitives';
 import { ApiException } from '@/lib/transport';
-import { ServerSetupPage } from '@/pages/ServerSetup';
 import { AppEffects } from '@/components/layout/AppEffects';
 import { getServerUrl, needsServerSetup, onServerChange } from '@/lib/server';
 import { initNative, syncStatusBar } from '@/lib/native';
@@ -42,8 +45,8 @@ function useThemeEffects() {
 function Overlays() {
   const settings = useUI((s) => s.settings);
   return (<>
-    {settings?.kind === 'user' && <UserSettings initialTab={settings.tab} />}
-    {settings?.kind === 'guild' && <GuildSettings guildId={settings.guildId} initialTab={settings.tab} />}
+    <Lazy>{settings?.kind === 'user' && <UserSettings initialTab={settings.tab} />}
+    {settings?.kind === 'guild' && <GuildSettings guildId={settings.guildId} initialTab={settings.tab} />}</Lazy>
     <ModalHost /><PopoutHost /><ContextMenuHost /><Toasts />
   </>);
 }
@@ -88,7 +91,7 @@ export default function App() {
   return (
     <div key={lang} className="contents">
       <NativeBridge />
-      <Routes>
+      <Lazy fallback={<Splash />}><Routes>
         <Route path="/connect" element={<ServerSetupPage />} />
         <Route path="/login" element={access ? <Navigate to="/channels/@me" replace /> : <LoginPage />} />
         <Route path="/register" element={access ? <Navigate to="/channels/@me" replace /> : <RegisterPage />} />
@@ -102,7 +105,7 @@ export default function App() {
         <Route path="/discover" element={<Protected />} />
         <Route path="/channels/:guildId/:channelId?/:messageId?" element={<Protected />} />
         <Route path="*" element={<Navigate to="/channels/@me" replace />} />
-      </Routes>
+      </Routes></Lazy>
       <Overlays />
     </div>
   );

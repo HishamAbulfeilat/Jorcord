@@ -32,7 +32,7 @@ function Card({ g }: { g: Found }) {
     <li data-guild-card={g.id} className="flex flex-col overflow-hidden rounded-lg bg-side shadow-high transition-shadow hover:shadow-elev">
       <div className="h-24 shrink-0" style={banner ? { background: `center/cover url(${banner})` } : { background: `linear-gradient(135deg, ${idColor(g.id)}, rgb(var(--brand)))` }} />
       <div className="relative flex flex-1 flex-col px-4 pb-4">
-        <div className="-mt-7 mb-2 flex h-14 w-14 items-center justify-center overflow-hidden rounded-2xl border-4 border-[rgb(var(--side))] bg-brand text-lg font-bold text-white">{icon ? <img src={icon} alt="" className="h-full w-full object-cover" /> : initials(g.name)}</div>
+        <div className="-mt-7 mb-2 flex h-14 w-14 items-center justify-center overflow-hidden rounded-2xl border-4 border-[rgb(var(--side))] bg-brand text-lg font-bold text-white">{icon ? <img loading="lazy" decoding="async" src={icon} alt="" className="h-full w-full object-cover" /> : initials(g.name)}</div>
         <h3 className="truncate text-base font-bold text-header">{g.name}</h3>
         <p className="mt-1 line-clamp-3 min-h-[3.9rem] text-sm text-muted">{g.description || t('No description yet.')}</p>
         <div className="mt-3 flex items-center justify-between gap-2">

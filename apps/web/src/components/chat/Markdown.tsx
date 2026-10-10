@@ -1,10 +1,9 @@
 import { getServerUrl } from '@/lib/server';
 import { apiBase } from '@/lib/server';
-import { memo, useState, type ReactNode } from 'react';
+import { memo, useEffect, useState, type ReactNode } from 'react';
 import { parseMarkdown, isJumbo, formatTimestamp, type MdNode } from '@/lib/markdown';
 import { useData } from '@/stores/data';
 import { useUI } from '@/stores/ui';
-import { highlight } from './highlight';
 import { replaceShortcodes } from '@/lib/emoji';
 import { intToHex } from '@/lib/perms';
 import { displayName, fmtFull, fileUrl } from '@/lib/format';
@@ -22,7 +21,9 @@ function Spoiler({ children }: { children: ReactNode }) {
 }
 
 function CodeBlock({ lang, v }: { lang: string; v: string }) {
-  const html = lang ? highlight(v, lang) : null;
+  // highlight.js (core + ~15 languages) is its own lazy chunk: plain text renders first, colours arrive when it is loaded
+  const [html, setHtml] = useState<string | null>(null);
+  useEffect(() => { let dead = false; if (lang) void import('./highlight').then((m) => { if (!dead) setHtml(m.highlight(v, lang)); }); return () => { dead = true; }; }, [v, lang]);
   return (
     <div className="group/code relative">
       <pre className="block"><code className={html ? 'hljs' : undefined} dangerouslySetInnerHTML={html ? { __html: html } : undefined}>{html ? undefined : v}</code></pre>
@@ -39,7 +40,7 @@ function User({ id, guildId }: { id: string; guildId?: string | null }) {
 
 function CustomEmoji({ id, name, animated }: { id: string; name: string; animated: boolean }) {
   const url = useData((s) => { for (const g of Object.values(s.guilds)) { const e = g.emojis.find((x) => x.id === id); if (e) return fileUrl(e.url) ?? e.url; } return undefined; });
-  return <img className="emoji" src={url ?? emojiUrl(id, animated)} alt={`:${name}:`} title={`:${name}:`} draggable={false} />;
+  return <img loading="lazy" decoding="async" className="emoji" src={url ?? emojiUrl(id, animated)} alt={`:${name}:`} title={`:${name}:`} draggable={false} />;
 }
 
 function Node({ n, ctx }: { n: MdNode; ctx: Ctx }) {

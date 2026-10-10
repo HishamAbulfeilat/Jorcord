@@ -149,7 +149,8 @@ function VoiceVideo() {
 }
 
 const LABELS: Record<string, string> = { quickSwitcher: T('Quick Switcher'), markRead: T('Mark Channel Read'), prevChannel: T('Previous Channel'), nextChannel: T('Next Channel'), prevServer: T('Previous Server'), nextServer: T('Next Server'), toggleMembers: T('Toggle Member List'), search: T('Search'), shortcuts: T('Show Shortcuts'), pushToTalk: T('Push to Talk'), toggleMute: T('Toggle Mute'), toggleDeafen: T('Toggle Deafen') };
-export const comboFromEvent = (e: KeyboardEvent | React.KeyboardEvent) => { const k = e.key; if (['Control', 'Shift', 'Alt', 'Meta'].includes(k)) return ''; return [e.ctrlKey || e.metaKey ? 'Ctrl' : '', e.altKey ? 'Alt' : '', e.shiftKey ? 'Shift' : '', k.length === 1 ? k.toUpperCase() : k].filter(Boolean).join('+'); };
+export { comboFromEvent } from '@/lib/combo';
+import { comboFromEvent } from '@/lib/combo';
 function Keybinds() {
   const p = useUI((s) => s.prefs); const set = useUI((s) => s.setPref); const [rec, setRec] = useState<string | null>(null);
   useEffect(() => { if (!rec) return; const h = (e: KeyboardEvent) => { e.preventDefault(); e.stopPropagation(); const c = comboFromEvent(e); if (e.key === 'Escape') { setRec(null); return; } if (c) { set('keybinds', { ...p.keybinds, [rec]: c }); setRec(null); } }; window.addEventListener('keydown', h, true); return () => window.removeEventListener('keydown', h, true); }, [rec, p.keybinds, set]);

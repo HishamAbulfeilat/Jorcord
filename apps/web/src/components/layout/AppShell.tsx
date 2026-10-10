@@ -13,7 +13,9 @@ import { QuickSwitcher } from './QuickSwitcher';
 import { ChatView } from '@/components/chat/ChatView';
 import { ForumView } from '@/components/chat/ForumView';
 import { FriendsHome } from '@/components/home/FriendsHome';
-import { VoiceChannelView, MobileVoiceBar } from '@/components/VoiceChannelView';
+import { MobileVoiceBar } from '@/components/VoiceChannelView';
+import { lazyNamed, Lazy } from '@/lib/lazy';
+const VoiceChannelView = lazyNamed(() => import('@/components/VoiceChannelView'), 'VoiceChannelView');
 import { VoiceRoot } from '@/voice/VoiceRoot';
 import { BaseCtx, useNav, useRouteIds } from '@/lib/nav';
 import { useIsMobile } from '@/lib/hooks';
@@ -22,7 +24,7 @@ import { cx } from '@/lib/format';
 import { getGateway, type GatewayStatus } from '@/lib/gateway';
 import { useState } from 'react';
 import { Badge } from '@/components/ui/primitives';
-import { comboFromEvent } from '@/components/settings/UserSettings';
+import { comboFromEvent } from '@/lib/combo';
 import { useShallow } from 'zustand/react/shallow';
 import { useVoiceUI } from '@/stores/voiceui';
 
@@ -53,7 +55,7 @@ function ChannelPage() {
   const { channelId, guildId } = useRouteIds(); const ready = useData((s) => s.ready); const nav = useNav();
   const ch = useData((s) => findChannel(s, channelId)); const known = useData((s) => (guildId ? !!s.guilds[guildId] : true));
   if (!ch) { if (ready && (!known || channelId)) return ready && !known ? <Navigate to={`${nav.base}/channels/@me`} replace /> : <GuildRedirect />; return null; }
-  if (ch.type === 'voice' || ch.type === 'stage') return <VoiceChannelView key={ch.id} channel={ch} />;
+  if (ch.type === 'voice' || ch.type === 'stage') return <Lazy><VoiceChannelView key={ch.id} channel={ch} /></Lazy>;
   if (ch.type === 'forum') return <ForumView key={ch.id} channel={ch} />;
   return <ChatView key={ch.id} channel={ch} />;
 }

@@ -45,3 +45,15 @@ re-announces its voice state after the next `READY`, so it recovers, but other u
 * **Global application commands emit no gateway event** (only guild commands do), so a client cannot learn that a bot registered `/foo` globally. The composer re-reads `GET /guilds/:id/application-commands` when someone starts typing `/` and the catalog is older than 3 s.
 * **`locked` only matters once a thread is archived** (non-moderators get 403 on posting/unarchiving then). The web UI follows that (Discord semantics): an open locked thread still takes messages, and the banner explains the lock.
 * The 3 s acknowledge window has no event for a *successful* silent ack (callback type 6, deferred update); the web client stops the button spinner after 3.5 s on its own.
+
+## 5. Command permissions page cannot list a non-owner manager's apps' guild commands
+`GET /applications/:app/guilds/:gid/commands` requires the app's bot token or its owner, but the permissions endpoints are for guild managers
+(MANAGE_GUILD + MANAGE_ROLES) on a user session. The web "Command Permissions" settings page therefore builds its command list from
+`GET /guilds/:id/application-commands` (what the caller may *run*), so a command that the manager is currently denied (and is not an administrator)
+does not appear and cannot be edited back. Suggested fix: allow guild managers to list the installed app's commands in that guild
+(read-only), or add `?all=1` for MANAGE_GUILD+MANAGE_ROLES callers on `/guilds/:id/application-commands`. The app-wide default row ("All commands") is unaffected.
+
+## 6. Locked thread rejects messages from non-moderators (e2e `forum.spec.ts` "thread lifecycle" fails at HEAD)
+The test (and the in-app banner "This thread is locked: once it is archived only moderators can reopen it.") expects an *open* locked thread to keep
+accepting messages from regular members (only unarchiving is restricted). Bob's `still talking` send fails ("Failed to send") against the current
+server. Fails identically with the web changes stashed, so it is a server/test contract mismatch rather than a regression.
