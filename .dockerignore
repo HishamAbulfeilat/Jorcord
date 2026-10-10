@@ -4,7 +4,6 @@
 .git
 .github
 e2e
-packages/voice
 infra
 docs
 *.log

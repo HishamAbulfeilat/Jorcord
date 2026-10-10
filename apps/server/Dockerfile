@@ -17,6 +17,7 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
 FROM base AS web
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 COPY packages/shared packages/shared
+COPY packages/voice packages/voice
 COPY apps/web apps/web
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile --filter "@jorcord/web..."
 RUN VITE_BASE=/ pnpm --filter @jorcord/web build
