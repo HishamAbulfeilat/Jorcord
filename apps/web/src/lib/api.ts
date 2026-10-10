@@ -24,6 +24,7 @@ export type PushRegistration = { platform: 'web' | 'desktop'; subscription: { en
 export interface GuildNotify { muted: boolean; mutedUntil: string | null; suppressEveryone: boolean; suppressRoles: boolean; level: 'all' | 'mentions' | 'none' | null }
 export interface ChannelNotify { muted: boolean; mutedUntil: string | null }
 export interface NotificationSettings { pushEnabled: boolean; guilds: (GuildNotify & { guildId: Id })[]; channels: (ChannelNotify & { channelId: Id })[] }
+export interface AutoModTestResult { ruleId: Id; name: string; trigger: string; enabled: boolean; testMode: boolean; actions: string[]; matched: boolean; evaluated: boolean }
 export interface GifResult { id: string; url: string; preview: string; title?: string }
 
 const arr = <T>(x: any): T[] => (Array.isArray(x) ? x : Array.isArray(x?.items) ? x.items : []);
@@ -129,6 +130,7 @@ export const api = {
     automod: (id: Id) => send<AutoModRule[]>({ method: 'GET', path: `/guilds/${id}/automod/rules` }).then((x) => arr<AutoModRule>(x)),
     createAutomod: (id: Id, b: Partial<AutoModRule>) => send<AutoModRule>({ method: 'POST', path: `/guilds/${id}/automod/rules`, body: b }),
     patchAutomod: (id: Id, rid: Id, b: Partial<AutoModRule>) => send<AutoModRule>({ method: 'PATCH', path: `/guilds/${id}/automod/rules/${rid}`, body: b }),
+    testAutomod: (id: Id, b: { content: string; mentionCount?: number }) => send<AutoModTestResult[]>({ method: 'POST', path: `/guilds/${id}/automod/test`, body: b }).then((x) => arr<AutoModTestResult>(x)),
     deleteAutomod: (id: Id, rid: Id) => send({ method: 'DELETE', path: `/guilds/${id}/automod/rules/${rid}` }),
     boost: (id: Id) => send<Guild>({ method: 'POST', path: `/guilds/${id}/boosts` }),
     search: (id: Id, q: SearchQuery) => send<any>({ method: 'GET', path: `/guilds/${id}/messages/search`, query: q as any }).then((x) => arr<Message>(x)),
