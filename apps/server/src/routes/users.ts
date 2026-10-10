@@ -102,6 +102,7 @@ export function userRoutes(app: FastifyInstance, ctx: Ctx) {
       await q.query(`UPDATE users SET username = $2, display_name = 'Deleted User', email = NULL, password_hash = NULL, avatar = NULL, banner = NULL, accent_color = NULL,
         bio = NULL, pronouns = NULL, custom_status = NULL, settings = '{}'::jsonb, mfa_secret = NULL, mfa_enabled = false, verified = false, presence = 'offline', deleted_at = now() WHERE id = $1`, [id, `deleted_${id}`]);
     });
+    await ctx.pcache.invalidate({ k: 'user', userId: id });
     for (const f of orphanFiles) await ctx.storage.delete(f.key).catch(() => {});
     ctx.hub.disconnectUser(id);
     const [gone] = await ctx.db.query('SELECT * FROM users WHERE id = $1', [id]);
@@ -165,6 +166,7 @@ export function userRoutes(app: FastifyInstance, ctx: Ctx) {
     if (!g || !m) throw notFound('Guild');
     if (g.owner_id === req.userId) throw new ApiError(400, 'OWNER_CANNOT_LEAVE', 'Transfer ownership or delete the guild instead');
     await ctx.db.query('DELETE FROM members WHERE guild_id = $1 AND user_id = $2', [guildId, req.userId]);
+    await ctx.pcache.invalidate({ k: 'member', guildId, userId: req.userId });
     await ctx.hub.toUser(req.userId, 'GUILD_DELETE', { id: guildId });
     await ctx.hub.toGuild(guildId, 'MEMBER_REMOVE', { guildId, userId: req.userId });
     return reply.code(204).send();
@@ -202,6 +204,7 @@ export function userRoutes(app: FastifyInstance, ctx: Ctx) {
       await q.query('INSERT INTO channels (id, guild_id, type, dm_key, owner_id, name) VALUES ($1,NULL,$2,$3,$4,NULL)', [id, isGroup ? 'group_dm' : 'dm', dmKey, isGroup ? req.userId : null]);
       for (const u of all) await q.query('INSERT INTO dm_participants (channel_id, user_id) VALUES ($1,$2)', [id, u]);
     });
+    await ctx.pcache.invalidate({ k: 'dm', channelId: id });
     const [row] = await ctx.db.query('SELECT * FROM channels WHERE id = $1', [id]);
     const dto = await channelDTO(ctx, row);
     await ctx.hub.toUsers(all, 'CHANNEL_CREATE', dto);

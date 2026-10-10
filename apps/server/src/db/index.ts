@@ -7,6 +7,8 @@ export interface Db extends Queryable {
   kind: 'pg' | 'pglite';
   exec(sql: string): Promise<void>;
   tx<T>(fn: (q: Queryable) => Promise<T>): Promise<T>;
+  /** Cluster-wide mutual exclusion (Postgres session advisory lock on a dedicated connection; no-op for single-process PGlite). */
+  withLock<T>(key: number, fn: () => Promise<T>): Promise<T>;
   close(): Promise<void>;
 }
 
@@ -27,6 +29,13 @@ export async function createDb(cfg: Pick<Config, 'databaseUrl' | 'dataDir'> & { 
           return r;
         } catch (e) { await c.query('ROLLBACK').catch(() => {}); throw e; } finally { c.release(); }
       },
+      async withLock(key, fn) {
+        const c = await pool.connect();
+        try {
+          await c.query('SELECT pg_advisory_lock($1)', [key]); // blocks until any other node holding it finishes
+          try { return await fn(); } finally { await c.query('SELECT pg_advisory_unlock($1)', [key]).catch(() => {}); }
+        } finally { c.release(); }
+      },
       close: () => pool.end(),
     };
   }
@@ -40,6 +49,7 @@ export async function createDb(cfg: Pick<Config, 'databaseUrl' | 'dataDir'> & { 
     async query(sql, params) { return (await lite.query(sql, params as any[])).rows as any[]; },
     async exec(sql) { await lite.exec(sql); },
     async tx(fn) { return lite.transaction(async (t) => fn({ query: async (s, p) => (await t.query(s, p as any[])).rows as any[] })); },
+    withLock: (_key, fn) => fn(),
     close: () => lite.close(),
   };
 }

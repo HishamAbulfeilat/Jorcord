@@ -56,6 +56,7 @@ export function memberRoutes(app: FastifyInstance, ctx: Ctx) {
     await ctx.db.query('UPDATE roles SET position = position + 1 WHERE guild_id = $1 AND position >= 1 AND id <> $1', [id]);
     await ctx.db.query('INSERT INTO roles (id, guild_id, name, color, hoist, position, permissions, mentionable, icon) VALUES ($1,$2,$3,$4,$5,1,$6,$7,$8)',
       [rid, id, b.name ?? 'new role', b.color ?? 0, b.hoist ?? false, (bits & ALL_PERMS).toString(), b.mentionable ?? false, b.icon ?? null]);
+    await ctx.pcache.invalidate({ k: 'guild', guildId: id });
     await audit(ctx, id, req.userId, 'ROLE_CREATE', rid, b);
     const [row] = await ctx.db.query('SELECT * FROM roles WHERE id = $1', [rid]);
     await ctx.hub.toGuild(id, 'ROLE_CREATE', roleDTO(row));
@@ -75,6 +76,7 @@ export function memberRoutes(app: FastifyInstance, ctx: Ctx) {
       needOutrank(gp, cur.get(e.id)!); needOutrank(gp, e.position);
     }
     await ctx.db.tx(async (q) => { for (const e of list) await q.query('UPDATE roles SET position = $2 WHERE id = $1 AND guild_id = $3', [e.id, e.position, id]); });
+    await ctx.pcache.invalidate({ k: 'guild', guildId: id });
     await audit(ctx, id, req.userId, 'ROLE_REORDER', null, list);
     for (const e of list) await pushRole(id, e.id);
     return (await ctx.db.query('SELECT * FROM roles WHERE guild_id = $1 ORDER BY position DESC, id', [id])).map(roleDTO);
@@ -93,7 +95,7 @@ export function memberRoutes(app: FastifyInstance, ctx: Ctx) {
     const settled = b.permissions !== undefined ? await trackVisibility(ctx, p.id, { userIds: await roleHolders(p.id, p.roleId) }) : null;
     const sets: string[] = [], vals: unknown[] = [p.roleId];
     for (const [k, v] of Object.entries(b)) { vals.push(k === 'permissions' ? (BigInt(v as string) & ALL_PERMS).toString() : v); sets.push(`${col[k]} = $${vals.length}`); }
-    if (sets.length) await ctx.db.query(`UPDATE roles SET ${sets.join(', ')} WHERE id = $1`, vals);
+    if (sets.length) { await ctx.db.query(`UPDATE roles SET ${sets.join(', ')} WHERE id = $1`, vals); await ctx.pcache.invalidate({ k: 'guild', guildId: p.id }); }
     if (settled) await settled();
     await audit(ctx, p.id, req.userId, 'ROLE_UPDATE', p.roleId, b);
     const [row] = await ctx.db.query('SELECT * FROM roles WHERE id = $1', [p.roleId]);
@@ -112,6 +114,7 @@ export function memberRoutes(app: FastifyInstance, ctx: Ctx) {
     const settled = await trackVisibility(ctx, p.id, { userIds: holders });
     await ctx.db.query('DELETE FROM overwrites WHERE target_id = $1 AND type = \'role\'', [p.roleId]);
     await ctx.db.query('DELETE FROM roles WHERE id = $1', [p.roleId]);
+    await ctx.pcache.invalidate({ k: 'guild', guildId: p.id });
     await settled();
     await audit(ctx, p.id, req.userId, 'ROLE_DELETE', p.roleId, { name: role.name });
     await ctx.hub.toGuild(p.id, 'ROLE_DELETE', { id: p.roleId, guildId: p.id });
@@ -170,6 +173,7 @@ export function memberRoutes(app: FastifyInstance, ctx: Ctx) {
       const settled = await trackVisibility(ctx, p.id, { userIds: [targetId] });
       if (removes.length) await ctx.db.query('DELETE FROM member_roles WHERE guild_id = $1 AND user_id = $2 AND role_id = ANY($3::text[])', [p.id, targetId, removes]);
       for (const r of adds) await ctx.db.query('INSERT INTO member_roles (guild_id, user_id, role_id) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING', [p.id, targetId, r]);
+      await ctx.pcache.invalidate({ k: 'member', guildId: p.id, userId: targetId });
       await settled();
       await audit(ctx, p.id, req.userId, 'MEMBER_ROLE_UPDATE', targetId, { added: adds, removed: removes });
     }
@@ -183,6 +187,7 @@ export function memberRoutes(app: FastifyInstance, ctx: Ctx) {
         if (has(await effectiveGuildPerms(p.id, targetId), Perm.ADMINISTRATOR)) throw forbidden('Cannot time out an administrator');
       }
       await ctx.db.query('UPDATE members SET timeout_until = $3 WHERE guild_id = $1 AND user_id = $2', [p.id, targetId, b.timeoutUntil]);
+      await ctx.pcache.invalidate({ k: 'member', guildId: p.id, userId: targetId });
       await audit(ctx, p.id, req.userId, 'MEMBER_TIMEOUT', targetId, { until: b.timeoutUntil });
     }
     await pushMember(p.id, targetId);
@@ -192,6 +197,7 @@ export function memberRoutes(app: FastifyInstance, ctx: Ctx) {
 
   async function removeMember(guildId: string, userId: string) {
     await ctx.db.query('DELETE FROM members WHERE guild_id = $1 AND user_id = $2', [guildId, userId]);
+    await ctx.pcache.invalidate({ k: 'member', guildId, userId });
     await ctx.hub.toUser(userId, 'GUILD_DELETE', { id: guildId });
     await ctx.hub.toGuild(guildId, 'MEMBER_REMOVE', { guildId, userId });
   }
@@ -229,6 +235,7 @@ export function memberRoutes(app: FastifyInstance, ctx: Ctx) {
     const target = await loadGuildPerm(ctx, p.id, p.userId);
     needOutrankMember(actor, target);
     await ctx.db.query('INSERT INTO bans (guild_id, user_id, reason, banned_by) VALUES ($1,$2,$3,$4) ON CONFLICT (guild_id, user_id) DO UPDATE SET reason = $3, banned_by = $4', [p.id, p.userId, b.reason ?? null, req.userId]);
+    await ctx.pcache.invalidate({ k: 'member', guildId: p.id, userId: p.userId });
     if (target) await removeMember(p.id, p.userId);
     if (b.deleteMessageSeconds) {
       const msgs = await ctx.db.query('DELETE FROM messages WHERE guild_id = $1 AND author_id = $2 AND id > $3 RETURNING id, channel_id', [p.id, p.userId, snowflake(Date.now() - b.deleteMessageSeconds * 1000)]);
@@ -299,6 +306,7 @@ export function memberRoutes(app: FastifyInstance, ctx: Ctx) {
       if (!used.length) throw notFound('Invite');
     }
     await ctx.db.query('INSERT INTO members (guild_id, user_id) VALUES ($1,$2) ON CONFLICT DO NOTHING', [guildId, req.userId]);
+    await ctx.pcache.invalidate({ k: 'member', guildId, userId: req.userId });
     const full = await buildGuildFull(ctx, guildId, req.userId);
     await ctx.hub.toUser(req.userId, 'GUILD_CREATE', full);
     const m = await memberDTO(ctx, guildId, req.userId);

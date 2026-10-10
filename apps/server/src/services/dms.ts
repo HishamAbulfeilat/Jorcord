@@ -23,6 +23,7 @@ export async function addGroupRecipient(ctx: Ctx, channel: any, actorId: string,
         OR EXISTS (SELECT 1 FROM members a JOIN members b ON a.guild_id = b.guild_id WHERE a.user_id = $1 AND b.user_id = $2)`, [actorId, userId]);
   if (!ok) throw forbidden('You need to be friends or share a server with this user', 'NO_SHARED_CONTEXT');
   await ctx.db.query('INSERT INTO dm_participants (channel_id, user_id) VALUES ($1,$2) ON CONFLICT DO NOTHING', [channel.id, userId]);
+  await ctx.pcache.invalidate({ k: 'dm', channelId: channel.id });
   const dto = await channelDTO(ctx, channel);
   await ctx.hub.toUser(userId, 'CHANNEL_CREATE', dto);
   await ctx.hub.toUsers(current, 'CHANNEL_UPDATE', dto);
@@ -33,11 +34,12 @@ export async function addGroupRecipient(ctx: Ctx, channel: any, actorId: string,
 export async function removeGroupRecipient(ctx: Ctx, channel: any, userId: string) {
   const removed = await ctx.db.query('DELETE FROM dm_participants WHERE channel_id = $1 AND user_id = $2 RETURNING user_id', [channel.id, userId]);
   if (!removed.length) return;
+  await ctx.pcache.invalidate({ k: 'dm', channelId: channel.id });
   const st = await ctx.voice.get(userId);
   if (st?.channelId === channel.id) await clearVoiceState(ctx, userId);
   await ctx.hub.toUser(userId, 'CHANNEL_DELETE', { id: channel.id, guildId: null });
   const left = await participantIds(ctx, channel.id);
-  if (!left.length) { await ctx.db.query('DELETE FROM channels WHERE id = $1', [channel.id]); return; }
+  if (!left.length) { await ctx.db.query('DELETE FROM channels WHERE id = $1', [channel.id]); await ctx.pcache.invalidate({ k: 'dm', channelId: channel.id }); return; }
   if (channel.owner_id === userId) await ctx.db.query('UPDATE channels SET owner_id = $2 WHERE id = $1', [channel.id, left[0]]);
   const [fresh] = await ctx.db.query('SELECT * FROM channels WHERE id = $1', [channel.id]);
   await ctx.hub.toUsers(left, 'CHANNEL_UPDATE', await channelDTO(ctx, fresh));

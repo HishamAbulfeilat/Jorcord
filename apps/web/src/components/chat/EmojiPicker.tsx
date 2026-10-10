@@ -1,6 +1,8 @@
 import { memo, useCallback, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Search, Smile, Clock, Film } from 'lucide-react';
+import { Search, Smile, Clock, Film, Sticker as StickerIcon } from 'lucide-react';
+import { fileUrl } from '@/lib/format';
+import { t } from '@/i18n';
 import { EMOJI_CATEGORIES, searchEmoji } from '@/lib/emoji';
 import { useData } from '@/stores/data';
 import { api } from '@/lib/api';
@@ -8,13 +10,13 @@ import { cx } from '@/lib/format';
 import { useDebounced } from '@/lib/hooks';
 import { Spinner } from '@/components/ui/primitives';
 
-export type EmojiPick = { char?: string; name: string; id?: string; animated?: boolean; gif?: string };
+export type EmojiPick = { char?: string; name: string; id?: string; animated?: boolean; gif?: string; sticker?: string };
 const RKEY = 'jorcord.recent.emoji';
 const recent = (): string[] => { try { return JSON.parse(localStorage.getItem(RKEY) ?? '[]'); } catch { return []; } };
 const pushRecent = (c: string) => { try { localStorage.setItem(RKEY, JSON.stringify([c, ...recent().filter((x) => x !== c)].slice(0, 24))); } catch { /* */ } };
 
-export function EmojiPicker({ onPick, guildId, allowGif = false }: { onPick: (e: EmojiPick) => void; guildId?: string; allowGif?: boolean }) {
-  const [q, setQ] = useState(''); const [tab, setTab] = useState<'emoji' | 'gif'>('emoji'); const [hover, setHover] = useState<string>('');
+export function EmojiPicker({ onPick, guildId, allowGif = false, allowSticker = false }: { onPick: (e: EmojiPick) => void; guildId?: string; allowGif?: boolean; allowSticker?: boolean }) {
+  const [q, setQ] = useState(''); const [tab, setTab] = useState<'emoji' | 'gif' | 'sticker'>('emoji'); const [hover, setHover] = useState<string>('');
   const guilds = useData((s) => s.guilds); const order = useData((s) => s.guildOrder);
   const dq = useDebounced(q, 250);
   const custom = useMemo(() => order.map((id) => guilds[id]).filter((g) => g && g.emojis.length), [guilds, order]);
@@ -30,12 +32,15 @@ export function EmojiPicker({ onPick, guildId, allowGif = false }: { onPick: (e:
     <div className="flex h-[min(420px,70dvh)] w-full flex-col overflow-hidden rounded-lg bg-float text-normal shadow-elev sm:w-[360px]" role="dialog" aria-label="Emoji picker">
       <div className="flex items-center gap-2 p-2">
         <div className="flex flex-1 items-center rounded bg-rail px-2"><input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder={tab === 'gif' ? 'Search GIFs' : 'Find the perfect emoji'} aria-label="Search" className="h-8 min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted" /><Search size={16} className="text-muted" /></div>
-        {allowGif && <div className="flex gap-1">
+        {allowGif && <div className="flex gap-1" role="tablist" aria-label={t('Picker type')}>
           <button aria-pressed={tab === 'emoji'} aria-label="Emoji" onClick={() => setTab('emoji')} className={cx('rounded p-1.5', tab === 'emoji' ? 'bg-active text-header' : 'text-interactive')}><Smile size={18} /></button>
           <button aria-pressed={tab === 'gif'} aria-label="GIFs" onClick={() => setTab('gif')} className={cx('rounded p-1.5', tab === 'gif' ? 'bg-active text-header' : 'text-interactive')}><Film size={18} /></button>
+          {allowSticker && <button aria-pressed={tab === 'sticker'} aria-label={t('Stickers')} onClick={() => setTab('sticker')} className={cx('rounded p-1.5', tab === 'sticker' ? 'bg-active text-header' : 'text-interactive')}><StickerIcon size={18} /></button>}
         </div>}
       </div>
-      {tab === 'gif' ? (
+      {tab === 'sticker' ? (
+        <StickerGrid guildId={guildId} q={q} onPick={(st) => pick({ name: st.name, sticker: st.id })} />
+      ) : tab === 'gif' ? (
         <div className="scroller min-h-0 flex-1 columns-2 gap-1 p-2">
           {gifs.isLoading && <Spinner className="mx-auto mt-8" />}
           {gifs.data?.length === 0 && <p className="p-4 text-center text-sm text-muted">No GIFs available. The server has no GIF provider configured.</p>}
@@ -43,7 +48,7 @@ export function EmojiPicker({ onPick, guildId, allowGif = false }: { onPick: (e:
         </div>
       ) : (
         <div className="flex min-h-0 flex-1">
-          {!q && <div className="scroller-hide flex w-10 shrink-0 flex-col items-center gap-1 overflow-y-auto border-r border-divider/50 py-2">
+          {!q && <div className="scroller-hide flex w-10 shrink-0 flex-col items-center gap-1 overflow-y-auto border-e border-divider/50 py-2">
             {rec.length > 0 && <a href="#emo-recent" onClick={(e) => { e.preventDefault(); document.getElementById('emo-recent')?.scrollIntoView(); }} className="rounded p-1 text-interactive hover:bg-hover" aria-label="Recent"><Clock size={18} /></a>}
             {custom.map((g) => <a key={g.guild.id} href={`#emo-${g.guild.id}`} aria-label={g.guild.name} onClick={(e) => { e.preventDefault(); document.getElementById(`emo-${g.guild.id}`)?.scrollIntoView(); }} className="flex h-7 w-7 items-center justify-center rounded-full bg-active text-[10px] font-bold">{g.guild.name[0]}</a>)}
             {EMOJI_CATEGORIES.map((c) => <a key={c.name} href={`#emo-${c.name}`} aria-label={c.name} onClick={(e) => { e.preventDefault(); document.getElementById(`emo-${c.name}`)?.scrollIntoView(); }} className="rounded p-1 text-lg leading-none hover:bg-hover">{c.emojis[0].char}</a>)}
@@ -70,6 +75,17 @@ export function EmojiPicker({ onPick, guildId, allowGif = false }: { onPick: (e:
     </div>
   );
 }
+function StickerGrid({ guildId, q, onPick }: { guildId?: string; q: string; onPick: (s: { id: string; name: string }) => void }) {
+  const stickers = useData((s) => (guildId ? s.guilds[guildId]?.stickers : undefined)) ?? [];
+  const list = stickers.filter((s) => s.name.toLowerCase().includes(q.toLowerCase()));
+  return (
+    <div className="scroller min-h-0 flex-1 p-2" role="grid" aria-label={t('Stickers')}>
+      {!guildId && <p className="p-4 text-center text-sm text-muted">{t('Stickers can be sent in servers.')}</p>}
+      {guildId && !stickers.length && <p className="p-4 text-center text-sm text-muted">{t('This server has no stickers yet. Add some in Server Settings.')}</p>}
+      <div className="grid grid-cols-3 gap-2">{list.map((s) => <button key={s.id} role="gridcell" aria-label={s.name} title={s.name} onClick={() => onPick(s)} className="flex aspect-square items-center justify-center rounded-lg p-1 hover:bg-hover"><img src={fileUrl(s.url) ?? s.url} alt={s.name} className="max-h-full max-w-full object-contain" loading="lazy" /></button>)}</div>
+    </div>
+  );
+}
 const Btn = memo(function Btn({ char, label, pick, setHover }: { char: string; label: string; pick: (e: EmojiPick) => void; setHover: (s: string) => void }) {
   return <button role="gridcell" aria-label={label} onMouseEnter={() => setHover(label)} onFocus={() => setHover(label)} onClick={() => pick({ char, name: label })} className="flex h-9 w-9 items-center justify-center rounded text-[26px] leading-none hover:bg-hover">{char}</button>;
 });
@@ -77,5 +93,5 @@ function Section({ id, title, children }: { id: string; title: string; children:
   return <section id={`emo-${id}`}><h3 className="sticky top-0 z-10 bg-float py-1.5 text-xs font-bold uppercase tracking-wide text-muted">{title}</h3>{children}</section>;
 }
 function CustomBtn({ e, pick, setHover }: { e: { id: string; name: string; url: string; animated: boolean }; pick: (e: EmojiPick) => void; setHover: (s: string) => void }) {
-  return <button role="gridcell" aria-label={e.name} onMouseEnter={() => setHover(e.name)} onClick={() => pick({ name: e.name, id: e.id, animated: e.animated })} className="flex h-9 w-9 items-center justify-center rounded hover:bg-hover"><img src={e.url} alt={e.name} className="h-7 w-7 object-contain" loading="lazy" /></button>;
+  return <button role="gridcell" aria-label={e.name} onMouseEnter={() => setHover(e.name)} onClick={() => pick({ name: e.name, id: e.id, animated: e.animated })} className="flex h-9 w-9 items-center justify-center rounded hover:bg-hover"><img src={fileUrl(e.url) ?? e.url} alt={e.name} className="h-7 w-7 object-contain" loading="lazy" /></button>;
 }

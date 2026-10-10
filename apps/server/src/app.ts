@@ -27,6 +27,7 @@ import { createState } from './state';
 import { createLiveKitControl } from './services/livekit';
 import { createMailer } from './services/mailer';
 import { createPush } from './services/push';
+import { PermCache } from './services/permcache';
 import { securityHeaders, logSerializers, LOG_REDACT } from './lib/security';
 
 export interface BuildOptions { config?: Partial<Config>; memoryDb?: boolean; env?: NodeJS.ProcessEnv }
@@ -49,9 +50,11 @@ export async function buildApp(opts: BuildOptions = {}): Promise<{ app: FastifyI
   const ctx: Ctx = {
     config, db, bus, storage: await createStorage(config), hub, rl, log: app.log,
     push: undefined as never, voice: state.voice, presence: state.presence, livekit: createLiveKitControl(config, app.log), mailer: await createMailer(config, app.log),
+    pcache: new PermCache(),
     search: config.searchMode === 'auto' ? (db.kind === 'pg' ? 'fts' : 'ilike') : config.searchMode,
   };
   ctx.push = createPush(ctx);
+  await ctx.pcache.init(bus, config.redisPrefix, !!config.redisUrl);
   await hub.init(ctx);
 
   await app.register(cors, {
@@ -100,6 +103,6 @@ export async function buildApp(opts: BuildOptions = {}): Promise<{ app: FastifyI
     });
   }, { prefix: '/api/v1' });
 
-  app.addHook('onClose', async () => { hub.close(); rl.close(); await ctx.push.flush().catch(() => {}); await bus.close(); await state.close(); await db.close(); });
+  app.addHook('onClose', async () => { hub.close(); ctx.pcache.close(); rl.close(); await ctx.push.flush().catch(() => {}); await bus.close(); await state.close(); await db.close(); });
   return { app, ctx };
 }

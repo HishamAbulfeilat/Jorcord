@@ -73,6 +73,14 @@ export function roleColor(member: Pick<Member, 'roles'> | undefined, roles: Role
   return best ? intToHex(best.color) : undefined;
 }
 
+/** The icon of the member's highest role that has one (shown beside their name, like Discord role icons). */
+export function roleIcon(member: Pick<Member, 'roles'> | undefined, roles: Role[]): Role | undefined {
+  if (!member) return undefined;
+  let best: Role | undefined;
+  for (const r of roles) if (r.icon && member.roles.includes(r.id) && (!best || r.position > best.position)) best = r;
+  return best;
+}
+
 export interface MemberGroup { id: string; name: string; members: Member[] }
 /** Member list grouping: hoisted roles (highest first) holding online members, then Online, then Offline. */
 export function groupMembers(members: Member[], roles: Role[], presenceOf: (id: string) => string | undefined, guildId: string): MemberGroup[] {

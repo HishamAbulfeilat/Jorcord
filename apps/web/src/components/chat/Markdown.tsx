@@ -7,11 +7,12 @@ import { useUI } from '@/stores/ui';
 import { highlight } from './highlight';
 import { replaceShortcodes } from '@/lib/emoji';
 import { intToHex } from '@/lib/perms';
-import { displayName, fmtFull } from '@/lib/format';
+import { displayName, fmtFull, fileUrl } from '@/lib/format';
 import { Hash, Copy } from 'lucide-react';
 import { useNav } from '@/lib/nav';
 import { copyText } from '@/lib/format';
 import { toast } from '@/stores/ui';
+import { t } from '@/i18n';
 
 export const emojiUrl = (id: string, animated: boolean) => `${apiBase()}/emojis/${id}.${animated ? 'gif' : 'webp'}`;
 
@@ -25,7 +26,7 @@ function CodeBlock({ lang, v }: { lang: string; v: string }) {
   return (
     <div className="group/code relative">
       <pre className="block"><code className={html ? 'hljs' : undefined} dangerouslySetInnerHTML={html ? { __html: html } : undefined}>{html ? undefined : v}</code></pre>
-      <button aria-label="Copy code" onClick={() => copyText(v).then(() => toast('Copied code', 'success'))} className="absolute right-2 top-2 hidden rounded bg-chat/80 p-1 text-interactive hover:text-header group-hover/code:block"><Copy size={14} /></button>
+      <button aria-label="Copy code" onClick={() => copyText(v).then(() => toast(t('Copied code'), 'success'))} className="absolute end-2 top-2 hidden rounded bg-chat/80 p-1 text-interactive hover:text-header group-hover/code:block"><Copy size={14} /></button>
     </div>
   );
 }
@@ -37,7 +38,7 @@ function User({ id, guildId }: { id: string; guildId?: string | null }) {
 }
 
 function CustomEmoji({ id, name, animated }: { id: string; name: string; animated: boolean }) {
-  const url = useData((s) => { for (const g of Object.values(s.guilds)) { const e = g.emojis.find((x) => x.id === id); if (e) return e.url; } return undefined; });
+  const url = useData((s) => { for (const g of Object.values(s.guilds)) { const e = g.emojis.find((x) => x.id === id); if (e) return fileUrl(e.url) ?? e.url; } return undefined; });
   return <img className="emoji" src={url ?? emojiUrl(id, animated)} alt={`:${name}:`} title={`:${name}:`} draggable={false} />;
 }
 
@@ -64,7 +65,7 @@ function Node({ n, ctx }: { n: MdNode; ctx: Ctx }) {
     case 'role': { const r = guild?.roles[n.id]; return <span className="mention" style={r?.color ? { color: intToHex(r.color), background: intToHex(r.color) + '33' } : undefined}>@{r?.name ?? 'deleted-role'}</span>; }
     case 'channel': {
       const c = guild?.channels[n.id];
-      return <span className="mention" role="link" tabIndex={0} onClick={() => nav.go(ctx.guildId, n.id)}><Hash size={13} className="mr-0.5 inline -translate-y-px" />{c?.name ?? 'unknown'}</span>;
+      return <span className="mention" role="link" tabIndex={0} onClick={() => nav.go(ctx.guildId, n.id)}><Hash size={13} className="me-0.5 inline -translate-y-px" />{c?.name ?? 'unknown'}</span>;
     }
     case 'everyone': return <span className="mention">@{n.v}</span>;
     case 'emoji': return <CustomEmoji id={n.id} name={n.name} animated={n.animated} />;

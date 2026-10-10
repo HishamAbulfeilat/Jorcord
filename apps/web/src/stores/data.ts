@@ -35,6 +35,18 @@ const toGuildState = (g: GuildFull): GuildState => {
   return { guild, channels: rec(channels ?? []), roles: rec(roles ?? []), members: Object.fromEntries((members ?? []).map((m) => [m.user.id, m])), emojis: emojis ?? [], stickers: stickers ?? [], memberCount: memberCount ?? members?.length ?? 0 };
 };
 
+const stickerFetches = new Map<Id, number>();
+/** Stickers have no gateway event: pull a guild's list when a message references one we do not know. Throttled per guild. */
+export async function refreshStickers(guildId: Id) {
+  if (Date.now() - (stickerFetches.get(guildId) ?? 0) < 15_000) return;
+  stickerFetches.set(guildId, Date.now());
+  try {
+    const { api } = await import('@/lib/api');
+    const list = await api.guilds.stickers(guildId);
+    useData.setState((st) => (st.guilds[guildId] ? { guilds: { ...st.guilds, [guildId]: { ...st.guilds[guildId]!, stickers: list } } } : st));
+  } catch { /* no permission / offline */ }
+}
+
 export const useData = create<DataState>((set, get) => ({
   ...empty,
   reset: () => set({ ...empty }),

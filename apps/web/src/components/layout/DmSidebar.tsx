@@ -11,6 +11,7 @@ import { dmMenu } from '@/lib/menus';
 import { useMenuTrigger } from '@/components/ui/ContextMenu';
 import { api } from '@/lib/api';
 import { useShallow } from 'zustand/react/shallow';
+import { t } from '@/i18n';
 
 function DmRow({ c }: { c: Channel }) {
   const me = useData((s) => s.me); const nav = useNav(); const { channelId } = useRouteIds();
@@ -21,7 +22,7 @@ function DmRow({ c }: { c: Channel }) {
   const active = channelId === c.id;
   return (
     <li className="group relative mx-2" {...trig}>
-      <button aria-current={active ? 'page' : undefined} onClick={() => nav.go('@me', c.id)} className={cx('touch flex w-full items-center gap-3 rounded px-2 text-left md:min-h-[42px]', active ? 'bg-active text-header' : 'hover:bg-hover', unread && !active ? 'text-header' : 'text-muted hover:text-interactive-hover')}>
+      <button aria-current={active ? 'page' : undefined} onClick={() => nav.go('@me', c.id)} className={cx('touch flex w-full items-center gap-3 rounded px-2 text-start md:min-h-[42px]', active ? 'bg-active text-header' : 'hover:bg-hover', unread && !active ? 'text-header' : 'text-muted hover:text-interactive-hover')}>
         {c.type === 'group_dm' ? <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand text-white"><Users size={16} /></span> : <Avatar user={other} size={32} presence />}
         <span className="min-w-0 flex-1 leading-tight">
           <span className={cx('block truncate text-[16px]', unread ? 'font-semibold' : 'font-medium')}>{dmName(c, me?.id)}</span>
@@ -29,7 +30,7 @@ function DmRow({ c }: { c: Channel }) {
         </span>
         <Badge n={mentions} />
       </button>
-      <button aria-label="Close DM" onClick={() => api.channels.delete(c.id)} className="absolute right-2 top-1/2 hidden -translate-y-1/2 text-interactive hover:text-header group-hover:block md:group-hover:block"><X size={16} /></button>
+      <button aria-label={t('Close DM')} onClick={() => api.channels.delete(c.id)} className="absolute end-2 top-1/2 hidden -translate-y-1/2 text-interactive hover:text-header group-hover:block md:group-hover:block"><X size={16} /></button>
     </li>
   );
 }
@@ -42,18 +43,18 @@ export function DmSidebar() {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex h-12 shrink-0 items-center px-2.5 shadow-[0_1px_0_rgb(0_0_0/0.2)] safe-top box-content">
-        <button onClick={() => setSwitcher(true)} className="flex h-[28px] w-full items-center rounded bg-rail px-2 text-left text-[13px] text-muted">Find or start a conversation</button>
+        <button onClick={() => setSwitcher(true)} className="flex h-[28px] w-full items-center rounded bg-rail px-2 text-start text-[13px] text-muted">{t('Find or start a conversation')}</button>
       </div>
       <div className="scroller min-h-0 flex-1 pt-2">
-        <button onClick={() => nav.go('@me')} aria-current={!channelId ? 'page' : undefined} className={cx('touch mx-2 mb-2 flex w-[calc(100%-16px)] items-center gap-3 rounded px-2 text-left font-medium md:min-h-[42px]', !channelId ? 'bg-active text-header' : 'text-muted hover:bg-hover hover:text-interactive-hover')}>
-          <Users size={24} /> <span className="flex-1">Friends</span> <Badge n={req} />
+        <button onClick={() => nav.go('@me')} aria-current={!channelId ? 'page' : undefined} className={cx('touch mx-2 mb-2 flex w-[calc(100%-16px)] items-center gap-3 rounded px-2 text-start font-medium md:min-h-[42px]', !channelId ? 'bg-active text-header' : 'text-muted hover:bg-hover hover:text-interactive-hover')}>
+          <Users size={24} /> <span className="flex-1">{t('Friends')}</span> <Badge n={req} />
         </button>
         <div className="flex items-center justify-between px-4 pb-1 pt-3 text-muted hover:text-interactive-hover">
-          <span className="section-title">Direct Messages</span>
-          <button aria-label="Create DM" onClick={() => open({ kind: 'newDm' })}><Plus size={16} /></button>
+          <span className="section-title">{t('Direct Messages')}</span>
+          <button aria-label={t('Create DM')} onClick={() => open({ kind: 'newDm' })}><Plus size={16} /></button>
         </div>
         <ul>{list.map((c) => <DmRow key={c.id} c={c} />)}</ul>
-        {!list.length && <p className="px-4 py-6 text-center text-sm text-muted">No conversations yet. Find a friend and say hi.</p>}
+        {!list.length && <p className="px-4 py-6 text-center text-sm text-muted">{t('No conversations yet. Find a friend and say hi.')}</p>}
       </div>
     </div>
   );

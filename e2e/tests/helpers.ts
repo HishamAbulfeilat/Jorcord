@@ -88,3 +88,49 @@ export async function hoverMsg(page: Page, text: string | RegExp) {
 
 /** 1x1 red PNG scaled by the browser: a valid, tiny image for upload tests. */
 export const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKCAYAAACNMs+9AAAAFUlEQVR42mP8z8BQz0AEYBxVSF+FABJADveWkH6oAAAAAElFTkSuQmCC', 'base64');
+
+/** 1x1 transparent GIF (valid): used for animated-avatar upload tests. */
+export const GIF = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
+
+export async function openUserSettings(page: Page, tab?: string | RegExp) {
+  await page.getByRole('button', { name: 'User Settings' }).first().click();
+  if (tab) await page.getByRole('dialog', { name: 'User Settings' }).getByRole('button', { name: tab }).click();
+}
+export async function openGuildSettings(page: Page, name: string, tab?: string | RegExp) {
+  await page.getByRole('button', { name: `${name} server menu` }).click();
+  await page.getByRole('menuitem', { name: 'Server Settings' }).click();
+  if (tab) await page.getByRole('dialog', { name }).getByRole('button', { name: tab }).click();
+}
+export const closeSettings = (page: Page) => page.getByRole('button', { name: 'Close settings' }).click();
+
+/** Pretend to be the Capacitor / Tauri wrapper before any app code runs. */
+export async function injectNative(ctx: BrowserContext, kind: 'android' | 'ios' | 'tauri', opts: { launchUrl?: string; deepLinks?: string[] } = {}) {
+  await ctx.addInitScript(({ kind, opts }) => {
+    const w = window as any; w.__nativeLog = [] as any[]; w.__listeners = {} as Record<string, (d: any) => void>;
+    const plugin = (name: string, extra: Record<string, unknown> = {}) => new Proxy({ ...extra }, {
+      get: (t: any, p: string) => t[p] ?? (p === 'addListener' ? (ev: string, fn: any) => { w.__listeners[name + ':' + ev] = fn; return Promise.resolve({ remove: () => {} }); } : (...a: any[]) => { w.__nativeLog.push([name, p, a]); return Promise.resolve({}); }),
+    });
+    if (kind === 'tauri') {
+      w.__TAURI__ = {
+        event: { listen: (ev: string, fn: any) => { w.__listeners['tauri:' + ev] = fn; return Promise.resolve(() => {}); } },
+        deepLink: { getCurrent: () => Promise.resolve(opts.deepLinks ?? null) },
+        autostart: { _on: false, isEnabled() { return Promise.resolve(this._on); }, enable() { this._on = true; return Promise.resolve(); }, disable() { this._on = false; return Promise.resolve(); } },
+        updater: { check: () => Promise.resolve(null) },
+        window: { getCurrentWindow: () => ({ setBadgeCount: (n: number | undefined) => { w.__nativeLog.push(['tauri', 'badge', n]); return Promise.resolve(); } }) },
+      };
+    } else {
+      w.Capacitor = {
+        isNativePlatform: () => true, getPlatform: () => kind,
+        Plugins: {
+          App: plugin('App', { getLaunchUrl: () => Promise.resolve(opts.launchUrl ? { url: opts.launchUrl } : undefined), exitApp: () => { w.__nativeLog.push(['App', 'exitApp']); return Promise.resolve(); } }),
+          PushNotifications: plugin('PushNotifications', {
+            requestPermissions: () => Promise.resolve({ receive: 'granted' }),
+            register: () => { setTimeout(() => w.__listeners['PushNotifications:registration']?.({ value: 'fcm-token-' + Math.random().toString(36).slice(2) + 'abcdefgh' }), 50); return Promise.resolve(); },
+            unregister: () => Promise.resolve(),
+          }),
+          StatusBar: plugin('StatusBar'), Keyboard: plugin('Keyboard'), Haptics: plugin('Haptics'), CallService: plugin('CallService'),
+        },
+      };
+    }
+  }, { kind, opts });
+}

@@ -7,6 +7,7 @@
 import { api, type PushRegistration } from './api';
 import { capPlugin, isCapacitor, isNative, isTauri, nativePlatform } from './server';
 import { useUI } from '@/stores/ui';
+import { t } from '@/i18n';
 
 const KEY = 'jorcord.push.v1';
 export interface PushState { enabled: boolean; kind: 'web' | 'native'; ref: string }
@@ -59,7 +60,7 @@ async function enableNative(platform: 'android' | 'ios'): Promise<PushResult> {
   if (!nativeListening) {
     nativeListening = true;
     await P.addListener('registration', (t: { value: string }) => { void api.push.register({ platform, token: t.value }).then(() => savePushState({ enabled: true, kind: 'native', ref: t.value })).catch(() => {}); });
-    await P.addListener('registrationError', () => useUI.getState().toast('Could not register for push notifications.', 'error'));
+    await P.addListener('registrationError', () => useUI.getState().toast(t('Could not register for push notifications.'), 'error'));
     await P.addListener('pushNotificationReceived', (n: any) => { useUI.getState().toast(`${n?.title ?? 'Jorcord'}${n?.body ? ': ' + n.body : ''}`, 'info'); });
     await P.addListener('pushNotificationActionPerformed', (a: any) => {
       const d = a?.notification?.data ?? {};

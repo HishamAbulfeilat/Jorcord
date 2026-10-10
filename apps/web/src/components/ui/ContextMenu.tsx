@@ -57,13 +57,13 @@ function Item({ it, mobile, close, openedAt }: { it: MenuItem; mobile: boolean; 
   return (
     <div className="relative" onMouseEnter={() => it.children && setSub(true)} onMouseLeave={() => setSub(false)}>
       <button role="menuitem" disabled={it.disabled} onClick={() => { if (Date.now() - openedAt < 400) return; /* finger-lift after a long press */ if (it.children) { setSub((v) => (mobile ? !v : true)); return; } close(); it.onClick?.(); }}
-        className={cx('flex w-full items-center justify-between gap-2 rounded px-2 py-1.5 text-left font-medium disabled:opacity-40', mobile && 'min-h-[44px] text-base',
+        className={cx('flex w-full items-center justify-between gap-2 rounded px-2 py-1.5 text-start font-medium disabled:opacity-40', mobile && 'min-h-[44px] text-base',
           it.danger ? 'text-danger hover:bg-danger hover:text-white' : 'text-interactive hover:bg-brand hover:text-white')}>
         <span className="flex min-w-0 items-center gap-2">{Icon && <Icon size={16} className="shrink-0" />}<span className="truncate">{it.label}</span></span>
         <span className="flex items-center gap-1 text-xs opacity-70">{it.hint}{it.checked && <Check size={14} />}{it.children && <ChevronRight size={14} />}</span>
       </button>
       {sub && it.children && (
-        <div className={cx('z-10 w-52 rounded-md bg-float p-1.5 shadow-elev', mobile ? 'mt-1' : 'absolute left-full top-0 ml-1')}>
+        <div className={cx('z-10 w-52 rounded-md bg-float p-1.5 shadow-elev', mobile ? 'mt-1' : 'absolute start-full top-0 ms-1')}>
           {it.children.map((c, i) => <Item key={i} it={c} mobile={mobile} close={close} openedAt={openedAt} />)}
         </div>
       )}

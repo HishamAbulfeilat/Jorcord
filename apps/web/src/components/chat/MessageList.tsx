@@ -12,6 +12,7 @@ import { Spinner } from '@/components/ui/primitives';
 import { ackLater } from '@/lib/session';
 import { cx } from '@/lib/format';
 import { toPlain, parseInline } from '@/lib/markdown';
+import { t } from '@/i18n';
 
 const PAGE = 50;
 type Row =
@@ -170,7 +171,7 @@ export function MessageList({ channel, lastReadSnapshot }: { channel: Channel; l
   };
 
   if (!state || (!state.loadedInitial && state.loading)) return <Skeleton />;
-  if (state.error && !state.loadedInitial) return <div className="flex flex-1 flex-col items-center justify-center gap-3 text-muted"><p>Couldn’t load messages: {state.error}</p><button className="btn btn-primary" onClick={() => load()}>Retry</button></div>;
+  if (state.error && !state.loadedInitial) return <div className="flex flex-1 flex-col items-center justify-center gap-3 text-muted"><p>Couldn’t load messages: {state.error}</p><button className="btn btn-primary" onClick={() => load()}>{t('Retry')}</button></div>;
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
@@ -201,7 +202,7 @@ function RowView({ r, channel, flashId }: { r: Row; channel: Channel; flashId: s
   const pend = useMessages((s) => (r.kind === 'pending' ? s.pending.find((p) => p.nonce === r.nonce) : undefined));
   switch (r.kind) {
     case 'date': return <div role="separator" className="relative mx-4 mb-2 mt-6 flex items-center justify-center border-t border-divider text-xs font-semibold text-muted"><span className="-mt-px bg-chat px-2 leading-none" style={{ transform: 'translateY(-50%)' }}>{r.label}</span></div>;
-    case 'new': return <div role="separator" className="relative mx-4 my-1 flex items-center border-t border-danger"><span className="absolute -top-2 right-0 rounded-sm bg-danger px-1 text-[10px] font-bold uppercase leading-4 text-white">New</span></div>;
+    case 'new': return <div role="separator" className="relative mx-4 my-1 flex items-center border-t border-danger"><span className="absolute -top-2 end-0 rounded-sm bg-danger px-1 text-[10px] font-bold uppercase leading-4 text-white">{t('New')}</span></div>;
     case 'intro': return <Intro channel={channel} />;
     case 'pending': return pend ? <PendingItem p={pend} grouped={r.grouped} /> : null;
     case 'msg': return <MessageItem m={r.m} grouped={r.grouped} highlighted={flashId === r.m.id} />;
@@ -222,7 +223,7 @@ function Intro({ channel }: { channel: Channel }) {
 
 function Skeleton() {
   return (
-    <div className="flex-1 overflow-hidden px-4 pt-6" aria-busy aria-label="Loading messages">
+    <div className="flex-1 overflow-hidden px-4 pt-6" aria-busy aria-label={t('Loading messages')}>
       {Array.from({ length: 9 }).map((_, i) => (
         <div key={i} className="mb-6 flex gap-4"><div className="skeleton h-10 w-10 shrink-0 !rounded-full" /><div className="flex-1 space-y-2"><div className="skeleton h-3.5" style={{ width: 90 + ((i * 37) % 80) }} /><div className="skeleton h-3.5" style={{ width: `${40 + ((i * 53) % 50)}%` }} />{i % 3 === 0 && <div className="skeleton h-3.5 w-1/3" />}</div></div>
       ))}

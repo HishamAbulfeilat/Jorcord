@@ -8,7 +8,7 @@ import { useData } from '@/stores/data';
 import { useUI, toastError, toast } from '@/stores/ui';
 import { useMessages } from '@/stores/messages';
 import { composerState } from '@/lib/perms';
-import { cx, displayName, dmName, fmtBytes, isImage } from '@/lib/format';
+import { cx, displayName, dmName, fmtBytes, isImage, fileUrl } from '@/lib/format';
 import { toPlain, parseInline } from '@/lib/markdown';
 import { searchEmoji, replaceShortcodes } from '@/lib/emoji';
 import { useGuildPerms } from '@/lib/useGuild';
@@ -16,6 +16,7 @@ import { useIsMobile } from '@/lib/hooks';
 import { Avatar } from '@/components/ui/Avatar';
 import { myChannelPerms, ackLater } from '@/lib/session';
 import { intToHex } from '@/lib/perms';
+import { t } from '@/i18n';
 
 interface Staged { id: string; file: File; spoiler: boolean; preview?: string }
 type Suggest = { kind: 'user' | 'role' | 'channel' | 'emoji'; items: { key: string; label: string; sub?: string; insert: string; token?: [string, string]; avatar?: any; icon?: string; color?: string }[]; index: number; start: number; end: number } | null;
@@ -54,7 +55,7 @@ export function Composer({ channel, stagedExternal }: { channel: Channel; staged
   useEffect(resize, [text]);
 
   const addFiles = useCallback((fs: File[]) => {
-    if (!cs.canAttach) { toast('You do not have permission to attach files here.', 'error'); return; }
+    if (!cs.canAttach) { toast(t('You do not have permission to attach files here.'), 'error'); return; }
     const ok = fs.filter((f) => { if (f.size > LIMITS.maxUploadBytes) { toast(`${f.name} is larger than ${fmtBytes(LIMITS.maxUploadBytes)}.`, 'error'); return false; } return true; });
     setFiles((cur) => [...cur, ...ok.map((file) => ({ id: snowflake(), file, spoiler: false, preview: isImage(file.type) ? URL.createObjectURL(file) : undefined }))].slice(0, 10));
   }, [cs.canAttach]);
@@ -82,7 +83,7 @@ export function Composer({ channel, stagedExternal }: { channel: Channel; staged
     if ((m = before.match(/(?:^|\s):([a-z0-9_+\-]{2,})$/i))) {
       const q = m[1].toLowerCase(); const start = caret - m[1].length - 1;
       const customs = Object.values(useData.getState().guilds).flatMap((g) => g.emojis).filter((e) => e.name.toLowerCase().includes(q)).slice(0, 6)
-        .map((e) => ({ key: e.id, label: `:${e.name}:`, insert: `:${e.name}:`, token: [`:${e.name}:`, `<${e.animated ? 'a' : ''}:${e.name}:${e.id}>`] as [string, string], icon: e.url }));
+        .map((e) => ({ key: e.id, label: `:${e.name}:`, insert: `:${e.name}:`, token: [`:${e.name}:`, `<${e.animated ? 'a' : ''}:${e.name}:${e.id}>`] as [string, string], icon: fileUrl(e.url) ?? e.url }));
       const uni = searchEmoji(q, 8).map((e) => ({ key: e.name, label: `:${e.name}:`, insert: e.char, icon: e.char }));
       const items = [...customs, ...uni].slice(0, 10); if (items.length) return { kind: 'emoji' as const, items, index: 0, start, end: caret };
     }
@@ -116,6 +117,11 @@ export function Composer({ channel, stagedExternal }: { channel: Channel; staged
     setReply(cid, null); setSuggest(null);
     await deliver(nonce, cid, content, toSend, reply);
     const last = useMessages.getState().ch[cid]?.list.at(-1); if (last) ackLater(cid, last.id);
+  };
+
+  const sendSticker = async (stickerId: string) => {
+    if (!cs.canSend) return;
+    try { const msg = await api.messages.send(cid, { content: '', stickerIds: [stickerId] }); useMessages.getState().upsert(msg); useData.getState().apply('MESSAGE_CREATE', msg); ackLater(cid, msg.id); } catch (err) { toastError(err); }
   };
 
   useEffect(() => {
@@ -159,11 +165,11 @@ export function Composer({ channel, stagedExternal }: { channel: Channel; staged
   return (
     <div className="relative shrink-0 px-4 pb-6 pt-0 max-md:pb-2" style={{ paddingBottom: mobile ? 'max(8px, var(--sab))' : undefined }}>
       {suggest && (
-        <ul role="listbox" aria-label="Suggestions" className="absolute inset-x-4 bottom-full z-30 mb-1 max-h-72 overflow-y-auto rounded-md bg-float p-2 shadow-elev">
+        <ul role="listbox" aria-label={t('Suggestions')} className="absolute inset-x-4 bottom-full z-30 mb-1 max-h-72 overflow-y-auto rounded-md bg-float p-2 shadow-elev">
           <li className="px-2 pb-1 text-xs font-bold uppercase text-muted">{suggest.kind === 'user' ? 'Members' : suggest.kind === 'channel' ? 'Channels' : 'Emoji'}</li>
           {suggest.items.map((it, i) => (
             <li key={it.key} role="option" aria-selected={i === suggest.index}>
-              <button onMouseDown={(e) => { e.preventDefault(); applySuggest(suggest, i); }} onMouseEnter={() => setSuggest({ ...suggest, index: i })} className={cx('touch flex w-full items-center gap-2 rounded px-2 py-1 text-left md:min-h-[34px]', i === suggest.index ? 'bg-hover' : '')}>
+              <button onMouseDown={(e) => { e.preventDefault(); applySuggest(suggest, i); }} onMouseEnter={() => setSuggest({ ...suggest, index: i })} className={cx('touch flex w-full items-center gap-2 rounded px-2 py-1 text-start md:min-h-[34px]', i === suggest.index ? 'bg-hover' : '')}>
                 {it.avatar ? <Avatar user={it.avatar} size={24} /> : it.icon?.startsWith('http') || it.icon?.startsWith('/') ? <img src={it.icon} alt="" className="h-6 w-6 object-contain" /> : <span className="flex h-6 w-6 items-center justify-center text-lg">{it.icon === '#' ? <Hash size={18} className="text-muted" /> : it.icon}</span>}
                 <span className="font-medium text-header" style={{ color: it.color }}>{it.label}</span>{it.sub && <span className="text-sm text-muted">{it.sub}</span>}
               </button>
@@ -174,35 +180,35 @@ export function Composer({ channel, stagedExternal }: { channel: Channel; staged
       <div className={cx('rounded-lg bg-[rgb(var(--composer))]', !cs.canSend && 'opacity-70')}>
         {replyId && (
           <div className="flex items-center justify-between rounded-t-lg bg-[rgb(var(--active)/0.6)] px-3 py-1.5 text-sm text-interactive">
-            <span className="min-w-0 truncate">Replying to <b className="text-header">{replyName || '…'}</b>{replyMsg?.content && <span className="ml-2 text-muted">{toPlain(parseInline(replyMsg.content)).slice(0, 80)}</span>}</span>
+            <span className="min-w-0 truncate">Replying to <b className="text-header">{replyName || '…'}</b>{replyMsg?.content && <span className="ms-2 text-muted">{toPlain(parseInline(replyMsg.content)).slice(0, 80)}</span>}</span>
             <span className="flex items-center gap-2">
               <button onClick={() => setPingReply(!pingReply)} aria-pressed={pingReply} className={cx('rounded px-1 text-xs font-bold', pingReply ? 'text-header' : 'text-muted')}>@ {pingReply ? 'ON' : 'OFF'}</button>
-              <button aria-label="Cancel reply" onClick={() => setReply(cid, null)}><X size={18} /></button>
+              <button aria-label={t('Cancel reply')} onClick={() => setReply(cid, null)}><X size={18} /></button>
             </span>
           </div>
         )}
         {files.length > 0 && (
-          <ul className="flex gap-3 overflow-x-auto border-b border-divider/40 p-3" aria-label="Attachments to upload">
+          <ul className="flex gap-3 overflow-x-auto border-b border-divider/40 p-3" aria-label={t('Attachments to upload')}>
             {files.map((f) => (
               <li key={f.id} className="relative w-[140px] shrink-0 rounded-md bg-side p-2">
                 <div className="flex h-[100px] items-center justify-center overflow-hidden rounded bg-rail">{f.preview ? <img src={f.preview} alt="" className={cx('max-h-full max-w-full object-contain', f.spoiler && 'blur-md')} /> : <ImageIcon size={32} className="text-muted" />}</div>
                 <div className="mt-1 truncate text-xs text-header" title={f.file.name}>{f.file.name}</div><div className="text-[11px] text-muted">{fmtBytes(f.file.size)}</div>
-                <div className="absolute right-1 top-1 flex gap-0.5 rounded bg-chat/90 p-0.5">
+                <div className="absolute end-1 top-1 flex gap-0.5 rounded bg-chat/90 p-0.5">
                   <button aria-label={f.spoiler ? 'Remove spoiler' : 'Mark as spoiler'} aria-pressed={f.spoiler} onClick={() => setFiles((c) => c.map((x) => (x.id === f.id ? { ...x, spoiler: !x.spoiler } : x)))} className="p-1 text-interactive hover:text-header">{f.spoiler ? <EyeOff size={14} /> : <Eye size={14} />}</button>
-                  <button aria-label="Remove attachment" onClick={() => setFiles((c) => c.filter((x) => x.id !== f.id))} className="p-1 text-danger"><X size={14} /></button>
+                  <button aria-label={t('Remove attachment')} onClick={() => setFiles((c) => c.filter((x) => x.id !== f.id))} className="p-1 text-danger"><X size={14} /></button>
                 </div>
               </li>
             ))}
           </ul>
         )}
         <div className="flex items-end">
-          <button aria-label="Upload a file" disabled={!cs.canAttach} onClick={() => fileInput.current?.click()} className="flex h-11 w-11 shrink-0 items-center justify-center text-interactive hover:text-interactive-hover disabled:cursor-not-allowed disabled:opacity-40"><PlusCircle size={24} /></button>
+          <button aria-label={t('Upload a file')} disabled={!cs.canAttach} onClick={() => fileInput.current?.click()} className="flex h-11 w-11 shrink-0 items-center justify-center text-interactive hover:text-interactive-hover disabled:cursor-not-allowed disabled:opacity-40"><PlusCircle size={24} /></button>
           <input ref={fileInput} type="file" multiple hidden onChange={(e) => { addFiles([...(e.target.files ?? [])]); e.target.value = ''; }} />
           <textarea ref={ta} value={text} rows={1} disabled={!cs.canSend} placeholder={placeholder} aria-label={placeholder} enterKeyHint={mobile ? 'enter' : 'send'} onChange={onChange} onKeyDown={onKey} onPaste={onPaste} onBlur={() => setTimeout(() => setSuggest(null), 100)}
             className="max-h-[45vh] min-h-[44px] flex-1 resize-none bg-transparent py-[11px] text-[16px] leading-[22px] text-normal outline-none placeholder:text-muted disabled:cursor-not-allowed" />
-          {over && <span className={cx('self-center pr-2 text-xs font-semibold', text.length > LIMITS.maxMessageLength ? 'text-danger' : 'text-muted')}>{LIMITS.maxMessageLength - text.length}</span>}
-          <button aria-label="Choose emoji or GIF" disabled={!cs.canSend} onClick={(e) => openPopout({ kind: 'emoji', rect: e.currentTarget.getBoundingClientRect(), guildId: gid ?? undefined, onPick: (p) => { if ((p as any).gif) send((p as any).gif); else if (p.char) insert(p.char); else if (p.id) { tokens.current.set(`:${p.name}:`, `<${p.animated ? 'a' : ''}:${p.name}:${p.id}>`); insert(`:${p.name}: `); } } })} className="flex h-11 w-11 shrink-0 items-center justify-center text-interactive hover:text-interactive-hover disabled:opacity-40"><Smile size={24} /></button>
-          {mobile && (hasText || canPostEmpty) && <button aria-label="Send message" onClick={() => send()} className="m-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand text-white"><SendHorizonal size={18} /></button>}
+          {over && <span className={cx('self-center pe-2 text-xs font-semibold', text.length > LIMITS.maxMessageLength ? 'text-danger' : 'text-muted')}>{LIMITS.maxMessageLength - text.length}</span>}
+          <button aria-label={t('Choose emoji or GIF')} disabled={!cs.canSend} onClick={(e) => openPopout({ kind: 'emoji', rect: e.currentTarget.getBoundingClientRect(), guildId: gid ?? undefined, stickers: !!gid, onPick: (p) => { if (p.sticker) void sendSticker(p.sticker); else if ((p as any).gif) send((p as any).gif); else if (p.char) insert(p.char); else if (p.id) { tokens.current.set(`:${p.name}:`, `<${p.animated ? 'a' : ''}:${p.name}:${p.id}>`); insert(`:${p.name}: `); } } })} className="flex h-11 w-11 shrink-0 items-center justify-center text-interactive hover:text-interactive-hover disabled:opacity-40"><Smile size={24} /></button>
+          {mobile && (hasText || canPostEmpty) && <button aria-label={t('Send message')} onClick={() => send()} className="m-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand text-white"><SendHorizonal size={18} /></button>}
           {!mobile && <span className="hidden"><Gift size={0} /></span>}
         </div>
       </div>

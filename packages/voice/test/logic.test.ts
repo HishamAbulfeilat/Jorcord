@@ -33,6 +33,16 @@ describe('presets', () => {
     const r = selectPreset('1440p60', 'h264', 'motion', c);
     expect(r.height).toBeLessThanOrEqual(1080); expect(r.fps).toBeLessThanOrEqual(30);
   });
+  it('screen share: hidden on mobile browsers, Capacitor webviews and engines without getDisplayMedia', () => {
+    const gdm = { mediaDevices: { getDisplayMedia: () => {} } };
+    expect(detectPlatform('Mozilla/5.0 (X11; Linux x86_64) Chrome/130', gdm, false).canScreenShare).toBe(true);
+    expect(detectPlatform('Mozilla/5.0 (Linux; Android 14) Chrome/130 Mobile', gdm, false).canScreenShare).toBe(false);
+    expect(detectPlatform('Mozilla/5.0 (iPhone; CPU iPhone OS 17_0) Safari', gdm, false).canScreenShare).toBe(false);
+    // Capacitor on a desktop-class UA (e.g. iPadOS requesting the desktop site) must still be hidden
+    expect(detectPlatform('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Safari', gdm, true).canScreenShare).toBe(false);
+    // WebKitGTK without getDisplayMedia
+    expect(detectPlatform('Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/605.1.15 Safari', { mediaDevices: {} }, false).canScreenShare).toBe(false);
+  });
   it('720p30 is the floor', () => {
     expect(selectPreset('720p30', 'h264', 'motion', { uplinkKbps: 100 }).preset.id).toBe('720p30');
   });

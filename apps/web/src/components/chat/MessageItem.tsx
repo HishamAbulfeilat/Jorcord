@@ -6,12 +6,14 @@ import { Avatar } from '@/components/ui/Avatar';
 import { Markdown } from './Markdown';
 import { AttachmentView, EmbedView } from './Attachments';
 import { ReactionBar, addReaction } from './Reactions';
-import { useData } from '@/stores/data';
+import { useData, refreshStickers } from '@/stores/data';
 import { useUI, toastError } from '@/stores/ui';
 import { useMessages, type Pending } from '@/stores/messages';
 import { api } from '@/lib/api';
 import { cx, displayName, fmtFull, fmtStamp, fmtTime, msgTime, fileUrl } from '@/lib/format';
-import { roleColor, canEditMessage, canDeleteMessage, canPinMessage, can } from '@/lib/perms';
+import { roleColor, roleIcon, canEditMessage, canDeleteMessage, canPinMessage, can } from '@/lib/perms';
+import { RoleIcon } from '@/components/ui/RoleIcon';
+import { t } from '@/i18n';
 import { toPlain, parseInline } from '@/lib/markdown';
 import { messageMenu, userMenu } from '@/lib/menus';
 import { useMenuTrigger } from '@/components/ui/ContextMenu';
@@ -21,8 +23,8 @@ import { useIsMobile } from '@/lib/hooks';
 import { Tip } from '@/components/ui/Tooltip';
 
 const SYSTEM: Record<string, (n: string) => string> = {
-  join: (n) => `${n} just joined the server. Say hi!`, pin: (n) => `${n} pinned a message to this channel.`, boost: (n) => `${n} just boosted the server!`,
-  thread_created: (n) => `${n} started a thread.`, call: (n) => `${n} started a call.`,
+  join: () => t('just joined the server. Say hi!'), pin: () => t('pinned a message to this channel.'), boost: () => t('just boosted the server!'),
+  thread_created: () => t('started a thread.'), call: () => t('started a call.'),
 };
 
 export function useAuthorInfo(m: Pick<Message, 'author' | 'guildId'>) {
@@ -30,7 +32,7 @@ export function useAuthorInfo(m: Pick<Message, 'author' | 'guildId'>) {
   const roles = useData((s) => (m.guildId ? s.guilds[m.guildId]?.roles : undefined));
   const live = useData((s) => s.users[m.author.id]);
   const user = { ...m.author, ...live };
-  return { user, member, name: displayName(user, member), color: member && roles ? roleColor(member, Object.values(roles)) : undefined };
+  return { user, member, name: displayName(user, member), color: member && roles ? roleColor(member, Object.values(roles)) : undefined, icon: member && roles ? roleIcon(member, Object.values(roles)) : undefined };
 }
 
 function ReplyPreview({ m }: { m: Message }) {
@@ -39,12 +41,12 @@ function ReplyPreview({ m }: { m: Message }) {
   if (!m.replyTo) return null;
   const jump = () => window.dispatchEvent(new CustomEvent('jorcord:jump', { detail: { channelId: m.channelId, messageId: m.replyTo } }));
   return (
-    <div className="relative mb-0.5 ml-[56px] flex items-center gap-1.5 pr-4 text-sm text-muted before:absolute before:-left-[36px] before:top-1/2 before:h-2.5 before:w-[30px] before:rounded-tl-md before:border-l-2 before:border-t-2 before:border-[rgb(var(--active))] before:content-['']" style={{ marginTop: 4 }}>
+    <div className="relative mb-0.5 ms-[56px] flex items-center gap-1.5 pe-4 text-sm text-muted before:absolute before:-start-[36px] before:top-1/2 before:h-2.5 before:w-[30px] before:rounded-ss-md before:border-s-2 before:border-t-2 before:border-[rgb(var(--active))] before:content-['']" style={{ marginTop: 4 }}>
       {ref ? (
         <>
           <Avatar user={info.user} size={16} />
           <button className="shrink-0 font-medium hover:underline" style={{ color: info.color }} onClick={(e) => open({ kind: 'user', userId: ref.author.id, guildId: m.guildId ?? undefined, rect: e.currentTarget.getBoundingClientRect() })}>@{info.name}</button>
-          <button onClick={jump} className="min-w-0 flex-1 truncate text-left text-interactive hover:text-header">{ref.content ? toPlain(parseInline(ref.content)) : ref.attachments.length ? 'Click to see attachment' : 'Message'}</button>
+          <button onClick={jump} className="min-w-0 flex-1 truncate text-start text-interactive hover:text-header">{ref.content ? toPlain(parseInline(ref.content)) : ref.attachments.length ? 'Click to see attachment' : 'Message'}</button>
         </>
       ) : <button onClick={jump} className="italic">Original message was deleted</button>}
     </div>
@@ -61,7 +63,7 @@ function Editor({ m, done }: { m: Message; done: () => void }) {
     try { const u = await api.messages.edit(m.channelId, m.id, c); useMessages.getState().update({ ...m, ...u, content: c, editedAt: u?.editedAt ?? new Date().toISOString() }); done(); } catch (e) { toastError(e); setBusy(false); }
   };
   return (
-    <div className="pr-4">
+    <div className="pe-4">
       <textarea ref={ref} value={v} disabled={busy} aria-label="Edit message" rows={1} onChange={(e) => { setV(e.target.value); e.target.style.height = 'auto'; e.target.style.height = e.target.scrollHeight + 'px'; }}
         onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); save(); } if (e.key === 'Escape') { e.stopPropagation(); done(); } }}
         className="max-h-[50vh] w-full resize-none rounded-lg bg-[rgb(var(--composer))] px-3 py-2.5 text-normal outline-none" />
@@ -80,7 +82,7 @@ function Toolbar({ m, onMenu, startEdit }: { m: Message; onMenu: (e: React.Mouse
     <Tip text={label} side="top"><button aria-label={label} onClick={onClick} className={cx('flex h-8 w-8 items-center justify-center rounded text-interactive hover:bg-hover', danger ? 'hover:text-danger' : 'hover:text-interactive-hover')}>{children}</button></Tip>
   );
   return (
-    <div role="toolbar" aria-label="Message actions" className="absolute -top-4 right-4 z-10 hidden items-center rounded-md border border-divider/50 bg-chat shadow-high group-focus-within/msg:flex group-hover/msg:flex">
+    <div role="toolbar" aria-label="Message actions" className="absolute -top-4 end-4 z-10 hidden items-center rounded-md border border-divider/50 bg-chat shadow-high group-focus-within/msg:flex group-hover/msg:flex">
       {react && <B label="Add Reaction" onClick={(e) => openPopout({ kind: 'emoji', rect: e.currentTarget.getBoundingClientRect(), guildId: m.guildId ?? undefined, onPick: (p) => addReaction(m, p) })}><SmilePlus size={20} /></B>}
       {mine ? <B label="Edit" onClick={startEdit}><Pencil size={18} /></B> : send ? <B label="Reply" onClick={() => setReply(m.channelId, m.id)}><Reply size={20} /></B> : null}
       {mine && send && <B label="Reply" onClick={() => setReply(m.channelId, m.id)}><Reply size={20} /></B>}
@@ -99,6 +101,7 @@ export const MessageItem = memo(function MessageItem({ m, grouped, highlighted }
   const ts = msgTime(m.id, m.createdAt);
   const allStickers = useData((s) => (m.stickerIds.length && m.guildId ? s.guilds[m.guildId]?.stickers : undefined));
   const stickers = allStickers?.filter((x) => m.stickerIds.includes(x.id));
+  useEffect(() => { if (m.guildId && m.stickerIds.length && (stickers?.length ?? 0) < m.stickerIds.length) void refreshStickers(m.guildId); }, [m.guildId, m.stickerIds.length, stickers?.length]); // eslint-disable-line
   const mentioned = !!me && (m.mentions.includes(me.id) || m.mentionEveryone) && m.author.id !== me.id;
   const startEdit = () => setEditing(m.id);
   const menuItems = () => messageMenu(m, { startEdit, pickEmoji: () => openPopout({ kind: 'emoji', rect: new DOMRect(window.innerWidth / 2, window.innerHeight / 2, 0, 0), guildId: m.guildId ?? undefined, onPick: (p) => addReaction(m, p) }) });
@@ -107,26 +110,26 @@ export const MessageItem = memo(function MessageItem({ m, grouped, highlighted }
   const openUser = (e: React.MouseEvent) => { e.stopPropagation(); openPopout({ kind: 'user', userId: m.author.id, guildId: m.guildId ?? undefined, rect: (e.currentTarget as HTMLElement).getBoundingClientRect() }); };
 
   const sys = !!SYSTEM[m.type];
-  const base = cx('group/msg relative px-4 hover:bg-chat-hover focus-within:bg-chat-hover', mentioned && 'bg-warn/10 hover:bg-warn/[0.14] before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:bg-warn', replyingTo && 'bg-brand/10 before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:bg-brand', highlighted && 'flash');
+  const base = cx('group/msg relative px-4 hover:bg-chat-hover focus-within:bg-chat-hover', mentioned && 'bg-warn/10 hover:bg-warn/[0.14] before:absolute before:inset-y-0 before:start-0 before:w-0.5 before:bg-warn', replyingTo && 'bg-brand/10 before:absolute before:inset-y-0 before:start-0 before:w-0.5 before:bg-brand', highlighted && 'flash');
   if (sys) {
     const Icon = m.type === 'join' ? LogIn : m.type === 'pin' ? Pin : m.type === 'boost' ? Rocket : m.type === 'call' ? Phone : MessagesSquare;
     return (
       <div className={cx(base, 'flex items-center gap-3 py-1.5')} {...trig} id={`msg-${m.id}`}>
         <span className="flex w-10 justify-end"><Icon size={18} className={m.type === 'join' ? 'text-success' : 'text-muted'} /></span>
-        <span className="text-[15px] text-muted"><button className="font-medium text-header hover:underline" onClick={openUser}>{info.name}</button> {SYSTEM[m.type]('').trim()} <span className="ml-1 text-xs">{fmtStamp(ts)}</span></span>
+        <span className="text-[15px] text-muted"><button className="font-medium text-header hover:underline" onClick={openUser}>{info.name}</button> {SYSTEM[m.type]('').trim()} <span className="ms-1 text-xs">{fmtStamp(ts)}</span></span>
       </div>
     );
   }
   const body = (
     <>
       {editing ? <Editor m={m} done={() => setEditing(null)} /> : m.content ? (
-        <div className="relative pr-4 text-[16px] leading-[1.375rem] text-normal">
+        <div className="relative pe-4 text-[16px] leading-[1.375rem] text-normal">
           <Markdown content={m.content} guildId={m.guildId} />
-          {m.editedAt && <time className="ml-1 select-none text-[10px] text-muted" title={fmtFull(new Date(m.editedAt).getTime())}>(edited)</time>}
+          {m.editedAt && <time className="ms-1 select-none text-[10px] text-muted" title={fmtFull(new Date(m.editedAt).getTime())}>(edited)</time>}
         </div>
       ) : null}
       {m.attachments.length > 0 && <div className="mt-1 flex flex-col items-start gap-1">{m.attachments.map((a) => <AttachmentView key={a.id} a={a} />)}</div>}
-      {stickers && stickers.length > 0 && <div className="mt-1 flex gap-2">{stickers.map((s) => <img key={s.id} src={s.url} alt={s.name} title={s.name} className="h-[160px] w-[160px] object-contain" />)}</div>}
+      {stickers && stickers.length > 0 && <div className="mt-1 flex gap-2">{stickers.map((s) => <img key={s.id} src={fileUrl(s.url) ?? s.url} alt={s.name} title={s.name} className="h-[160px] w-[160px] object-contain" />)}</div>}
       {m.embeds.length > 0 && <div className="mt-1 flex flex-col items-start gap-1">{m.embeds.map((e, i) => <EmbedView key={i} e={e} />)}</div>}
       <ReactionBar m={m} />
       {m.threadId && <button onClick={() => nav.go(m.guildId, m.threadId)} className="mt-1 flex items-center gap-1.5 rounded border border-divider bg-side px-2 py-1 text-sm text-link hover:underline"><MessagesSquare size={14} />View thread</button>}
@@ -138,7 +141,7 @@ export const MessageItem = memo(function MessageItem({ m, grouped, highlighted }
       {m.replyTo && <ReplyPreview m={m} />}
       <div className="relative flex gap-4 pb-[2px]">
         {grouped && !m.replyTo ? (
-          <time dateTime={new Date(ts).toISOString()} title={fmtFull(ts)} className="mt-[3px] w-10 shrink-0 select-none whitespace-nowrap text-right text-[10px] leading-[1.375rem] text-muted opacity-0 group-hover/msg:opacity-100">{fmtTime(ts)}</time>
+          <time dateTime={new Date(ts).toISOString()} title={fmtFull(ts)} className="mt-[3px] w-10 shrink-0 select-none whitespace-nowrap text-end text-[10px] leading-[1.375rem] text-muted opacity-0 group-hover/msg:opacity-100">{fmtTime(ts)}</time>
         ) : (
           <button onClick={openUser} {...userTrig} aria-label={`${info.name} profile`} className="mt-0.5 h-10 w-10 shrink-0"><Avatar user={info.user} size={40} memberAvatar={info.member?.avatar} className="hover:opacity-90" /></button>
         )}
@@ -146,8 +149,10 @@ export const MessageItem = memo(function MessageItem({ m, grouped, highlighted }
           {(!grouped || m.replyTo) && (
             <div className="flex items-baseline gap-2 leading-[1.375rem]">
               <button onClick={openUser} {...userTrig} className="truncate font-medium text-header hover:underline" style={{ color: info.color }}>{info.name}</button>
+              {info.icon && <RoleIcon role={info.icon} size={16} className="self-center" />}
               {m.author.bot && <span className="self-center rounded bg-brand px-1 py-px text-[10px] font-bold uppercase leading-3 text-white">Bot</span>}
               <time dateTime={new Date(ts).toISOString()} title={fmtFull(ts)} className="text-xs font-medium text-muted">{fmtStamp(ts)}</time>
+              {m.pinned && <Pin size={12} aria-label={t('Pinned')} data-testid="pinned-mark" className="self-center text-muted" />}
             </div>
           )}
           {body}

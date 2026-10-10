@@ -2,14 +2,15 @@ import { useEffect, useRef, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Loader2 } from 'lucide-react';
 import { cx } from '@/lib/format';
+import { t } from '@/i18n';
 
-export const Spinner = ({ size = 20, className = '' }: { size?: number; className?: string }) => <Loader2 size={size} className={cx('animate-spin text-muted', className)} aria-label="Loading" />;
+export const Spinner = ({ size = 20, className = '' }: { size?: number; className?: string }) => <Loader2 size={size} className={cx('animate-spin text-muted', className)} aria-label={t('Loading')} />;
 
 export function Toggle({ checked, onChange, label, disabled }: { checked: boolean; onChange: (v: boolean) => void; label: string; disabled?: boolean }) {
   return (
     <button type="button" role="switch" aria-checked={checked} aria-label={label} disabled={disabled} onClick={() => onChange(!checked)}
       className={cx('relative h-6 w-10 shrink-0 rounded-full transition-colors disabled:opacity-50', checked ? 'bg-success' : 'bg-[rgb(var(--active))]')}>
-      <span className={cx('absolute top-[3px] h-[18px] w-[18px] rounded-full bg-white transition-all', checked ? 'left-[19px]' : 'left-[3px]')} />
+      <span className={cx('absolute top-[3px] h-[18px] w-[18px] rounded-full bg-white transition-all', checked ? 'start-[19px]' : 'start-[3px]')} />
     </button>
   );
 }
@@ -49,7 +50,7 @@ export function Modal({ title, onClose, children, footer, width = 440, labelledB
         {title && (
           <div className="relative px-4 pt-5 text-center sm:px-6">
             <h2 id="modal-title" className="text-xl font-bold text-header">{title}</h2>
-            <button data-close aria-label="Close" onClick={onClose} className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded text-interactive hover:text-interactive-hover"><X size={20} /></button>
+            <button data-close aria-label={t('Close')} onClick={onClose} className="absolute end-3 top-3 flex h-8 w-8 items-center justify-center rounded text-interactive hover:text-interactive-hover"><X size={20} /></button>
           </div>
         )}
         <div className={cx('scroller min-h-0 flex-1', padded && 'p-4 sm:p-6')}>{children}</div>

@@ -47,6 +47,7 @@ export function channelRoutes(app: FastifyInstance, ctx: Ctx) {
   }
   const saveOverwrites = async (channelId: string, list: z.infer<typeof owSchema>[]) => {
     for (const o of list) await ctx.db.query(`INSERT INTO overwrites (channel_id, target_id, type, allow, deny) VALUES ($1,$2,$3,$4,$5) ON CONFLICT (channel_id, target_id) DO UPDATE SET type = $3, allow = $4, deny = $5`, [channelId, o.id, o.type, o.allow, o.deny]);
+    await ctx.pcache.invalidate({ k: 'overwrites', channelId });
   };
 
   app.get('/guilds/:id/channels', async (req) => {
@@ -91,6 +92,7 @@ export function channelRoutes(app: FastifyInstance, ctx: Ctx) {
         else await q.query('UPDATE channels SET position = $2 WHERE id = $1 AND guild_id = $3', [e.id, e.position, id]);
       }
     });
+    for (const e of list) await ctx.pcache.invalidate({ k: 'channel', channelId: e.id });
     const out = await channelsDTO(ctx, await ctx.db.query('SELECT * FROM channels WHERE id = ANY($1::text[])', [list.map((l) => l.id)]));
     for (const ch of out) await ctx.hub.toChannel(ch.id, 'CHANNEL_UPDATE', ch);
     await audit(ctx, id, req.userId, 'CHANNEL_REORDER', null, list);
@@ -122,7 +124,7 @@ export function channelRoutes(app: FastifyInstance, ctx: Ctx) {
     const col: Record<string, string> = { name: 'name', topic: 'topic', nsfw: 'nsfw', slowmode: 'slowmode', bitrate: 'bitrate', userLimit: 'user_limit', parentId: 'parent_id', position: 'position', archived: 'archived' };
     const sets: string[] = [], vals: unknown[] = [id];
     for (const [k, v] of Object.entries(b)) { if (!col[k]) continue; vals.push(v); sets.push(`${col[k]} = $${vals.length}`); }
-    if (sets.length) await ctx.db.query(`UPDATE channels SET ${sets.join(', ')} WHERE id = $1`, vals);
+    if (sets.length) { await ctx.db.query(`UPDATE channels SET ${sets.join(', ')} WHERE id = $1`, vals); await ctx.pcache.invalidate({ k: 'channel', channelId: id }); }
     const [row] = await ctx.db.query('SELECT * FROM channels WHERE id = $1', [id]);
     const dto = await channelDTO(ctx, row);
     if (ch.guild_id) await audit(ctx, ch.guild_id, req.userId, ch.type === 'thread' ? 'THREAD_UPDATE' : 'CHANNEL_UPDATE', id, b);
@@ -148,6 +150,7 @@ export function channelRoutes(app: FastifyInstance, ctx: Ctx) {
       await q.query('DELETE FROM channels WHERE id = $1', [id]);
     });
     void g;
+    await ctx.pcache.invalidate({ k: 'channel', channelId: id });
     await audit(ctx, ch.guild_id, req.userId, 'CHANNEL_DELETE', id, { name: ch.name, type: ch.type });
     await ctx.hub.toGuild(ch.guild_id, 'CHANNEL_DELETE', { id, guildId: ch.guild_id });
     return reply.code(204).send();
@@ -177,6 +180,7 @@ export function channelRoutes(app: FastifyInstance, ctx: Ctx) {
     const settled = await trackVisibility(ctx, a.channel.guild_id, { channelIds: [p.id] });
     const rows = await ctx.db.query('DELETE FROM overwrites WHERE channel_id = $1 AND target_id = $2 RETURNING type', [p.id, p.overwriteId]);
     if (!rows.length) throw notFound('Overwrite');
+    await ctx.pcache.invalidate({ k: 'overwrites', channelId: p.id });
     await settled();
     await audit(ctx, a.channel.guild_id, req.userId, 'OVERWRITE_DELETE', p.id, { target: p.overwriteId });
     const [row] = await ctx.db.query('SELECT * FROM channels WHERE id = $1', [p.id]);

@@ -84,6 +84,7 @@ export function guildRoutes(app: FastifyInstance, ctx: Ctx) {
       await q.query('DELETE FROM messages WHERE guild_id = $1', [id]);
       await q.query('DELETE FROM guilds WHERE id = $1', [id]);
     });
+    await ctx.pcache.invalidate({ k: 'guild', guildId: id });
     await ctx.hub.toUsers(members, 'GUILD_DELETE', { id });
     return reply.code(204).send();
   });

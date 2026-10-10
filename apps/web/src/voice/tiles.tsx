@@ -31,7 +31,7 @@ export function StatsPanel({ identity, source, className }: { identity: string; 
     : [['Stats', 'waiting for data']];
   return (
     <dl data-testid="stream-stats" data-width={st?.width ?? 0} data-height={st?.height ?? 0} data-fps={st?.fps ?? 0} aria-label="Stream statistics"
-      className={cx('pointer-events-none absolute right-2 top-2 z-10 m-0 grid min-w-[150px] gap-0.5 rounded-md bg-black/75 p-2 font-mono text-[11px] leading-4 text-white backdrop-blur', className)}>
+      className={cx('pointer-events-none absolute end-2 top-2 z-10 m-0 grid min-w-[150px] gap-0.5 rounded-md bg-black/75 p-2 font-mono text-[11px] leading-4 text-white backdrop-blur', className)}>
       {rows.map(([k, v]) => <div key={k} className="flex justify-between gap-3"><dt className="text-white/60">{k}</dt><dd className="m-0">{v}</dd></div>)}
     </dl>
   );
@@ -41,7 +41,7 @@ function NamePill({ p, extra }: { p: ParticipantView; extra?: React.ReactNode })
   const vs = useData((s) => s.voiceStates[p.identity]);
   const deaf = vs?.selfDeaf || vs?.serverDeaf; const muted = p.micMuted || !!vs?.serverMute;
   return (
-    <span className="pointer-events-none absolute bottom-2 left-2 z-[5] flex max-w-[calc(100%-16px)] items-center gap-1.5 rounded bg-black/65 px-2 py-0.5 text-[13px] font-semibold text-white">
+    <span className="pointer-events-none absolute bottom-2 start-2 z-[5] flex max-w-[calc(100%-16px)] items-center gap-1.5 rounded bg-black/65 px-2 py-0.5 text-[13px] font-semibold text-white">
       {deaf ? <VolumeX size={14} className="shrink-0 text-danger" aria-label="Deafened" /> : muted ? <MicOff size={14} className="shrink-0 text-danger" aria-label="Muted" /> : null}
       <span className="truncate">{p.name}{p.isLocal ? ' (you)' : ''}</span>{extra}
     </span>
@@ -68,8 +68,8 @@ export function ParticipantTile({ p, size = 'lg', focused, onClick, showStats }:
             </span>
           </div>}
       <NamePill p={p} extra={p.handRaised ? <Hand size={13} className="text-warn" aria-label="Hand raised" /> : null} />
-      {p.priority && <Crown size={14} className="absolute right-2 top-2 text-warn" />}
-      <span className="pointer-events-none absolute right-2 top-2 z-[5] opacity-0 transition-opacity group-hover:opacity-100"><NetBars quality={p.quality} /></span>
+      {p.priority && <Crown size={14} className="absolute end-2 top-2 text-warn" />}
+      <span className="pointer-events-none absolute end-2 top-2 z-[5] opacity-0 transition-opacity group-hover:opacity-100"><NetBars quality={p.quality} /></span>
       {showStats && present && <StatsPanel identity={p.identity} source="camera" />}
     </div>
   );
@@ -101,11 +101,11 @@ export function ScreenTile({ p, size = 'lg', focused, onClick }: { p: Participan
             {!sm && (watching ? <span className="text-sm">Loading stream…</span> :
               <button className="btn btn-primary" onClick={(e) => { e.stopPropagation(); setWatching(true); client.setWatching(p.identity, 'screen', true); }}><Eye size={16} />Watch Stream</button>)}
           </div>}
-      <span className="pointer-events-none absolute left-2 top-2 z-[5] flex items-center gap-1.5">
+      <span className="pointer-events-none absolute start-2 top-2 z-[5] flex items-center gap-1.5">
         <span className="rounded bg-danger px-1.5 py-0.5 text-[11px] font-bold uppercase tracking-wide text-white">Live</span>
         {!sm && <span className="rounded bg-black/65 px-2 py-0.5 text-[13px] font-semibold text-white">{label}</span>}
       </span>
-      {sm && <span className="pointer-events-none absolute bottom-1 left-1 z-[5] max-w-[90%] truncate rounded bg-black/65 px-1.5 text-xs font-semibold text-white">{label}</span>}
+      {sm && <span className="pointer-events-none absolute bottom-1 start-1 z-[5] max-w-[90%] truncate rounded bg-black/65 px-1.5 text-xs font-semibold text-white">{label}</span>}
       {!sm && (
         <div className="absolute inset-x-0 bottom-0 z-[6] flex flex-wrap items-center justify-end gap-2 bg-gradient-to-t from-black/70 to-transparent p-2 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100 max-md:opacity-100" onClick={(e) => e.stopPropagation()}>
           {!p.isLocal && (

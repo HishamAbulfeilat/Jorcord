@@ -47,6 +47,8 @@ export function translate(lang: string, key: string, vars?: Record<string, strin
   if (vars) s = s.replace(/\{(\w+)\}/g, (m, k: string) => (k in vars ? String(vars[k]) : m));
   return s;
 }
+/** Marks a string for extraction without translating it now (module-level tables; translate with t() at render time). */
+export const T = (s: string) => s;
 export const t = (key: string, vars?: Record<string, string | number>) => translate(current, key, vars);
 
 /** Plural helper over two source strings: `tn(n, '{n} member', '{n} members')`. */

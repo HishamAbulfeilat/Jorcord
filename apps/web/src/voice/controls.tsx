@@ -8,6 +8,7 @@ import { useUI } from '@/stores/ui';
 import { useVoiceUI } from '@/stores/voiceui';
 import { cx } from '@/lib/format';
 import { leaveVoice, startScreenShare } from './controller';
+import { t } from '@/i18n';
 
 function RoundBtn({ label, active, danger, onClick, children, disabled, pressed, className }: { label: string; active?: boolean; danger?: boolean; onClick?: () => void; children: React.ReactNode; disabled?: boolean; pressed?: boolean; className?: string }) {
   return (
@@ -37,10 +38,10 @@ export function ScreenSharePopover({ onClose }: { onClose: () => void }) {
   }, [onClose]);
   const pick = (id: StreamPresetId) => { setPreset(id); setPref('screenPreset', id as any); if (live) void client.setLiveStreamQuality(id, hint); };
   return (
-    <div ref={ref} role="dialog" aria-label="Screen share quality" data-testid="share-popover"
-      className="fixed inset-x-3 bottom-[88px] z-50 animate-pop rounded-lg bg-float p-3 text-left shadow-elev md:absolute md:inset-x-auto md:bottom-full md:right-0 md:mb-3 md:w-80">
-      <div className="mb-2 text-xs font-bold uppercase tracking-wide text-interactive">Stream quality</div>
-      <div role="radiogroup" aria-label="Resolution and frame rate" className="grid gap-1">
+    <div ref={ref} role="dialog" aria-label={t('Screen share quality')} data-testid="share-popover"
+      className="fixed inset-x-3 bottom-[88px] z-50 animate-pop rounded-lg bg-float p-3 text-start shadow-elev md:absolute md:inset-x-auto md:bottom-full md:end-0 md:mb-3 md:w-80">
+      <div className="mb-2 text-xs font-bold uppercase tracking-wide text-interactive">{t('Stream quality')}</div>
+      <div role="radiogroup" aria-label={t('Resolution and frame rate')} className="grid gap-1">
         {STREAM_PRESETS.map((p) => (
           <label key={p.id} className={cx('flex cursor-pointer items-center gap-3 rounded px-2 py-2 hover:bg-hover', preset === p.id && 'bg-hover')}>
             <input type="radio" name="sharepreset" className="accent-brand" checked={preset === p.id} onChange={() => pick(p.id)} aria-label={p.id === 'source' ? 'Source' : p.label} />
@@ -50,15 +51,15 @@ export function ScreenSharePopover({ onClose }: { onClose: () => void }) {
         ))}
       </div>
       <div className="mt-3 flex items-center justify-between gap-2 text-sm text-header">
-        <label htmlFor="sharehint">Optimise for</label>
+        <label htmlFor="sharehint">{t('Optimise for')}</label>
         <select id="sharehint" className="field !min-h-0 !w-auto py-1" value={hint} onChange={(e) => { const v = e.target.value as 'motion' | 'detail'; setHint(v); setPref('screenHint', v); if (live) client.setContentHint(v); }}>
           <option value="motion">Motion (games, video)</option><option value="detail">Detail (text, slides)</option>
         </select>
       </div>
-      <div className="mt-3 flex items-center justify-between text-sm text-header"><span>Share audio</span><Toggle label="Share audio" checked={audio} onChange={(v) => { setAudio(v); setPref('screenAudio', v); }} /></div>
+      <div className="mt-3 flex items-center justify-between text-sm text-header"><span>{t('Share audio')}</span><Toggle label={t('Share audio')} checked={audio} onChange={(v) => { setAudio(v); setPref('screenAudio', v); }} /></div>
       {!live
-        ? <button className="btn btn-primary btn-lg mt-3 w-full" onClick={() => { onClose(); void startScreenShare({ preset, hint, audio }); }}>Go Live</button>
-        : <button className="btn btn-danger btn-lg mt-3 w-full" onClick={() => { onClose(); void client.stopScreenShare(); }}>Stop Streaming</button>}
+        ? <button className="btn btn-primary btn-lg mt-3 w-full" onClick={() => { onClose(); void startScreenShare({ preset, hint, audio }); }}>{t('Go Live')}</button>
+        : <button className="btn btn-danger btn-lg mt-3 w-full" onClick={() => { onClose(); void client.stopScreenShare(); }}>{t('Stop Streaming')}</button>}
     </div>
   );
 }
@@ -67,29 +68,33 @@ export function ControlBar({ onSettings, className }: { onSettings: () => void; 
   const snap = useVoiceSnapshot(); const client = useVoiceClient();
   const selfMute = useVoiceUI((s) => s.selfMute); const selfDeaf = useVoiceUI((s) => s.selfDeaf); const toggleMute = useVoiceUI((s) => s.toggleMute); const toggleDeaf = useVoiceUI((s) => s.toggleDeaf);
   const showStats = useUI((s) => s.prefs.showVoiceStats); const setPref = useUI((s) => s.setPref);
-  const [pop, setPop] = useState(false);
+  const [pop, setPopLocal] = useState(false);
+  const globalPop = useVoiceUI((s) => s.sharePop); const setGlobalPop = useVoiceUI((s) => s.setSharePop); const setBarMounted = useVoiceUI((s) => s.setBarMounted);
+  useEffect(() => { setBarMounted(true); return () => setBarMounted(false); }, [setBarMounted]);
+  const setPop = (v: boolean | ((x: boolean) => boolean)) => { const n = typeof v === 'function' ? v(pop || globalPop) : v; setPopLocal(n); setGlobalPop(n); };
+  const popOpen = pop || globalPop;
   const stage = false;
   const canShare = snap.platform.canScreenShare;
   const canPublish = snap.participants.find((p) => p.isLocal)?.canPublish !== false;
   const muted = selfMute || selfDeaf;
   void stage;
   return (
-    <div className={cx('relative flex flex-wrap items-center justify-center gap-3 px-3 py-3 max-md:gap-2 max-md:pb-5', className)} role="toolbar" aria-label="Voice controls">
+    <div className={cx('relative flex flex-wrap items-center justify-center gap-3 px-3 py-3 max-md:gap-2 max-md:pb-5', className)} role="toolbar" aria-label={t('Voice controls')}>
       <RoundBtn label={snap.cameraOn ? 'Turn Off Camera' : 'Turn On Camera'} active={snap.cameraOn} pressed={snap.cameraOn} disabled={!canPublish}
         onClick={() => void client.setCamera(!snap.cameraOn).catch(() => {})}>{snap.cameraOn ? <Camera size={22} /> : <CameraOff size={22} />}</RoundBtn>
       {canShare && (
         <div className="relative flex items-center">
           <RoundBtn label={snap.screenOn ? 'Stop Streaming' : 'Share Your Screen'} active={snap.screenOn} pressed={snap.screenOn} disabled={!canPublish}
             onClick={() => { if (snap.screenOn) void client.stopScreenShare(); else setPop(true); }}>{snap.screenOn ? <MonitorX size={22} /> : <MonitorUp size={22} />}</RoundBtn>
-          <button aria-label="Stream quality options" aria-expanded={pop} onClick={() => setPop((v) => !v)} disabled={!canPublish} className="-ml-2 flex h-6 w-6 items-center justify-center rounded-full bg-[rgb(var(--divider))] text-header hover:bg-brand disabled:opacity-40"><ChevronUp size={14} /></button>
-          {pop && <ScreenSharePopover onClose={() => setPop(false)} />}
+          <button aria-label={t('Stream quality options')} aria-expanded={popOpen} onClick={() => setPop((v) => !v)} disabled={!canPublish} className="-ms-2 flex h-6 w-6 items-center justify-center rounded-full bg-[rgb(var(--divider))] text-header hover:bg-brand disabled:opacity-40"><ChevronUp size={14} /></button>
+          {popOpen && <ScreenSharePopover onClose={() => setPop(false)} />}
         </div>
       )}
       <RoundBtn label={muted ? 'Unmute' : 'Mute'} pressed={muted} active={false} className={muted ? '!bg-danger/20 !text-danger' : ''} onClick={toggleMute} disabled={!canPublish && !muted}>{muted ? <MicOff size={22} /> : <Mic size={22} />}</RoundBtn>
       <RoundBtn label={selfDeaf ? 'Undeafen' : 'Deafen'} pressed={selfDeaf} className={selfDeaf ? '!bg-danger/20 !text-danger' : ''} onClick={toggleDeaf}>{selfDeaf ? <VolumeX size={22} /> : <Headphones size={22} />}</RoundBtn>
-      <RoundBtn label="Voice Settings" onClick={onSettings}><Settings size={22} /></RoundBtn>
+      <RoundBtn label={t('Voice Settings')} onClick={onSettings}><Settings size={22} /></RoundBtn>
       <RoundBtn label={showStats ? 'Hide Connection Stats' : 'Show Connection Stats'} pressed={showStats} active={showStats} onClick={() => setPref('showVoiceStats', !showStats)} className="max-sm:hidden"><Activity size={22} /></RoundBtn>
-      <RoundBtn label="Disconnect" danger onClick={() => void leaveVoice()}><PhoneOff size={22} /></RoundBtn>
+      <RoundBtn label={t('Disconnect')} danger onClick={() => void leaveVoice()}><PhoneOff size={22} /></RoundBtn>
     </div>
   );
 }

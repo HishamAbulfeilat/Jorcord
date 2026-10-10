@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react';
-import { Navigate, useNavigate } from 'react-router-dom';
+import { Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { DiscoveryPage } from '@/components/home/DiscoveryPage';
+import { t } from '@/i18n';
 import { Home, MessageSquare, Users, UserCircle, WifiOff } from 'lucide-react';
 import { useData, findChannel, channelUnread } from '@/stores/data';
 import { useUI } from '@/stores/ui';
@@ -22,11 +24,12 @@ import { useState } from 'react';
 import { Badge } from '@/components/ui/primitives';
 import { comboFromEvent } from '@/components/settings/UserSettings';
 import { useShallow } from 'zustand/react/shallow';
+import { useVoiceUI } from '@/stores/voiceui';
 
 function Sidebar() {
   const { guildId } = useRouteIds();
   return (
-    <div className="flex h-full w-60 shrink-0 flex-col rounded-tl-lg bg-side max-md:w-full max-md:rounded-none">
+    <div className="flex h-full w-60 shrink-0 flex-col rounded-ss-lg bg-side max-md:w-full max-md:rounded-none">
       {guildId ? <ChannelSidebar guildId={guildId} /> : <DmSidebar />}
       <UserPanel />
     </div>
@@ -56,7 +59,8 @@ function ChannelPage() {
 }
 
 function MainContent() {
-  const { isHome, channelId } = useRouteIds();
+  const { isHome, channelId } = useRouteIds(); const { pathname } = useLocation();
+  if (pathname.endsWith('/discover')) return <DiscoveryPage />;
   if (isHome && !channelId) return <FriendsHome />;
   if (!channelId) return <GuildRedirect />;
   return <ChannelPage />;
@@ -69,13 +73,13 @@ export function MobileTabBar() {
   const me = useData((s) => s.me);
   const T = ({ id, label, icon: I, badge, onClick }: { id: any; label: string; icon: any; badge?: number; onClick: () => void }) => (
     <button role="tab" aria-selected={tab === id} aria-label={label} onClick={() => { setTab(id); onClick(); }} className={cx('relative flex min-h-[52px] flex-1 flex-col items-center justify-center gap-0.5 text-[11px] font-medium', tab === id ? 'text-header' : 'text-muted')}>
-      <span className="relative"><I size={24} />{!!badge && <Badge n={badge} className="absolute -right-3 -top-1.5" />}</span>{label}
+      <span className="relative"><I size={24} />{!!badge && <Badge n={badge} className="absolute -end-3 -top-1.5" />}</span>{label}
     </button>);
   return (
-    <div role="tablist" aria-label="Main navigation" className="flex shrink-0 border-t border-divider bg-rail" style={{ paddingBottom: 'var(--sab)' }}>
-      <T id="servers" label="Home" icon={Home} onClick={() => setLeft(true)} />
-      <T id="dms" label="Messages" icon={MessageSquare} badge={mentions} onClick={() => { nav.go('@me'); }} />
-      <T id="friends" label="Friends" icon={Users} badge={reqs} onClick={() => { nav.go('@me'); }} />
+    <div role="tablist" aria-label={t('Main navigation')} className="flex shrink-0 border-t border-divider bg-rail" style={{ paddingBottom: 'var(--sab)' }}>
+      <T id="servers" label={t('Home')} icon={Home} onClick={() => setLeft(true)} />
+      <T id="dms" label={t('Messages')} icon={MessageSquare} badge={mentions} onClick={() => { nav.go('@me'); }} />
+      <T id="friends" label={t('Friends')} icon={Users} badge={reqs} onClick={() => { nav.go('@me'); }} />
       <T id="you" label={me?.displayName || 'You'} icon={UserCircle} onClick={() => openSettings({ kind: 'user' })} />
     </div>
   );
@@ -106,8 +110,8 @@ export function AppShell({ base = '' }: { base?: string }) {
     const te = (e: TouchEvent) => {
       if (!ok) return; const p = e.changedTouches[0]; const dx = p.clientX - sx, dy = p.clientY - sy;
       if (Math.abs(dx) < 70 || Math.abs(dy) > Math.abs(dx) * 0.6 || Date.now() - t > 600) return;
-      const s = useUI.getState();
-      if (dx > 0) { if (s.rightDrawer) setRight(false); else if (!s.leftDrawer && sx < window.innerWidth * 0.6) setLeft(true); }
+      const s = useUI.getState(); const rtl = document.documentElement.dir === 'rtl';
+      if ((rtl ? -dx : dx) > 0) { if (s.rightDrawer) setRight(false); else if (!s.leftDrawer && (rtl ? sx > window.innerWidth * 0.4 : sx < window.innerWidth * 0.6)) setLeft(true); }
       else { if (s.leftDrawer) setLeft(false); else if (!s.rightDrawer && guildId) setRight(true); }
     };
     el.addEventListener('touchstart', ts, { passive: true }); el.addEventListener('touchend', te, { passive: true });
@@ -124,12 +128,12 @@ export function AppShell({ base = '' }: { base?: string }) {
         <MobileVoiceBar />
         <div className="relative flex min-h-0 flex-1">
           {!mobile && <><ServerRail /><Sidebar /></>}
-          <main id="main" className="relative flex min-w-0 flex-1 flex-col bg-chat md:rounded-tl-lg" style={{ paddingLeft: 'var(--sal)', paddingRight: 'var(--sar)' }}>{main}</main>
+          <main id="main" className="relative flex min-w-0 flex-1 flex-col bg-chat md:rounded-ss-lg" style={{ paddingInlineStart: 'var(--sal)', paddingInlineEnd: 'var(--sar)' }}>{main}</main>
           {mobile && (
             <>
               <div aria-hidden className={cx('fixed inset-0 z-40 bg-black/60 transition-opacity', left ? 'opacity-100' : 'pointer-events-none opacity-0')} onClick={() => setLeft(false)} />
-              <div role="dialog" aria-label="Navigation" aria-hidden={!left} className={cx('drawer fixed inset-y-0 left-0 z-50 flex w-[calc(100%-40px)] max-w-[420px] flex-col bg-rail', left ? 'translate-x-0' : '-translate-x-full')} {...{ inert: left ? undefined : ('' as any) }}>
-                <div className="flex min-h-0 flex-1"><ServerRail onNavigate={undefined} /><div className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-tl-2xl bg-side"><Sidebar /></div></div>
+              <div role="dialog" aria-label={t('Navigation')} aria-hidden={!left} className={cx('drawer fixed inset-y-0 start-0 z-50 flex w-[calc(100%-40px)] max-w-[420px] flex-col bg-rail', left ? 'translate-x-0' : '-translate-x-full rtl:translate-x-full')} {...{ inert: left ? undefined : ('' as any) }}>
+                <div className="flex min-h-0 flex-1"><ServerRail onNavigate={undefined} /><div className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-ss-2xl bg-side"><Sidebar /></div></div>
                 <MobileTabBar />
               </div>
             </>
@@ -160,6 +164,8 @@ function useGlobalKeys(base: string) {
       const go = (g: string | undefined, ch?: string) => navigate(`${base}/channels/${g ?? '@me'}${ch ? '/' + ch : ''}`);
       if (c === kb.quickSwitcher) { e.preventDefault(); s.setSwitcher(!s.switcher); return; }
       if (c === kb.shortcuts && !(e.target as HTMLElement).closest('input,textarea')) { e.preventDefault(); s.openModal({ kind: 'shortcuts' }); return; }
+      if (c === kb.toggleMute) { e.preventDefault(); useVoiceUI.getState().toggleMute(); return; }
+      if (c === kb.toggleDeafen) { e.preventDefault(); useVoiceUI.getState().toggleDeaf(); return; }
       if (c === kb.toggleMembers) { e.preventDefault(); s.togglePanel('members'); return; }
       if (c === kb.search) { e.preventDefault(); s.setPanel('search'); return; }
       if (c === 'Escape') { if (s.menu) s.closeMenu(); else if (s.popout) s.closePopout(); return; }

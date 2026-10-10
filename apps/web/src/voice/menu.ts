@@ -8,6 +8,7 @@ import { can } from '@/lib/perms';
 import { myChannelPerms } from '@/lib/session';
 import { userMenu } from '@/lib/menus';
 import { getVoiceClient } from './controller';
+import { t } from '@/i18n';
 
 /** Context menu for a person in a voice channel: local volume, server-side moderation, then the usual user menu. */
 export function voiceUserMenu(userId: string, channelId: string): MenuItem[] {
@@ -24,7 +25,7 @@ export function voiceUserMenu(userId: string, channelId: string): MenuItem[] {
     if (userId !== me && can(perms, Perm.DEAFEN_MEMBERS)) mod.push({ label: st?.serverDeaf ? 'Server Undeafen' : 'Server Deafen', icon: Headphones, danger: !st?.serverDeaf, onClick: () => api.voice.moderate(guildId, userId, { deaf: !st?.serverDeaf }).catch(toastError) });
     if (userId !== me && can(perms, Perm.MOVE_MEMBERS)) {
       const others = Object.values(s.guilds[guildId]?.channels ?? {}).filter((c) => (c.type === 'voice' || c.type === 'stage') && c.id !== channelId);
-      if (others.length) mod.push({ label: 'Move To', icon: ArrowRightLeft, children: others.map((c) => ({ label: c.name ?? 'channel', icon: c.type === 'stage' ? Radio : Volume2, onClick: () => api.voice.move(guildId, userId, c.id).then(() => toast('Moved', 'success')).catch(toastError) })) });
+      if (others.length) mod.push({ label: 'Move To', icon: ArrowRightLeft, children: others.map((c) => ({ label: c.name ?? 'channel', icon: c.type === 'stage' ? Radio : Volume2, onClick: () => api.voice.move(guildId, userId, c.id).then(() => toast(t('Moved'), 'success')).catch(toastError) })) });
       mod.push({ label: 'Disconnect', icon: PhoneOff, danger: true, onClick: () => api.voice.disconnect(guildId, userId).catch(toastError) });
     }
     if (mod.length) items.push({ separator: true }, ...mod);

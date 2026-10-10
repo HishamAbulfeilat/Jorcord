@@ -1,7 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { VoiceSettingsForm } from '@/voice/VoiceSettings';
 import { useQuery } from '@tanstack/react-query';
-import { Accessibility, Bell, Globe, Keyboard, LogOut, Mic, Palette, Shield, User as UserIcon, UserCircle, Monitor } from 'lucide-react';
+import { Accessibility, Bell, Globe, Keyboard, LogOut, Mic, Palette, Shield, User as UserIcon, UserCircle, Monitor, Radio, Laptop, Smile } from 'lucide-react';
+import { NotificationsTab, StreamerTab, DesktopTab, ServerSection, ThemePicker } from './UserSettingsExtra';
+import { isTauri } from '@/lib/server';
+import { LOCALES } from '@/i18n';
+import { t, T } from '@/i18n';
+import { useStreamer, maskEmail } from '@/lib/streamer';
+import { profileGradient, isHex } from '@/lib/profileTheme';
 import { api } from '@/lib/api';
 import { useData } from '@/stores/data';
 import { useUI, defaultKeybinds, toast, toastError, type Theme } from '@/stores/ui';
@@ -13,22 +19,25 @@ import { cx, fileUrl, idColor } from '@/lib/format';
 import { logout } from '@/lib/auth';
 import { ProfileCard } from '@/components/modals/Profile';
 
+let lastTab = 'account';
 export function UserSettings({ initialTab }: { initialTab?: string }) {
-  const [tab, setTab] = useState(initialTab ?? 'account'); const close = () => useUI.getState().openSettings(null);
+  const [tab, setTabRaw] = useState(initialTab ?? lastTab); const setTab = (x: string) => { lastTab = x; setTabRaw(x); }; const close = () => { lastTab = 'account'; useUI.getState().openSettings(null); };
   const groups = [
-    { title: 'User Settings', items: [{ id: 'account', label: 'My Account', icon: UserIcon }, { id: 'profile', label: 'Profile', icon: UserCircle }, { id: 'security', label: 'Security & Devices', icon: Shield }] },
-    { title: 'App Settings', items: [{ id: 'appearance', label: 'Appearance', icon: Palette }, { id: 'accessibility', label: 'Accessibility', icon: Accessibility }, { id: 'voice', label: 'Voice & Video', icon: Mic }, { id: 'notifications', label: 'Notifications', icon: Bell }, { id: 'keybinds', label: 'Keybinds', icon: Keyboard }, { id: 'language', label: 'Language', icon: Globe }] },
-    { items: [{ id: 'logout', label: 'Log Out', icon: LogOut, danger: true }] },
+    { title: t('User Settings'), items: [{ id: 'account', label: t('My Account'), icon: UserIcon }, { id: 'profile', label: t('Profile'), icon: UserCircle }, { id: 'security', label: t('Security & Devices'), icon: Shield }] },
+    { title: t('App Settings'), items: [{ id: 'appearance', label: t('Appearance'), icon: Palette }, { id: 'accessibility', label: t('Accessibility'), icon: Accessibility }, { id: 'voice', label: t('Voice & Video'), icon: Mic }, { id: 'notifications', label: t('Notifications'), icon: Bell }, { id: 'keybinds', label: t('Keybinds'), icon: Keyboard }, { id: 'streamer', label: t('Streamer Mode'), icon: Radio }, { id: 'language', label: t('Language'), icon: Globe }, ...(isTauri() ? [{ id: 'desktop', label: t('Desktop App'), icon: Laptop }] : [])] },
+    { items: [{ id: 'logout', label: t('Log Out'), icon: LogOut, danger: true }] },
   ];
   return (
-    <SettingsLayout title="User Settings" groups={groups} tab={tab} onTab={(t) => { if (t === 'logout') { logout(); close(); } else setTab(t); }} onClose={close}>
+    <SettingsLayout title={t('User Settings')} groups={groups} tab={tab} onTab={(t) => { if (t === 'logout') { logout(); close(); } else setTab(t); }} onClose={close}>
       {tab === 'account' && <Account go={setTab} />}
       {tab === 'profile' && <Profile />}
       {tab === 'security' && <Security />}
       {tab === 'appearance' && <Appearance />}
       {tab === 'accessibility' && <A11y />}
       {tab === 'voice' && <VoiceVideo />}
-      {tab === 'notifications' && <Notifications />}
+      {tab === 'notifications' && <NotificationsTab />}
+      {tab === 'streamer' && <StreamerTab />}
+      {tab === 'desktop' && <DesktopTab />}
       {tab === 'keybinds' && <Keybinds />}
       {tab === 'language' && <Language />}
     </SettingsLayout>
@@ -36,46 +45,47 @@ export function UserSettings({ initialTab }: { initialTab?: string }) {
 }
 
 function Account({ go }: { go: (t: string) => void }) {
-  const me = useData((s) => s.me)!; const [pw, setPw] = useState({ cur: '', next: '' }); const [busy, setBusy] = useState(false);
+  const me = useData((s) => s.me)!; const [pw, setPw] = useState({ cur: '', next: '' }); const [busy, setBusy] = useState(false); const st = useStreamer();
   return (<>
-    <H1>My Account</H1>
-    <div className="overflow-hidden rounded-lg bg-side"><div className="h-24" style={{ background: me.banner ? `center/cover url(${fileUrl(me.banner)})` : me.accentColor ?? idColor(me.id) }} />
-      <div className="flex items-center gap-4 px-4 pb-4"><div className="-mt-8 rounded-full border-[6px] border-[rgb(var(--side))]"><Avatar user={me} size={80} presence /></div><div className="mt-2 text-xl font-bold text-header">{me.displayName || me.username}</div><button className="btn btn-primary ml-auto" onClick={() => go('profile')}>Edit User Profile</button></div>
-      <dl className="m-4 space-y-4 rounded-lg bg-[rgb(var(--modal-alt))] p-4"><div><dt className="label !mb-0.5">Username</dt><dd className="text-header">{me.username}</dd></div><div><dt className="label !mb-0.5">Email</dt><dd className="text-header">{me.email}{!me.verified && <span className="ml-2 text-xs text-warn">unverified</span>}</dd></div></dl></div>
-    <H3>Password</H3>
-    <form className="max-w-sm" onSubmit={async (e) => { e.preventDefault(); setBusy(true); try { await api.auth.password({ currentPassword: pw.cur, newPassword: pw.next }); toast('Password changed', 'success'); setPw({ cur: '', next: '' }); } catch (err) { toastError(err); } setBusy(false); }}>
-      <Field label="Current Password"><input type="password" autoComplete="current-password" className="field" value={pw.cur} onChange={(e) => setPw({ ...pw, cur: e.target.value })} /></Field>
-      <Field label="New Password"><input type="password" autoComplete="new-password" className="field" value={pw.next} onChange={(e) => setPw({ ...pw, next: e.target.value })} minLength={8} /></Field>
-      <button disabled={busy || pw.next.length < 8 || !pw.cur} className="btn btn-primary btn-lg">Change Password</button>
+    <H1>{t('My Account')}</H1>
+    <div className="overflow-hidden rounded-lg bg-side"><div className="h-24" style={{ background: me.banner ? `center/cover url(${fileUrl(me.banner)})` : isHex(me.accentColor) ? profileGradient(me.accentColor) : idColor(me.id) }} />
+      <div className="flex items-center gap-4 px-4 pb-4"><div className="-mt-8 rounded-full border-[6px] border-[rgb(var(--side))]"><Avatar user={me} size={80} presence /></div><div className="mt-2 text-xl font-bold text-header">{me.displayName || me.username}</div><button className="btn btn-primary ms-auto" onClick={() => go('profile')}>{t('Edit User Profile')}</button></div>
+      <dl className="m-4 space-y-4 rounded-lg bg-[rgb(var(--modal-alt))] p-4"><div><dt className="label !mb-0.5">{t('Username')}</dt><dd className="text-header">{me.username}</dd></div><div><dt className="label !mb-0.5">{t('Email')}</dt><dd className="text-header" data-testid="account-email">{st.hidePersonal ? maskEmail(me.email) : me.email}{!me.verified && <span className="ms-2 text-xs text-warn">unverified</span>}</dd></div></dl></div>
+    <ServerSection />
+    <H3>{t('Password')}</H3>
+    <form className="max-w-sm" onSubmit={async (e) => { e.preventDefault(); setBusy(true); try { await api.auth.password({ currentPassword: pw.cur, newPassword: pw.next }); toast(t('Password changed'), 'success'); setPw({ cur: '', next: '' }); } catch (err) { toastError(err); } setBusy(false); }}>
+      <Field label={t('Current Password')}><input type="password" autoComplete="current-password" className="field" value={pw.cur} onChange={(e) => setPw({ ...pw, cur: e.target.value })} /></Field>
+      <Field label={t('New Password')}><input type="password" autoComplete="new-password" className="field" value={pw.next} onChange={(e) => setPw({ ...pw, next: e.target.value })} minLength={8} /></Field>
+      <button disabled={busy || pw.next.length < 8 || !pw.cur} className="btn btn-primary btn-lg">{t('Change Password')}</button>
     </form>
   </>);
 }
 
 function Profile() {
   const me = useData((s) => s.me)!;
-  const init = { displayName: me.displayName ?? '', pronouns: me.pronouns ?? '', bio: me.bio ?? '', avatar: me.avatar, banner: me.banner, accentColor: me.accentColor ?? '#5865f2', status: me.customStatus?.text ?? '' };
+  const init = { displayName: me.displayName ?? '', pronouns: me.pronouns ?? '', bio: me.bio ?? '', avatar: me.avatar, banner: me.banner, accentColor: me.accentColor ?? '#5865f2', };
   const [f, setF] = useState(init); const [busy, setBusy] = useState(false);
   const dirty = JSON.stringify(f) !== JSON.stringify(init);
-  const save = async () => { setBusy(true); try { const u = await api.users.patchMe({ displayName: f.displayName || null, pronouns: f.pronouns || null, bio: f.bio || null, avatar: f.avatar, banner: f.banner, accentColor: f.accentColor, customStatus: f.status ? { text: f.status, emoji: null } : null }); useData.getState().apply('USER_UPDATE', { ...me, ...u }); toast('Profile saved', 'success'); } catch (e) { toastError(e); } setBusy(false); };
+  const save = async () => { setBusy(true); try { const u = await api.users.patchMe({ displayName: f.displayName || null, pronouns: f.pronouns || null, bio: f.bio || null, avatar: f.avatar, banner: f.banner, accentColor: f.accentColor, }); useData.getState().apply('USER_UPDATE', { ...me, ...u }); toast(t('Profile saved'), 'success'); } catch (e) { toastError(e); } setBusy(false); };
   return (<>
-    <H1>Profile</H1>
+    <H1>{t('Profile')}</H1>
     <div className="flex flex-col gap-8 lg:flex-row"><div className="min-w-0 flex-1">
-      <Field label="Display Name"><input className="field" value={f.displayName} maxLength={32} onChange={(e) => setF({ ...f, displayName: e.target.value })} placeholder={me.username} /></Field>
-      <Field label="Pronouns"><input className="field" value={f.pronouns} maxLength={40} onChange={(e) => setF({ ...f, pronouns: e.target.value })} placeholder="Add your pronouns" /></Field>
-      <div className="mb-4"><span className="label">Avatar</span><IconPicker value={f.avatar} onChange={(v) => setF({ ...f, avatar: v })} size={72} label="Avatar" /></div>
-      <div className="mb-4"><span className="label">Banner</span><div className="relative h-24 overflow-hidden rounded-lg" style={{ background: f.banner ? `center/cover url(${fileUrl(f.banner)})` : f.accentColor }}><label className="absolute inset-0 flex cursor-pointer items-center justify-center bg-black/40 text-sm font-semibold text-white opacity-0 hover:opacity-100 focus-within:opacity-100">Change banner<input type="file" accept="image/*" className="sr-only" onChange={async (e) => { const file = e.target.files?.[0]; e.target.value = ''; if (!file) return; try { const url = await api.files.uploadImage(file); setF((s) => ({ ...s, banner: url })); } catch (err) { toastError(err); } }} /></label></div>{f.banner && <button className="mt-1 text-sm text-link" onClick={() => setF({ ...f, banner: null })}>Remove banner</button>}</div>
-      <Field label="Profile Color"><input type="color" value={f.accentColor} onChange={(e) => setF({ ...f, accentColor: e.target.value })} className="h-10 w-20 cursor-pointer rounded bg-transparent" aria-label="Accent color" /></Field>
-      <Field label="Custom Status"><input className="field" value={f.status} maxLength={128} onChange={(e) => setF({ ...f, status: e.target.value })} placeholder="What's happening?" /></Field>
-      <Field label="About Me" hint="You can use markdown and links."><textarea className="field min-h-[110px]" value={f.bio} maxLength={190} onChange={(e) => setF({ ...f, bio: e.target.value })} /></Field>
+      <Field label={t('Display Name')}><input className="field" value={f.displayName} maxLength={32} onChange={(e) => setF({ ...f, displayName: e.target.value })} placeholder={me.username} /></Field>
+      <Field label={t('Pronouns')}><input className="field" value={f.pronouns} maxLength={40} onChange={(e) => setF({ ...f, pronouns: e.target.value })} placeholder={t('Add your pronouns')} /></Field>
+      <div className="mb-4"><span className="label">{t('Avatar')}</span><IconPicker value={f.avatar} onChange={(v) => setF({ ...f, avatar: v })} size={72} label={t('Avatar')} /><span className="mt-1 block text-xs text-muted">{t('GIF and animated WebP avatars and banners are supported.')}</span></div>
+      <div className="mb-4"><span className="label">{t('Banner')}</span><div className="relative h-24 overflow-hidden rounded-lg" style={{ background: f.banner ? `center/cover url(${fileUrl(f.banner)})` : f.accentColor }}><label className="absolute inset-0 flex cursor-pointer items-center justify-center bg-black/40 text-sm font-semibold text-white opacity-0 hover:opacity-100 focus-within:opacity-100">{t('Change banner')}<input type="file" accept="image/*" className="sr-only" onChange={async (e) => { const file = e.target.files?.[0]; e.target.value = ''; if (!file) return; try { const url = await api.files.uploadImage(file); setF((s) => ({ ...s, banner: url })); } catch (err) { toastError(err); } }} /></label></div>{f.banner && <button className="mt-1 text-sm text-link" onClick={() => setF({ ...f, banner: null })}>{t('Remove banner')}</button>}</div>
+      <ThemePicker value={f.accentColor} onChange={(c) => setF({ ...f, accentColor: c })} />
+      <div className="mb-4"><span className="label">{t('Custom Status')}</span><button type="button" className="btn btn-secondary" onClick={() => useUI.getState().openModal({ kind: 'customStatus' })}><Smile size={16} />{me.customStatus?.text || me.customStatus?.emoji ? `${me.customStatus.emoji ?? ''} ${me.customStatus.text ?? ''}`.trim() : t('Set a custom status')}</button></div>
+      <Field label={t('About Me')} hint={t('You can use markdown and links.')}><textarea className="field min-h-[110px]" value={f.bio} maxLength={190} onChange={(e) => setF({ ...f, bio: e.target.value })} /></Field>
     </div>
-    <div className="lg:w-[300px]"><span className="label">Preview</span><div className="pointer-events-none"><PreviewCard me={me} f={f} /></div></div></div>
+    <div className="lg:w-[300px]"><span className="label">{t('Preview')}</span><div className="pointer-events-none"><PreviewCard me={me} f={f} /></div></div></div>
     <SaveBar dirty={dirty} busy={busy} onSave={save} onReset={() => setF(init)} />
   </>);
 }
 function PreviewCard({ me, f }: { me: any; f: any }) {
-  return <div className="overflow-hidden rounded-lg bg-[rgb(var(--modal-alt))]"><div className="h-[60px]" style={{ background: f.banner ? `center/cover url(${fileUrl(f.banner)})` : f.accentColor }} />
+  return <div className="overflow-hidden rounded-lg bg-[rgb(var(--modal-alt))]"><div className="h-[60px]" style={{ background: f.banner ? `center/cover url(${fileUrl(f.banner)})` : isHex(f.accentColor) ? profileGradient(f.accentColor) : f.accentColor }} />
     <div className="px-4 pb-4"><div className="-mt-10 mb-2 w-fit rounded-full border-[6px] border-[rgb(var(--modal-alt))]"><Avatar user={{ ...me, avatar: f.avatar }} size={80} /></div>
-      <div className="rounded-lg bg-[rgb(var(--rail)/0.5)] p-3"><div className="text-xl font-bold text-header">{f.displayName || me.username}</div><div className="text-sm">{me.username}{f.pronouns && <span className="text-muted"> • {f.pronouns}</span>}</div>{f.status && <div className="mt-2 text-sm">{f.status}</div>}{f.bio && <><hr className="my-3 border-divider" /><div className="text-xs font-bold uppercase text-header">About Me</div><p className="whitespace-pre-wrap text-sm">{f.bio}</p></>}</div></div></div>;
+      <div className="rounded-lg bg-[rgb(var(--rail)/0.5)] p-3"><div className="text-xl font-bold text-header">{f.displayName || me.username}</div><div className="text-sm">{me.username}{f.pronouns && <span className="text-muted"> • {f.pronouns}</span>}</div>{f.bio && <><hr className="my-3 border-divider" /><div className="text-xs font-bold uppercase text-header">{t('About Me')}</div><p className="whitespace-pre-wrap text-sm">{f.bio}</p></>}</div></div></div>;
 }
 
 function Security() {
@@ -83,82 +93,69 @@ function Security() {
   const sessions = useQuery({ queryKey: ['sessions'], queryFn: api.auth.sessions, retry: false });
   const refresh = () => api.users.me().then((u) => useData.getState().setMe(u)).catch(() => {});
   return (<>
-    <H1>Security & Devices</H1>
-    <H3>Two-Factor Authentication</H3>
+    <H1>{t('Security & Devices')}</H1>
+    <H3>{t('Two-Factor Authentication')}</H3>
     {me.mfaEnabled ? (<div className="rounded-lg bg-side p-4"><p className="mb-3 text-header">Two-factor authentication is <b className="text-success">enabled</b>.</p>
-      <div className="flex gap-2"><input className="field !w-40" placeholder="6-digit code" inputMode="numeric" value={code} onChange={(e) => setCode(e.target.value)} aria-label="Authentication code" /><button className="btn btn-danger" disabled={code.length < 6} onClick={() => api.auth.mfaDisable(code).then(() => { toast('2FA disabled', 'success'); setCode(''); refresh(); }).catch(toastError)}>Disable 2FA</button></div></div>
-    ) : setup ? (<div className="rounded-lg bg-side p-4"><p className="mb-2 text-sm">Add this secret to your authenticator app, then enter the 6-digit code.</p>
+      <div className="flex gap-2"><input className="field !w-40" placeholder="6-digit code" inputMode="numeric" value={code} onChange={(e) => setCode(e.target.value)} aria-label={t('Authentication code')} /><button className="btn btn-danger" disabled={code.length < 6} onClick={() => api.auth.mfaDisable(code).then(() => { toast('2FA disabled', 'success'); setCode(''); refresh(); }).catch(toastError)}>{t('Disable 2FA')}</button></div></div>
+    ) : setup ? (<div className="rounded-lg bg-side p-4"><p className="mb-2 text-sm">{t('Add this secret to your authenticator app, then enter the 6-digit code.')}</p>
       {setup.qr && <img src={setup.qr} alt="2FA QR code" className="mb-2 h-40 w-40 rounded bg-white p-2" />}
       <code className="mb-3 block break-all rounded bg-rail p-2 text-sm">{setup.secret}</code>
-      <div className="flex gap-2"><input className="field !w-40" placeholder="6-digit code" inputMode="numeric" value={code} onChange={(e) => setCode(e.target.value)} aria-label="Authentication code" /><button className="btn btn-primary" disabled={code.length < 6} onClick={() => api.auth.mfaEnable(code).then((r) => { setRec(r.recoveryCodes ?? null); setSetup(null); setCode(''); toast('2FA enabled', 'success'); refresh(); }).catch(toastError)}>Enable</button></div></div>
-    ) : <button className="btn btn-primary btn-lg" onClick={() => api.auth.mfaSetup().then((r) => setSetup({ secret: r.secret, uri: r.uri ?? r.otpauthUrl, qr: r.qr })).catch(toastError)}>Enable Authenticator App</button>}
-    {rec && <div className="mt-3 rounded-lg bg-side p-4"><p className="mb-2 font-semibold text-header">Recovery codes — save these now</p><pre className="font-mono text-sm">{rec.join('\n')}</pre></div>}
-    <H3>Devices</H3>
+      <div className="flex gap-2"><input className="field !w-40" placeholder="6-digit code" inputMode="numeric" value={code} onChange={(e) => setCode(e.target.value)} aria-label={t('Authentication code')} /><button className="btn btn-primary" disabled={code.length < 6} onClick={() => api.auth.mfaEnable(code).then((r) => { setRec(r.recoveryCodes ?? null); setSetup(null); setCode(''); toast('2FA enabled', 'success'); refresh(); }).catch(toastError)}>{t('Enable')}</button></div></div>
+    ) : <button className="btn btn-primary btn-lg" onClick={() => api.auth.mfaSetup().then((r) => setSetup({ secret: r.secret, uri: r.uri ?? r.otpauthUrl, qr: r.qr })).catch(toastError)}>{t('Enable Authenticator App')}</button>}
+    {rec && <div className="mt-3 rounded-lg bg-side p-4"><p className="mb-2 font-semibold text-header">{t('Recovery codes — save these now')}</p><pre className="font-mono text-sm">{rec.join('\n')}</pre></div>}
+    <H3>{t('Devices')}</H3>
     {sessions.isLoading && <Spinner />}
-    <ul>{sessions.data?.map((s: any, i: number) => <li key={s.id ?? i} className="flex items-center gap-3 border-b border-divider/50 py-3"><Monitor size={22} className="text-muted" /><div className="min-w-0 flex-1"><div className="truncate text-header">{s.userAgent ?? s.device ?? 'Unknown device'}{s.current && <span className="ml-2 rounded bg-success px-1 text-[10px] font-bold text-white">THIS DEVICE</span>}</div><div className="text-xs text-muted">{s.ip} {s.lastUsedAt && `• ${new Date(s.lastUsedAt).toLocaleString()}`}</div></div>{!s.current && <button className="btn btn-secondary" onClick={() => api.auth.revokeSession(s.id).then(() => sessions.refetch()).catch(toastError)}>Log out</button>}</li>)}</ul>
+    <ul>{sessions.data?.map((s: any, i: number) => <li key={s.id ?? i} className="flex items-center gap-3 border-b border-divider/50 py-3"><Monitor size={22} className="text-muted" /><div className="min-w-0 flex-1"><div className="truncate text-header">{s.userAgent ?? s.device ?? 'Unknown device'}{s.current && <span className="ms-2 rounded bg-success px-1 text-[10px] font-bold text-white">{t('THIS DEVICE')}</span>}</div><div className="text-xs text-muted">{s.ip} {s.lastUsedAt && `• ${new Date(s.lastUsedAt).toLocaleString()}`}</div></div>{!s.current && <button className="btn btn-secondary" onClick={() => api.auth.revokeSession(s.id).then(() => sessions.refetch()).catch(toastError)}>{t('Log out')}</button>}</li>)}</ul>
   </>);
 }
 
 function Appearance() {
   const prefs = useUI((s) => s.prefs); const set = useUI((s) => s.setPref); const me = useData((s) => s.me);
-  const themes: { id: Theme; label: string; bg: string; fg: string }[] = [{ id: 'dark', label: 'Dark', bg: '#313338', fg: '#2b2d31' }, { id: 'light', label: 'Light', bg: '#ffffff', fg: '#f2f3f5' }, { id: 'amoled', label: 'AMOLED', bg: '#000000', fg: '#080809' }];
+  const themes: { id: Theme; label: string; bg: string; fg: string }[] = [{ id: 'dark', label: T('Dark'), bg: '#313338', fg: '#2b2d31' }, { id: 'light', label: T('Light'), bg: '#ffffff', fg: '#f2f3f5' }, { id: 'amoled', label: T('AMOLED'), bg: '#000000', fg: '#080809' }];
   const pick = (t: Theme) => { set('theme', t); api.users.patchMe({ theme: t }).catch(() => {}); };
   return (<>
-    <H1>Appearance</H1>
-    <H3>Theme</H3>
-    <div role="radiogroup" aria-label="Theme" className="grid grid-cols-3 gap-3">{themes.map((t) => <button key={t.id} role="radio" aria-checked={prefs.theme === t.id} onClick={() => pick(t.id)} className={cx('overflow-hidden rounded-lg border-2 text-left', prefs.theme === t.id ? 'border-brand' : 'border-divider')}>
-      <div className="flex h-20" style={{ background: t.bg }}><div className="w-1/4" style={{ background: t.id === 'light' ? '#e3e5e8' : t.id === 'amoled' ? '#000' : '#1e1f22' }} /><div className="w-1/3" style={{ background: t.fg }} /><div className="flex-1 space-y-1.5 p-2"><div className="h-2 w-3/4 rounded" style={{ background: '#5865f2' }} /><div className="h-2 w-1/2 rounded bg-gray-500/50" /></div></div>
-      <div className="bg-side px-3 py-2 text-sm font-semibold text-header">{t.label}</div></button>)}</div>
-    <H3>Message Display</H3>
-    <div role="radiogroup" aria-label="Message display" className="grid gap-2 sm:grid-cols-2">{(['cozy', 'compact'] as const).map((d) => <label key={d} className={cx('flex cursor-pointer items-center gap-3 rounded-lg border-2 p-3', prefs.density === d ? 'border-brand' : 'border-divider')}><input type="radio" name="den" className="accent-brand" checked={prefs.density === d} onChange={() => set('density', d)} /><span className="font-semibold capitalize text-header">{d}</span></label>)}</div>
-    <H3>Chat Font Scaling</H3>
-    <input type="range" min={0.85} max={1.4} step={0.05} value={prefs.fontScale} onChange={(e) => set('fontScale', Number(e.target.value))} aria-label="Font scale" className="w-full accent-brand" /><div className="text-sm text-muted">{Math.round(prefs.fontScale * 100)}%</div>
-    <H3>Preview</H3>
-    <div className="rounded-lg bg-chat p-3 ring-1 ring-divider"><div className="flex gap-3"><Avatar user={me} size={40} /><div><div className="font-medium text-header">{me?.displayName || me?.username} <span className="text-xs text-muted">Today</span></div><div>Looks great at this size.</div></div></div></div>
+    <H1>{t('Appearance')}</H1>
+    <H3>{t('Theme')}</H3>
+    <div role="radiogroup" aria-label={t('Theme')} className="grid grid-cols-3 gap-3">{themes.map((th) => <button key={th.id} role="radio" aria-checked={prefs.theme === th.id} onClick={() => pick(th.id)} className={cx('overflow-hidden rounded-lg border-2 text-start', prefs.theme === th.id ? 'border-brand' : 'border-divider')}>
+      <div className="flex h-20" style={{ background: th.bg }}><div className="w-1/4" style={{ background: th.id === 'light' ? '#e3e5e8' : th.id === 'amoled' ? '#000' : '#1e1f22' }} /><div className="w-1/3" style={{ background: th.fg }} /><div className="flex-1 space-y-1.5 p-2"><div className="h-2 w-3/4 rounded" style={{ background: '#5865f2' }} /><div className="h-2 w-1/2 rounded bg-gray-500/50" /></div></div>
+      <div className="bg-side px-3 py-2 text-sm font-semibold text-header">{t(th.label)}</div></button>)}</div>
+    <H3>{t('Message Display')}</H3>
+    <div role="radiogroup" aria-label={t('Message display')} className="grid gap-2 sm:grid-cols-2">{(['cozy', 'compact'] as const).map((d) => <label key={d} className={cx('flex cursor-pointer items-center gap-3 rounded-lg border-2 p-3', prefs.density === d ? 'border-brand' : 'border-divider')}><input type="radio" name="den" className="accent-brand" checked={prefs.density === d} onChange={() => set('density', d)} /><span className="font-semibold capitalize text-header">{d}</span></label>)}</div>
+    <H3>{t('Chat Font Scaling')}</H3>
+    <input type="range" min={0.85} max={1.4} step={0.05} value={prefs.fontScale} onChange={(e) => set('fontScale', Number(e.target.value))} aria-label={t('Font scale')} className="w-full accent-brand" /><div className="text-sm text-muted">{Math.round(prefs.fontScale * 100)}%</div>
+    <H3>{t('Preview')}</H3>
+    <div className="rounded-lg bg-chat p-3 ring-1 ring-divider"><div className="flex gap-3"><Avatar user={me} size={40} /><div><div className="font-medium text-header">{me?.displayName || me?.username} <span className="text-xs text-muted">{t('Today')}</span></div><div>{t('Looks great at this size.')}</div></div></div></div>
   </>);
 }
 
 function A11y() {
   const p = useUI((s) => s.prefs); const set = useUI((s) => s.setPref);
-  return (<><H1>Accessibility</H1>
-    <Row title="Reduce Motion" desc="Disable animations and transitions. Also follows your system setting."><Toggle label="Reduce motion" checked={p.reducedMotion} onChange={(v) => set('reducedMotion', v)} /></Row>
-    <Row title="Autoplay GIFs" desc="Play animated images automatically."><Toggle label="Autoplay GIFs" checked={p.autoplayGifs} onChange={(v) => set('autoplayGifs', v)} /></Row>
-    <Row title="Show embeds and link previews" desc="Show website previews for links in chat."><Toggle label="Show embeds" checked={p.showEmbeds} onChange={(v) => set('showEmbeds', v)} /></Row>
-    <Row title="Increased contrast" desc="Boost text contrast."><Toggle label="High contrast" checked={p.highContrast} onChange={(v) => set('highContrast', v)} /></Row>
+  return (<><H1>{t('Accessibility')}</H1>
+    <Row title={t('Reduce Motion')} desc={t('Disable animations and transitions. Also follows your system setting.')}><Toggle label={t('Reduce motion')} checked={p.reducedMotion} onChange={(v) => set('reducedMotion', v)} /></Row>
+    <Row title={t('Autoplay GIFs')} desc={t('Play animated images automatically.')}><Toggle label={t('Autoplay GIFs')} checked={p.autoplayGifs} onChange={(v) => set('autoplayGifs', v)} /></Row>
+    <Row title={t('Show embeds and link previews')} desc={t('Show website previews for links in chat.')}><Toggle label={t('Show embeds')} checked={p.showEmbeds} onChange={(v) => set('showEmbeds', v)} /></Row>
+    <Row title={t('Increased contrast')} desc={t('Boost text contrast.')}><Toggle label={t('High contrast')} checked={p.highContrast} onChange={(v) => set('highContrast', v)} /></Row>
     <Row title="24-hour time"><Toggle label="24 hour time" checked={p.twentyFourHour} onChange={(v) => set('twentyFourHour', v)} /></Row>
-    <H3>Text size</H3><input type="range" min={0.85} max={1.4} step={0.05} value={p.fontScale} onChange={(e) => set('fontScale', Number(e.target.value))} aria-label="Font scale" className="w-full accent-brand" />
+    <H3>{t('Text size')}</H3><input type="range" min={0.85} max={1.4} step={0.05} value={p.fontScale} onChange={(e) => set('fontScale', Number(e.target.value))} aria-label={t('Font scale')} className="w-full accent-brand" />
   </>);
 }
 
 function VoiceVideo() {
-  return (<><H1>Voice & Video</H1><VoiceSettingsForm /></>);
+  return (<><H1>{t('Voice & Video')}</H1><VoiceSettingsForm /></>);
 }
 
-function Notifications() {
-  const p = useUI((s) => s.prefs); const set = useUI((s) => s.setPref);
-  const enable = async (v: boolean) => { if (v && typeof Notification !== 'undefined' && Notification.permission !== 'granted') { const r = await Notification.requestPermission(); if (r !== 'granted') { toast('Notifications are blocked in your browser settings.', 'error'); return; } } set('desktopNotifications', v); };
-  return (<><H1>Notifications</H1>
-    <Row title="Enable Desktop Notifications" desc="Get notified of new messages when Jorcord is in the background."><Toggle label="Desktop notifications" checked={p.desktopNotifications} onChange={enable} /></Row>
-    <Row title="Message Sounds"><Toggle label="Sounds" checked={p.notificationSounds} onChange={(v) => set('notificationSounds', v)} /></Row>
-    <Row title="Suppress @everyone and @here"><Toggle label="Suppress everyone" checked={p.suppressEveryone} onChange={(v) => set('suppressEveryone', v)} /></Row>
-    <H3>Default notification setting for new servers</H3>
-    <div role="radiogroup" className="grid gap-2">{([['all', 'All Messages'], ['mentions', 'Only @mentions'], ['none', 'Nothing']] as const).map(([v, l]) => <label key={v} className={cx('flex cursor-pointer items-center gap-3 rounded-lg border-2 p-3', p.defaultNotify === v ? 'border-brand' : 'border-divider')}><input type="radio" className="accent-brand" name="dn" checked={p.defaultNotify === v} onChange={() => set('defaultNotify', v)} /><span className="font-medium text-header">{l}</span></label>)}</div>
-  </>);
-}
-
-const LABELS: Record<string, string> = { quickSwitcher: 'Quick Switcher', markRead: 'Mark Channel Read', prevChannel: 'Previous Channel', nextChannel: 'Next Channel', prevServer: 'Previous Server', nextServer: 'Next Server', toggleMembers: 'Toggle Member List', search: 'Search', shortcuts: 'Show Shortcuts', pushToTalk: 'Push to Talk', toggleMute: 'Toggle Mute', toggleDeafen: 'Toggle Deafen' };
+const LABELS: Record<string, string> = { quickSwitcher: T('Quick Switcher'), markRead: T('Mark Channel Read'), prevChannel: T('Previous Channel'), nextChannel: T('Next Channel'), prevServer: T('Previous Server'), nextServer: T('Next Server'), toggleMembers: T('Toggle Member List'), search: T('Search'), shortcuts: T('Show Shortcuts'), pushToTalk: T('Push to Talk'), toggleMute: T('Toggle Mute'), toggleDeafen: T('Toggle Deafen') };
 export const comboFromEvent = (e: KeyboardEvent | React.KeyboardEvent) => { const k = e.key; if (['Control', 'Shift', 'Alt', 'Meta'].includes(k)) return ''; return [e.ctrlKey || e.metaKey ? 'Ctrl' : '', e.altKey ? 'Alt' : '', e.shiftKey ? 'Shift' : '', k.length === 1 ? k.toUpperCase() : k].filter(Boolean).join('+'); };
 function Keybinds() {
   const p = useUI((s) => s.prefs); const set = useUI((s) => s.setPref); const [rec, setRec] = useState<string | null>(null);
   useEffect(() => { if (!rec) return; const h = (e: KeyboardEvent) => { e.preventDefault(); e.stopPropagation(); const c = comboFromEvent(e); if (e.key === 'Escape') { setRec(null); return; } if (c) { set('keybinds', { ...p.keybinds, [rec]: c }); setRec(null); } }; window.addEventListener('keydown', h, true); return () => window.removeEventListener('keydown', h, true); }, [rec, p.keybinds, set]);
-  return (<><div className="mb-5 flex items-center justify-between"><h1 className="text-xl font-bold text-header">Keybinds</h1><button className="btn btn-secondary" onClick={() => set('keybinds', defaultKeybinds)}>Reset to defaults</button></div>
-    <ul>{Object.keys(LABELS).map((k) => <li key={k} className="flex items-center justify-between border-b border-divider/60 py-3"><span className="font-medium text-header">{LABELS[k]}</span><button onClick={() => setRec(rec === k ? null : k)} aria-label={`Change keybind for ${LABELS[k]}`} className={cx('min-w-[110px] rounded bg-rail px-3 py-1.5 font-mono text-sm', rec === k ? 'ring-2 ring-danger text-danger' : 'text-header')}>{rec === k ? 'Press keys…' : p.keybinds[k] ?? defaultKeybinds[k]}</button></li>)}</ul></>);
+  return (<><div className="mb-5 flex items-center justify-between"><h1 className="text-xl font-bold text-header">{t('Keybinds')}</h1><button className="btn btn-secondary" onClick={() => set('keybinds', defaultKeybinds)}>{t('Reset to defaults')}</button></div>
+    <ul>{Object.keys(LABELS).map((k) => <li key={k} className="flex items-center justify-between border-b border-divider/60 py-3"><span className="font-medium text-header">{t(LABELS[k]!)}</span><button onClick={() => setRec(rec === k ? null : k)} aria-label={`Change keybind for ${LABELS[k]}`} className={cx('min-w-[110px] rounded bg-rail px-3 py-1.5 font-mono text-sm', rec === k ? 'ring-2 ring-danger text-danger' : 'text-header')}>{rec === k ? 'Press keys…' : p.keybinds[k] ?? defaultKeybinds[k]}</button></li>)}</ul></>);
 }
 
 function Language() {
   const p = useUI((s) => s.prefs); const set = useUI((s) => s.setPref);
-  const langs = [['en-US', 'English (US)'], ['en-GB', 'English (UK)'], ['es-ES', 'Español'], ['fr-FR', 'Français'], ['de-DE', 'Deutsch'], ['pt-BR', 'Português (Brasil)'], ['ar', 'العربية'], ['ja', '日本語'], ['zh-CN', '简体中文']];
-  return (<><H1>Language</H1><p className="mb-4 text-sm text-muted">Dates, times, and number formats follow this language. Interface translations are community-contributed; untranslated strings fall back to English.</p>
-    <div role="radiogroup" className="grid gap-2">{langs.map(([v, l]) => <label key={v} className={cx('flex cursor-pointer items-center gap-3 rounded-lg border-2 p-3', p.language === v ? 'border-brand' : 'border-divider')}><input type="radio" className="accent-brand" name="lang" checked={p.language === v} onChange={() => { set('language', v); document.documentElement.lang = v; document.documentElement.dir = v === 'ar' ? 'rtl' : 'ltr'; }} /><span className="font-medium text-header">{l}</span></label>)}</div></>);
+  return (<><H1>{t('Language')}</H1><p className="mb-4 text-sm text-muted">{t('Dates, times, and number formats follow this language. Messages written by people are never translated.')}</p>
+    <div role="radiogroup" aria-label={t('Language')} className="grid gap-2">{LOCALES.map((l) => <label key={l.tag} className={cx('flex cursor-pointer items-center gap-3 rounded-lg border-2 p-3', p.language === l.tag ? 'border-brand' : 'border-divider')}><input type="radio" className="accent-brand" name="lang" checked={p.language === l.tag} onChange={() => set('language', l.tag)} /><span className="font-medium text-header" lang={l.tag} dir={l.dir}>{l.label}</span></label>)}</div></>);
 }
 void ProfileCard;

@@ -3,6 +3,7 @@ import { Download, File as FileIcon, FileText, Music, Play } from 'lucide-react'
 import type { Attachment, Embed } from '@jorcord/shared';
 import { fileUrl, fmtBytes, isAudio, isImage, isVideo } from '@/lib/format';
 import { useUI } from '@/stores/ui';
+import { t } from '@/i18n';
 
 function fit(w: number | null, h: number | null, maxW = 400, maxH = 300) {
   if (!w || !h) return { width: undefined, height: undefined, aspect: undefined };
@@ -16,7 +17,7 @@ function Spoilered({ children, on }: { children: React.ReactNode; on: boolean })
   return (
     <div className="relative inline-block overflow-hidden rounded-lg">
       <div className="pointer-events-none blur-[44px]" aria-hidden>{children}</div>
-      <button onClick={() => setShown(true)} className="absolute inset-0 flex items-center justify-center" aria-label="Reveal spoiler"><span className="rounded-full bg-black/70 px-3 py-1 text-xs font-bold uppercase tracking-wide text-white">Spoiler</span></button>
+      <button onClick={() => setShown(true)} className="absolute inset-0 flex items-center justify-center" aria-label={t('Reveal spoiler')}><span className="rounded-full bg-black/70 px-3 py-1 text-xs font-bold uppercase tracking-wide text-white">{t('Spoiler')}</span></button>
     </div>
   );
 }
@@ -63,8 +64,8 @@ export function EmbedView({ e }: { e: Embed }) {
   if (e.type === 'video' && e.video) return <video src={e.video} controls playsInline className="max-h-[300px] max-w-[min(100%,400px)] rounded-lg bg-black" poster={e.thumbnail} />;
   const hasThumbOnly = e.thumbnail && !e.image;
   return (
-    <article className="max-w-[432px] overflow-hidden rounded border-l-4 bg-side" style={{ borderLeftColor: color }}>
-      <div className="flex gap-4 p-3 pr-4">
+    <article className="max-w-[432px] overflow-hidden rounded border-s-4 bg-side" style={{ borderLeftColor: color }}>
+      <div className="flex gap-4 p-3 pe-4">
         <div className="min-w-0 flex-1">
           {e.siteName && <div className="mb-1 text-xs text-muted">{e.siteName}</div>}
           {e.author && <div className="mb-1 text-sm font-semibold text-header">{e.author}</div>}

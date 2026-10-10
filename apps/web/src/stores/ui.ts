@@ -49,12 +49,11 @@ export type ModalSpec =
   | { kind: 'prompt'; title: string; label: string; initial?: string; onSubmit: (v: string) => void | Promise<void> }
   | { kind: 'leaveGuild'; guildId: Id }
   | { kind: 'customStatus' } | { kind: 'folder'; folderId: string } | { kind: 'notifSettings'; scope: 'guild' | 'channel'; id: Id }
-  | { kind: 'onboarding'; guildId: Id; step?: 'welcome' | 'rules' } | { kind: 'createSticker'; guildId: Id } | { kind: 'sticker'; url: string; name: string }
-  | { kind: 'createWebhook'; channelId: Id } | { kind: 'streamerStart' };
+  | { kind: 'onboarding'; guildId: Id; step?: 'welcome' | 'rules' } | { kind: 'streamerStart' };
 export type SettingsSpec = { kind: 'user'; tab?: string } | { kind: 'guild'; guildId: Id; tab?: string } | null;
 export interface MenuItem { label?: string; icon?: any; onClick?: () => void; danger?: boolean; separator?: boolean; checked?: boolean; disabled?: boolean; hint?: string; children?: MenuItem[] }
 export interface Toast { id: number; kind: 'info' | 'success' | 'error'; text: string }
-export type Popout = { kind: 'user'; userId: Id; guildId?: Id; rect: DOMRect } | { kind: 'emoji'; rect: DOMRect; onPick: (e: { char?: string; name: string; id?: Id; animated?: boolean }) => void; guildId?: Id } | null;
+export type Popout = { kind: 'user'; userId: Id; guildId?: Id; rect: DOMRect } | { kind: 'emoji'; rect: DOMRect; onPick: (e: { char?: string; name: string; id?: Id; animated?: boolean; gif?: string; sticker?: Id }) => void; guildId?: Id; stickers?: boolean } | null;
 
 interface UIState {
   prefs: Prefs; setPref<K extends keyof Prefs>(k: K, v: Prefs[K]): void;

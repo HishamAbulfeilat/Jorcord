@@ -2,7 +2,7 @@ import type { Events, EventName, Presence } from '@jorcord/shared';
 import { Op } from '@jorcord/shared';
 import type { WebSocket } from 'ws';
 import type { Ctx } from '../ctx';
-import { viewersAmong, getChannelRow } from '../services/perms';
+import { viewersAmong, getChannelLite } from '../services/perms';
 
 type Envelope =
   | { kind: 'users'; ids: string[]; t: string; d: unknown }
@@ -111,13 +111,13 @@ export class Hub {
     switch (e.kind) {
       case 'users': { const set = new Set(e.ids); targets = localUsers.filter((u) => set.has(u)); break; }
       case 'guild': {
-        const rows = await this.ctx.db.query('SELECT user_id FROM members WHERE guild_id = $1 AND user_id = ANY($2::text[])', [e.guildId, localUsers]);
-        targets = rows.map((r) => r.user_id);
-        if (e.channelId) { const ch = await getChannelRow(this.ctx, e.channelId); targets = ch ? await viewersAmong(this.ctx, ch, targets) : []; }
+        const r = await this.ctx.pcache.guildMembers(this.ctx, e.guildId, localUsers);
+        targets = r ? [...r.members].filter(([, m]) => m).map(([u]) => u) : [];
+        if (e.channelId) { const ch = await getChannelLite(this.ctx, e.channelId); targets = ch ? await viewersAmong(this.ctx, ch, targets) : []; }
         break;
       }
       case 'channel': {
-        const ch = await getChannelRow(this.ctx, e.channelId);
+        const ch = await getChannelLite(this.ctx, e.channelId);
         targets = ch ? await viewersAmong(this.ctx, ch, localUsers) : [];
         break;
       }

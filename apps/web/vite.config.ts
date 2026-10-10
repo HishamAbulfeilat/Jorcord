@@ -33,6 +33,8 @@ export default defineConfig({
       },
       workbox: {
         navigateFallback: '/index.html',
+        // Web Push handlers (push + notificationclick) live in public/push-sw.js
+        importScripts: ['push-sw.js'],
         navigateFallbackDenylist: [/^\/api/, /^\/gateway/, /^\/files/],
         globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,

@@ -9,6 +9,8 @@ import { useData, findChannel } from '@/stores/data';
 import { useUI, type Prefs } from '@/stores/ui';
 import { useVoiceUI, voiceHooks } from '@/stores/voiceui';
 import { playSound } from '@/lib/sound';
+import { callService } from '@/lib/native';
+import { t } from '@/i18n';
 
 export function settingsFromPrefs(p: Prefs): Partial<VoiceSettings> {
   return {
@@ -61,6 +63,7 @@ function bindClient(c: VoiceClient) {
     const s = c.getSnapshot();
     const ui = useVoiceUI.getState();
     const conn = s.status === 'connected' ? 'connected' : s.status === 'connecting' ? 'connecting' : s.status === 'reconnecting' ? 'reconnecting' : ui.conn === 'connecting' && s.status === 'idle' ? 'connecting' : s.status === 'idle' || s.status === 'disconnected' ? (wantChannel ? 'reconnecting' : 'idle') : 'idle';
+    if (ui.streaming !== s.screenOn) ui.patch({ streaming: s.screenOn });
     if (s.status === 'connected' || s.status === 'reconnecting') {
       if (ui.selfMute !== s.muted || ui.selfDeaf !== s.deafened || ui.conn !== conn) ui.patch({ selfMute: s.muted, selfDeaf: s.deafened, conn });
     }
@@ -116,9 +119,24 @@ function scheduleReconcile() {
       wantChannel = null; lastSent = '';
       const ui = useVoiceUI.getState(); ui.patch({ conn: 'idle', joiningChannelId: null }); ui.setConnected(null);
       void c.disconnect().catch(() => {});
-      useUI.getState().toast('You were disconnected from voice.', 'info');
+      useUI.getState().toast(t('You were disconnected from voice.'), 'info');
     } else if (st.channelId !== wantChannel || status === 'disconnected' || status === 'idle') void moveTo(st.channelId);
   }, 900);
+}
+
+function channelLabel(channelId: string) {
+  const ch = findChannel(useData.getState(), channelId);
+  return ch?.guildId ? `#${ch.name ?? 'voice'}` : (ch?.name ?? 'Call');
+}
+
+/** "Go Live" entry point: join the voice channel if needed, then open the stream-quality popover. */
+export async function goLive(channelId?: string) {
+  const ui = useVoiceUI.getState();
+  const target = channelId ?? ui.connectedChannelId;
+  if (!target) return;
+  if (ui.connectedChannelId !== target || ui.conn === 'idle') await joinVoice(target);
+  if (useVoiceUI.getState().conn === 'idle') return;
+  useVoiceUI.getState().setSharePop(true);
 }
 
 export function currentVoiceChannel() { return wantChannel; }
@@ -139,6 +157,7 @@ export async function joinVoice(channelId: string) {
       await c.connect(tok, channelId);
       if (wantChannel !== channelId) { await c.disconnect(); return; }
       ui.patch({ joiningChannelId: null });
+      callService.start(`Voice: ${channelLabel(channelId)}`, false);
       const s = c.getSnapshot();
       lastSent = `${channelId}|${s.muted}|${s.deafened}|${s.cameraOn}|${s.screenOn}`;
       sendVoiceState(channelId, s);
@@ -156,7 +175,7 @@ export async function leaveVoice() {
   wantChannel = null; lastSent = '';
   const ui = useVoiceUI.getState();
   ui.patch({ conn: 'idle', joiningChannelId: null }); ui.setConnected(null); ui.setFocus(null);
-  if (ch) sendVoiceState(null, undefined);
+  if (ch) { sendVoiceState(null, undefined); callService.stop(); }
   if (c) { try { await c.disconnect(); } catch { /* ignore */ } }
   if (ch) playSound('leave' as any);
 }

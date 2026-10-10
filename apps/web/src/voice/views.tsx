@@ -19,6 +19,7 @@ import { NetBars } from './tiles';
 import { getVoiceClient, joinVoice, leaveVoice } from './controller';
 import { setCurrentChannel } from '@/lib/session';
 import { useState } from 'react';
+import { t } from '@/i18n';
 
 export function useChannelVoiceUsers(channelId: string) {
   return useData(useShallow((s) => Object.values(s.voiceStates).filter((v) => v.channelId === channelId).map((v) => s.users[v.userId] ?? { id: v.userId, username: 'user', displayName: 'user', avatar: null })));
@@ -45,18 +46,18 @@ export function VoiceChannelView({ channel }: { channel: Channel }) {
   return (
     <div data-testid="voice-view" data-channel={channel.id} className="relative flex h-full min-w-0 flex-1 flex-col bg-chat">
       <header className="flex h-12 shrink-0 items-center gap-2 px-2 shadow-[0_1px_0_rgb(0_0_0/0.2)] safe-top box-content md:px-4">
-        {mobile && <button aria-label="Open navigation" onClick={() => setLeft(true)} className="flex h-11 w-11 items-center justify-center text-interactive"><Menu size={24} /></button>}
+        {mobile && <button aria-label={t('Open navigation')} onClick={() => setLeft(true)} className="flex h-11 w-11 items-center justify-center text-interactive"><Menu size={24} /></button>}
         <Icon size={24} className="shrink-0 text-muted" />
         <h1 className="truncate text-base font-semibold text-header">{channel.name}</h1>
-        {stage && <span className="rounded bg-brand/20 px-1.5 py-0.5 text-[11px] font-bold uppercase tracking-wide text-mention">Stage</span>}
-        {mine && <span className="ml-auto flex items-center gap-2 text-xs text-muted"><NetBars quality={snap.networkQuality} />{snap.status === 'connected' ? 'Connected' : snap.status}</span>}
+        {stage && <span className="rounded bg-brand/20 px-1.5 py-0.5 text-[11px] font-bold uppercase tracking-wide text-mention">{t('Stage')}</span>}
+        {mine && <span className="ms-auto flex items-center gap-2 text-xs text-muted"><NetBars quality={snap.networkQuality} />{snap.status === 'connected' ? 'Connected' : snap.status}</span>}
       </header>
       <div className="relative flex min-h-0 flex-1 flex-col bg-[#000]/0">
         {mine ? (
           <>
             <VoiceBanners />
             {snap.status === 'connecting' || conn === 'connecting'
-              ? <div className="flex flex-1 items-center justify-center text-muted" role="status">Connecting to voice…</div>
+              ? <div className="flex flex-1 items-center justify-center text-muted" role="status">{t('Connecting to voice…')}</div>
               : stage ? <StageSurface channelId={channel.id} /> : <CallSurface />}
             <ControlBar onSettings={() => openModal({ kind: 'voiceSettings' })} className="shrink-0 safe-bottom" />
           </>
@@ -74,7 +75,9 @@ export function VoiceDock() {
   const conn = useVoiceUI((s) => s.conn); const cid = useVoiceUI((s) => s.connectedChannelId);
   const ch = useData((s) => findChannel(s, cid)); const guild = useData((s) => (ch?.guildId ? s.guilds[ch.guildId]?.guild : undefined)); const me = useData((s) => s.me?.id);
   const snap = useVoiceSnapshot(); const nav = useNav(); const openModal = useUI((s) => s.openModal);
-  const [pop, setPop] = useState(false);
+  const [pop, setPopLocal] = useState(false);
+  const globalPop = useVoiceUI((s) => s.sharePop); const setGlobalPop = useVoiceUI((s) => s.setSharePop); const barMounted = useVoiceUI((s) => s.barMounted);
+  const setPop = (v: boolean) => { setPopLocal(v); setGlobalPop(v); };
   if (!cid || conn === 'idle') return null;
   const isDm = ch && !ch.guildId;
   const label = conn === 'connected' ? (isDm ? 'Call Connected' : 'Voice Connected') : conn === 'reconnecting' ? 'Reconnecting…' : 'Connecting…';
@@ -87,13 +90,15 @@ export function VoiceDock() {
           </button>
           <div className="truncate text-xs text-muted">{ch ? (isDm ? dmName(ch, me) : `${ch.name} / ${guild?.name ?? ''}`) : ''}</div>
         </div>
-        <Tip text="Disconnect" side="top"><button aria-label="Disconnect" onClick={() => void leaveVoice()} className="flex h-8 w-8 items-center justify-center rounded text-interactive hover:bg-hover hover:text-interactive-hover"><PhoneOff size={20} /></button></Tip>
+        <Tip text="Disconnect" side="top"><button aria-label={t('Disconnect')} onClick={() => void leaveVoice()} className="flex h-8 w-8 items-center justify-center rounded text-interactive hover:bg-hover hover:text-interactive-hover"><PhoneOff size={20} /></button></Tip>
       </div>
       <div className="relative mt-2 grid grid-cols-3 gap-1.5">
         <button aria-label={snap.cameraOn ? 'Turn Off Camera' : 'Turn On Camera'} aria-pressed={snap.cameraOn} onClick={() => getVoiceClient().setCamera(!snap.cameraOn).catch(() => {})} className={cx('flex h-8 items-center justify-center rounded bg-[rgb(var(--active))] text-header hover:bg-[rgb(var(--divider))]', snap.cameraOn && '!bg-white !text-black')}>{snap.cameraOn ? <Camera size={18} /> : <CameraOff size={18} />}</button>
-        <button aria-label={snap.screenOn ? 'Stop Streaming' : 'Share Your Screen'} aria-pressed={snap.screenOn} disabled={!snap.platform.canScreenShare} onClick={() => { if (snap.screenOn) void getVoiceClient().stopScreenShare(); else setPop(true); }} className={cx('flex h-8 items-center justify-center rounded bg-[rgb(var(--active))] text-header hover:bg-[rgb(var(--divider))] disabled:opacity-40', snap.screenOn && '!bg-white !text-black')}><MonitorUp size={18} /></button>
-        <button aria-label="Voice Settings" onClick={() => openModal({ kind: 'voiceSettings' })} className="flex h-8 items-center justify-center rounded bg-[rgb(var(--active))] text-header hover:bg-[rgb(var(--divider))]"><Headphones size={18} /></button>
-        {pop && <ScreenSharePopover onClose={() => setPop(false)} />}
+        {snap.platform.canScreenShare
+          ? <button aria-label={snap.screenOn ? 'Stop Streaming' : 'Share Your Screen'} aria-pressed={snap.screenOn} onClick={() => { if (snap.screenOn) void getVoiceClient().stopScreenShare(); else setPop(true); }} className={cx('flex h-8 items-center justify-center gap-1 rounded bg-[rgb(var(--active))] text-[13px] font-semibold text-header hover:bg-[rgb(var(--divider))]', snap.screenOn && '!bg-danger !text-white')}><MonitorUp size={18} /><span className="max-sm:hidden">{snap.screenOn ? t('Live') : t('Go Live')}</span></button>
+          : <span aria-hidden className="hidden" />}
+        <button aria-label={t('Voice Settings')} onClick={() => openModal({ kind: 'voiceSettings' })} className="flex h-8 items-center justify-center rounded bg-[rgb(var(--active))] text-header hover:bg-[rgb(var(--divider))]"><Headphones size={18} /></button>
+        {(pop || globalPop) && !barMounted && <ScreenSharePopover onClose={() => setPop(false)} />}
       </div>
     </div>
   );
@@ -109,9 +114,9 @@ export function MobileVoiceBar() {
   if (!mobile || !cid || conn === 'idle' || !ch || channelId === cid) return null;
   return (
     <div data-testid="mobile-voice-bar" className="flex shrink-0 items-center gap-2 bg-success/20 px-3 py-1.5 text-sm">
-      <button className="flex min-w-0 flex-1 items-center gap-2 text-left font-semibold text-success" onClick={() => nav.go(ch.guildId, ch.id)}><Signal size={16} /><span className="truncate">{ch.guildId ? ch.name : dmName(ch, me)}</span></button>
+      <button className="flex min-w-0 flex-1 items-center gap-2 text-start font-semibold text-success" onClick={() => nav.go(ch.guildId, ch.id)}><Signal size={16} /><span className="truncate">{ch.guildId ? ch.name : dmName(ch, me)}</span></button>
       <button aria-label={muted ? 'Unmute' : 'Mute'} onClick={toggleMute} className="flex h-9 w-9 items-center justify-center rounded text-header">{muted ? <MicOff size={18} className="text-danger" /> : <Mic size={18} />}</button>
-      <button aria-label="Disconnect" onClick={() => void leaveVoice()} className="flex h-9 w-9 items-center justify-center rounded text-danger"><PhoneOff size={18} /></button>
+      <button aria-label={t('Disconnect')} onClick={() => void leaveVoice()} className="flex h-9 w-9 items-center justify-center rounded text-danger"><PhoneOff size={18} /></button>
     </div>
   );
 }

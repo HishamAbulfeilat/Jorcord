@@ -8,7 +8,7 @@ import { limitOrThrow } from '../lib/ratelimit';
 import { claimAttachments, saveUpload } from '../services/files';
 import { audit, visibleChannelRows } from '../services/guilds';
 import { createMessage, parseMentions, postSystemMessage } from '../services/messages';
-import { channelAccess, guildAccess, need } from '../services/perms';
+import { channelAccess, channelPermsLite, guildAccess, need } from '../services/perms';
 import { joinThread } from '../services/threads';
 import { searchMessages } from '../services/search';
 import { messageDTO, messagesDTO, usersByIds } from '../services/serializers';
@@ -228,7 +228,8 @@ export function messageRoutes(app: FastifyInstance, ctx: Ctx) {
   app.post('/channels/:id/typing', async (req, reply) => {
     const { id } = parse(cm, req.params);
     limitOrThrow(ctx.rl, `typing:${req.userId}`, 15, 10_000, ctx.config.rateLimit);
-    const a = await channelAccess(ctx, req.userId, id);
+    const a = await channelPermsLite(ctx, req.userId, id); // cached: no DB queries
+    if (!a) throw notFound('Channel');
     need(a.perms, a.channel.type === 'thread' ? Perm.SEND_IN_THREADS : Perm.SEND_MESSAGES);
     await ctx.hub.toChannel(id, 'TYPING_START', { channelId: id, userId: req.userId, timestamp: Date.now() }, { exclude: req.userId });
     return reply.code(204).send();

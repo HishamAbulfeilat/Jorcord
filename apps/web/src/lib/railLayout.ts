@@ -83,3 +83,22 @@ export function reorderWithin(items: RailItem[], folderId: string, from: Id, to:
     return { ...i, guildIds: ids, folder: { ...i.folder, guildIds: ids } };
   });
 }
+
+const keyOf = (i: RailItem) => (i.kind === 'guild' ? i.id : FOLDER_PREFIX + i.id);
+export const folderOf = (items: RailItem[], gid: Id) => items.find((i): i is Extract<RailItem, { kind: 'folder' }> => i.kind === 'folder' && i.guildIds.includes(gid));
+
+/** Result of dropping `activeKey` onto `overKey` in the flattened rail (guilds, folders and the guilds inside open folders). */
+export function applyDrop(items: RailItem[], activeKey: string, overKey: string): RailItem[] {
+  if (activeKey === overKey) return items;
+  const overFolder = isFolderKey(overKey) ? undefined : folderOf(items, overKey);
+  if (isFolderKey(activeKey)) return moveItem(items, activeKey, overFolder ? FOLDER_PREFIX + overFolder.id : overKey);
+  const from = folderOf(items, activeKey);
+  if (isFolderKey(overKey)) {
+    if (from && FOLDER_PREFIX + from.id === overKey) return items;
+    return moveItem(from ? extractGuild(items, activeKey) : items, activeKey, overKey);
+  }
+  if (from && overFolder && from.id === overFolder.id) return reorderWithin(items, from.id, activeKey, overKey);
+  if (overFolder) return moveGuildToFolder(items, activeKey, overFolder.id);
+  return moveItem(from ? extractGuild(items, activeKey) : items, activeKey, overKey);
+}
+void keyOf;

@@ -7,6 +7,7 @@ import { useNav } from '@/lib/nav';
 import { Avatar } from '@/components/ui/Avatar';
 import { cx, dmName, compareId, initials, fileUrl, displayName } from '@/lib/format';
 import { openDmWith } from '@/lib/menus';
+import { t } from '@/i18n';
 
 interface Item { key: string; label: string; sub?: string; kind: 'channel' | 'voice' | 'dm' | 'guild' | 'user'; go: () => void; user?: any; icon?: string | null }
 
@@ -35,19 +36,19 @@ export function QuickSwitcher() {
   const run = (it?: Item) => { if (!it) return; setOpen(false); it.go(); };
   return createPortal(
     <div className="fixed inset-0 z-[75] flex items-start justify-center bg-black/60 p-4 pt-[12vh]" onMouseDown={(e) => { if (e.target === e.currentTarget) setOpen(false); }}>
-      <div role="dialog" aria-modal="true" aria-label="Quick switcher" className="w-full max-w-[540px] animate-pop overflow-hidden rounded-lg bg-modal shadow-elev">
-        <div className="p-4 pb-2"><input ref={ref} value={q} onChange={(e) => setQ(e.target.value)} placeholder="Where would you like to go?" aria-label="Where would you like to go?" role="combobox" aria-expanded aria-controls="qs-list"
+      <div role="dialog" aria-modal="true" aria-label={t('Quick switcher')} className="w-full max-w-[540px] animate-pop overflow-hidden rounded-lg bg-modal shadow-elev">
+        <div className="p-4 pb-2"><input ref={ref} value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('Where would you like to go?')} aria-label={t('Where would you like to go?')} role="combobox" aria-expanded aria-controls="qs-list"
           onKeyDown={(e) => { if (e.key === 'ArrowDown') { e.preventDefault(); setIdx((i) => Math.min(items.length - 1, i + 1)); } else if (e.key === 'ArrowUp') { e.preventDefault(); setIdx((i) => Math.max(0, i - 1)); } else if (e.key === 'Enter') { e.preventDefault(); run(items[idx]); } else if (e.key === 'Escape') setOpen(false); }}
           className="h-12 w-full rounded bg-rail px-3 text-lg text-header outline-none placeholder:text-muted focus-visible:!outline-none" /></div>
         <ul id="qs-list" role="listbox" className="scroller max-h-[50vh] px-2 pb-2">
           {items.map((it, i) => (
-            <li key={it.key} role="option" aria-selected={i === idx}><button onMouseEnter={() => setIdx(i)} onClick={() => run(it)} className={cx('touch flex w-full items-center gap-3 rounded px-2 py-1.5 text-left', i === idx ? 'bg-hover' : '')}>
+            <li key={it.key} role="option" aria-selected={i === idx}><button onMouseEnter={() => setIdx(i)} onClick={() => run(it)} className={cx('touch flex w-full items-center gap-3 rounded px-2 py-1.5 text-start', i === idx ? 'bg-hover' : '')}>
               {it.user ? <Avatar user={it.user} size={24} /> : it.kind === 'guild' ? <span className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-lg bg-brand text-[10px] font-bold text-white">{it.icon ? <img src={fileUrl(it.icon)!} alt="" /> : initials(it.label)}</span> : it.kind === 'voice' ? <Volume2 size={20} className="text-muted" /> : it.kind === 'dm' ? <Users size={20} className="text-muted" /> : <Hash size={20} className="text-muted" />}
               <span className="font-medium text-header">{it.label}</span>{it.sub && <span className="text-sm text-muted">{it.sub}</span>}
             </button></li>))}
-          {!items.length && <li className="p-6 text-center text-muted">No results match your search.</li>}
+          {!items.length && <li className="p-6 text-center text-muted">{t('No results match your search.')}</li>}
         </ul>
-        <div className="flex items-center gap-1 border-t border-divider px-4 py-2 text-xs text-muted"><Search size={12} /> <b className="text-green-500">PROTIP:</b> Start with <kbd>@</kbd> users, <kbd>#</kbd> channels, <kbd>*</kbd> servers, <kbd>!</kbd> voice.</div>
+        <div className="flex items-center gap-1 border-t border-divider px-4 py-2 text-xs text-muted"><Search size={12} /> <b className="text-green-500">{t('PROTIP:')}</b> Start with <kbd>@</kbd> users, <kbd>#</kbd> channels, <kbd>*</kbd> servers, <kbd>!</kbd> voice.</div>
       </div>
     </div>, document.body);
 }

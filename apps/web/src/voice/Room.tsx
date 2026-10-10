@@ -12,17 +12,18 @@ import { useIsMobile } from '@/lib/hooks';
 import { cx } from '@/lib/format';
 import { Avatar } from '@/components/ui/Avatar';
 import { ParticipantTile, ScreenTile } from './tiles';
+import { t } from '@/i18n';
 
 export function VoiceBanners() {
   const snap = useVoiceSnapshot(); const client = useVoiceClient(); const { blocked, unlock } = useAudioUnlock();
   return (
     <>
-      {snap.status === 'reconnecting' && <div role="status" className="flex items-center justify-center gap-2 bg-warn px-3 py-1 text-sm font-semibold text-black"><Loader2 size={14} className="animate-spin" />Reconnecting to voice…</div>}
-      {blocked && snap.status === 'connected' && <button onClick={unlock} className="bg-brand px-3 py-1.5 text-sm font-semibold text-white hover:bg-brand-hover">Click to enable audio</button>}
+      {snap.status === 'reconnecting' && <div role="status" className="flex items-center justify-center gap-2 bg-warn px-3 py-1 text-sm font-semibold text-black"><Loader2 size={14} className="animate-spin" />{t('Reconnecting to voice…')}</div>}
+      {blocked && snap.status === 'connected' && <button onClick={unlock} className="bg-brand px-3 py-1.5 text-sm font-semibold text-white hover:bg-brand-hover">{t('Click to enable audio')}</button>}
       {snap.error && (
         <div role="alert" data-code={snap.error.code} className="flex items-center justify-between gap-3 bg-danger/90 px-3 py-2 text-sm text-white">
           <span className="flex items-center gap-2"><AlertTriangle size={16} />{snap.error.message}</span>
-          <button className="rounded bg-black/30 px-2 py-0.5 font-medium hover:bg-black/50" onClick={() => client.clearError()}>Dismiss</button>
+          <button className="rounded bg-black/30 px-2 py-0.5 font-medium hover:bg-black/50" onClick={() => client.clearError()}>{t('Dismiss')}</button>
         </div>
       )}
     </>
@@ -94,39 +95,39 @@ export function StageSurface({ channelId }: { channelId: string }) {
   const run = (fn: Promise<unknown>) => void fn.catch((e) => toast((e as Error).message || 'Stage action failed', 'error'));
   return (
     <div data-testid="stage" className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4 max-md:p-3">
-      <section aria-label="Speakers">
+      <section aria-label={t('Speakers')}>
         <h3 className="section-title mb-2">Speakers — {speakers.length}</h3>
         {speakers.length === 0
-          ? <div className="rounded-lg bg-side p-6 text-center text-sm text-muted">No one is speaking yet. Moderators can invite audience members to speak.</div>
+          ? <div className="rounded-lg bg-side p-6 text-center text-sm text-muted">{t('No one is speaking yet. Moderators can invite audience members to speak.')}</div>
           : <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`, gridAutoRows: mobile ? '160px' : '200px' }}>{speakers.map((p) => <ParticipantTile key={p.identity} p={p} />)}</div>}
       </section>
-      {streams.length > 0 && <section aria-label="Streams" className="grid gap-2" style={{ gridAutoRows: mobile ? '200px' : '320px' }}>{streams.map((p) => <ScreenTile key={p.identity} p={p} />)}</section>}
+      {streams.length > 0 && <section aria-label={t('Streams')} className="grid gap-2" style={{ gridAutoRows: mobile ? '200px' : '320px' }}>{streams.map((p) => <ScreenTile key={p.identity} p={p} />)}</section>}
       {hands.length > 0 && (
-        <section aria-label="Requests to speak">
+        <section aria-label={t('Requests to speak')}>
           <h3 className="section-title mb-2">Requests to speak — {hands.length}</h3>
           <ul className="grid gap-1">{hands.map((p) => (
             <li key={p.identity} className="flex items-center gap-2 rounded bg-side px-3 py-2 text-sm text-header"><Hand size={16} className="text-warn" /><span className="min-w-0 flex-1 truncate">{p.name}</span>
-              {canModerate && <button className="btn btn-primary" onClick={() => run(api.voice.stageSpeaker(channelId, p.identity, true))}>Invite to Speak</button>}</li>))}</ul>
+              {canModerate && <button className="btn btn-primary" onClick={() => run(api.voice.stageSpeaker(channelId, p.identity, true))}>{t('Invite to Speak')}</button>}</li>))}</ul>
         </section>
       )}
-      <section aria-label="Audience">
+      <section aria-label={t('Audience')}>
         <h3 className="section-title mb-2">Audience — {audience.length}</h3>
         <ul className="flex flex-wrap gap-2">
           {audience.map((p) => (
-            <li key={p.identity} className="flex items-center gap-2 rounded-full bg-side py-1 pl-1 pr-3 text-sm text-header"><Avatar user={{ id: p.identity, username: p.name, displayName: p.name, avatar: null }} size={24} />{p.name}{states[p.identity]?.requestToSpeakAt && <Hand size={14} className="text-warn" />}</li>
+            <li key={p.identity} className="flex items-center gap-2 rounded-full bg-side py-1 ps-1 pe-3 text-sm text-header"><Avatar user={{ id: p.identity, username: p.name, displayName: p.name, avatar: null }} size={24} />{p.name}{states[p.identity]?.requestToSpeakAt && <Hand size={14} className="text-warn" />}</li>
           ))}
         </ul>
       </section>
       {canModerate && speakers.some((p) => !p.isLocal) && (
-        <section aria-label="Moderate speakers" className="flex flex-wrap gap-2">{speakers.filter((p) => !p.isLocal).map((p) => <button key={p.identity} className="btn btn-secondary" onClick={() => run(api.voice.stageSpeaker(channelId, p.identity, false))}>Move {p.name} to Audience</button>)}</section>
+        <section aria-label={t('Moderate speakers')} className="flex flex-wrap gap-2">{speakers.filter((p) => !p.isLocal).map((p) => <button key={p.identity} className="btn btn-secondary" onClick={() => run(api.voice.stageSpeaker(channelId, p.identity, false))}>Move {p.name} to Audience</button>)}</section>
       )}
       {iAmAudience && (
         <button className={cx('btn btn-lg w-full max-w-xs self-center', myHand ? 'btn-secondary' : 'btn-primary')} onClick={() => run(api.voice.stageRequest(channelId, !myHand))}>
           <Hand size={16} />{myHand ? 'Lower Hand' : 'Request to Speak'}
         </button>
       )}
-      {me && !iAmAudience && <div className="flex flex-col items-center gap-2 text-sm text-muted"><p className="flex items-center gap-2"><Mic size={14} />You are a speaker.</p>{(
-        <button className="btn btn-secondary" onClick={() => run(api.voice.stageSpeaker(channelId, '@me', false))}>Move to Audience</button>)}</div>}
+      {me && !iAmAudience && <div className="flex flex-col items-center gap-2 text-sm text-muted"><p className="flex items-center gap-2"><Mic size={14} />{t('You are a speaker.')}</p>{(
+        <button className="btn btn-secondary" onClick={() => run(api.voice.stageSpeaker(channelId, '@me', false))}>{t('Move to Audience')}</button>)}</div>}
     </div>
   );
 }
@@ -141,7 +142,7 @@ export function Lobby({ name, stage, users, busy, onJoin, disabledReason, icon }
       </div>
       {users.length > 0 && <div className="flex max-w-md flex-wrap justify-center gap-3">{users.slice(0, 12).map((u) => <div key={u.id} className="flex flex-col items-center gap-1 text-xs text-interactive"><Avatar user={u} size={48} /><span className="max-w-[72px] truncate">{u.displayName || u.username}</span></div>)}</div>}
       <button className="btn btn-primary btn-lg min-w-[160px]" onClick={onJoin} disabled={busy || !!disabledReason} title={disabledReason}>
-        {busy ? <><Loader2 size={16} className="animate-spin" />Connecting…</> : stage ? 'Join Stage' : 'Join Voice'}
+        {busy ? <><Loader2 size={16} className="animate-spin" />{t('Connecting…')}</> : stage ? 'Join Stage' : 'Join Voice'}
       </button>
       {disabledReason && <p className="text-sm text-danger">{disabledReason}</p>}
     </div>

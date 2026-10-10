@@ -6,9 +6,10 @@ import { api } from '@/lib/api';
 import { useMessages } from '@/stores/messages';
 import { useData } from '@/stores/data';
 import { useUI, toastError } from '@/stores/ui';
-import { cx } from '@/lib/format';
+import { cx, fileUrl } from '@/lib/format';
 import { can } from '@/lib/perms';
 import { myChannelPerms } from '@/lib/session';
+import { t } from '@/i18n';
 
 export function ReactionBar({ m }: { m: Message }) {
   const me = useData((s) => s.me); const store = useMessages.getState; const openPopout = useUI((s) => s.openPopout); const openModal = useUI((s) => s.openModal);
@@ -21,9 +22,9 @@ export function ReactionBar({ m }: { m: Message }) {
     (was ? api.messages.unreact : api.messages.react)(m.channelId, m.id, r.emoji, r.emojiId).catch((e) => { store().reaction(m.channelId, m.id, r.emoji, r.emojiId, was ? 1 : -1, true); toastError(e); });
   };
   return (
-    <div className="mt-1 flex flex-wrap gap-1" role="group" aria-label="Reactions">
+    <div className="mt-1 flex flex-wrap gap-1" role="group" aria-label={t('Reactions')}>
       {m.reactions.map((r) => {
-        const custom = r.emojiId ? emojis?.find((e) => e.id === r.emojiId)?.url ?? `${apiBase()}/emojis/${r.emojiId}.webp` : null;
+        const custom = r.emojiId ? emojis?.find((e) => e.id === r.emojiId)?.url ? fileUrl(emojis.find((e) => e.id === r.emojiId)!.url) : `${apiBase()}/emojis/${r.emojiId}.webp` : null;
         return (
           <button key={`${r.emoji}:${r.emojiId}`} aria-pressed={r.me} aria-label={`${r.emoji} ${r.count}`} onClick={() => toggle(r)}
             onContextMenu={(e) => { e.preventDefault(); openModal({ kind: 'reactors', channelId: m.channelId, messageId: m.id, emoji: r.emoji, emojiId: r.emojiId }); }}
@@ -33,7 +34,7 @@ export function ReactionBar({ m }: { m: Message }) {
           </button>
         );
       })}
-      {canReact && <button aria-label="Add reaction" onClick={(e) => openPopout({ kind: 'emoji', rect: e.currentTarget.getBoundingClientRect(), guildId: m.guildId ?? undefined, onPick: (p) => addReaction(m, p) })} className="flex h-6 w-8 items-center justify-center rounded-md bg-[rgb(var(--active)/0.6)] text-interactive hover:text-header"><SmilePlus size={16} /></button>}
+      {canReact && <button aria-label={t('Add reaction')} onClick={(e) => openPopout({ kind: 'emoji', rect: e.currentTarget.getBoundingClientRect(), guildId: m.guildId ?? undefined, onPick: (p) => addReaction(m, p) })} className="flex h-6 w-8 items-center justify-center rounded-md bg-[rgb(var(--active)/0.6)] text-interactive hover:text-header"><SmilePlus size={16} /></button>}
     </div>
   );
 }

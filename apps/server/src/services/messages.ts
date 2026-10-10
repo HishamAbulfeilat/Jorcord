@@ -44,6 +44,7 @@ export async function checkAutomod(ctx: Ctx, guildId: string, userId: string, me
     if (r.action === 'alert') { await audit(ctx, guildId, userId, 'AUTOMOD_ALERT', r.id, { content: content.slice(0, 200) }, r.name); continue; }
     if (r.action === 'timeout') {
       await ctx.db.query(`UPDATE members SET timeout_until = now() + interval '60 seconds' WHERE guild_id = $1 AND user_id = $2`, [guildId, userId]);
+      await ctx.pcache.invalidate({ k: 'member', guildId, userId });
     }
     await audit(ctx, guildId, userId, 'AUTOMOD_BLOCK', r.id, null, r.name);
     throw new ApiError(400, 'AUTOMOD_BLOCKED', 'Your message was blocked by AutoMod', { rule: r.name });

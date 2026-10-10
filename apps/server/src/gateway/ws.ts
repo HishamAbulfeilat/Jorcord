@@ -7,8 +7,9 @@ import { verifyGatewayToken } from '../auth';
 import { randomToken } from '../lib/crypto';
 import { RateLimiter } from '../lib/ratelimit';
 import { idSchema } from '../lib/ids';
+import { notFound } from '../errors';
 import { buildGuildFull } from '../services/guilds';
-import { channelAccess, guildAccess } from '../services/perms';
+import { channelPermsLite, guildAccess } from '../services/perms';
 import { channelsDTO, membersDTO, selfUserDTO } from '../services/serializers';
 import { updateVoiceState, clearVoiceAfterGrace } from '../services/voice';
 import { relationshipDTOs } from '../routes/users';
@@ -153,8 +154,9 @@ export function gatewayRoutes(app: FastifyInstance, ctx: Ctx) {
           await requestMembers(ctx, session, d);
         } else if (op === Op.TYPING) {
           const { channelId } = z.object({ channelId: idSchema }).parse(d);
-          const a = await channelAccess(ctx, uid, channelId);
-          if (has(a.perms, Perm.SEND_MESSAGES)) await ctx.hub.toChannel(channelId, 'TYPING_START', { channelId, userId: uid, timestamp: Date.now() }, { exclude: uid });
+          const a = await channelPermsLite(ctx, uid, channelId); // cached: no DB queries on the typing hot path
+          if (!a) throw notFound('Channel');
+          if (has(a.perms, a.channel.type === 'thread' ? Perm.SEND_IN_THREADS : Perm.SEND_MESSAGES)) await ctx.hub.toChannel(channelId, 'TYPING_START', { channelId, userId: uid, timestamp: Date.now() }, { exclude: uid });
         }
       } catch (e: any) {
         send({ op: Op.DISPATCH, t: 'ERROR', d: { op, code: e?.code ?? 'BAD_REQUEST', message: e?.message ?? 'error' } });

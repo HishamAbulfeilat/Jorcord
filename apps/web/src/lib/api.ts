@@ -90,7 +90,9 @@ export const api = {
     deleteAutomod: (id: Id, rid: Id) => send({ method: 'DELETE', path: `/guilds/${id}/automod/rules/${rid}` }),
     boost: (id: Id) => send<Guild>({ method: 'POST', path: `/guilds/${id}/boosts` }),
     search: (id: Id, q: SearchQuery) => send<any>({ method: 'GET', path: `/guilds/${id}/messages/search`, query: q as any }).then((x) => arr<Message>(x)),
-    discover: () => send<Guild[]>({ method: 'GET', path: '/discover/guilds' }).then((x) => arr<Guild>(x)),
+    discover: (q?: string) => send<Guild[]>({ method: 'GET', path: '/discover/guilds', query: q ? { q } : undefined }).then((x) => arr<Guild>(x)),
+    /** Proposed endpoint (see e2e/SERVER_ISSUES.md): join a DISCOVERABLE guild without an invite. */
+    joinDiscoverable: (id: Id) => send<GuildFull>({ method: 'POST', path: `/guilds/${id}/join` }),
   },
   channels: {
     patch: (id: Id, b: Partial<Channel>) => send<Channel>({ method: 'PATCH', path: `/channels/${id}`, body: b }),

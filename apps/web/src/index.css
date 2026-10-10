@@ -83,9 +83,9 @@ a:hover { text-decoration: underline; }
 .md strong { font-weight: 700; } .md em { font-style: italic; } .md u { text-decoration: underline; } .md s { text-decoration: line-through; }
 .md code.inline { font-family: var(--mono); font-size: .875em; background: rgb(var(--rail) / .6); padding: 0 .25em; border-radius: 3px; white-space: pre-wrap; }
 .md pre.block { font-family: var(--mono); font-size: .8125rem; line-height: 1.125rem; background: rgb(var(--side)); border: 1px solid rgb(var(--divider)); border-radius: 4px; padding: 7px 9px; margin: 6px 0 0; white-space: pre-wrap; max-width: 90%; overflow-x: auto; }
-.md blockquote { border-left: 4px solid rgb(var(--active)); padding: 0 8px 0 12px; margin: 2px 0; background: transparent; border-radius: 2px; }
+.md blockquote { border-inline-start: 4px solid rgb(var(--active)); padding: 0 12px 0 12px; margin: 2px 0; background: transparent; border-radius: 2px; }
 .md h1 { font-size: 1.5rem; font-weight: 700; line-height: 1.75rem; margin: 8px 0 4px; } .md h2 { font-size: 1.25rem; font-weight: 700; margin: 8px 0 4px; } .md h3 { font-size: 1rem; font-weight: 700; margin: 8px 0 4px; }
-.md ul, .md ol { margin: 4px 0; padding-left: 1.5rem; } .md ul { list-style: disc; } .md ol { list-style: decimal; }
+.md ul, .md ol { margin: 4px 0; padding-inline-start: 1.5rem; } .md ul { list-style: disc; } .md ol { list-style: decimal; }
 .md .mention { background: rgb(var(--mention-bg) / .3); color: rgb(var(--mention)); border-radius: 3px; padding: 0 2px; font-weight: 500; cursor: pointer; }
 .md .mention:hover { background: rgb(var(--mention-bg)); color: #fff; }
 .md .spoiler { background: rgb(var(--active)); color: transparent; border-radius: 3px; cursor: pointer; padding: 0 2px; user-select: none; }
@@ -102,9 +102,20 @@ a:hover { text-decoration: underline; }
 [data-theme="light"] .hljs-title { color: #8250df; } [data-theme="light"] .hljs-comment { color: #6e7781; } [data-theme="light"] .hljs-number { color: #0550ae; }
 
 .safe-top { padding-top: var(--sat); } .safe-bottom { padding-bottom: var(--sab); }
-.pill-unread { position: absolute; left: -4px; width: 8px; height: 8px; border-radius: 0 4px 4px 0; background: rgb(var(--header)); }
+.pill-unread { position: absolute; inset-inline-start: -4px; width: 8px; height: 8px; border-start-end-radius: 4px; border-end-end-radius: 4px; background: rgb(var(--header)); }
 @keyframes skeleton { 0%,100% { opacity: .5 } 50% { opacity: .9 } }
 .skeleton { animation: skeleton 1.4s ease-in-out infinite; background: rgb(var(--active)); border-radius: 4px; }
 @keyframes flash { from { background: rgb(var(--warn) / .25) } to { background: transparent } }
 .flash { animation: flash 2s ease-out; }
 .drawer { transition: transform .22s cubic-bezier(.2,.8,.2,1); will-change: transform; }
+
+/* wrappers + soft keyboards: follow the visual viewport while a keyboard is open (set by lib/native.ts) */
+html[data-vv="kb"], html[data-vv="kb"] body, html[data-vv="kb"] #root { height: var(--vvh); }
+/* RTL: mirror directional glyphs; text in messages picks its own direction */
+[dir="rtl"] .rtl-flip { transform: scaleX(-1); }
+.md, .msg-text { unicode-bidi: plaintext; }
+/* streamer mode */
+.streamer-blur { filter: blur(6px); user-select: none; }
+.streamer-blur:hover, .streamer-blur:focus { filter: blur(0); }
+/* members/messages of a hover-animated avatar */
+img[data-still] { image-rendering: auto; }

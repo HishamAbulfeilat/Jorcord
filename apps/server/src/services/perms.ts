@@ -1,6 +1,7 @@
 import { ALL_PERMS, DEFAULT_EVERYONE, Perm, computePermissions, has, type Overwrite } from '@jorcord/shared';
 import type { Ctx } from '../ctx';
 import { forbidden, notFound } from '../errors';
+import type { ChannelLite } from './permcache';
 
 export interface GuildPerm {
   guildId: string; userId: string; ownerId: string; isOwner: boolean; everyoneId: string;
@@ -8,25 +9,22 @@ export interface GuildPerm {
   memberRoleIds: string[]; timedOut: boolean; topPosition: number;
 }
 
-/** Loads permission inputs for many users of one guild (null entry = not a member). 4 queries total. */
+/** Loads permission inputs for many users of one guild (absent entry = not a member). Served from the in-process PermCache. */
 export async function loadGuildPerms(ctx: Ctx, guildId: string, userIds: string[]): Promise<Map<string, GuildPerm>> {
   const out = new Map<string, GuildPerm>();
   if (!userIds.length) return out;
-  const [g] = await ctx.db.query('SELECT owner_id FROM guilds WHERE id = $1', [guildId]);
-  if (!g) return out;
-  const roles = await ctx.db.query('SELECT id, permissions, position FROM roles WHERE guild_id = $1', [guildId]);
-  const members = await ctx.db.query('SELECT user_id, timeout_until FROM members WHERE guild_id = $1 AND user_id = ANY($2::text[])', [guildId, userIds]);
-  const mr = await ctx.db.query('SELECT user_id, role_id FROM member_roles WHERE guild_id = $1 AND user_id = ANY($2::text[])', [guildId, userIds]);
-  const rolePerms: Record<string, bigint> = {}, rolePos: Record<string, number> = {};
-  for (const r of roles) { rolePerms[r.id] = BigInt(r.permissions); rolePos[r.id] = r.position; }
-  const everyonePerms = rolePerms[guildId] ?? DEFAULT_EVERYONE;
+  const r = await ctx.pcache.guildMembers(ctx, guildId, userIds);
+  if (!r) return out;
+  const { guild, members } = r;
+  const everyonePerms = guild.rolePerms[guildId] ?? DEFAULT_EVERYONE;
   const now = Date.now();
-  for (const m of members) {
-    const ids = mr.filter((x) => x.user_id === m.user_id && rolePerms[x.role_id] !== undefined).map((x) => x.role_id as string);
-    out.set(m.user_id, {
-      guildId, userId: m.user_id, ownerId: g.owner_id, isOwner: g.owner_id === m.user_id, everyoneId: guildId, everyonePerms,
-      rolePerms, rolePos, memberRoleIds: ids, timedOut: !!m.timeout_until && new Date(m.timeout_until).getTime() > now,
-      topPosition: ids.reduce((a, id) => Math.max(a, rolePos[id] ?? 0), 0),
+  for (const [uid, m] of members) {
+    if (!m) continue;
+    const ids = m.roleIds.filter((id) => guild.rolePerms[id] !== undefined);
+    out.set(uid, {
+      guildId, userId: uid, ownerId: guild.ownerId, isOwner: guild.ownerId === uid, everyoneId: guildId, everyonePerms,
+      rolePerms: guild.rolePerms, rolePos: guild.rolePos, memberRoleIds: ids, timedOut: m.timeoutMs !== null && m.timeoutMs > now,
+      topPosition: ids.reduce((a, id) => Math.max(a, guild.rolePos[id] ?? 0), 0),
     });
   }
   return out;
@@ -41,16 +39,31 @@ export function permsFor(gp: GuildPerm, overwrites: Overwrite[] = []): bigint {
     rolePerms: gp.rolePerms, memberId: gp.userId, overwrites, timedOut: gp.timedOut,
   });
 }
-export async function loadOverwrites(ctx: Ctx, channelId: string): Promise<Overwrite[]> {
-  const rows = await ctx.db.query('SELECT * FROM overwrites WHERE channel_id = $1', [channelId]);
-  return rows.map((o) => ({ id: o.target_id, type: o.type, allow: BigInt(o.allow), deny: BigInt(o.deny) }));
-}
+export const loadOverwrites = (ctx: Ctx, channelId: string): Promise<Overwrite[]> => ctx.pcache.channelOverwrites(ctx, channelId);
 
 export const DM_PERMS = Perm.VIEW_CHANNEL | Perm.SEND_MESSAGES | Perm.READ_MESSAGE_HISTORY | Perm.ADD_REACTIONS | Perm.ATTACH_FILES |
   Perm.EMBED_LINKS | Perm.USE_EXTERNAL_EMOJIS | Perm.CONNECT | Perm.SPEAK | Perm.STREAM | Perm.USE_VAD;
 
 export async function getChannelRow(ctx: Ctx, id: string) {
   return (await ctx.db.query('SELECT * FROM channels WHERE id = $1', [id]))[0] ?? null;
+}
+
+/** Cached topology-only channel row (id, guild_id, type, parent_id): safe for permission/fan-out decisions, not for display. */
+export const getChannelLite = (ctx: Ctx, id: string) => ctx.pcache.channel(ctx, id);
+
+/**
+ * Permission check for hot paths (typing): zero DB queries once warm. Returns null when the channel is missing, the user is not a
+ * member/participant, or the channel is not viewable (callers treat null as "not found").
+ */
+export async function channelPermsLite(ctx: Ctx, userId: string, channelId: string): Promise<{ channel: ChannelLite; perms: bigint } | null> {
+  const channel = await getChannelLite(ctx, channelId);
+  if (!channel) return null;
+  if (!channel.guild_id) return (await ctx.pcache.dmParticipants(ctx, channelId)).has(userId) ? { channel, perms: DM_PERMS } : null;
+  const gp = await loadGuildPerm(ctx, channel.guild_id, userId);
+  if (!gp) return null;
+  const permChannelId = channel.type === 'thread' && channel.parent_id ? channel.parent_id : channel.id;
+  const perms = permsFor(gp, await loadOverwrites(ctx, permChannelId));
+  return has(perms, Perm.VIEW_CHANNEL) ? { channel, perms } : null;
 }
 
 export interface Access { channel: any; perms: bigint; gp: GuildPerm | null; permChannel: any }
@@ -95,8 +108,8 @@ export function needOutrankMember(actor: GuildPerm, target: GuildPerm | null) {
 export async function viewersAmong(ctx: Ctx, channel: any, candidates: string[]): Promise<string[]> {
   if (!candidates.length) return [];
   if (!channel.guild_id) {
-    const rows = await ctx.db.query('SELECT user_id FROM dm_participants WHERE channel_id = $1 AND user_id = ANY($2::text[])', [channel.id, candidates]);
-    return rows.map((r) => r.user_id);
+    const parts = await ctx.pcache.dmParticipants(ctx, channel.id);
+    return candidates.filter((u) => parts.has(u));
   }
   const permChannelId = channel.type === 'thread' && channel.parent_id ? channel.parent_id : channel.id;
   const ow = await loadOverwrites(ctx, permChannelId);

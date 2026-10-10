@@ -11,6 +11,9 @@ import { effectivePerms } from './perms';
 import { toPlain, parseInline } from './markdown';
 import { displayName } from './format';
 import { playSound } from './sound';
+import { useNotif } from '@/stores/notif';
+import { streamerActive } from './streamer';
+import { getServerUrl } from './server';
 
 let unsubs: (() => void)[] = [];
 
@@ -49,20 +52,26 @@ function onMessageCreate(m: Message) {
   const viewing = currentChannelId() === m.channelId && document.visibilityState === 'visible' && document.hasFocus();
   if (mine) { data.setRead(m.channelId, m.id, 0); return; }
   if (viewing) { ackLater(m.channelId, m.id); return; }
-  const mentioned = m.mentions.includes(me.id) || (m.mentionEveryone && !useUI.getState().prefs.suppressEveryone) || (m.guildId ? m.mentionRoles.some((r) => selfMember(data, m.guildId!)?.roles.includes(r)) : false);
+  const gn = m.guildId ? useNotif.getState().guilds[m.guildId] : undefined;
+  const prefsNow = useUI.getState().prefs;
+  const everyoneOff = prefsNow.suppressEveryone || !!gn?.suppressEveryone;
+  const roleMention = m.guildId ? m.mentionRoles.some((r) => selfMember(data, m.guildId!)?.roles.includes(r)) : false;
+  const mentioned = m.mentions.includes(me.id) || (m.mentionEveryone && !everyoneOff) || (roleMention && !gn?.suppressRoles);
   const isDm = !m.guildId;
   const rs = data.readStates[m.channelId];
   if (mentioned || isDm) data.setRead(m.channelId, rs?.lastReadId ?? null, (rs?.mentionCount ?? 0) + 1);
   const prefs = useUI.getState().prefs;
   const muted = prefs.mutedChannels[m.channelId] || (m.guildId && prefs.mutedGuilds[m.guildId]);
-  const wants = !muted && (isDm || mentioned || prefs.defaultNotify === 'all');
+  const level = gn?.level ?? prefs.defaultNotify;
+  const wants = !muted && (isDm || (level !== 'none' && (mentioned || level === 'all')) || (gn?.level == null && mentioned));
+  const streaming = streamerActive();
   if (wants) {
-    if (prefs.notificationSounds) playSound('message');
-    if (prefs.desktopNotifications && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+    if (prefs.notificationSounds && !(streaming && prefs.streamerNoSounds)) playSound('message');
+    if (prefs.desktopNotifications && !(streaming && prefs.streamerNoNotifications) && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
       try {
         const ch = findChannel(data, m.channelId);
         const gm = m.guildId ? data.guilds[m.guildId]?.members[m.author.id] : undefined;
-        const n = new Notification(`${displayName(m.author, gm)}${ch?.name && m.guildId ? ` (#${ch.name})` : ''}`, { body: toPlain(parseInline(m.content)).slice(0, 200) || 'Sent an attachment', tag: m.channelId, icon: '/icon-192.png' });
+        const n = new Notification(`${displayName(m.author, gm)}${ch?.name && m.guildId ? ` (#${ch.name})` : ''}`, { body: toPlain(parseInline(m.content)).slice(0, 200) || 'Sent an attachment', tag: m.channelId, icon: getServerUrl() ? undefined : '/icon-192.png' });
         n.onclick = () => { window.focus(); window.dispatchEvent(new CustomEvent('jorcord:goto', { detail: { guildId: m.guildId, channelId: m.channelId } })); };
       } catch { /* */ }
     }

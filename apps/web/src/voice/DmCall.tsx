@@ -10,6 +10,7 @@ import { ControlBar } from './controls';
 import { CallSurface, VoiceBanners } from './Room';
 import { getVoiceClient, joinVoice } from './controller';
 import { useChannelVoiceUsers } from './views';
+import { t } from '@/i18n';
 
 export async function startCall(channelId: string, video: boolean) {
   await joinVoice(channelId);
@@ -37,16 +38,16 @@ export function DmCallPanel({ channel }: { channel: Channel }) {
         <PhoneCall size={20} className="text-success" />
         <div className="flex -space-x-2">{others.slice(0, 4).map((u) => <Avatar key={u.id} user={u} size={28} ring="rgb(var(--chat))" />)}</div>
         <span className="min-w-0 flex-1 truncate text-sm text-header">{others.map((u) => displayName(u)).join(', ')} {others.length === 1 ? 'is' : 'are'} in a call</span>
-        <button className="btn btn-primary" onClick={() => void startCall(channel.id, false)}>Join Call</button>
+        <button className="btn btn-primary" onClick={() => void startCall(channel.id, false)}>{t('Join Call')}</button>
       </div>
     );
   }
   return (
-    <section data-testid="dm-call" aria-label="Call" className="flex h-[min(46vh,420px)] min-h-[260px] shrink-0 flex-col border-b border-divider bg-[#000]/60 max-md:h-[min(52vh,420px)]">
+    <section data-testid="dm-call" aria-label={t('Call')} className="flex h-[min(46vh,420px)] min-h-[260px] shrink-0 flex-col border-b border-divider bg-[#000]/60 max-md:h-[min(52vh,420px)]">
       <VoiceBanners />
       {conn === 'connecting' || snap.status === 'connecting'
-        ? <div className="flex flex-1 items-center justify-center text-muted" role="status">Calling…</div>
-        : snap.participants.length <= 1 && <div className="px-4 pt-3 text-center text-sm text-muted">Waiting for others to join…</div>}
+        ? <div className="flex flex-1 items-center justify-center text-muted" role="status">{t('Calling…')}</div>
+        : snap.participants.length <= 1 && <div className="px-4 pt-3 text-center text-sm text-muted">{t('Waiting for others to join…')}</div>}
       {snap.status !== 'connecting' && <CallSurface compact />}
       <ControlBar onSettings={() => openModal({ kind: 'voiceSettings' })} className="!py-2" />
     </section>

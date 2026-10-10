@@ -91,7 +91,7 @@ export function VoiceSettingsForm({ compact }: { compact?: boolean }) {
 export function VoiceSettingsModal({ onClose }: { onClose: () => void }) {
   return (
     <Modal title="Voice & Video Settings" onClose={onClose} width={560}>
-      <div className="max-h-[70dvh] overflow-y-auto px-1 pb-4 pt-2 text-left"><VoiceSettingsForm compact /></div>
+      <div className="max-h-[70dvh] overflow-y-auto px-1 pb-4 pt-2 text-start"><VoiceSettingsForm compact /></div>
       <div className="flex justify-end p-4 pt-0"><button className="btn btn-primary" onClick={onClose}>Done</button></div>
     </Modal>
   );
