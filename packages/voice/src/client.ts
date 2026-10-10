@@ -198,10 +198,12 @@ export class VoiceClient {
     try {
       await this.establish(token);
     } catch (e) {
+      if (this.rc.phase === 'idle') throw { code: 'unknown', message: 'Cancelled', cause: e } satisfies VoiceError; // cancelled by disconnect(): stay idle
       this.rcDispatch({ type: 'leave' });
       this.emit({ status: 'disconnected' });
       throw this.fail(e, 'connect');
     }
+    if (this.rc.phase === 'idle') throw { code: 'unknown', message: 'Cancelled' } satisfies VoiceError;
     this.rcDispatch({ type: 'connected' });
     await this.afterConnect();
   }
@@ -209,6 +211,7 @@ export class VoiceClient {
   private async establish(token: Pick<VoiceToken, 'token' | 'url'>): Promise<void> {
     if (this.room.state !== ConnectionState.Disconnected) await this.shutdownRoom();
     const total = this.opts.connectTimeoutMs ?? 15_000;
+    this.emit({ serverUrl: token.url, serverVersion: null });
     let signalUp = false;
     const onSignal = () => { signalUp = true; };
     this.room.once(RoomEvent.SignalConnected, onSignal);
@@ -225,7 +228,7 @@ export class VoiceClient {
       await this.shutdownRoom().catch(() => {});
       throw e;
     } finally { clearTimeout(timer); this.room.off(RoomEvent.SignalConnected, onSignal); }
-    this.emit({ serverUrl: token.url, serverVersion: this.room.serverInfo?.version ?? null });
+    this.emit({ serverVersion: this.room.serverInfo?.version ?? null });
   }
 
   /** Disconnect the Room without letting the Disconnected handler treat it as a connection loss. */

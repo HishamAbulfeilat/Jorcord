@@ -36,6 +36,7 @@ import { createMailer } from './services/mailer';
 import { createPush } from './services/push';
 import { PermCache } from './services/permcache';
 import { createWebApp, hasWebBuild } from './lib/webapp';
+import { livekitProxyRoutes, livekitConnectSources } from './routes/voice-livekit';
 import { securityHeaders, logSerializers, LOG_REDACT } from './lib/security';
 
 export interface BuildOptions { config?: Partial<Config>; memoryDb?: boolean; env?: NodeJS.ProcessEnv }
@@ -96,7 +97,7 @@ export async function buildApp(opts: BuildOptions = {}): Promise<{ app: FastifyI
     return reply.code(500).send({ code: 'INTERNAL', message: 'Internal server error' });
   });
   // Optional same-origin web client (WEB_DIST). Real routes win; this only sees what nothing else matched.
-  let web = config.webDist ? createWebApp(config.webDist) : null;
+  let web = config.webDist ? createWebApp(config.webDist, { livekitConnect: livekitConnectSources(config.livekit.url) }) : null;
   if (config.webDist && !(await hasWebBuild(config.webDist))) { app.log.warn({ webDist: config.webDist }, 'WEB_DIST has no index.html: serving the API only'); web = null; }
   app.setNotFoundHandler(async (req, reply) => {
     if (web && await web.handle(req, reply)) return reply;
@@ -108,6 +109,7 @@ export async function buildApp(opts: BuildOptions = {}): Promise<{ app: FastifyI
     catch { return reply.code(503).send({ status: 'degraded', db: 'down' }); }
   });
   gatewayRoutes(app, ctx);
+  livekitProxyRoutes(app, ctx); // same-origin LiveKit signalling (LIVEKIT_URL=auto)
 
   await app.register(async (api) => {
     publicAuthRoutes(api, ctx);

@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
-import { AlertTriangle, Hand, Loader2, Mic, Volume2 } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { AlertTriangle, Hand, Loader2, Mic, MonitorUp, Volume2 } from 'lucide-react';
 import { useAudioUnlock, useVoiceClient, useVoiceSnapshot } from '@jorcord/voice/react';
 import type { ParticipantView } from '@jorcord/voice';
 import { useUI } from '@/stores/ui';
@@ -12,15 +13,42 @@ import { useIsMobile } from '@/lib/hooks';
 import { cx } from '@/lib/format';
 import { Avatar } from '@/components/ui/Avatar';
 import { ParticipantTile, ScreenTile } from './tiles';
+import { TroubleshootPanel } from './Troubleshoot';
+import { retryVoice, startScreenShare } from './controller';
+import type { VoiceFailure } from '@/stores/voiceui';
 import { t } from '@/i18n';
+
+/** "Reconnecting…" with spinner, attempt count and a live countdown to the next try (Retry now skips the wait). */
+function ReconnectBanner() {
+  const snap = useVoiceSnapshot(); const { phase, attempt, maxAttempts, nextRetryAt } = snap.reconnect;
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => { if (phase !== 'waiting') return; const id = setInterval(() => setNow(Date.now()), 250); return () => clearInterval(id); }, [phase]);
+  const secs = phase === 'waiting' && nextRetryAt ? Math.max(0, Math.ceil((nextRetryAt - now) / 1000)) : 0;
+  return (
+    <div role="status" data-testid="voice-reconnecting" data-phase={phase} data-attempt={attempt} className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 bg-warn px-3 py-1 text-sm font-semibold text-black">
+      <span className="flex items-center gap-2"><Loader2 size={14} className="animate-spin" />{t('Reconnecting to voice…')}</span>
+      {attempt > 0 && <span className="text-xs font-medium">{`${t('Attempt')} ${attempt}/${maxAttempts}`}{secs > 0 ? ` · ${t('retrying in')} ${secs}s` : ''}</span>}
+      {phase !== 'resuming' && <button className="rounded bg-black/20 px-2 py-0.5 text-xs font-semibold hover:bg-black/30" onClick={() => retryVoice()}>{t('Retry now')}</button>}
+      {snap.error && phase !== 'resuming' && <span className="basis-full text-center text-[11px] font-normal">{snap.error.message}</span>}
+    </div>
+  );
+}
 
 export function VoiceBanners() {
   const snap = useVoiceSnapshot(); const client = useVoiceClient(); const { blocked, unlock } = useAudioUnlock();
+  const reconnecting = snap.status === 'reconnecting';
   return (
     <>
-      {snap.status === 'reconnecting' && <div role="status" className="flex items-center justify-center gap-2 bg-warn px-3 py-1 text-sm font-semibold text-black"><Loader2 size={14} className="animate-spin" />{t('Reconnecting to voice…')}</div>}
+      {reconnecting && <ReconnectBanner />}
+      {snap.screenResumeNeeded && snap.status === 'connected' && (
+        <div role="status" data-testid="voice-screen-resume" className="flex items-center justify-center gap-3 bg-brand/90 px-3 py-1.5 text-sm text-white">
+          <MonitorUp size={16} />{t('Your screen share stopped when the connection dropped.')}
+          <button className="rounded bg-black/30 px-2 py-0.5 font-medium hover:bg-black/50" onClick={() => void startScreenShare({ preset: snap.settings.screenPreset, hint: snap.settings.screenHint, audio: snap.settings.screenAudio })}>{t('Resume sharing')}</button>
+          <button className="rounded px-2 py-0.5 font-medium hover:bg-black/30" onClick={() => client.dismissScreenResume()}>{t('Dismiss')}</button>
+        </div>
+      )}
       {blocked && snap.status === 'connected' && <button onClick={unlock} className="bg-brand px-3 py-1.5 text-sm font-semibold text-white hover:bg-brand-hover">{t('Click to enable audio')}</button>}
-      {snap.error && (
+      {snap.error && !reconnecting && (
         <div role="alert" data-code={snap.error.code} className="flex items-center justify-between gap-3 bg-danger/90 px-3 py-2 text-sm text-white">
           <span className="flex items-center gap-2"><AlertTriangle size={16} />{snap.error.message}</span>
           <button className="rounded bg-black/30 px-2 py-0.5 font-medium hover:bg-black/50" onClick={() => client.clearError()}>{t('Dismiss')}</button>
@@ -132,7 +160,7 @@ export function StageSurface({ channelId }: { channelId: string }) {
   );
 }
 
-export function Lobby({ name, stage, users, busy, onJoin, disabledReason, icon }: { name: string; stage?: boolean; users: { id: string; username: string; displayName: string | null; avatar: string | null }[]; busy: boolean; onJoin: () => void; disabledReason?: string; icon?: React.ReactNode }) {
+export function Lobby({ name, stage, users, busy, onJoin, disabledReason, icon, failure }: { failure?: VoiceFailure | null; name: string; stage?: boolean; users: { id: string; username: string; displayName: string | null; avatar: string | null }[]; busy: boolean; onJoin: () => void; disabledReason?: string; icon?: React.ReactNode }) {
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-5 p-6 text-center">
       <div className="flex h-20 w-20 items-center justify-center rounded-full bg-side text-muted">{icon ?? <Volume2 size={40} />}</div>
@@ -145,6 +173,7 @@ export function Lobby({ name, stage, users, busy, onJoin, disabledReason, icon }
         {busy ? <><Loader2 size={16} className="animate-spin" />{t('Connecting…')}</> : stage ? 'Join Stage' : 'Join Voice'}
       </button>
       {disabledReason && <p className="text-sm text-danger">{disabledReason}</p>}
+      {failure && !busy && <TroubleshootPanel failure={failure} />}
     </div>
   );
 }

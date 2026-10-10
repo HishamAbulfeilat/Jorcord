@@ -1,5 +1,6 @@
 import type { Ctx } from '../ctx';
 import { ApiError, forbidden, notFound } from '../errors';
+import { privacyOf } from './privacy';
 import { channelDTO } from './serializers';
 import { clearVoiceState } from './voice';
 
@@ -22,6 +23,8 @@ export async function addGroupRecipient(ctx: Ctx, channel: any, actorId: string,
     `SELECT 1 AS x WHERE EXISTS (SELECT 1 FROM relationships WHERE user_id = $1 AND other_id = $2 AND type = 'friend')
         OR EXISTS (SELECT 1 FROM members a JOIN members b ON a.guild_id = b.guild_id WHERE a.user_id = $1 AND b.user_id = $2)`, [actorId, userId]);
   if (!ok) throw forbidden('You need to be friends or share a server with this user', 'NO_SHARED_CONTEXT');
+  const [isFriend] = await ctx.db.query(`SELECT 1 AS x FROM relationships WHERE user_id = $1 AND other_id = $2 AND type = 'friend'`, [actorId, userId]);
+  if (!isFriend && !(await privacyOf(ctx, userId)).allowDmsFromServerMembers) throw forbidden('This user does not accept direct messages from server members', 'DM_DISABLED');
   await ctx.db.query('INSERT INTO dm_participants (channel_id, user_id) VALUES ($1,$2) ON CONFLICT DO NOTHING', [channel.id, userId]);
   await ctx.pcache.invalidate({ k: 'dm', channelId: channel.id });
   const dto = await channelDTO(ctx, channel);

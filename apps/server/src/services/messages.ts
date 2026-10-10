@@ -3,7 +3,7 @@ import type { Ctx } from '../ctx';
 import { ApiError, badRequest, forbidden } from '../errors';
 import { audit } from './guilds';
 import { loadGuildPerms, viewersAmong, permsFor, loadOverwrites } from './perms';
-import { messageDTO } from './serializers';
+import { channelDTO, messageDTO } from './serializers';
 import { unfurl } from './unfurl';
 
 const URL_RE = /https?:\/\/[^\s<>()]+/gi;
@@ -97,6 +97,7 @@ export async function createMessage(ctx: Ctx, m: NewMessage): Promise<Message> {
 
   const [row] = await ctx.db.query('SELECT * FROM messages WHERE id = $1', [id]);
   const dto = await messageDTO(ctx, row, null);
+  if (channel.type === 'dm') await settleMessageRequest(ctx, channel, m.authorId, !channel.last_message_id);
   await ctx.hub.toChannel(channel.id, 'MESSAGE_CREATE', dto);
   await bumpMentionCounts(ctx, channel, m.authorId, ment, !channel.guild_id).catch((e) => ctx.log.warn({ err: e }, 'mention count failed'));
   ctx.push.notifyMessage(channel, dto); // async + best effort; honours presence, DND, mute and block rules
@@ -104,10 +105,29 @@ export async function createMessage(ctx: Ctx, m: NewMessage): Promise<Message> {
   return dto;
 }
 
+/**
+ * Message-request bookkeeping for a 1:1 DM: the first message reveals the channel to a recipient whose copy is a request
+ * (CHANNEL_CREATE + MESSAGE_REQUEST_UPDATE), and a reply from a recipient accepts the request.
+ */
+async function settleMessageRequest(ctx: Ctx, channel: any, authorId: string, first: boolean) {
+  const reqs = await ctx.db.query('SELECT user_id FROM dm_participants WHERE channel_id = $1 AND request', [channel.id]);
+  if (!reqs.length) return;
+  if (reqs.some((r) => r.user_id === authorId)) { // the recipient answered: it is a normal DM now
+    await ctx.db.query('UPDATE dm_participants SET request = false WHERE channel_id = $1 AND user_id = $2', [channel.id, authorId]);
+    await ctx.hub.toUser(authorId, 'MESSAGE_REQUEST_UPDATE', { channelId: channel.id, request: false });
+    return;
+  }
+  if (first) {
+    const [fresh] = await ctx.db.query('SELECT * FROM channels WHERE id = $1', [channel.id]);
+    const dto = await channelDTO(ctx, fresh);
+    for (const r of reqs) { await ctx.hub.toUser(r.user_id, 'CHANNEL_CREATE', dto); await ctx.hub.toUser(r.user_id, 'MESSAGE_REQUEST_UPDATE', { channelId: channel.id, request: true }); }
+  }
+}
+
 async function bumpMentionCounts(ctx: Ctx, channel: any, authorId: string, ment: MentionResult, isDm: boolean) {
   let targets = new Set<string>(ment.mentions);
   if (isDm) {
-    for (const r of await ctx.db.query('SELECT user_id FROM dm_participants WHERE channel_id = $1', [channel.id])) targets.add(r.user_id);
+    for (const r of await ctx.db.query('SELECT user_id FROM dm_participants WHERE channel_id = $1 AND NOT request', [channel.id])) targets.add(r.user_id); // message requests collect no badges
   } else {
     if (ment.mentionEveryone) for (const r of await ctx.db.query('SELECT user_id FROM members WHERE guild_id = $1', [channel.guild_id])) targets.add(r.user_id);
     if (ment.mentionRoles.length) for (const r of await ctx.db.query('SELECT DISTINCT user_id FROM member_roles WHERE guild_id = $1 AND role_id = ANY($2::text[])', [channel.guild_id, ment.mentionRoles])) targets.add(r.user_id);

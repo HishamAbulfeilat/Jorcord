@@ -102,6 +102,7 @@ export function ChatView({ channel }: { channel: Channel }) {
           <div className="relative"><TypingIndicator channelId={cid} guildId={gid} /></div>
           <ThreadBanner channel={channel} />
           <ScreeningBanner guildId={gid} />
+          {isDm && <MessageRequestBanner channel={channel} />}
           <Composer key={'c' + cid} channel={channel} stagedExternal={dropped} />
           {drag && (
             <div className="pointer-events-none absolute inset-0 z-40 flex items-center justify-center bg-brand/20 backdrop-blur-sm" aria-hidden>
@@ -136,6 +137,23 @@ function ThreadBanner({ channel }: { channel: Channel }) {
 }
 
 /** New members of a screened server are read-only until they accept the rules. */
+/** A DM from someone who is not a friend: nothing is shared until the recipient accepts (replying also accepts). */
+function MessageRequestBanner({ channel }: { channel: Channel }) {
+  const isRequest = useData((s) => !!s.messageRequests[channel.id]); const me = useData((s) => s.me);
+  const other = (channel.recipients ?? []).find((r) => r.id !== me?.id);
+  const nav = useNav();
+  if (!isRequest || !other) return null;
+  const act = (p: Promise<unknown>, after?: () => void) => p.then(after).catch(toastError);
+  return (
+    <div role="region" aria-label={t('Message request')} data-testid="message-request-banner" className="mx-4 mb-2 flex flex-wrap items-center gap-2 rounded-md bg-brand/15 px-3 py-2 text-sm text-header">
+      <span className="min-w-0 flex-1">{t('{name} is not on your friends list. Accept to move this conversation to your messages.', { name: other.displayName ?? other.username })}</span>
+      <button className="btn btn-primary" onClick={() => act(api.users.acceptRequest(channel.id))}>{t('Accept')}</button>
+      <button className="btn btn-secondary" onClick={() => act(api.users.ignoreRequest(channel.id), () => nav.go('@me'))}>{t('Ignore')}</button>
+      <button className="btn btn-danger" onClick={() => act(api.users.setRelationship(other.id, 'blocked').then(() => api.users.ignoreRequest(channel.id)), () => nav.go('@me'))}>{t('Block')}</button>
+    </div>
+  );
+}
+
 function ScreeningBanner({ guildId }: { guildId: string | null }) {
   const pending = useData((s) => (guildId ? !!selfMember(s, guildId)?.pending : false)); const open = useUI((s) => s.openModal);
   if (!guildId || !pending) return null;

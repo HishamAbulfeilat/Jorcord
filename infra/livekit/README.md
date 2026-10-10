@@ -13,18 +13,39 @@ curl -sL https://github.com/livekit/livekit/releases/download/v1.11.0/livekit_1.
 # or Docker (host networking): docker compose -f infra/livekit/docker-compose.yml up
 ```
 
-The server process env for Jorcord: `LIVEKIT_URL=ws://localhost:7880`, `LIVEKIT_API_KEY=devkey`, `LIVEKIT_API_SECRET=secret`
+The server process env for Jorcord: `LIVEKIT_URL=ws://localhost:7880` (or `auto`, see below), `LIVEKIT_API_KEY=devkey`, `LIVEKIT_API_SECRET=secret`
 (`/voice/token` returns `{token,url,room}`; room = channelId). The "secret is too short" log line is expected for the dev secret.
 
 Smoke test (two headless clients, audio+video round trip): `pnpm --filter @jorcord/voice smoke` (server must be running).
+
+## Docker Desktop / the "Connecting..." hang (read this first)
+
+A browser needs to reach LiveKit twice: **signalling** (WebSocket) and **media** (ICE: UDP, or TCP 7881). In Docker the second one is where it breaks:
+LiveKit advertises its *container* IP (172.x) as the ICE candidate, which a browser on the Docker host cannot reach, so the call never connects.
+
+* `docker-compose.yml` therefore sets `rtc.node_ip` from `LIVEKIT_NODE_IP` (default **127.0.0.1**, right when the browser runs on the Docker host),
+  publishes `7881/tcp` (ICE/TCP fallback) and the UDP range `50000-50200`.
+* Browser on another device: `LIVEKIT_NODE_IP=<the Docker host's LAN IP>`. Cloud VM: `LIVEKIT_NODE_IP=` (empty) + `LIVEKIT_USE_EXTERNAL_IP=true`, or the public IP.
+* Easy firewalling: `LIVEKIT_UDP_PORT=7882` + `LIVEKIT_UDP_PUBLISH=7882:7882/udp` multiplexes all media on one UDP port (then open just `7881/tcp` + `7882/udp`).
+* Signalling: the Jorcord server proxies it at `/livekit` when `LIVEKIT_URL=auto` (compose default), so the browser only ever talks to the app's port.
+  Only `/rtc*` is proxied, never LiveKit's admin API. Without `auto`, `LIVEKIT_URL` must be reachable from the browser (a `localhost` value is rewritten to the host the page was opened on).
+* Not using Docker (this folder's `livekit.yaml`, binary on the host)? Same rule: if the browser is on another machine set `rtc.node_ip` to an address it can reach.
+
+The web client times out after 15 s and reports which half failed (`signal-unreachable` / `ice-failed` / `token` / `permission-denied` / `insecure-context`), and the voice dock has an **Open diagnostics** panel; see docs/DEPLOY.md.
+
+## Testing with the real compose config
+
+`e2e/tests/stack.ts` reads `LIVEKIT_CONFIG` out of `docker-compose.yml`, resolves the `${VAR:-default}` values, remaps the ports and starts `bin/livekit-server`
+with it, together with the server serving the built web app. `pnpm e2e -- tests/voice-prod.spec.ts` joins voice with two users on that stack, kills and
+restarts LiveKit (the second start uses the single-UDP-port mode) and the API server mid-call, and asserts recovery, so compose changes are covered.
 
 ## Ports
 
 | Port | Proto | Purpose |
 |---|---|---|
-| 7880 | TCP | signalling (WS/HTTP) - put behind TLS reverse proxy (wss) in prod |
+| 7880 | TCP | signalling (WS/HTTP). Not needed from browsers with `LIVEKIT_URL=auto` (proxied by the app); otherwise put behind a TLS reverse proxy (wss) in prod |
 | 7881 | TCP | ICE/TCP fallback |
-| 50000-50200 | UDP | media (widen to e.g. 50000-60000 in prod) |
+| 50000-50200 | UDP | media (widen to e.g. 50000-60000 in prod), or one port via `rtc.udp_port` / `LIVEKIT_UDP_PORT` |
 | 3478 | UDP | TURN |
 | 5349 | TCP | TURN/TLS (enable with certs; the dev config leaves it off because LiveKit refuses to start without cert files) |
 | 443 | TCP | optional: TURN/TLS on 443 via LB for locked-down corporate networks |

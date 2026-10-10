@@ -21,7 +21,8 @@ async function buildReady(ctx: Ctx, userId: string, sessionId: string): Promise<
   const guildIds = (await ctx.db.query('SELECT guild_id FROM members WHERE user_id = $1 ORDER BY joined_at', [userId])).map((r) => r.guild_id as string);
   const guilds = [];
   for (let i = 0; i < guildIds.length; i += 4) guilds.push(...(await Promise.all(guildIds.slice(i, i + 4).map((id) => buildGuildFull(ctx, id, userId))))); // bounded parallelism: keeps READY fast without draining the pool
-  const dms = await ctx.db.query('SELECT c.* FROM channels c JOIN dm_participants p ON p.channel_id = c.id WHERE p.user_id = $1 ORDER BY c.last_message_id DESC NULLS LAST', [userId]);
+  const dms = await ctx.db.query('SELECT c.* FROM channels c JOIN dm_participants p ON p.channel_id = c.id WHERE p.user_id = $1 AND NOT (p.request AND c.last_message_id IS NULL) ORDER BY c.last_message_id DESC NULLS LAST', [userId]);
+  const requestIds = (await ctx.db.query('SELECT channel_id FROM dm_participants WHERE user_id = $1 AND request', [userId])).map((r) => r.channel_id as string);
   const privateChannels = await channelsDTO(ctx, dms);
   const rs = await ctx.db.query('SELECT * FROM read_states WHERE user_id = $1', [userId]);
   const peers = await ctx.db.query(
@@ -35,7 +36,7 @@ async function buildReady(ctx: Ctx, userId: string, sessionId: string): Promise<
   const voiceStates = (await ctx.voice.all()).filter((v) => v.channelId && visible.has(v.channelId));
   return {
     sessionId, user: selfUserDTO(ctx, u), guilds, privateChannels, relationships: await relationshipDTOs(ctx, userId),
-    readStates: rs.map((r) => ({ channelId: r.channel_id, lastReadId: r.last_read_id ?? null, mentionCount: r.mention_count })), presences, voiceStates,
+    messageRequests: requestIds, readStates: rs.map((r) => ({ channelId: r.channel_id, lastReadId: r.last_read_id ?? null, mentionCount: r.mention_count })), presences, voiceStates,
   };
 }
 

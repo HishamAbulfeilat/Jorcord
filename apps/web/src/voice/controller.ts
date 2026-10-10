@@ -2,7 +2,7 @@
  * Voice controller: one VoiceClient (LiveKit) per tab, joined/left through the API token endpoint and mirrored to the
  * gateway with VOICE_STATE_UPDATE (op 4). UI reads the client via @jorcord/voice/react hooks and `useVoiceUI`.
  */
-import { VoiceClient, type StreamPresetId, type VoiceSettings, type VoiceSnapshot, type ContentHint } from '@jorcord/voice';
+import { VoiceClient, mapVoiceError, type StreamPresetId, type VoiceSettings, type VoiceSnapshot, type ContentHint, type VoiceError } from '@jorcord/voice';
 import { api } from '@/lib/api';
 import { getGateway } from '@/lib/gateway';
 import { useData, findChannel } from '@/stores/data';
@@ -28,6 +28,19 @@ export function settingsFromPrefs(p: Prefs): Partial<VoiceSettings> {
   };
 }
 
+const TOKEN_TIMEOUT_MS = 10_000;
+const withTimeout = <T,>(p: Promise<T>, ms: number): Promise<T> => new Promise((res, rej) => {
+  const t = setTimeout(() => rej(Object.assign(new Error('The server did not answer in time.'), { name: 'TokenTimeout' })), ms);
+  p.then((v) => { clearTimeout(t); res(v); }, (e) => { clearTimeout(t); rej(e); });
+});
+
+/** Normalise whatever a failed join threw (VoiceError from the client, ApiException from the token call) for the UI. */
+function failureOf(channelId: string, e: any) {
+  // client.connect() throws plain VoiceError objects; anything that is an Error came from the token request (API / timeout / network).
+  const ve: VoiceError = e instanceof Error ? { ...mapVoiceError(e, 'token'), message: e.message || 'Could not get a voice token.' } : (e as VoiceError);
+  return { channelId, code: ve.code ?? 'unknown', message: ve.message ?? 'Could not join voice.', hint: ve.hint, at: Date.now() };
+}
+
 let client: VoiceClient | null = null;
 let joining: Promise<void> | null = null;
 let lastSent = '';
@@ -38,7 +51,16 @@ export function getVoiceClient(): VoiceClient {
   if (!client) {
     client = new VoiceClient({
       settings: settingsFromPrefs(useUI.getState().prefs),
-      onDisconnected: () => scheduleReconcile(),
+      // LiveKit resumes by itself; when it cannot, the client rejoins with a fresh token (backoff, attempt count in the snapshot).
+      getToken: (id) => withTimeout(api.voice.token(id), TOKEN_TIMEOUT_MS),
+      onConnectionLost: () => { if (wantChannel) playSound('lost'); },
+      onReconnected: () => {
+        // The server may have cleared our voice state while we were away (LiveKit webhook after the grace period): re-announce.
+        const s = client!.getSnapshot();
+        if (wantChannel && s.channelId === wantChannel) { lastSent = `${wantChannel}|${s.muted}|${s.deafened}|${s.cameraOn}|${s.screenOn}`; sendVoiceState(wantChannel, s); }
+        playSound('restored');
+      },
+      onDisconnected: (why) => (why === 'error' ? giveUp() : scheduleReconcile()),
     });
     bindClient(client);
     (window as any).__jorcordVoice = debugApi(client);
@@ -63,6 +85,7 @@ function bindClient(c: VoiceClient) {
     const s = c.getSnapshot();
     const ui = useVoiceUI.getState();
     const conn = s.status === 'connected' ? 'connected' : s.status === 'connecting' ? 'connecting' : s.status === 'reconnecting' ? 'reconnecting' : ui.conn === 'connecting' && s.status === 'idle' ? 'connecting' : s.status === 'idle' || s.status === 'disconnected' ? (wantChannel ? 'reconnecting' : 'idle') : 'idle';
+    if (conn === 'reconnecting' && s.status === 'reconnecting' && ui.connectingSince === null) ui.patch({ connectingSince: Date.now() });
     if (ui.streaming !== s.screenOn) ui.patch({ streaming: s.screenOn });
     if (s.status === 'connected' || s.status === 'reconnecting') {
       if (ui.selfMute !== s.muted || ui.selfDeaf !== s.deafened || ui.conn !== conn) ui.patch({ selfMute: s.muted, selfDeaf: s.deafened, conn });
@@ -72,7 +95,7 @@ function bindClient(c: VoiceClient) {
       if (key !== lastSent) { lastSent = key; sendVoiceState(wantChannel, s); }
     }
     if (prevStatus !== s.status) {
-      if (s.status === 'connected' && prevStatus !== 'reconnecting') playSound('join' as any);
+      if (s.status === 'connected' && prevStatus !== 'reconnecting') playSound('join');
       prevStatus = s.status;
     }
   });
@@ -99,7 +122,7 @@ async function moveTo(channelId: string) {
     const name = findChannel(useData.getState(), channelId)?.name;
     if (moved) useUI.getState().toast(`You were moved to ${name ?? 'another channel'}.`, 'info');
   } catch (e: any) {
-    wantChannel = null; ui.patch({ conn: 'idle' }); ui.setConnected(null);
+    wantChannel = null; ui.patch({ conn: 'idle', failure: failureOf(channelId, e), connectingSince: null }); ui.setConnected(null);
     useUI.getState().toast(e?.message || 'Could not follow the move.', 'error');
   }
 }
@@ -115,6 +138,8 @@ function scheduleReconcile() {
     const c = client; const me = useData.getState().me?.id;
     if (!c || !me || !wantChannel || joining) return;
     const st = useData.getState().voiceStates[me]; const status = c.getSnapshot().status;
+    // Mid-recovery the server may have dropped our state (LiveKit webhook after the grace period). The client re-announces once it is back.
+    if (status === 'reconnecting') { scheduleReconcile(); return; }
     if (!st?.channelId) {
       wantChannel = null; lastSent = '';
       const ui = useVoiceUI.getState(); ui.patch({ conn: 'idle', joiningChannelId: null }); ui.setConnected(null);
@@ -150,34 +175,62 @@ export async function joinVoice(channelId: string) {
     const prev = wantChannel;
     if (prev && prev !== channelId) await leaveVoice();
     wantChannel = channelId; lastSent = '';
-    ui.patch({ conn: 'connecting', joiningChannelId: channelId }); ui.setConnected(channelId);
+    ui.patch({ conn: 'connecting', joiningChannelId: channelId, failure: null, connectingSince: Date.now() }); ui.setConnected(channelId);
     try {
-      const tok = await api.voice.token(channelId);
+      const tok = await withTimeout(api.voice.token(channelId), TOKEN_TIMEOUT_MS);
+      if (wantChannel !== channelId) return; // cancelled while fetching the token
       c.prepare({ muted: ui.selfMute, deafened: ui.selfDeaf });
       await c.connect(tok, channelId);
       if (wantChannel !== channelId) { await c.disconnect(); return; }
-      ui.patch({ joiningChannelId: null });
+      ui.patch({ joiningChannelId: null, connectingSince: null });
       callService.start(`Voice: ${channelLabel(channelId)}`, false);
       const s = c.getSnapshot();
       lastSent = `${channelId}|${s.muted}|${s.deafened}|${s.cameraOn}|${s.screenOn}`;
       sendVoiceState(channelId, s);
     } catch (e: any) {
-      wantChannel = null; ui.patch({ conn: 'idle', joiningChannelId: null }); ui.setConnected(null);
+      const cancelled = wantChannel !== channelId; // user pressed Cancel / left
+      wantChannel = cancelled ? wantChannel : null;
       try { await c.disconnect(); } catch { /* ignore */ }
+      if (cancelled) return;
+      ui.patch({ conn: 'idle', joiningChannelId: null, connectingSince: null, failure: failureOf(channelId, e) }); ui.setConnected(null);
+      // the channel view shows the reason with Retry + Troubleshoot; the toast covers the case where you navigated away
       useUI.getState().toast(e?.message || 'Could not join voice.', 'error');
     }
   })();
   joining = run; await run; joining = null;
 }
 
+/** Every automatic retry failed (or the token was refused): clear the gateway voice state and tell the user why. */
+function giveUp() {
+  const ch = wantChannel; if (!ch) return;
+  const c = client; const err = c?.getSnapshot().error;
+  wantChannel = null; lastSent = '';
+  const ui = useVoiceUI.getState();
+  ui.patch({ conn: 'idle', joiningChannelId: null, connectingSince: null, failure: { channelId: ch, code: err?.code ?? 'connection', message: err?.message ?? t('Lost connection to voice.'), hint: err?.hint, at: Date.now() } });
+  ui.setConnected(null); ui.setFocus(null);
+  sendVoiceState(null, undefined); callService.stop();
+  playSound('leave');
+  void c?.disconnect().catch(() => {});
+  useUI.getState().toast(t('Lost connection to voice.'), 'error');
+}
+
+/** "Retry" in the Troubleshoot panel / reconnect banner. */
+export function retryVoice() {
+  const ui = useVoiceUI.getState();
+  const c = client;
+  if (c && c.getSnapshot().status === 'reconnecting') { c.retry(); return; }
+  const ch = ui.failure?.channelId ?? ui.connectedChannelId;
+  if (ch) void joinVoice(ch);
+}
+
 export async function leaveVoice() {
   const c = client; const ch = wantChannel;
   wantChannel = null; lastSent = '';
   const ui = useVoiceUI.getState();
-  ui.patch({ conn: 'idle', joiningChannelId: null }); ui.setConnected(null); ui.setFocus(null);
+  ui.patch({ conn: 'idle', joiningChannelId: null, connectingSince: null, failure: null }); ui.setConnected(null); ui.setFocus(null);
   if (ch) { sendVoiceState(null, undefined); callService.stop(); }
   if (c) { try { await c.disconnect(); } catch { /* ignore */ } }
-  if (ch) playSound('leave' as any);
+  if (ch) playSound('leave');
 }
 
 /** Apply persisted preferences to a live client. */

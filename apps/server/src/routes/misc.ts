@@ -1,3 +1,4 @@
+import { resolveLivekitUrl } from './voice-livekit';
 import type { FastifyInstance } from 'fastify';
 import { AccessToken, TrackSource, WebhookReceiver } from 'livekit-server-sdk';
 import { z } from 'zod';
@@ -112,7 +113,7 @@ export function miscRoutes(app: FastifyInstance, ctx: Ctx) {
     const sources = [...(caps.canSpeak ? [TrackSource.MICROPHONE] : []), ...(caps.canStream ? [TrackSource.CAMERA, TrackSource.SCREEN_SHARE, TrackSource.SCREEN_SHARE_AUDIO] : [])];
     const at = new AccessToken(ctx.config.livekit.apiKey, ctx.config.livekit.apiSecret, { identity: req.userId, name: u.display_name ?? u.username, ttl: '6h', metadata: JSON.stringify({ userId: req.userId }) });
     at.addGrant({ roomJoin: true, room: channelId, canSubscribe: caps.canSubscribe, canPublish: sources.length > 0, canPublishSources: sources, canPublishData: true, canUpdateOwnMetadata: true });
-    const out: VoiceToken = { token: await at.toJwt(), url: ctx.config.livekit.url, room: channelId };
+    const out: VoiceToken = { token: await at.toJwt(), url: resolveLivekitUrl(ctx.config.livekit.url, req, ctx.config.publicUrl), room: channelId };
     return out;
   });
 }

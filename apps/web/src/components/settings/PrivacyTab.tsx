@@ -1,0 +1,42 @@
+/** User Settings > Privacy & Safety. Everything here is enforced server-side (DMs, friend requests, message requests, activity). */
+import { useState } from 'react';
+import type { Privacy } from '@jorcord/shared';
+import { DEFAULT_PRIVACY } from '@jorcord/shared';
+import { api } from '@/lib/api';
+import { useData } from '@/stores/data';
+import { toastError } from '@/stores/ui';
+import { H1, H3 } from './SettingsLayout';
+import { Row, Toggle } from '@/components/ui/primitives';
+import { t } from '@/i18n';
+
+type Patch = { [K in keyof Privacy]?: Privacy[K] extends object ? Partial<Privacy[K]> : Privacy[K] };
+
+export function PrivacyTab() {
+  const me = useData((s) => s.me)!; const p = me.privacy ?? DEFAULT_PRIVACY; const [busy, setBusy] = useState(false);
+  const save = async (patch: Patch) => {
+    setBusy(true);
+    try { const u = await api.users.patchMe({ privacy: patch }); useData.getState().setMe(u); } catch (e) { toastError(e); } finally { setBusy(false); }
+  };
+  const fr = p.friendRequests;
+  return (<>
+    <H1>{t('Privacy & Safety')}</H1>
+    <H3>{t('Direct Messages')}</H3>
+    <Row title={t('Allow direct messages from server members')} desc={t('People you only share a server with can start a conversation. Friends can always message you.')}>
+      <Toggle label={t('Allow direct messages from server members')} checked={p.allowDmsFromServerMembers} disabled={busy} onChange={(v) => void save({ allowDmsFromServerMembers: v })} />
+    </Row>
+    <Row title={t('Message requests')} desc={t('Messages from people who are not your friends go to a separate Message Requests list until you accept them.')}>
+      <Toggle label={t('Message requests')} checked={p.messageRequests} disabled={busy} onChange={(v) => void save({ messageRequests: v })} />
+    </Row>
+    <H3>{t('Who can add you as a friend')}</H3>
+    <Row title={t('Everyone')} desc={t('Anyone who finds your username can send you a request.')}>
+      <Toggle label={t('Everyone')} checked={fr.everyone} disabled={busy} onChange={(v) => void save({ friendRequests: { everyone: v } })} />
+    </Row>
+    <Row title={t('Friends of friends')}>
+      <Toggle label={t('Friends of friends')} checked={fr.friendsOfFriends} disabled={busy} onChange={(v) => void save({ friendRequests: { friendsOfFriends: v } })} />
+    </Row>
+    <Row title={t('Server members')}>
+      <Toggle label={t('Server members')} checked={fr.serverMembers} disabled={busy} onChange={(v) => void save({ friendRequests: { serverMembers: v } })} />
+    </Row>
+    <p className="mt-2 text-sm text-muted">{t('Turn all three off to stop receiving friend requests. You can still accept requests you already received.')}</p>
+  </>);
+}

@@ -277,7 +277,7 @@ async function notifyMessage(ctx: Ctx, svc: PushService, channel: any, msg: Mess
   const cands = new Map<string, Reason>();
   const add = (id: string, r: Reason) => { const cur = cands.get(id); if (cur === undefined || REASON_RANK[r] < REASON_RANK[cur]) cands.set(id, r); };
   if (!channel.guild_id) {
-    for (const p of await ctx.db.query('SELECT user_id FROM dm_participants WHERE channel_id = $1', [channel.id])) add(p.user_id, 'dm');
+    for (const p of await ctx.db.query('SELECT user_id FROM dm_participants WHERE channel_id = $1 AND NOT request', [channel.id])) add(p.user_id, 'dm'); // message requests stay silent
   } else {
     for (const id of msg.mentions) add(id, 'mention');
     if (msg.replyTo) {

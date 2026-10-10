@@ -84,7 +84,7 @@ export function loadConfig(overrides: Partial<Config> = {}, env: NodeJS.ProcessE
     resumeWindowMs: 5 * 60_000, voiceGraceMs: Number(env.VOICE_GRACE_MS ?? 20_000), accessTtlSec: 15 * 60, refreshTtlSec: 30 * 24 * 3600,
     livekit: {
       url: env.LIVEKIT_URL ?? 'ws://localhost:7880',
-      apiUrl: env.LIVEKIT_API_URL ?? env.LIVEKIT_URL ?? 'ws://localhost:7880',
+      apiUrl: env.LIVEKIT_API_URL ?? (env.LIVEKIT_URL && env.LIVEKIT_URL.trim().toLowerCase() !== 'auto' ? env.LIVEKIT_URL : 'ws://localhost:7880'),
       apiKey: env.LIVEKIT_API_KEY ?? 'devkey', apiSecret: env.LIVEKIT_API_SECRET ?? 'secret',
     },
     tenorKey: env.TENOR_API_KEY || null, giphyKey: env.GIPHY_API_KEY || null,

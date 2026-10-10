@@ -10,6 +10,8 @@ export interface ReadyPayload {
   sessionId: string; user: SelfUser; guilds: GuildFull[]; privateChannels: Channel[];
   relationships: Relationship[]; readStates: ReadState[]; presences: { userId: Id; presence: Presence }[];
   voiceStates: VoiceState[];
+  /** DM channel ids that are message requests for me (from non-friends, not yet accepted). */
+  messageRequests?: Id[];
 }
 export interface GuildFull extends Guild { channels: Channel[]; roles: Role[]; members: Member[]; emojis: Emoji[]; stickers: Sticker[]; memberCount: number }
 
@@ -54,6 +56,8 @@ export interface Events {
   STAGE_INSTANCE_CREATE: StageInstance; STAGE_INSTANCE_UPDATE: StageInstance; STAGE_INSTANCE_DELETE: StageInstance;
   THREAD_DELETE: { id: Id; guildId: Id; parentId: Id | null };
   /** To the caller's own sessions: a private note about another user changed (`note: null` = removed). */
+  /** To me: a DM became (or stopped being) a message request. */
+  MESSAGE_REQUEST_UPDATE: { channelId: Id; request: boolean };
   USER_NOTE_UPDATE: { userId: Id; note: string | null };
   GUILD_MEMBERS_CHUNK: { guildId: Id; members: Member[]; notFound: Id[]; chunkIndex: number; chunkCount: number; nonce?: string };
 }

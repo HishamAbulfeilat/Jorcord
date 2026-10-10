@@ -48,12 +48,15 @@ export const api = {
   },
   users: {
     me: () => send<SelfUser>({ method: 'GET', path: '/users/@me' }),
-    patchMe: (b: Partial<{ displayName: string | null; bio: string | null; pronouns: string | null; avatar: string | null; banner: string | null; accentColor: string | null; themeColors: [string, string] | null; customStatus: User['customStatus']; theme: SelfUser['theme']; settings: Record<string, unknown> }>) => send<SelfUser>({ method: 'PATCH', path: '/users/@me', body: b }),
+    patchMe: (b: Partial<{ displayName: string | null; bio: string | null; pronouns: string | null; avatar: string | null; banner: string | null; accentColor: string | null; themeColors: [string, string] | null; customStatus: User['customStatus']; theme: SelfUser['theme']; settings: Record<string, unknown>; privacy: { allowDmsFromServerMembers?: boolean; messageRequests?: boolean; showActivity?: boolean; friendRequests?: Partial<SelfUser['privacy']['friendRequests']> } }>) => send<SelfUser>({ method: 'PATCH', path: '/users/@me', body: b }),
     get: (id: Id) => send<UserProfile>({ method: 'GET', path: `/users/${id}` }),
     setPresence: (presence: Presence) => send({ method: 'PUT', path: '/users/@me/presence', body: { presence } }),
     guilds: () => send<Guild[]>({ method: 'GET', path: '/users/@me/guilds' }).then((x) => arr<Guild>(x)),
     leaveGuild: (id: Id) => send({ method: 'DELETE', path: `/users/@me/guilds/${id}` }),
     openDm: (recipientIds: Id[]) => send<Channel>({ method: 'POST', path: '/users/@me/channels', body: { recipientIds } }),
+    /** Message requests: move a DM from non-friends to the regular list, or delete it and bar the sender. */
+    acceptRequest: (channelId: Id) => send({ method: 'POST', path: `/channels/${channelId}/accept-request` }),
+    ignoreRequest: (channelId: Id) => send({ method: 'POST', path: `/channels/${channelId}/ignore-request` }),
     channels: () => send<Channel[]>({ method: 'GET', path: '/users/@me/channels' }).then((x) => arr<Channel>(x)),
     relationships: () => send<Relationship[]>({ method: 'GET', path: '/users/@me/relationships' }).then((x) => arr<Relationship>(x)),
     setRelationship: (userId: Id, type: 'friend' | 'blocked') => send({ method: 'PUT', path: `/users/@me/relationships/${userId}`, body: { type } }),

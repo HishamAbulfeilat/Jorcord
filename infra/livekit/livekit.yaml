@@ -15,7 +15,9 @@ rtc:
     enabled: true
     allow_pause: false          # never pause video streams under congestion, degrade instead
   packet_buffer_size: 1000      # larger buffer helps high-bitrate 4K keyframes / NACK recovery
-  # Uncomment for fixed NAT mapping / cloud:
+  # Single UDP port instead of the range (simplest firewalling): udp_port: 7882
+  # The address ICE candidates advertise. REQUIRED when the browser is not on this machine / when running in Docker
+  # (otherwise the container/interface IP is advertised and the call hangs on "Connecting..."):
   # node_ip: 203.0.113.10
 
 room:

@@ -26,7 +26,7 @@ let unsubs: (() => void)[] = [];
 export function startSession(token: string) {
   endSession(false);
   const gw = getGateway();
-  const names: (keyof Events)[] = ['READY', 'GUILD_CREATE', 'GUILD_UPDATE', 'GUILD_DELETE', 'CHANNEL_CREATE', 'CHANNEL_UPDATE', 'CHANNEL_DELETE', 'ROLE_CREATE', 'ROLE_UPDATE', 'ROLE_DELETE', 'MEMBER_ADD', 'MEMBER_UPDATE', 'MEMBER_REMOVE', 'TYPING_START', 'PRESENCE_UPDATE', 'USER_UPDATE', 'RELATIONSHIP_ADD', 'RELATIONSHIP_REMOVE', 'READ_STATE_UPDATE', 'VOICE_STATE_UPDATE', 'EMOJIS_UPDATE', 'STICKERS_UPDATE', 'THREAD_CREATE', 'THREAD_UPDATE', 'THREAD_DELETE'];
+  const names: (keyof Events)[] = ['READY', 'GUILD_CREATE', 'GUILD_UPDATE', 'GUILD_DELETE', 'CHANNEL_CREATE', 'CHANNEL_UPDATE', 'CHANNEL_DELETE', 'ROLE_CREATE', 'ROLE_UPDATE', 'ROLE_DELETE', 'MEMBER_ADD', 'MEMBER_UPDATE', 'MEMBER_REMOVE', 'TYPING_START', 'PRESENCE_UPDATE', 'USER_UPDATE', 'RELATIONSHIP_ADD', 'RELATIONSHIP_REMOVE', 'READ_STATE_UPDATE', 'VOICE_STATE_UPDATE', 'EMOJIS_UPDATE', 'STICKERS_UPDATE', 'THREAD_CREATE', 'THREAD_UPDATE', 'THREAD_DELETE', 'MESSAGE_REQUEST_UPDATE'];
   let readies = 0;
   for (const n of names) unsubs.push(gw.on(n, (d: any) => { if (n === 'READY' && ++readies > 1) { useMessages.setState({ ch: {} }); usePlatform.setState({ eventsLoaded: {}, stagesLoaded: {} }); } /* missed events after a failed resume: reload open channels */ useData.getState().apply(n, d); }));
   // a bot joining or leaving changes which commands the picker may offer
@@ -103,6 +103,7 @@ function onMessageCreate(m: Message) {
   const roleMention = m.guildId ? m.mentionRoles.some((r) => selfMember(data, m.guildId!)?.roles.includes(r)) : false;
   const mentioned = m.mentions.includes(me.id) || (m.mentionEveryone && !everyoneOff) || (roleMention && !gn?.suppressRoles);
   const isDm = !m.guildId;
+  if (isDm && data.messageRequests[m.channelId]) return; // message requests stay quiet: no badge, sound or notification until accepted
   const rs = data.readStates[m.channelId];
   if (mentioned || isDm) data.setRead(m.channelId, rs?.lastReadId ?? null, (rs?.mentionCount ?? 0) + 1);
   const prefs = useUI.getState().prefs;

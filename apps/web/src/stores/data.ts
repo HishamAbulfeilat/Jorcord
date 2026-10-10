@@ -10,6 +10,8 @@ export interface DataState {
   ready: boolean; me: SelfUser | null;
   guilds: Record<Id, GuildState>; guildOrder: Id[];
   dms: Record<Id, Channel>;
+  /** DM channels that are message requests (non-friends, not accepted yet). */
+  messageRequests: Record<Id, true>;
   relationships: Record<Id, Relationship>;
   readStates: Record<Id, ReadState>;
   presences: Record<Id, Presence>;
@@ -28,7 +30,7 @@ export interface DataState {
   setTyping(channelId: Id, userId: Id): void;
 }
 
-const empty = { ready: false, me: null, guilds: {}, guildOrder: [], dms: {}, relationships: {}, readStates: {}, presences: {}, users: {}, typing: {}, voiceStates: {} };
+const empty = { ready: false, me: null, guilds: {}, guildOrder: [], dms: {}, messageRequests: {}, relationships: {}, readStates: {}, presences: {}, users: {}, typing: {}, voiceStates: {} };
 const rec = <T extends { id: Id }>(xs: T[]): Record<Id, T> => Object.fromEntries(xs.map((x) => [x.id, x]));
 const toGuildState = (g: GuildFull): GuildState => {
   const { channels, roles, members, emojis, stickers, memberCount, ...guild } = g;
@@ -65,7 +67,7 @@ export const useData = create<DataState>((set, get) => ({
     for (const v of p.voiceStates ?? []) if (v.channelId) vs[v.userId] = v;
     set({
       ready: true, me: p.user, guilds, guildOrder: p.guilds.map((g) => g.id), users,
-      dms: rec(p.privateChannels), relationships: Object.fromEntries(p.relationships.map((r) => [r.user.id, r])),
+      dms: rec(p.privateChannels), messageRequests: Object.fromEntries((p.messageRequests ?? []).map((id) => [id, true as const])), relationships: Object.fromEntries(p.relationships.map((r) => [r.user.id, r])),
       readStates: Object.fromEntries((p.readStates ?? []).map((r) => [r.channelId, r])), presences, voiceStates: vs, typing: {},
     });
   },
@@ -97,7 +99,7 @@ export const useData = create<DataState>((set, get) => ({
         return patchGuild(c.guildId, (g) => ({ ...g, channels: { ...g.channels, [c.id]: { ...g.channels[c.id], ...c } } }));
       }
       case 'CHANNEL_DELETE': {
-        if (!d.guildId) return set((st) => { const { [d.id]: _, ...rest } = st.dms; return { dms: rest }; });
+        if (!d.guildId) return set((st) => { const { [d.id]: _, ...rest } = st.dms; return { dms: rest, messageRequests: omit(st.messageRequests, d.id) }; });
         return patchGuild(d.guildId, (g) => { const { [d.id]: _, ...rest } = g.channels; return { ...g, channels: rest }; });
       }
       case 'ROLE_CREATE': case 'ROLE_UPDATE': return patchGuild(d.guildId, (g) => ({ ...g, roles: { ...g.roles, [d.id]: d } }));
@@ -121,6 +123,7 @@ export const useData = create<DataState>((set, get) => ({
         });
         return;
       }
+      case 'MESSAGE_REQUEST_UPDATE': return set((st) => ({ messageRequests: d.request ? { ...st.messageRequests, [d.channelId]: true } : omit(st.messageRequests, d.channelId) }));
       case 'MESSAGE_DELETE': return;
       case 'TYPING_START': { if (d.userId !== s.me?.id) get().setTyping(d.channelId, d.userId); return; }
       case 'PRESENCE_UPDATE': return set((st) => ({

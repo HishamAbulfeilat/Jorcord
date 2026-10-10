@@ -2,6 +2,7 @@ import { snowflakeTime } from '@jorcord/shared';
 import type { Attachment, Channel, Component, Embed, Guild, Member, Message, OverwriteDTO, Poll, Reaction, Role, SelfUser, User } from '@jorcord/shared';
 import type { Ctx } from '../ctx';
 import { iso } from '../lib/ids';
+import { normalizePrivacy } from './privacy';
 
 export const boostLevel = (n: number) => (n >= 14 ? 3 : n >= 7 ? 2 : n >= 2 ? 1 : 0);
 
@@ -19,7 +20,7 @@ export function userDTO(ctx: Ctx, r: any): User {
   };
 }
 export function selfUserDTO(ctx: Ctx, r: any): SelfUser {
-  return { ...userDTO(ctx, r), presence: r.presence, email: r.email, mfaEnabled: !!r.mfa_enabled, verified: !!r.verified, theme: r.theme, settings: r.settings ?? {} };
+  return { ...userDTO(ctx, r), privacy: normalizePrivacy(r.privacy), presence: r.presence, email: r.email, mfaEnabled: !!r.mfa_enabled, verified: !!r.verified, theme: r.theme, settings: r.settings ?? {} };
 }
 export async function usersByIds(ctx: Ctx, ids: string[]): Promise<Map<string, User>> {
   const uniq = [...new Set(ids)];

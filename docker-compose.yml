@@ -25,8 +25,10 @@ services:
       TRUST_PROXY: ${TRUST_PROXY:-false}
       DATABASE_URL: postgres://jorcord:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/jorcord
       REDIS_URL: redis://redis:6379
-      # LiveKit: clients use LIVEKIT_URL (must be reachable from browsers); the server calls the internal API URL.
-      LIVEKIT_URL: ${LIVEKIT_URL:-ws://localhost:7880}
+      # LiveKit signalling URL handed to browsers. `auto` (default) = the server proxies signalling at /livekit on the app's own origin/port,
+      # so it works for localhost, a LAN IP or a domain (and wss behind your TLS proxy) with no extra port. Set an explicit
+      # ws(s)://host:port to bypass the proxy. The server itself always calls the internal API URL below.
+      LIVEKIT_URL: ${LIVEKIT_URL:-auto}
       LIVEKIT_API_URL: http://livekit:7880
       LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:-jorcord}
       LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:?set LIVEKIT_API_SECRET (>= 32 chars)}
@@ -82,8 +84,14 @@ services:
           ${LIVEKIT_API_KEY:-jorcord}: ${LIVEKIT_API_SECRET:?set LIVEKIT_API_SECRET}
         rtc:
           tcp_port: 7881
+          # Media UDP. Default: a port range. Single-port mode (easy firewalling): LIVEKIT_UDP_PORT=7882 + LIVEKIT_UDP_PUBLISH=7882:7882/udp
+          udp_port: ${LIVEKIT_UDP_PORT:-0}
           port_range_start: 50000
           port_range_end: 50200
+          # The address ICE candidates advertise. Inside Docker the default (container IP 172.x) is NOT reachable from your browser,
+          # which is why voice hung on "Connecting…". 127.0.0.1 is right when the browser runs on the Docker host; set your LAN IP for
+          # other devices, or empty + LIVEKIT_USE_EXTERNAL_IP=true on a VPS with a public IP.
+          node_ip: ${LIVEKIT_NODE_IP-127.0.0.1}
           use_external_ip: ${LIVEKIT_USE_EXTERNAL_IP:-false}
           congestion_control: { enabled: true, allow_pause: false }
         room:
@@ -101,11 +109,15 @@ services:
           api_key: ${LIVEKIT_API_KEY:-jorcord}
           urls: ["http://server:3000/api/v1/voice/webhook"]
         turn:
-          enabled: false
+          # Embedded TURN (UDP). For TURN/TLS on 443/5349 see docs/DEPLOY.md (needs certificates).
+          enabled: ${LIVEKIT_TURN_ENABLED:-false}
+          domain: ${LIVEKIT_TURN_DOMAIN:-localhost}
+          udp_port: 3478
     ports:
-      - "7880:7880"          # signalling (put TLS in front for browsers on https sites)
-      - "7881:7881"          # ICE/TCP fallback
-      - "50000-50200:50000-50200/udp"   # media; widen range + mapping for big deployments
+      - "7880:7880"          # signalling; only needed when LIVEKIT_URL is an explicit ws://host:7880 (auto goes through the app port)
+      - "7881:7881"          # ICE/TCP fallback (works when UDP is blocked)
+      - "3478:3478/udp"      # TURN (only used when LIVEKIT_TURN_ENABLED=true)
+      - "${LIVEKIT_UDP_PUBLISH:-50000-50200:50000-50200/udp}"   # media; widen range + mapping for big deployments
 
   minio:
     profiles: [s3]

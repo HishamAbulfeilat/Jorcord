@@ -89,6 +89,7 @@ describe('push delivery', () => {
     await webDevice(a); await webDevice(b); await androidDevice(b);
     const g = await guildWith(); const code = (await api.req('POST', `/guilds/${g.guild.id}/invites`, g.owner.token, {})).body.code; // DMs need a shared server
     await api.req('POST', `/invites/${code}`, a.token); await api.req('POST', `/invites/${code}`, b.token);
+    await api.req('PATCH', '/users/@me', b.token, { privacy: { messageRequests: false } }); // a plain DM, not a message request
     const dm = (await api.req('POST', '/users/@me/channels', a.token, { recipientIds: [b.id] })).body;
     reset();
     await post(a, dm.id, 'hello <@123> there');
@@ -103,11 +104,25 @@ describe('push delivery', () => {
     expect((await api.req('GET', '/users/@me/push-devices', b.token)).body).toHaveLength(0);
   });
 
+  it('message requests never push', async () => {
+    const a = await api.register('rq1'), b = await api.register('rq2');
+    await webDevice(b);
+    const g = await guildWith(); const code = (await api.req('POST', `/guilds/${g.guild.id}/invites`, g.owner.token, {})).body.code;
+    await api.req('POST', `/invites/${code}`, a.token); await api.req('POST', `/invites/${code}`, b.token);
+    const dm = (await api.req('POST', '/users/@me/channels', a.token, { recipientIds: [b.id] })).body;
+    reset(); await post(a, dm.id, 'from a stranger'); await flush();
+    expect(to(b)).toHaveLength(0);
+    await api.req('POST', `/channels/${dm.id}/accept-request`, b.token);
+    reset(); await post(a, dm.id, 'now accepted'); await flush();
+    expect(to(b)).toHaveLength(1);
+  });
+
   it('skips users who are online on a gateway session', async () => {
     const a = await api.register('on1'), b = await api.register('on2');
     await webDevice(b);
     const g = await guildWith(); const code = (await api.req('POST', `/guilds/${g.guild.id}/invites`, g.owner.token, {})).body.code;
     await api.req('POST', `/invites/${code}`, a.token); await api.req('POST', `/invites/${code}`, b.token);
+    await api.req('PATCH', '/users/@me', b.token, { privacy: { messageRequests: false } });
     const dm = (await api.req('POST', '/users/@me/channels', a.token, { recipientIds: [b.id] })).body;
     const w = await WsClient.connect(env.port); await w.identify(b.token);
     reset(); await post(a, dm.id, 'you there?'); await flush();

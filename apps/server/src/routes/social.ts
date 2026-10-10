@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { Perm, has } from '@jorcord/shared';
 import type { Ctx } from '../ctx';
-import { notFound } from '../errors';
+import { badRequest, notFound } from '../errors';
 import { idSchema, limitParam, parse } from '../lib/ids';
 import { limitOrThrow } from '../lib/ratelimit';
 import { channelPermsLite } from '../services/perms';
@@ -66,6 +66,34 @@ export function socialRoutes(app: FastifyInstance, ctx: Ctx) {
     if (!note.trim()) await ctx.db.query('DELETE FROM user_notes WHERE user_id = $1 AND target_id = $2', [req.userId, userId]);
     else await ctx.db.query(`INSERT INTO user_notes (user_id, target_id, note) VALUES ($1,$2,$3) ON CONFLICT (user_id, target_id) DO UPDATE SET note = $3, updated_at = now()`, [req.userId, userId, note]);
     await ctx.hub.toUser(req.userId, 'USER_NOTE_UPDATE', { userId, note: note.trim() ? note : null });
+    return reply.code(204).send();
+  });
+
+  // ---------- message requests ----------
+  /** Accept a message request: the DM moves to the regular list. */
+  app.post('/channels/:id/accept-request', async (req, reply) => {
+    const { id } = parse(z.object({ id: idSchema }), req.params);
+    const [p] = await ctx.db.query('UPDATE dm_participants SET request = false WHERE channel_id = $1 AND user_id = $2 AND request RETURNING channel_id', [id, req.userId]);
+    if (!p) {
+      const [mine] = await ctx.db.query('SELECT 1 AS x FROM dm_participants WHERE channel_id = $1 AND user_id = $2', [id, req.userId]);
+      if (!mine) throw notFound('Channel');
+    } else await ctx.hub.toUser(req.userId, 'MESSAGE_REQUEST_UPDATE', { channelId: id, request: false });
+    return reply.code(204).send();
+  });
+  /** Ignore a message request: the conversation is deleted for both sides and the sender cannot open a new DM to me. */
+  app.post('/channels/:id/ignore-request', async (req, reply) => {
+    const { id } = parse(z.object({ id: idSchema }), req.params);
+    limitOrThrow(ctx.rl, `ignore-req:${req.userId}`, 30, 60_000, ctx.config.rateLimit);
+    const [mine] = await ctx.db.query('SELECT request FROM dm_participants WHERE channel_id = $1 AND user_id = $2', [id, req.userId]);
+    if (!mine) throw notFound('Channel');
+    if (!mine.request) throw badRequest('This conversation is not a message request');
+    const parts = (await ctx.db.query('SELECT user_id FROM dm_participants WHERE channel_id = $1', [id])).map((r) => r.user_id as string);
+    await ctx.db.tx(async (q) => {
+      for (const o of parts.filter((u) => u !== req.userId)) await q.query('INSERT INTO dm_ignores (user_id, other_id) VALUES ($1,$2) ON CONFLICT DO NOTHING', [req.userId, o]);
+      await q.query('DELETE FROM channels WHERE id = $1', [id]);
+    });
+    await ctx.pcache.invalidate({ k: 'dm', channelId: id });
+    await ctx.hub.toUsers(parts, 'CHANNEL_DELETE', { id, guildId: null });
     return reply.code(204).send();
   });
 }

@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { Loader2 } from 'lucide-react';
 import { MessageSquare, Menu, Mic, MicOff, Phone, PhoneOff, Radio, Signal, Video, Volume2, Headphones, VolumeX, MonitorUp, Camera, CameraOff } from 'lucide-react';
 import type { Channel } from '@jorcord/shared';
 import { Perm } from '@jorcord/shared';
@@ -14,6 +15,7 @@ import { cx, dmName } from '@/lib/format';
 import { Tip } from '@/components/ui/Tooltip';
 import { useShallow } from 'zustand/react/shallow';
 import { ControlBar, ScreenSharePopover } from './controls';
+import { ConnectionPopover, DiagnosticsPanel, useConnectingElapsed } from './Troubleshoot';
 import { CallSurface, Lobby, StageSurface, VoiceBanners } from './Room';
 import { NetBars } from './tiles';
 import { getVoiceClient, joinVoice, leaveVoice } from './controller';
@@ -39,7 +41,7 @@ export function VoiceChannelView({ channel }: { channel: Channel }) {
   const mobile = useIsMobile(); const setLeft = useUI((s) => s.setLeftDrawer); const openModal = useUI((s) => s.openModal);
   const perms = useGuildPerms(channel.guildId ?? undefined, channel);
   const users = useChannelVoiceUsers(channel.id);
-  const conn = useVoiceUI((s) => s.conn); const cid = useVoiceUI((s) => s.connectedChannelId);
+  const conn = useVoiceUI((s) => s.conn); const cid = useVoiceUI((s) => s.connectedChannelId); const failure = useVoiceUI((s) => s.failure);
   const inHere = cid === channel.id && conn !== 'idle';
   const snap = useVoiceSnapshot();
   const mine = inHere && snap.channelId === channel.id;
@@ -67,17 +69,30 @@ export function VoiceChannelView({ channel }: { channel: Channel }) {
           <>
             <VoiceBanners />
             {snap.status === 'connecting' || conn === 'connecting'
-              ? <div className="flex flex-1 items-center justify-center text-muted" role="status">{t('Connecting to voice…')}</div>
+              ? <ConnectingView />
               : stage ? <StageSurface channelId={channel.id} /> : <CallSurface />}
             <ControlBar onSettings={() => openModal({ kind: 'voiceSettings' })} className="shrink-0 safe-bottom" />
           </>
         ) : (
           <Lobby name={channel.name ?? 'Voice'} stage={stage} users={users} busy={conn === 'connecting' && cid === channel.id} icon={<Icon size={40} />}
-            disabledReason={noConnect} onJoin={() => void joinVoice(channel.id)} />
+            failure={failure?.channelId === channel.id ? failure : null} disabledReason={noConnect} onJoin={() => void joinVoice(channel.id)} />
         )}
       </div>
       {chat && <VoiceChatPanel channel={channel} onClose={() => setChat(false)} />}
       </div>
+    </div>
+  );
+}
+
+/** Join in progress: elapsed time, Cancel, and a nudge after a few seconds so it never looks hung. */
+function ConnectingView() {
+  const secs = useConnectingElapsed();
+  return (
+    <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center text-muted" role="status" data-testid="voice-connecting">
+      <Loader2 size={28} className="animate-spin" />
+      <div>{t('Connecting to voice…')}</div>
+      {secs >= 5 && <div className="max-w-sm text-xs">{t('This is taking longer than usual. It will stop with the reason after 15 seconds.')}</div>}
+      <button className="btn btn-secondary" onClick={() => void leaveVoice()}>{t('Cancel')}</button>
     </div>
   );
 }
@@ -87,7 +102,7 @@ export function VoiceDock() {
   const conn = useVoiceUI((s) => s.conn); const cid = useVoiceUI((s) => s.connectedChannelId);
   const ch = useData((s) => findChannel(s, cid)); const guild = useData((s) => (ch?.guildId ? s.guilds[ch.guildId]?.guild : undefined)); const me = useData((s) => s.me?.id);
   const snap = useVoiceSnapshot(); const nav = useNav(); const openModal = useUI((s) => s.openModal);
-  const [pop, setPopLocal] = useState(false);
+  const [pop, setPopLocal] = useState(false); const [details, setDetails] = useState(false); const [diag, setDiag] = useState(false);
   const globalPop = useVoiceUI((s) => s.sharePop); const setGlobalPop = useVoiceUI((s) => s.setSharePop); const barMounted = useVoiceUI((s) => s.barMounted);
   const setPop = (v: boolean) => { setPopLocal(v); setGlobalPop(v); };
   if (!cid || conn === 'idle') return null;
@@ -97,13 +112,17 @@ export function VoiceDock() {
     <div data-testid="voice-dock" className="relative border-b border-divider/70 bg-[rgb(var(--rail)/0.35)] px-2 pb-2 pt-2">
       <div className="flex items-center gap-2">
         <div className="min-w-0 flex-1">
-          <button onClick={() => ch && nav.go(ch.guildId, ch.id)} className={cx('flex items-center gap-1.5 text-sm font-semibold hover:underline', conn === 'connected' ? 'text-success' : 'text-warn')}>
-            <Signal size={16} />{label}
+          <button aria-label={`${label}: ${t('Connection details')}`} aria-expanded={details} onClick={() => setDetails((v) => !v)} className={cx('flex items-center gap-1.5 text-sm font-semibold hover:underline', conn === 'connected' ? 'text-success' : 'text-warn')}>
+            {conn === 'connected' ? <Signal size={16} /> : <Loader2 size={16} className="animate-spin" />}{label}
+            {conn === 'reconnecting' && snap.reconnect.attempt > 0 && <span className="text-[11px] font-medium">({snap.reconnect.attempt}/{snap.reconnect.maxAttempts})</span>}
           </button>
           <div className="truncate text-xs text-muted">{ch ? (isDm ? dmName(ch, me) : `${ch.name} / ${guild?.name ?? ''}`) : ''}</div>
         </div>
         <Tip text="Disconnect" side="top"><button aria-label={t('Disconnect')} onClick={() => void leaveVoice()} className="flex h-8 w-8 items-center justify-center rounded text-interactive hover:bg-hover hover:text-interactive-hover"><PhoneOff size={20} /></button></Tip>
       </div>
+      {conn === 'connected' && snap.connection?.rttMs != null && <div data-testid="voice-dock-ping" className="mt-0.5 text-[11px] text-muted">{snap.connection.rttMs} ms{snap.connection.packetLossPct ? ` · ${snap.connection.packetLossPct}% ${t('loss')}` : ''}</div>}
+      {details && !diag && <ConnectionPopover onClose={() => setDetails(false)} onDisconnect={() => { setDetails(false); void leaveVoice(); }} onDiagnostics={() => { setDetails(false); setDiag(true); }} />}
+      {diag && <DiagnosticsPanel onClose={() => setDiag(false)} />}
       <div className="relative mt-2 grid grid-cols-3 gap-1.5">
         <button aria-label={snap.cameraOn ? 'Turn Off Camera' : 'Turn On Camera'} aria-pressed={snap.cameraOn} onClick={() => getVoiceClient().setCamera(!snap.cameraOn).catch(() => {})} className={cx('flex h-8 items-center justify-center rounded bg-[rgb(var(--active))] text-header hover:bg-[rgb(var(--divider))]', snap.cameraOn && '!bg-white !text-black')}>{snap.cameraOn ? <Camera size={18} /> : <CameraOff size={18} />}</button>
         {snap.platform.canScreenShare

@@ -1,0 +1,35 @@
+port: 7895
+log_level: warn
+keys:
+  jorcord: e2e-livekit-secret-0123456789abcdef0123
+rtc:
+  tcp_port: 7896
+  # Media UDP. Default: a port range. Single-port mode (easy firewalling): LIVEKIT_UDP_PORT=7882 + LIVEKIT_UDP_PUBLISH=7882:7882/udp
+  udp_port: 0
+  port_range_start: 52000
+  port_range_end: 52100
+  # The address ICE candidates advertise. Inside Docker the default (container IP 172.x) is NOT reachable from your browser,
+  # which is why voice hung on "Connecting…". 127.0.0.1 is right when the browser runs on the Docker host; set your LAN IP for
+  # other devices, or empty + LIVEKIT_USE_EXTERNAL_IP=true on a VPS with a public IP.
+  node_ip: 203.0.113.9
+  use_external_ip: false
+  congestion_control: { enabled: true, allow_pause: false }
+room:
+  auto_create: true
+  empty_timeout: 300
+  departure_timeout: 20
+  enabled_codecs:
+    - { mime: audio/opus }
+    - { mime: audio/red }
+    - { mime: video/vp8 }
+    - { mime: video/vp9 }
+    - { mime: video/av1 }
+    - { mime: video/h264 }
+webhook:
+  api_key: jorcord
+  urls: ["http://127.0.0.1:3120/api/v1/voice/webhook"]
+turn:
+  # Embedded TURN (UDP). For TURN/TLS on 443/5349 see docs/DEPLOY.md (needs certificates).
+  enabled: false
+  domain: localhost
+  udp_port: 3497

@@ -6,13 +6,13 @@ export const rnd = () => Math.random().toString(36).slice(2, 8);
 export const DESKTOP = { width: 1440, height: 900 };
 export const MOBILE = { width: 390, height: 844 };
 
-export async function newUser(browser: Browser, label: string, o: { mobile?: boolean; viewport?: { width: number; height: number } } = {}): Promise<User> {
+export async function newUser(browser: Browser, label: string, o: { mobile?: boolean; viewport?: { width: number; height: number }; baseURL?: string } = {}): Promise<User> {
   const username = `${label}${rnd()}`.toLowerCase();
   const ctx = await browser.newContext({
     viewport: o.viewport ?? (o.mobile ? MOBILE : DESKTOP),
     ...(o.mobile ? { isMobile: true, hasTouch: true, deviceScaleFactor: 2, userAgent: 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36' } : {}),
     permissions: ['microphone', 'camera'],
-    baseURL: 'http://127.0.0.1:5273',
+    baseURL: o.baseURL ?? 'http://127.0.0.1:5273',
     serviceWorkers: 'block',
   });
   const page = await ctx.newPage();

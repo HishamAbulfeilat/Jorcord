@@ -12,6 +12,7 @@ import { clearVoiceState } from '../services/voice';
 import { uninstallBot } from '../services/apps';
 import { removeGroupRecipient } from '../services/dms';
 import { channelAccess } from '../services/perms';
+import { canSendFriendRequest, normalizePrivacy, privacyOf } from '../services/privacy';
 import { liveStatus, channelDTO, channelsDTO, getUser, GUILD_SELECT, guildDTO, selfUserDTO, userDTO, usersByIds } from '../services/serializers';
 
 const patchMe = z.object({
@@ -22,6 +23,10 @@ const patchMe = z.object({
   themeColors: z.tuple([z.string().regex(/^#[0-9a-fA-F]{6}$/), z.string().regex(/^#[0-9a-fA-F]{6}$/)]).nullable(),
   theme: z.enum(['dark', 'light', 'amoled']),
   settings: z.record(z.unknown()).refine((v) => JSON.stringify(v).length <= 16_384, 'settings too large'),
+  privacy: z.object({
+    allowDmsFromServerMembers: z.boolean(), messageRequests: z.boolean(), showActivity: z.boolean(),
+    friendRequests: z.object({ everyone: z.boolean(), friendsOfFriends: z.boolean(), serverMembers: z.boolean() }).partial().strict(),
+  }).partial().strict(),
 }).partial().strict();
 
 const COLS: Record<string, string> = { displayName: 'display_name', bio: 'bio', pronouns: 'pronouns', avatar: 'avatar', banner: 'banner', accentColor: 'accent_color', customStatus: 'custom_status', themeColors: 'theme_colors', theme: 'theme', settings: 'settings' };
@@ -45,6 +50,12 @@ export function userRoutes(app: FastifyInstance, ctx: Ctx) {
       const col = COLS[k]; if (!col) continue; // whitelist only
       vals.push(k === 'customStatus' || k === 'settings' || k === 'themeColors' ? (v === null ? null : JSON.stringify(v)) : v);
       sets.push(`${col} = $${vals.length}${k === 'customStatus' || k === 'settings' || k === 'themeColors' ? '::jsonb' : ''}`);
+    }
+    if (b.privacy) { // merge over what is stored so a partial update never resets the other switches
+      const cur = normalizePrivacy((await ctx.db.query('SELECT privacy FROM users WHERE id = $1', [req.userId]))[0]?.privacy);
+      const inc = b.privacy as Record<string, any>;
+      const next = normalizePrivacy({ ...cur, ...inc, friendRequests: { ...cur.friendRequests, ...(inc.friendRequests ?? {}) } });
+      vals.push(JSON.stringify(next)); sets.push(`privacy = $${vals.length}::jsonb`);
     }
     if (sets.length) await ctx.db.query(`UPDATE users SET ${sets.join(', ')} WHERE id = $1`, vals);
     const [row] = await ctx.db.query('SELECT * FROM users WHERE id = $1', [req.userId]);
@@ -182,7 +193,7 @@ export function userRoutes(app: FastifyInstance, ctx: Ctx) {
 
   // ---------- DMs ----------
   app.get('/users/@me/channels', async (req) => {
-    const rows = await ctx.db.query('SELECT c.* FROM channels c JOIN dm_participants p ON p.channel_id = c.id WHERE p.user_id = $1 ORDER BY c.last_message_id DESC NULLS LAST, c.id DESC', [req.userId]);
+    const rows = await ctx.db.query('SELECT c.* FROM channels c JOIN dm_participants p ON p.channel_id = c.id WHERE p.user_id = $1 AND NOT (p.request AND c.last_message_id IS NULL) ORDER BY c.last_message_id DESC NULLS LAST, c.id DESC', [req.userId]);
     return channelsDTO(ctx, rows);
   });
   app.post('/users/@me/channels', async (req, reply) => {
@@ -194,12 +205,6 @@ export function userRoutes(app: FastifyInstance, ctx: Ctx) {
     if (found.length !== others.length) throw notFound('User');
     const blocked = await ctx.db.query(`SELECT 1 AS x FROM relationships WHERE type = 'blocked' AND ((user_id = $1 AND other_id = ANY($2::text[])) OR (other_id = $1 AND user_id = ANY($2::text[]))) LIMIT 1`, [req.userId, others]);
     if (blocked.length) throw forbidden('Cannot message this user', 'BLOCKED');
-    for (const o of others) { // must be friends or share a guild (anti-spam)
-      const [ok] = await ctx.db.query(
-        `SELECT 1 AS x WHERE EXISTS (SELECT 1 FROM relationships WHERE user_id = $1 AND other_id = $2 AND type = 'friend')
-            OR EXISTS (SELECT 1 FROM members a JOIN members b ON a.guild_id = b.guild_id WHERE a.user_id = $1 AND b.user_id = $2)`, [req.userId, o]);
-      if (!ok) throw forbidden('You need to be friends or share a server with this user', 'NO_SHARED_CONTEXT');
-    }
     const all = [req.userId, ...others];
     const isGroup = others.length > 1;
     const dmKey = isGroup ? null : [...all].sort().join(':');
@@ -207,15 +212,29 @@ export function userRoutes(app: FastifyInstance, ctx: Ctx) {
       const [ex] = await ctx.db.query('SELECT * FROM channels WHERE dm_key = $1', [dmKey]);
       if (ex) return channelDTO(ctx, ex);
     }
+    const friendIds = new Set((await ctx.db.query(`SELECT other_id FROM relationships WHERE user_id = $1 AND other_id = ANY($2::text[]) AND type = 'friend'`, [req.userId, others])).map((r) => r.other_id as string));
+    const requestFor = new Set<string>();
+    for (const o of others) { // must be friends or share a guild (anti-spam)
+      const [ok] = await ctx.db.query(
+        `SELECT 1 AS x WHERE EXISTS (SELECT 1 FROM members a JOIN members b ON a.guild_id = b.guild_id WHERE a.user_id = $1 AND b.user_id = $2) OR $3::boolean`, [req.userId, o, friendIds.has(o)]);
+      if (!ok) throw forbidden('You need to be friends or share a server with this user', 'NO_SHARED_CONTEXT');
+      if (friendIds.has(o)) continue;
+      const [ign] = await ctx.db.query('SELECT 1 AS x FROM dm_ignores WHERE user_id = $1 AND other_id = $2', [o, req.userId]);
+      if (ign) throw forbidden('This user does not accept messages from you', 'DM_DISABLED');
+      const pv = await privacyOf(ctx, o);
+      if (!pv.allowDmsFromServerMembers) throw forbidden('This user does not accept direct messages from server members', 'DM_DISABLED');
+      if (!isGroup && pv.messageRequests) requestFor.add(o);
+    }
     const id = snowflake();
     await ctx.db.tx(async (q) => {
       await q.query('INSERT INTO channels (id, guild_id, type, dm_key, owner_id, name) VALUES ($1,NULL,$2,$3,$4,NULL)', [id, isGroup ? 'group_dm' : 'dm', dmKey, isGroup ? req.userId : null]);
-      for (const u of all) await q.query('INSERT INTO dm_participants (channel_id, user_id) VALUES ($1,$2)', [id, u]);
+      for (const u of all) await q.query('INSERT INTO dm_participants (channel_id, user_id, request) VALUES ($1,$2,$3)', [id, u, requestFor.has(u)]);
     });
     await ctx.pcache.invalidate({ k: 'dm', channelId: id });
     const [row] = await ctx.db.query('SELECT * FROM channels WHERE id = $1', [id]);
     const dto = await channelDTO(ctx, row);
-    await ctx.hub.toUsers(all, 'CHANNEL_CREATE', dto);
+    // a message request stays invisible to its recipient until the first message arrives (see createMessage)
+    await ctx.hub.toUsers(all.filter((u) => !requestFor.has(u)), 'CHANNEL_CREATE', dto);
     return reply.code(201).send(dto);
   });
 
@@ -249,6 +268,7 @@ export function userRoutes(app: FastifyInstance, ctx: Ctx) {
     if (theirs?.type === 'blocked') throw forbidden('Cannot send a friend request to this user', 'BLOCKED');
     if (mine?.type === 'friend') return { type: 'friend' };
     if (mine?.type === 'outgoing') return { type: 'outgoing' };
+    if (theirs?.type !== 'outgoing' && !(await canSendFriendRequest(ctx, me, other))) throw forbidden('Cannot send a friend request to this user', 'FRIEND_REQUEST_BLOCKED');
     if (theirs?.type === 'outgoing') { // they already asked us: accept
       await upsert(me, other, 'friend'); await upsert(other, me, 'friend');
       await push(me, other, 'friend'); await push(other, me, 'friend');

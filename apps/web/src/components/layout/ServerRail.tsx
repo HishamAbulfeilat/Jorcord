@@ -116,8 +116,9 @@ export function ServerRail({ onNavigate }: { onNavigate?: () => void }) {
   const items = useMemo(() => layout.items(), [order, layout.order, layout.folders]); // eslint-disable-line
   const dms = useData((s) => s.dms); const readStates = useData((s) => s.readStates);
   const { isHome, channelId } = useRouteIds(); const nav = useNav(); const open = useUI((s) => s.openModal);
-  const dmMentions = useMemo(() => Object.values(dms).reduce((a, c) => a + (readStates[c.id]?.mentionCount ?? 0), 0), [dms, readStates]);
-  const unreadDms = useData(useShallow((s) => Object.values(s.dms).filter((c) => channelUnread(s, c).unread && channelUnread(s, c).mentions > 0).sort((a, b) => (b.lastMessageId ?? '').localeCompare(a.lastMessageId ?? '')).slice(0, 6).map((c) => c.id)));
+  const requests = useData((s) => s.messageRequests);
+  const dmMentions = useMemo(() => Object.values(dms).reduce((a, c) => a + (requests[c.id] ? 0 : readStates[c.id]?.mentionCount ?? 0), 0), [dms, readStates, requests]);
+  const unreadDms = useData(useShallow((s) => Object.values(s.dms).filter((c) => !s.messageRequests[c.id] && channelUnread(s, c).unread && channelUnread(s, c).mentions > 0).sort((a, b) => (b.lastMessageId ?? '').localeCompare(a.lastMessageId ?? '')).slice(0, 6).map((c) => c.id)));
   const [mergeTarget, setMerge] = useState<string | null>(null);
   const sensors = useSensors(useSensor(MouseSensor, { activationConstraint: { distance: 8 } }), useSensor(TouchSensor, { activationConstraint: { delay: 350, tolerance: 6 } }));
   const flat = useMemo(() => items.flatMap((i) => (i.kind === 'guild' ? [i.id] : [FOLDER_PREFIX + i.id, ...(layout.openFolders[i.id] ? i.guildIds : [])])), [items, layout.openFolders]);

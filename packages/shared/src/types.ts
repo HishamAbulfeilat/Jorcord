@@ -12,7 +12,19 @@ export interface User {
   themeColors?: [string, string] | null;
   presence?: Presence;
 }
-export interface SelfUser extends User { email: string; mfaEnabled: boolean; verified: boolean; theme: 'dark' | 'light' | 'amoled'; settings: Record<string, unknown> }
+/** Private to the owner; enforced server-side. */
+export interface Privacy {
+  /** Let people who only share a server with me start a DM. Friends can always DM. */
+  allowDmsFromServerMembers: boolean;
+  /** DMs from non-friends land in Message Requests instead of the main DM list. */
+  messageRequests: boolean;
+  /** Share my activity (what I am playing/listening to) with others. */
+  showActivity: boolean;
+  /** Who may send me a friend request (any ticked group; none ticked = nobody). */
+  friendRequests: { everyone: boolean; friendsOfFriends: boolean; serverMembers: boolean };
+}
+export const DEFAULT_PRIVACY: Privacy = { allowDmsFromServerMembers: true, messageRequests: true, showActivity: true, friendRequests: { everyone: true, friendsOfFriends: true, serverMembers: true } };
+export interface SelfUser extends User { privacy: Privacy; email: string; mfaEnabled: boolean; verified: boolean; theme: 'dark' | 'light' | 'amoled'; settings: Record<string, unknown> }
 export interface Guild {
   id: Id; name: string; icon: string | null; banner: string | null; description: string | null;
   ownerId: Id; systemChannelId: Id | null; rulesChannelId: Id | null; boostLevel: number; boostCount: number;

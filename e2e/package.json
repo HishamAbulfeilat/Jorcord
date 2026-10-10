@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "e2e": "playwright test -c playwright.config.ts",
-    "screenshots": "SHOTS=1 playwright test -c playwright.config.ts screenshots"
+    "screenshots": "SHOTS=1 playwright test -c playwright.config.ts screenshots",
+    "e2e:voice-prod": "playwright test -c playwright.prod.config.ts"
   }
 }

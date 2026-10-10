@@ -1,5 +1,5 @@
 /** Static mock dataset for the /demo route (no server needed). */
-import { Perm, DEFAULT_EVERYONE, snowflake } from '@jorcord/shared';
+import { Perm, DEFAULT_EVERYONE, DEFAULT_PRIVACY, snowflake } from '@jorcord/shared';
 import type { Channel, GuildFull, Member, Message, Presence, ReadyPayload, Role, User, Embed, Attachment } from '@jorcord/shared';
 
 const NOW = Date.now();
@@ -11,7 +11,7 @@ const avatar = (c: string, l: string) => svg(128, 128, c, '#222', l).replace('fo
 
 const mk = (id: string, username: string, displayName: string | null, extra: Partial<User> = {}): User => ({ id, username, displayName, avatar: null, banner: null, accentColor: null, bio: null, pronouns: null, bot: false, createdAt: iso(60 * 24 * 200), ...extra });
 
-export const ME = { ...mk('1001', 'hisham', 'Hisham', { bio: 'Building **Jorcord**. Coffee, code, and *questionable* puns.', pronouns: 'he/him', accentColor: '#5865f2', customStatus: { text: 'Shipping the web client', emoji: null } }), email: 'hisham@example.com', mfaEnabled: false, verified: true, theme: 'dark' as const, settings: {} };
+export const ME = { ...mk('1001', 'hisham', 'Hisham', { bio: 'Building **Jorcord**. Coffee, code, and *questionable* puns.', pronouns: 'he/him', accentColor: '#5865f2', customStatus: { text: 'Shipping the web client', emoji: null } }), email: 'hisham@example.com', privacy: DEFAULT_PRIVACY, mfaEnabled: false, verified: true, theme: 'dark' as const, settings: {} };
 const alice = mk('1002', 'alice', 'Alice Chen', { bio: 'Designer. Pixel pusher.', pronouns: 'she/her' });
 const bob = mk('1003', 'bobby', 'Bob', { customStatus: { text: 'In a meeting', emoji: null } });
 const charlie = mk('1004', 'charlie', 'Charlie');
