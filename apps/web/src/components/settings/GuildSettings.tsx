@@ -27,6 +27,7 @@ import { SoundboardTab } from '@/components/Soundboard';
 import { ServerTagEditor } from './CosmeticsPicker';
 import { SafetyTab } from './SafetyTab';
 import { AutoModTab } from './AutoModTab';
+import { BoostTab } from './BoostTab';
 import { OnboardingTab } from './OnboardingTab';
 import { TemplateTab, WidgetTab, InsightsTab, VanityUrl } from './ServerExtrasTabs';
 import { AUDIT_FILTER_GROUPS, actionLabel, entryDetail, entryType } from '@/lib/audit';
@@ -62,7 +63,7 @@ export function GuildSettings({ guildId, initialTab }: { guildId: string; initia
       {tab === 'servertag' && <ServerTagTab guildId={guildId} />}
       {tab === 'integrations' && <IntegrationsTab guildId={guildId} />}
       {tab === 'commands' && <CommandPermissions guildId={guildId} />}
-      {tab === 'boosts' && <Boosts guildId={guildId} />}
+      {tab === 'boosts' && <BoostTab guildId={guildId} canManage={can(perms, Perm.MANAGE_GUILD)} />}
       {tab === 'members' && <MembersTab guildId={guildId} />}
       {tab === 'invites' && <InvitesTab guildId={guildId} />}
       {tab === 'automod' && <AutoModTab guildId={guildId} />}
@@ -140,21 +141,6 @@ function EmojiTab({ guildId }: { guildId: string }) {
     <div className="mb-6 flex flex-wrap items-end gap-3 rounded-lg bg-side p-3"><IconPicker value={img} onChange={setImg} label={t('Image')} size={56} /><div className="min-w-[160px] flex-1"><span className="label">{t('Name')}</span><input className="field" value={name} maxLength={32} onChange={(e) => setName(e.target.value.replace(/[^\w]/g, ''))} placeholder={t('emoji_name')} /></div><button disabled={!img || name.length < 2} className="btn btn-primary btn-lg" onClick={add}>{t('Upload')}</button></div>
     {!g.emojis.length && <Empty icon={<Smile size={40} />} title={t('No custom emoji yet')} />}
     <ul>{g.emojis.map((e) => <li key={e.id} className="flex items-center gap-3 border-b border-divider/50 py-2"><img loading="lazy" decoding="async" src={fileUrl(e.url) ?? e.url} alt="" className="h-8 w-8 object-contain" /><span className="flex-1 font-mono text-sm">:{e.name}:</span><button className="btn btn-secondary" onClick={() => useUI.getState().openModal({ kind: 'prompt', title: 'Rename Emoji', label: 'Name', initial: e.name, onSubmit: (v) => api.guilds.patchEmoji(guildId, e.id, { name: v }).then(() => useData.getState().apply('EMOJIS_UPDATE', { guildId, emojis: g.emojis.map((x) => (x.id === e.id ? { ...x, name: v } : x)) })).catch(toastError) })}>{t('Rename')}</button><button aria-label={`Delete ${e.name}`} className="p-2 text-danger" onClick={() => api.guilds.deleteEmoji(guildId, e.id).then(() => useData.getState().apply('EMOJIS_UPDATE', { guildId, emojis: g.emojis.filter((x) => x.id !== e.id) })).catch(toastError)}><Trash2 size={16} /></button></li>)}</ul>
-  </>);
-}
-
-function Boosts({ guildId }: { guildId: string }) {
-  const g = useData((s) => s.guilds[guildId])!.guild; const [busy, setBusy] = useState(false);
-  const tiers = [{ n: 2, label: 'Level 1', perks: ['Animated server icon', '128 kbps voice', '+50 emoji slots'] }, { n: 7, label: 'Level 2', perks: ['Server banner', '256 kbps voice', '1080p 60fps screen share'] }, { n: 14, label: 'Level 3', perks: ['Vanity invite URL', '384 kbps voice', '4K 60fps screen share'] }];
-  const next = tiers.find((t) => g.boostCount < t.n);
-  return (<>
-    <H1>{t('Server Boost')}</H1>
-    <div className="mb-6 overflow-hidden rounded-xl bg-gradient-to-br from-brand to-[#eb459e] p-6 text-white">
-      <div className="flex items-center gap-3"><Rocket size={36} /><div><div className="text-2xl font-extrabold">Level {g.boostLevel}</div><div className="text-sm opacity-90">{g.boostCount} boost{g.boostCount === 1 ? '' : 's'} • Boosting is always free on Jorcord</div></div></div>
-      {next && <div className="mt-4"><div className="mb-1 flex justify-between text-xs font-semibold"><span>{g.boostCount} / {next.n} for {next.label}</span></div><div className="h-2 overflow-hidden rounded-full bg-black/30"><div className="h-full bg-white" style={{ width: `${Math.min(100, (g.boostCount / next.n) * 100)}%` }} /></div></div>}
-      <button disabled={busy} onClick={async () => { setBusy(true); try { const u = await api.guilds.boost(guildId); useData.getState().apply('GUILD_UPDATE', { ...g, ...u }); toast(t('Thanks for boosting!'), 'success'); } catch (e) { toastError(e); } setBusy(false); }} className="btn btn-lg mt-5 bg-white font-bold text-brand hover:bg-white/90">{t('Boost This Server')}</button>
-    </div>
-    <div className="grid gap-3 sm:grid-cols-3">{tiers.map((t, i) => <div key={t.label} className={cx('rounded-lg border p-4', g.boostLevel > i ? 'border-brand bg-brand/10' : 'border-divider bg-side')}><div className="mb-1 font-bold text-header">{t.label} <span className="text-xs font-normal text-muted">{t.n} boosts</span></div><ul className="space-y-1 text-sm text-muted">{t.perks.map((p) => <li key={p}>✓ {p}</li>)}</ul></div>)}</div>
   </>);
 }
 

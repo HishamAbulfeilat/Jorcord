@@ -69,7 +69,7 @@ describe('AutoMod v3', () => {
     expect((await say(u, general.id, 'a SPOILER here')).status).toBe(201); // alert-only: not blocked
     const log = (await history(owner, alerts.id)).find((m: any) => m.embeds.length);
     expect(log).toBeTruthy();
-    expect(log.author.username).toBe('AutoMod');
+    expect(log.author).toMatchObject({ username: 'AutoMod', bot: true }); expect(log.author.id).not.toBe(owner.id);
     expect(log.embeds[0]).toMatchObject({ type: 'rich', title: 'AutoMod: Spoilers', description: 'a SPOILER here' });
     expect(log.embeds[0].author).toBe(u.username);
     const fields = Object.fromEntries(log.embeds[0].fields.map((f: any) => [f.name, f.value]));

@@ -6,6 +6,7 @@ import type { Ctx } from '../ctx';
 import { ApiError, badRequest, conflict, forbidden, notFound } from '../errors';
 import { assetUrl, idSchema, iso, limitParam, parse } from '../lib/ids';
 import { limitOrThrow } from '../lib/ratelimit';
+import { addBoosts, boostSummary, MAX_BOOSTS_PER_REQUEST, removeBoost, slotLimits, syncBoosterRole } from '../services/boosts';
 import { rowActions, testRules, validateRegexPatterns } from '../services/automod';
 import { audit, buildGuildFull, createGuild, GUILD_TEMPLATES } from '../services/guilds';
 import { postSystemMessage } from '../services/messages';
@@ -109,16 +110,35 @@ export function guildRoutes(app: FastifyInstance, ctx: Ctx) {
     return rows.map((r) => ({ ...guildDTO(r), approxMembers: r.approx }));
   });
 
-  // ---------- boosts (free) ----------
+  // ---------- boosts (free, unlimited) ----------
+  app.get('/guilds/:id/boosts', async (req) => {
+    const { id } = parse(gid, req.params); await guildAccess(ctx, req.userId, id);
+    return boostSummary(ctx, id, req.userId);
+  });
   app.post('/guilds/:id/boosts', async (req, reply) => {
+    const { id } = parse(gid, req.params);
+    const b = parse(z.object({ count: z.number().int().min(1).max(MAX_BOOSTS_PER_REQUEST).optional() }).strict(), req.body);
+    limitOrThrow(ctx.rl, `boost:${req.userId}`, 30, 3600_000, ctx.config.rateLimit);
+    await guildAccess(ctx, req.userId, id);
+    await addBoosts(ctx, id, req.userId, b.count ?? 1);
+    return reply.code(201).send((await getGuildDTO(ctx, id))!);
+  });
+  /** Takes back one of your boosts. */
+  app.delete('/guilds/:id/boosts', async (req) => {
     const { id } = parse(gid, req.params);
     limitOrThrow(ctx.rl, `boost:${req.userId}`, 30, 3600_000, ctx.config.rateLimit);
     await guildAccess(ctx, req.userId, id);
-    await ctx.db.query('INSERT INTO boosts (id, guild_id, user_id) VALUES ($1,$2,$3)', [snowflake(), id, req.userId]);
-    const dto = (await getGuildDTO(ctx, id))!;
-    await ctx.hub.toGuild(id, 'GUILD_UPDATE', dto);
-    if (dto.systemChannelId) await postSystemMessage(ctx, dto.systemChannelId, req.userId, 'boost', '').catch(() => {});
-    return reply.code(201).send(dto);
+    if (!(await removeBoost(ctx, id, req.userId))) throw notFound('Boost');
+    return boostSummary(ctx, id, req.userId);
+  });
+  app.patch('/guilds/:id/boosts/settings', async (req) => {
+    const { id } = parse(gid, req.params);
+    const b = parse(z.object({ announce: z.boolean(), boosterRole: z.boolean() }).partial().strict(), req.body);
+    need(guildPerms(await guildAccess(ctx, req.userId, id)), Perm.MANAGE_GUILD);
+    if (b.announce !== undefined) await ctx.db.query('UPDATE guilds SET boost_announce = $2 WHERE id = $1', [id, b.announce]);
+    if (b.boosterRole !== undefined) { await ctx.db.query('UPDATE guilds SET booster_role_enabled = $2 WHERE id = $1', [id, b.boosterRole]); await syncBoosterRole(ctx, id); }
+    await audit(ctx, id, req.userId, 'BOOST_UPDATE', id, b);
+    return boostSummary(ctx, id, req.userId);
   });
 
   // ---------- audit log ----------
@@ -148,7 +168,8 @@ export function guildRoutes(app: FastifyInstance, ctx: Ctx) {
     const b = parse(z.object({ name: nameSchema, url: assetUrl, animated: z.boolean().optional() }).strict(), req.body);
     need(guildPerms(await guildAccess(ctx, req.userId, id)), Perm.MANAGE_EMOJIS);
     const [c] = await ctx.db.query('SELECT count(*)::int AS n FROM emojis WHERE guild_id = $1', [id]);
-    if (c.n >= LIMITS.maxEmojiPerServer) throw new ApiError(400, 'MAX_EMOJIS', 'Emoji limit reached');
+    const slots = await slotLimits(ctx, id);
+    if (c.n >= slots.emojiSlots) throw new ApiError(400, 'MAX_EMOJIS', `Emoji limit reached (${slots.emojiSlots} at boost level ${slots.level}; boosting is free)`);
     const eid = snowflake();
     await ctx.db.query('INSERT INTO emojis (id, guild_id, name, animated, url) VALUES ($1,$2,$3,$4,$5)', [eid, id, b.name, b.animated ?? false, b.url]);
     await audit(ctx, id, req.userId, 'EMOJI_CREATE', eid, b); await emojiPush(id);
@@ -181,7 +202,8 @@ export function guildRoutes(app: FastifyInstance, ctx: Ctx) {
     const b = parse(z.object({ name: z.string().trim().min(2).max(30), url: assetUrl, format: z.enum(['png', 'apng', 'lottie', 'gif']).optional() }).strict(), req.body);
     need(guildPerms(await guildAccess(ctx, req.userId, id)), Perm.MANAGE_EMOJIS);
     const [c] = await ctx.db.query('SELECT count(*)::int AS n FROM stickers WHERE guild_id = $1', [id]);
-    if (c.n >= LIMITS.maxStickersPerServer) throw new ApiError(400, 'MAX_STICKERS', 'Sticker limit reached');
+    const slots = await slotLimits(ctx, id);
+    if (c.n >= slots.stickerSlots) throw new ApiError(400, 'MAX_STICKERS', `Sticker limit reached (${slots.stickerSlots} at boost level ${slots.level}; boosting is free)`);
     const sid = snowflake();
     await ctx.db.query('INSERT INTO stickers (id, guild_id, name, url, format) VALUES ($1,$2,$3,$4,$5)', [sid, id, b.name, b.url, b.format ?? 'png']);
     await audit(ctx, id, req.userId, 'STICKER_CREATE', sid, b);

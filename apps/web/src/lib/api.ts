@@ -1,7 +1,7 @@
 /** Typed REST client written against docs/CONTRACT.md. All calls go through the swappable transport. */
 import type {
   Activity, Attachment, AuditEntry, AutoModRule, Channel, Emoji, Guild, GuildFull, Invite, Member, Message, Relationship, ReadState, Role, SelfUser, Sticker, User, VoiceToken, Id, Presence, OverwriteDTO,
-  Reminder, SoundboardSound, Connection, PublicConnection, GifFavorite, GuildTemplate, GuildWidgetSettings, GuildInsights, ChannelFollow, Onboarding, OnboardingResponse, GuildSafety, SafetyPreset, Application, ApplicationCommand, CommandPermissionOverwrite, CommandOptionChoice, CreatePoll, ForumTag, InteractionOptionValue, ModalSubmitRow, OAuthAuthorizePreview, OAuthAuthorizeResult, ScheduledEvent, StageInstance,
+  Reminder, BoostSummary, SoundboardSound, Connection, PublicConnection, GifFavorite, GuildTemplate, GuildWidgetSettings, GuildInsights, ChannelFollow, Onboarding, OnboardingResponse, GuildSafety, SafetyPreset, Application, ApplicationCommand, CommandPermissionOverwrite, CommandOptionChoice, CreatePoll, ForumTag, InteractionOptionValue, ModalSubmitRow, OAuthAuthorizePreview, OAuthAuthorizeResult, ScheduledEvent, StageInstance,
 } from '@jorcord/shared';
 import { send } from './transport';
 
@@ -132,7 +132,10 @@ export const api = {
     patchAutomod: (id: Id, rid: Id, b: Partial<AutoModRule>) => send<AutoModRule>({ method: 'PATCH', path: `/guilds/${id}/automod/rules/${rid}`, body: b }),
     testAutomod: (id: Id, b: { content: string; mentionCount?: number }) => send<AutoModTestResult[]>({ method: 'POST', path: `/guilds/${id}/automod/test`, body: b }).then((x) => arr<AutoModTestResult>(x)),
     deleteAutomod: (id: Id, rid: Id) => send({ method: 'DELETE', path: `/guilds/${id}/automod/rules/${rid}` }),
-    boost: (id: Id) => send<Guild>({ method: 'POST', path: `/guilds/${id}/boosts` }),
+    boost: (id: Id, count?: number) => send<Guild>({ method: 'POST', path: `/guilds/${id}/boosts`, body: count ? { count } : {} }),
+    unboost: (id: Id) => send<BoostSummary>({ method: 'DELETE', path: `/guilds/${id}/boosts` }),
+    boosts: (id: Id) => send<BoostSummary>({ method: 'GET', path: `/guilds/${id}/boosts` }),
+    boostSettings: (id: Id, b: { announce?: boolean; boosterRole?: boolean }) => send<BoostSummary>({ method: 'PATCH', path: `/guilds/${id}/boosts/settings`, body: b }),
     search: (id: Id, q: SearchQuery) => send<any>({ method: 'GET', path: `/guilds/${id}/messages/search`, query: q as any }).then((x) => arr<Message>(x)),
     discover: (q?: string) => send<Guild[]>({ method: 'GET', path: '/discover/guilds', query: q ? { q } : undefined }).then((x) => arr<Guild>(x)),
     /** Join a DISCOVERABLE guild without an invite (404 for guilds that are not discoverable). */

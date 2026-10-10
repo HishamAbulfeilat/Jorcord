@@ -95,15 +95,25 @@ async function ruleHit(ctx: Ctx, r: any, guildId: string, userId: string, conten
   return c.n >= o.spamCount;
 }
 
+/** Fixed id of the built-in "AutoMod" bot user that authors alert messages (created on first use; never a member of any server). */
+export const AUTOMOD_USER_ID = '1000000000000000001';
+const automodUserReady = new WeakSet<object>();
+async function automodUserId(ctx: Ctx): Promise<string> {
+  if (!automodUserReady.has(ctx.db)) {
+    await ctx.db.query(`INSERT INTO users (id, username, display_name, bot, verified, presence) VALUES ($1,'AutoMod','AutoMod',true,true,'online') ON CONFLICT (id) DO NOTHING`, [AUTOMOD_USER_ID]);
+    automodUserReady.add(ctx.db);
+  }
+  return AUTOMOD_USER_ID;
+}
+
 /** Posts the alert embed (rule, user, content, action taken) in the rule's alert channel. Never throws; flood-limited per guild. */
 async function sendAlert(ctx: Ctx, r: any, guildId: string, userId: string, channelId: string | undefined, content: string, actions: AutoModAction[], test: boolean) {
   if (!r.alert_channel_id) return;
   try {
     limitOrThrow(ctx.rl, `automod-alert:${guildId}`, 30, 60_000, ctx.config.rateLimit);
     const [ch] = await ctx.db.query('SELECT * FROM channels WHERE id = $1 AND guild_id = $2', [r.alert_channel_id, guildId]);
-    const [g] = await ctx.db.query('SELECT owner_id FROM guilds WHERE id = $1', [guildId]);
     const [u] = await ctx.db.query('SELECT username FROM users WHERE id = $1', [userId]);
-    if (!ch || !g || (ch.type !== 'text' && ch.type !== 'announcement')) return;
+    if (!ch || (ch.type !== 'text' && ch.type !== 'announcement')) return;
     const [src] = channelId ? await ctx.db.query('SELECT name FROM channels WHERE id = $1', [channelId]) : [];
     const where = src ? `#${src.name}` : 'unknown';
     const taken = test ? 'none (test mode)' : actions.map((a) => ({ block: 'blocked message', timeout: `timed out ${r.timeout_seconds ?? 60}s`, alert: 'alert', warn: 'warned' }[a])).join(', ');
@@ -112,7 +122,7 @@ async function sendAlert(ctx: Ctx, r: any, guildId: string, userId: string, chan
       description: content.slice(0, 500) || '(no text)', footer: `Rule trigger: ${r.trigger}`,
       fields: [{ name: 'User', value: `${u?.username ?? 'unknown'} (${userId})`, inline: true }, { name: 'Channel', value: where, inline: true }, { name: 'Action', value: taken, inline: true }],
     };
-    await createMessage(ctx, { channel: ch, authorId: g.owner_id, content: '', senderPerms: 0n, skipChecks: true, allowEmpty: true, webhookId: 'automod', webhookUsername: 'AutoMod', embeds: [embed] });
+    await createMessage(ctx, { channel: ch, authorId: await automodUserId(ctx), content: '', senderPerms: 0n, skipChecks: true, allowEmpty: true, embeds: [embed] });
   } catch (e) { ctx.log.warn({ err: e }, 'automod alert failed'); }
 }
 

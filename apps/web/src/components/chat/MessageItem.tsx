@@ -23,6 +23,7 @@ import { myChannelPerms } from '@/lib/session';
 import { useNav } from '@/lib/nav';
 import { useIsMobile } from '@/lib/hooks';
 import { Tip } from '@/components/ui/Tooltip';
+import { boostAnnouncement } from '@/lib/boosts';
 import { EphemeralNotice, InteractionHeader, MessageComponents, PollResultBody, PollView, ThinkingBody, isLoadingMsg } from './MessageExtras';
 import { isEphemeral } from '@/stores/messages';
 
@@ -99,7 +100,7 @@ function Toolbar({ m, onMenu, startEdit }: { m: Message; onMenu: (e: React.Mouse
 }
 
 export const MessageItem = memo(function MessageItem({ m, grouped, highlighted }: { m: Message; grouped: boolean; highlighted?: boolean }) {
-  const me = useData((s) => s.me); const info = useAuthorInfo(m);
+  const me = useData((s) => s.me); const info = useAuthorInfo(m); const guildName = useData((s) => (m.guildId ? s.guilds[m.guildId]?.guild.name : undefined));
   const editing = useUI((s) => s.editing === m.id); const setEditing = useUI((s) => s.setEditing); const openPopout = useUI((s) => s.openPopout); const openMenu = useUI((s) => s.openMenu);
   const replyingTo = useUI((s) => s.replyTo[m.channelId] === m.id);
   const nav = useNav(); const mobile = useIsMobile();
@@ -122,7 +123,7 @@ export const MessageItem = memo(function MessageItem({ m, grouped, highlighted }
     return (
       <div className={cx(base, 'flex items-center gap-3 py-1.5')} {...trig} id={`msg-${m.id}`}>
         <span className="flex w-10 justify-end"><Icon size={18} className={m.type === 'join' ? 'text-success' : 'text-muted'} /></span>
-        <span className="text-[15px] text-muted"><button className="font-medium text-header hover:underline" onClick={openUser}>{info.name}</button> {SYSTEM[m.type]('').trim()} <span className="ms-1 whitespace-nowrap text-xs">{fmtStamp(ts)}</span></span>
+        <span className="text-[15px] text-muted"><button className="font-medium text-header hover:underline" onClick={openUser}>{info.name}</button> {m.type === 'boost' ? t(boostAnnouncement(m.content, guildName)) : SYSTEM[m.type]('').trim()} <span className="ms-1 whitespace-nowrap text-xs">{fmtStamp(ts)}</span></span>
       </div>
     );
   }

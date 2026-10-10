@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { newUser, createServer, openGuildSettings, openUserSettings, closeSettings, rest, guildId, makeInvite, joinViaInvite, sendMessage, msg, type User } from './helpers';
+import { newUser, createServer, openGuildSettings, openUserSettings, closeSettings, rest, guildId, makeInvite, joinViaInvite, sendMessage, msg, clickMenu, type User } from './helpers';
 
 let A: User;
 test.describe.configure({ mode: 'serial' });
@@ -38,5 +38,44 @@ test('automod: regex + block/alert rule from Settings, sandbox preview, alert em
     await expect(alert).toBeVisible();
     await expect(alert).toContainText('claim free   nitro here');
     await expect(alert).toContainText('blocked message');
+  } finally { await B.ctx.close(); }
+});
+
+test('boosts: level page with perks and progress, boost + take back, booster role and announcement', async ({ browser }) => {
+  const B = await newUser(browser, 'Booster');
+  try {
+    const gid = await guildId(A.page);
+    await joinViaInvite(B.page, await makeInvite(A.page));
+    await B.page.getByRole('button', { name: 'Mod Lab server menu' }).click();
+    await clickMenu(B.page, 'Server Boost'); // every member can open the boost page
+    const dlg = B.page.getByRole('dialog', { name: 'Mod Lab' });
+    await expect(dlg.getByTestId('boost-level')).toHaveText('Level 0');
+    await expect(dlg.getByTestId('boost-levels').getByRole('region')).toHaveCount(3);
+    await expect(dlg.getByRole('region', { name: 'Level 2' })).toContainText('+50 emoji slots (150 total)');
+    await expect(dlg.getByRole('progressbar', { name: 'Boost progress' })).toHaveAttribute('aria-valuenow', '0');
+    await dlg.getByRole('button', { name: 'Boost This Server' }).click();
+    await expect(dlg.getByRole('progressbar', { name: 'Boost progress' })).toHaveAttribute('aria-valuenow', '50');
+    await dlg.getByRole('button', { name: 'Boost Again' }).click();
+    await expect(dlg.getByTestId('boost-level')).toHaveText('Level 1');
+    await expect(dlg.getByTestId('boosters')).toContainText('Booster');
+    await expect(dlg.getByTestId('boosters')).toContainText('2 boosts');
+    await dlg.getByRole('button', { name: /Remove one of my boosts \(2\)/ }).click();
+    await expect(dlg.getByTestId('boost-level')).toHaveText('Level 0');
+    await dlg.getByRole('button', { name: 'Boost Again' }).click();
+    await expect(dlg.getByTestId('boost-level')).toHaveText('Level 1');
+    await closeSettings(B.page);
+    // everyone sees the rocket badge in the member list and the announcements
+    const members = A.page.getByRole('complementary', { name: 'Members' });
+    await expect(members.getByRole('listitem').filter({ hasText: 'Booster' }).getByLabel('Boosting this server')).toBeVisible();
+    await A.page.getByRole('navigation', { name: 'Channels' }).getByRole('button', { name: /general/ }).first().click();
+    await expect(msg(A.page, /just boosted/).first()).toBeVisible();
+    await expect(msg(A.page, /reached Level 1/).first()).toBeVisible();
+    expect((await rest(A.page, 'GET', `/guilds/${gid}/boosts`)).level).toBe(1);
+    // a manager can switch the booster role off
+    await openGuildSettings(A.page, 'Mod Lab', 'Server Boost');
+    const adlg = A.page.getByRole('dialog', { name: 'Mod Lab' });
+    await adlg.getByRole('switch', { name: 'Booster role' }).click();
+    await expect.poll(async () => (await rest(A.page, 'GET', `/guilds/${gid}/boosts`)).settings.boosterRoleId).toBeNull();
+    await closeSettings(A.page);
   } finally { await B.ctx.close(); }
 });

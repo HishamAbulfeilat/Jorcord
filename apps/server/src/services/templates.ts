@@ -12,7 +12,7 @@ export async function serializeGuild(ctx: Ctx, guildId: string): Promise<Seriali
   const [g] = await ctx.db.query('SELECT verification_level, explicit_filter, default_notifications FROM guilds WHERE id = $1', [guildId]);
   const roleRows = await ctx.db.query('SELECT * FROM roles WHERE guild_id = $1 ORDER BY position, id', [guildId]);
   const everyone = roleRows.find((r) => r.id === guildId);
-  const roles = roleRows.filter((r) => r.id !== guildId && !r.managed_app_id);
+  const roles = roleRows.filter((r) => r.id !== guildId && !r.managed_app_id && !r.managed_kind);
   const roleKey = new Map(roles.map((r, i) => [r.id as string, `r${i}`]));
   const chRows = (await ctx.db.query(`SELECT * FROM channels WHERE guild_id = $1 AND type <> 'thread' ORDER BY position, id`, [guildId])).slice(0, MAX_TEMPLATE_CHANNELS);
   const chKey = new Map(chRows.map((c, i) => [c.id as string, `c${i}`]));
