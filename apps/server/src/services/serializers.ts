@@ -5,11 +5,17 @@ import { iso } from '../lib/ids';
 
 export const boostLevel = (n: number) => (n >= 14 ? 3 : n >= 7 ? 2 : n >= 2 ? 1 : 0);
 
+/** A custom status past its `expiresAt` reads as cleared everywhere (the sweeper also clears the row and tells peers). */
+export function liveStatus(cs: any): User['customStatus'] {
+  if (!cs) return null;
+  if (cs.expiresAt && Date.parse(cs.expiresAt) <= Date.now()) return null;
+  return cs;
+}
 export function userDTO(ctx: Ctx, r: any): User {
   return {
     id: r.id, username: r.username, displayName: r.display_name ?? null, avatar: r.avatar ?? null, banner: r.banner ?? null,
     accentColor: r.accent_color ?? null, bio: r.bio ?? null, pronouns: r.pronouns ?? null, bot: !!r.bot,
-    createdAt: iso(r.created_at)!, customStatus: r.custom_status ?? null, presence: ctx.hub.publicPresence(r.id, r.presence),
+    createdAt: iso(r.created_at)!, customStatus: liveStatus(r.custom_status), themeColors: r.theme_colors ?? null, presence: ctx.hub.publicPresence(r.id, r.presence),
   };
 }
 export function selfUserDTO(ctx: Ctx, r: any): SelfUser {
@@ -64,7 +70,7 @@ export async function membersDTO(ctx: Ctx, rows: any[]): Promise<Member[]> {
   return rows.filter((r) => users.has(r.user_id)).map((r) => ({
     guildId: r.guild_id, user: users.get(r.user_id)!, nick: r.nick ?? null,
     roles: roles.filter((x) => x.guild_id === r.guild_id && x.user_id === r.user_id).map((x) => x.role_id),
-    joinedAt: iso(r.joined_at)!, timeoutUntil: iso(r.timeout_until), avatar: r.avatar ?? null,
+    joinedAt: iso(r.joined_at)!, timeoutUntil: iso(r.timeout_until), avatar: r.avatar ?? null, pending: !!r.pending,
   }));
 }
 export async function memberDTO(ctx: Ctx, guildId: string, userId: string): Promise<Member | null> {

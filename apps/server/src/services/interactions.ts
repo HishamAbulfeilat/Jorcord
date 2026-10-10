@@ -85,10 +85,10 @@ const invokeSchema = z.discriminatedUnion('type', [
 ]);
 
 async function newRow(ctx: Ctx, o: { app: any; type: number; userId: string; channel: any; messageId?: string | null; data: unknown }) {
-  const id = snowflake(), token = randomToken(32);
+  const id = snowflake(), token = randomToken(32), now = Date.now();
   const [row] = await ctx.db.query(
-    `INSERT INTO interactions (id, application_id, type, token_hash, user_id, guild_id, channel_id, message_id, data, expires_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10) RETURNING *`,
-    [id, o.app.id, o.type, sha256(token), o.userId, o.channel.guild_id ?? null, o.channel.id, o.messageId ?? null, JSON.stringify(o.data), new Date(Date.now() + INTERACTION_TOKEN_TTL_MS)]);
+    `INSERT INTO interactions (id, application_id, type, token_hash, user_id, guild_id, channel_id, message_id, data, created_at, expires_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10,$11) RETURNING *`,
+    [id, o.app.id, o.type, sha256(token), o.userId, o.channel.guild_id ?? null, o.channel.id, o.messageId ?? null, JSON.stringify(o.data), new Date(now), new Date(now + INTERACTION_TOKEN_TTL_MS)]);
   return { row, token };
 }
 

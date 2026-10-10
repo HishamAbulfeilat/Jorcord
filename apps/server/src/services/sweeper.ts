@@ -13,6 +13,13 @@ export async function archiveIdleThreads(ctx: Ctx) {
   return rows.length;
 }
 
+/** Server-side custom status expiry: clear the row and tell everyone who can see the user. */
+export async function expireStatuses(ctx: Ctx) {
+  const rows = await ctx.db.query(`UPDATE users SET custom_status = NULL WHERE custom_status ? 'expiresAt' AND (custom_status->>'expiresAt')::timestamptz <= now() RETURNING id`);
+  for (const r of rows) await ctx.hub.broadcastPresence(r.id).catch(() => {});
+  return rows.length;
+}
+
 async function pruneInteractions(ctx: Ctx) {
   await ctx.db.query(`DELETE FROM interactions WHERE expires_at < now() - interval '1 hour'`);
   await ctx.db.query(`DELETE FROM oauth_codes WHERE expires_at < now() - interval '1 hour'`);
@@ -26,5 +33,6 @@ export async function runSweeps(ctx: Ctx) {
   await step('events', () => sweepEvents(ctx));
   await step('stages', () => endEmptyStages(ctx));
   await step('threads', () => archiveIdleThreads(ctx));
+  await step('statuses', () => expireStatuses(ctx));
   await step('interactions', () => pruneInteractions(ctx));
 }

@@ -7,7 +7,9 @@ export type ChannelType = 'text' | 'voice' | 'announcement' | 'stage' | 'forum' 
 export interface User {
   id: Id; username: string; displayName: string | null; avatar: string | null; banner: string | null;
   accentColor: string | null; bio: string | null; pronouns: string | null; bot: boolean; createdAt: string;
-  customStatus?: { text: string | null; emoji: string | null } | null;
+  customStatus?: { text: string | null; emoji: string | null; /** ISO time; the server clears the status then */ expiresAt?: string | null } | null;
+  /** Two-colour profile theme (#rrggbb pair), visible to others. */
+  themeColors?: [string, string] | null;
   presence?: Presence;
 }
 export interface SelfUser extends User { email: string; mfaEnabled: boolean; verified: boolean; theme: 'dark' | 'light' | 'amoled'; settings: Record<string, unknown> }
@@ -27,7 +29,7 @@ export interface Channel {
   availableTags?: ForumTag[]; requireTag?: boolean; defaultAutoArchiveDuration?: number;
   appliedTags?: Id[]; autoArchiveDuration?: number; locked?: boolean; archiveAt?: string | null;
 }
-export interface Member { guildId: Id; user: User; nick: string | null; roles: Id[]; joinedAt: string; timeoutUntil: string | null; avatar?: string | null }
+export interface Member { guildId: Id; user: User; nick: string | null; roles: Id[]; joinedAt: string; timeoutUntil: string | null; avatar?: string | null; /** true until the member accepts the server rules (membership screening) */ pending?: boolean }
 export interface Attachment { id: Id; filename: string; contentType: string; size: number; url: string; width: number | null; height: number | null; spoiler: boolean }
 export interface Embed { type: 'link' | 'image' | 'video' | 'rich'; url?: string; title?: string; description?: string; color?: number; thumbnail?: string; image?: string; video?: string; siteName?: string; fields?: { name: string; value: string; inline?: boolean }[]; footer?: string; author?: string }
 export interface Reaction { emoji: string; emojiId: Id | null; count: number; me: boolean }

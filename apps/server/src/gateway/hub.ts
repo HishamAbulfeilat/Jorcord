@@ -2,6 +2,7 @@ import type { Events, EventName, Presence } from '@jorcord/shared';
 import { Op } from '@jorcord/shared';
 import type { WebSocket } from 'ws';
 import type { Ctx } from '../ctx';
+import { liveStatus } from '../services/serializers';
 import { viewersAmong, getChannelLite } from '../services/perms';
 
 type Envelope =
@@ -84,7 +85,7 @@ export class Hub {
   async broadcastPresence(userId: string) {
     const [u] = await this.ctx.db.query('SELECT presence, custom_status FROM users WHERE id = $1', [userId]);
     if (!u) return;
-    await this.toPresenceAudience(userId, 'PRESENCE_UPDATE', { userId, presence: this.publicPresence(userId, u.presence), customStatus: u.custom_status ?? null });
+    await this.toPresenceAudience(userId, 'PRESENCE_UPDATE', { userId, presence: this.publicPresence(userId, u.presence), customStatus: liveStatus(u.custom_status) });
   }
 
   // ---- sessions ----

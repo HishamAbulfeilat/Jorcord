@@ -31,6 +31,7 @@ export interface Events {
   READ_STATE_UPDATE: ReadState;
   VOICE_STATE_UPDATE: VoiceState;
   EMOJIS_UPDATE: { guildId: Id; emojis: Emoji[] };
+  STICKERS_UPDATE: { guildId: Id; stickers: Sticker[] };
   THREAD_CREATE: Channel; THREAD_UPDATE: Channel;
   THREAD_MEMBERS_UPDATE: { id: Id; guildId: Id; addedUserIds: Id[]; removedUserIds: Id[] };
   /** Reply to gateway op REQUEST_MEMBERS (sent only to the requesting session). */

@@ -13,7 +13,7 @@ import { GUILD_SELECT, guildDTO } from '../services/serializers';
 const gid = z.object({ id: idSchema });
 const patchGuild = z.object({
   name: z.string().trim().min(2).max(100), icon: assetUrl.nullable(), banner: assetUrl.nullable(), description: z.string().max(1000).nullable(),
-  systemChannelId: idSchema.nullable(), rulesChannelId: idSchema.nullable(), discoverable: z.boolean(),
+  systemChannelId: idSchema.nullable(), rulesChannelId: idSchema.nullable(), discoverable: z.boolean(), memberScreening: z.boolean(),
   vanityUrl: z.string().regex(/^[a-z0-9-]{3,32}$/).nullable(),
 }).partial().strict();
 
@@ -62,9 +62,14 @@ export function guildRoutes(app: FastifyInstance, ctx: Ctx) {
     const col: Record<string, string> = { name: 'name', icon: 'icon', banner: 'banner', description: 'description', systemChannelId: 'system_channel_id', rulesChannelId: 'rules_channel_id', vanityUrl: 'vanity_url' };
     const sets: string[] = [], vals: unknown[] = [id];
     for (const [k, v] of Object.entries(b)) { if (!col[k]) continue; vals.push(v); sets.push(`${col[k]} = $${vals.length}`); }
-    if (b.discoverable !== undefined) {
-      const [g] = await ctx.db.query('SELECT features FROM guilds WHERE id = $1', [id]);
-      const f = new Set<string>(g.features); b.discoverable ? f.add('DISCOVERABLE') : f.delete('DISCOVERABLE');
+    if (b.discoverable !== undefined || b.memberScreening !== undefined) {
+      const [g] = await ctx.db.query('SELECT features, rules_channel_id FROM guilds WHERE id = $1', [id]);
+      const f = new Set<string>(g.features);
+      if (b.discoverable !== undefined) { b.discoverable ? f.add('DISCOVERABLE') : f.delete('DISCOVERABLE'); }
+      if (b.memberScreening !== undefined) {
+        if (b.memberScreening && !(b.rulesChannelId ?? g.rules_channel_id)) throw badRequest('Set a rules channel before turning on membership screening');
+        b.memberScreening ? f.add('MEMBER_SCREENING') : f.delete('MEMBER_SCREENING');
+      }
       vals.push(JSON.stringify([...f])); sets.push(`features = $${vals.length}::jsonb`);
     }
     try { if (sets.length) await ctx.db.query(`UPDATE guilds SET ${sets.join(', ')} WHERE id = $1`, vals); }
@@ -125,6 +130,7 @@ export function guildRoutes(app: FastifyInstance, ctx: Ctx) {
   // ---------- emojis & stickers ----------
   const emojiRow = (e: any) => ({ id: e.id, guildId: e.guild_id, name: e.name, animated: e.animated, url: e.url });
   const stickerRow = (s: any) => ({ id: s.id, guildId: s.guild_id, name: s.name, url: s.url, format: s.format });
+  const stickerPush = async (id: string) => ctx.hub.toGuild(id, 'STICKERS_UPDATE', { guildId: id, stickers: (await ctx.db.query('SELECT * FROM stickers WHERE guild_id = $1', [id])).map(stickerRow) });
   const emojiPush = async (id: string) => ctx.hub.toGuild(id, 'EMOJIS_UPDATE', { guildId: id, emojis: (await ctx.db.query('SELECT * FROM emojis WHERE guild_id = $1', [id])).map(emojiRow) });
   const nameSchema = z.string().regex(/^\w{2,32}$/);
 
@@ -174,6 +180,7 @@ export function guildRoutes(app: FastifyInstance, ctx: Ctx) {
     const sid = snowflake();
     await ctx.db.query('INSERT INTO stickers (id, guild_id, name, url, format) VALUES ($1,$2,$3,$4,$5)', [sid, id, b.name, b.url, b.format ?? 'png']);
     await audit(ctx, id, req.userId, 'STICKER_CREATE', sid, b);
+    await stickerPush(id);
     return reply.code(201).send(stickerRow((await ctx.db.query('SELECT * FROM stickers WHERE id = $1', [sid]))[0]));
   });
   app.patch('/guilds/:id/stickers/:stickerId', async (req) => {
@@ -183,6 +190,7 @@ export function guildRoutes(app: FastifyInstance, ctx: Ctx) {
     const rows = await ctx.db.query('UPDATE stickers SET name = $3 WHERE id = $1 AND guild_id = $2 RETURNING *', [p.stickerId, p.id, b.name]);
     if (!rows.length) throw notFound('Sticker');
     await audit(ctx, p.id, req.userId, 'STICKER_UPDATE', p.stickerId, { name: b.name });
+    await stickerPush(p.id);
     return stickerRow(rows[0]);
   });
   app.delete('/guilds/:id/stickers/:stickerId', async (req, reply) => {
@@ -191,6 +199,7 @@ export function guildRoutes(app: FastifyInstance, ctx: Ctx) {
     const rows = await ctx.db.query('DELETE FROM stickers WHERE id = $1 AND guild_id = $2 RETURNING id', [p.stickerId, p.id]);
     if (!rows.length) throw notFound('Sticker');
     await audit(ctx, p.id, req.userId, 'STICKER_DELETE', p.stickerId);
+    await stickerPush(p.id);
     return reply.code(204).send();
   });
 

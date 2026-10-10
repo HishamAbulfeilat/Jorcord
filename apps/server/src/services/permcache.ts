@@ -14,7 +14,7 @@ import { randomToken } from '../lib/crypto';
  *  - member timeouts are stored as absolute timestamps and compared at use time, so they expire without any invalidation.
  * Only message-independent, rarely-changing columns are cached (never last_message_id etc).
  */
-export interface MemberEntry { timeoutMs: number | null; roleIds: string[] }
+export interface MemberEntry { timeoutMs: number | null; roleIds: string[]; /** membership screening not yet accepted: read-only like a timeout */ pending?: boolean }
 interface GuildEntry { ownerId: string; rolePerms: Record<string, bigint>; rolePos: Record<string, number>; members: Map<string, MemberEntry | null> }
 export interface ChannelLite { id: string; guild_id: string | null; type: string; parent_id: string | null }
 
@@ -151,12 +151,12 @@ export class PermCache {
     if (missing.length) {
       this.stats.misses++;
       const g = this.gen;
-      const members = await ctx.db.query('SELECT user_id, timeout_until FROM members WHERE guild_id = $1 AND user_id = ANY($2::text[])', [guildId, missing]);
+      const members = await ctx.db.query('SELECT user_id, timeout_until, pending FROM members WHERE guild_id = $1 AND user_id = ANY($2::text[])', [guildId, missing]);
       const mr = await ctx.db.query('SELECT user_id, role_id FROM member_roles WHERE guild_id = $1 AND user_id = ANY($2::text[])', [guildId, missing]);
       const roleIds = new Map<string, string[]>();
       for (const x of mr) { const l = roleIds.get(x.user_id); if (l) l.push(x.role_id); else roleIds.set(x.user_id, [x.role_id]); }
       const found = new Map<string, MemberEntry>();
-      for (const m of members) found.set(m.user_id, { timeoutMs: m.timeout_until ? new Date(m.timeout_until).getTime() : null, roleIds: roleIds.get(m.user_id) ?? [] });
+      for (const m of members) found.set(m.user_id, { timeoutMs: m.timeout_until ? new Date(m.timeout_until).getTime() : null, roleIds: roleIds.get(m.user_id) ?? [], pending: !!m.pending });
       const store = g === this.gen && this.guilds.get(guildId) === guild; // skip storing if anything was invalidated while we were reading
       for (const u of missing) { const e = found.get(u) ?? null; out.set(u, e); if (store) guild.members.set(u, e); }
     }

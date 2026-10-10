@@ -23,7 +23,7 @@ export async function loadGuildPerms(ctx: Ctx, guildId: string, userIds: string[
     const ids = m.roleIds.filter((id) => guild.rolePerms[id] !== undefined);
     out.set(uid, {
       guildId, userId: uid, ownerId: guild.ownerId, isOwner: guild.ownerId === uid, everyoneId: guildId, everyonePerms,
-      rolePerms: guild.rolePerms, rolePos: guild.rolePos, memberRoleIds: ids, timedOut: m.timeoutMs !== null && m.timeoutMs > now,
+      rolePerms: guild.rolePerms, rolePos: guild.rolePos, memberRoleIds: ids, timedOut: (m.timeoutMs !== null && m.timeoutMs > now) || !!m.pending, // pending members are read-only until they accept the rules
       topPosition: ids.reduce((a, id) => Math.max(a, guild.rolePos[id] ?? 0), 0),
     });
   }

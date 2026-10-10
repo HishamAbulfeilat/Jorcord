@@ -11,7 +11,7 @@ import { audit, buildGuildFull } from '../services/guilds';
 import { trackVisibility } from '../services/visibility';
 import { postSystemMessage } from '../services/messages';
 import { channelAccess, guildAccess, guildPerms, loadGuildPerm, need, needOutrank, needOutrankMember } from '../services/perms';
-import { GUILD_SELECT, guildDTO, memberDTO, membersDTO, roleDTO, usersByIds } from '../services/serializers';
+import { GUILD_SELECT, guildDTO, liveStatus, memberDTO, membersDTO, roleDTO, usersByIds } from '../services/serializers';
 
 const gid = z.object({ id: idSchema });
 const permStr = z.string().regex(/^\d{1,20}$/);
@@ -24,8 +24,33 @@ async function announceJoin(ctx: Ctx, guildId: string, userId: string) {
   if (ctx.config.redisUrl) ctx.hub.markOnline(await ctx.presence.onlineAmong(rows.map((r) => r.id as string)));
   for (const r of rows) {
     if (!ctx.hub.isOnline(r.id)) continue;
-    await ctx.hub.toUser(userId, 'PRESENCE_UPDATE', { userId: r.id, presence: ctx.hub.publicPresence(r.id, r.presence), customStatus: r.custom_status ?? null });
+    await ctx.hub.toUser(userId, 'PRESENCE_UPDATE', { userId: r.id, presence: ctx.hub.publicPresence(r.id, r.presence), customStatus: liveStatus(r.custom_status) });
   }
+}
+
+/** Shared by invite joins and discoverable-guild joins: ban/limit checks, membership (pending when the guild screens new members), events. */
+export async function joinGuild(ctx: Ctx, userId: string, guildId: string, inviteCode: string | null) {
+    const [banned] = await ctx.db.query('SELECT 1 AS x FROM bans WHERE guild_id = $1 AND user_id = $2', [guildId, userId]);
+    if (banned) throw forbidden('You are banned from this server', 'BANNED');
+    const [already] = await ctx.db.query('SELECT 1 AS x FROM members WHERE guild_id = $1 AND user_id = $2', [guildId, userId]);
+    if (already) return buildGuildFull(ctx, guildId, userId);
+    const [g] = await ctx.db.query('SELECT features, rules_channel_id FROM guilds WHERE id = $1', [guildId]);
+    const screening = (g?.features as string[] | undefined)?.includes('MEMBER_SCREENING') === true;
+    const [cnt] = await ctx.db.query('SELECT count(*)::int AS n FROM members WHERE user_id = $1', [userId]);
+    if (cnt.n >= LIMITS.maxServersPerUser) throw new ApiError(400, 'MAX_GUILDS', 'Too many servers');
+    if (inviteCode) { // atomic use consumption; fails if another joiner took the last use
+      const used = await ctx.db.query('UPDATE invites SET uses = uses + 1 WHERE code = $1 AND (max_uses IS NULL OR uses < max_uses) AND (expires_at IS NULL OR expires_at > now()) RETURNING code', [inviteCode]);
+      if (!used.length) throw notFound('Invite');
+    }
+    await ctx.db.query('INSERT INTO members (guild_id, user_id, pending) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING', [guildId, userId, screening]);
+    await ctx.pcache.invalidate({ k: 'member', guildId, userId: userId });
+    const full = await buildGuildFull(ctx, guildId, userId);
+    await ctx.hub.toUser(userId, 'GUILD_CREATE', full);
+    const m = await memberDTO(ctx, guildId, userId);
+    if (m) await ctx.hub.toGuild(guildId, 'MEMBER_ADD', m, { exclude: userId });
+    await announceJoin(ctx, guildId, userId);
+    if (full.systemChannelId) await postSystemMessage(ctx, full.systemChannelId, userId, 'join').catch((e) => ctx.log.warn({ err: e }, 'join message failed'));
+  return full;
 }
 
 export function memberRoutes(app: FastifyInstance, ctx: Ctx) {
@@ -300,26 +325,38 @@ export function memberRoutes(app: FastifyInstance, ctx: Ctx) {
     const [vanity] = existing ? [] : await ctx.db.query('SELECT id FROM guilds WHERE lower(vanity_url) = lower($1)', [code]);
     if (!existing && !vanity) throw notFound('Invite');
     guildId = existing ? existing.guild_id : vanity.id;
-    const [banned] = await ctx.db.query('SELECT 1 AS x FROM bans WHERE guild_id = $1 AND user_id = $2', [guildId, req.userId]);
-    if (banned) throw forbidden('You are banned from this server', 'BANNED');
-    const [already] = await ctx.db.query('SELECT 1 AS x FROM members WHERE guild_id = $1 AND user_id = $2', [guildId, req.userId]);
-    if (already) return buildGuildFull(ctx, guildId, req.userId);
-    const [cnt] = await ctx.db.query('SELECT count(*)::int AS n FROM members WHERE user_id = $1', [req.userId]);
-    if (cnt.n >= LIMITS.maxServersPerUser) throw new ApiError(400, 'MAX_GUILDS', 'Too many servers');
-    if (existing) { // atomic use consumption; fails if another joiner took the last use
-      const used = await ctx.db.query('UPDATE invites SET uses = uses + 1 WHERE code = $1 AND (max_uses IS NULL OR uses < max_uses) AND (expires_at IS NULL OR expires_at > now()) RETURNING code', [code]);
-      if (!used.length) throw notFound('Invite');
-    }
-    await ctx.db.query('INSERT INTO members (guild_id, user_id) VALUES ($1,$2) ON CONFLICT DO NOTHING', [guildId, req.userId]);
-    await ctx.pcache.invalidate({ k: 'member', guildId, userId: req.userId });
-    const full = await buildGuildFull(ctx, guildId, req.userId);
-    await ctx.hub.toUser(req.userId, 'GUILD_CREATE', full);
-    const m = await memberDTO(ctx, guildId, req.userId);
-    if (m) await ctx.hub.toGuild(guildId, 'MEMBER_ADD', m, { exclude: req.userId });
-    await announceJoin(ctx, guildId, req.userId);
-    if (full.systemChannelId) await postSystemMessage(ctx, full.systemChannelId, req.userId, 'join').catch((e) => ctx.log.warn({ err: e }, 'join message failed'));
+    const full = await joinGuild(ctx, req.userId, guildId, existing ? code : null);
     return reply.code(200).send(full);
   });
+  // ---------- discoverable guilds & membership screening ----------
+  const joinDiscoverable = async (req: any) => {
+    const { id } = parse(z.object({ id: idSchema }), req.params);
+    limitOrThrow(ctx.rl, `invite-join:${req.userId}`, 20, 15 * 60_000, ctx.config.rateLimit);
+    const [g] = await ctx.db.query('SELECT features FROM guilds WHERE id = $1', [id]);
+    if (!g || !(g.features as string[]).includes('DISCOVERABLE')) throw notFound('Guild'); // non-discoverable guilds are indistinguishable from missing ones
+    return joinGuild(ctx, req.userId, id, null);
+  };
+  app.post('/discover/guilds/:id/join', async (req, reply) => reply.code(200).send(await joinDiscoverable(req)));
+  app.post('/guilds/:id/join', async (req, reply) => reply.code(200).send(await joinDiscoverable(req))); // alias used by the web client
+
+  /** What a pending member must read before accepting. */
+  app.get('/guilds/:id/screening', async (req) => {
+    const { id } = parse(gid, req.params);
+    await guildAccess(ctx, req.userId, id);
+    const [g] = await ctx.db.query('SELECT description, rules_channel_id, features FROM guilds WHERE id = $1', [id]);
+    const [m] = await ctx.db.query('SELECT pending FROM members WHERE guild_id = $1 AND user_id = $2', [id, req.userId]);
+    return { enabled: (g.features as string[]).includes('MEMBER_SCREENING'), rulesChannelId: g.rules_channel_id ?? null, description: g.description ?? null, pending: !!m?.pending };
+  });
+  /** Accepting the rules lifts the read-only restriction. Idempotent. */
+  app.put('/guilds/:id/members/@me/screening', async (req) => {
+    const { id } = parse(gid, req.params);
+    parse(z.object({ acceptRules: z.literal(true) }).strict(), req.body);
+    await guildAccess(ctx, req.userId, id);
+    const up = await ctx.db.query('UPDATE members SET pending = false WHERE guild_id = $1 AND user_id = $2 AND pending RETURNING user_id', [id, req.userId]);
+    if (up.length) { await ctx.pcache.invalidate({ k: 'member', guildId: id, userId: req.userId }); await pushMember(id, req.userId); }
+    return (await memberDTO(ctx, id, req.userId))!;
+  });
+
   app.delete('/invites/:code', async (req, reply) => {
     const { code } = parse(z.object({ code: z.string().regex(/^[A-Za-z0-9_-]{3,32}$/) }), req.params);
     const [inv] = await ctx.db.query('SELECT * FROM invites WHERE code = $1', [code]);

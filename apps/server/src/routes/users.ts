@@ -12,17 +12,19 @@ import { clearVoiceState } from '../services/voice';
 import { uninstallBot } from '../services/apps';
 import { removeGroupRecipient } from '../services/dms';
 import { channelAccess } from '../services/perms';
-import { channelDTO, channelsDTO, getUser, GUILD_SELECT, guildDTO, selfUserDTO, userDTO, usersByIds } from '../services/serializers';
+import { liveStatus, channelDTO, channelsDTO, getUser, GUILD_SELECT, guildDTO, selfUserDTO, userDTO, usersByIds } from '../services/serializers';
 
 const patchMe = z.object({
   displayName: z.string().trim().min(1).max(32).nullable(), bio: z.string().max(400).nullable(), pronouns: z.string().max(40).nullable(),
   avatar: assetUrl.nullable(), banner: assetUrl.nullable(), accentColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).nullable(),
-  customStatus: z.object({ text: z.string().max(128).nullable(), emoji: z.string().max(64).nullable() }).strict().nullable(),
+  customStatus: z.object({ text: z.string().max(128).nullable(), emoji: z.string().max(64).nullable(), expiresAt: z.string().datetime({ offset: true }).nullable().optional() }).strict().nullable()
+    .refine((v) => !v?.expiresAt || (Date.parse(v.expiresAt) > Date.now() && Date.parse(v.expiresAt) < Date.now() + 366 * 86400_000), 'expiresAt must be in the future (within a year)'),
+  themeColors: z.tuple([z.string().regex(/^#[0-9a-fA-F]{6}$/), z.string().regex(/^#[0-9a-fA-F]{6}$/)]).nullable(),
   theme: z.enum(['dark', 'light', 'amoled']),
   settings: z.record(z.unknown()).refine((v) => JSON.stringify(v).length <= 16_384, 'settings too large'),
 }).partial().strict();
 
-const COLS: Record<string, string> = { displayName: 'display_name', bio: 'bio', pronouns: 'pronouns', avatar: 'avatar', banner: 'banner', accentColor: 'accent_color', customStatus: 'custom_status', theme: 'theme', settings: 'settings' };
+const COLS: Record<string, string> = { displayName: 'display_name', bio: 'bio', pronouns: 'pronouns', avatar: 'avatar', banner: 'banner', accentColor: 'accent_color', customStatus: 'custom_status', themeColors: 'theme_colors', theme: 'theme', settings: 'settings' };
 
 export async function relationshipDTOs(ctx: Ctx, userId: string): Promise<Relationship[]> {
   const rows = await ctx.db.query('SELECT other_id, type FROM relationships WHERE user_id = $1 ORDER BY created_at', [userId]);
@@ -41,8 +43,8 @@ export function userRoutes(app: FastifyInstance, ctx: Ctx) {
     const sets: string[] = [], vals: unknown[] = [req.userId];
     for (const [k, v] of Object.entries(b)) {
       const col = COLS[k]; if (!col) continue; // whitelist only
-      vals.push(k === 'customStatus' || k === 'settings' ? (v === null ? null : JSON.stringify(v)) : v);
-      sets.push(`${col} = $${vals.length}${k === 'customStatus' || k === 'settings' ? '::jsonb' : ''}`);
+      vals.push(k === 'customStatus' || k === 'settings' || k === 'themeColors' ? (v === null ? null : JSON.stringify(v)) : v);
+      sets.push(`${col} = $${vals.length}${k === 'customStatus' || k === 'settings' || k === 'themeColors' ? '::jsonb' : ''}`);
     }
     if (sets.length) await ctx.db.query(`UPDATE users SET ${sets.join(', ')} WHERE id = $1`, vals);
     const [row] = await ctx.db.query('SELECT * FROM users WHERE id = $1', [req.userId]);
@@ -230,7 +232,7 @@ export function userRoutes(app: FastifyInstance, ctx: Ctx) {
     /** Sends `of`'s current presence to `to` (presence fan-out only covers existing friends/guild peers). */
     const tellPresence = async (to: string, of: string) => {
       const [r] = await ctx.db.query('SELECT presence, custom_status FROM users WHERE id = $1', [of]);
-      if (r && ctx.hub.isOnline(of)) await ctx.hub.toUser(to, 'PRESENCE_UPDATE', { userId: of, presence: ctx.hub.publicPresence(of, r.presence), customStatus: r.custom_status ?? null });
+      if (r && ctx.hub.isOnline(of)) await ctx.hub.toUser(to, 'PRESENCE_UPDATE', { userId: of, presence: ctx.hub.publicPresence(of, r.presence), customStatus: liveStatus(r.custom_status) });
     };
     const push = async (u: string, o: string, t: Relationship['type']) => { const usr = await getUser(ctx, o); if (usr) await ctx.hub.toUser(u, 'RELATIONSHIP_ADD', { user: usr, type: t }); };
     if (type === 'blocked') {
