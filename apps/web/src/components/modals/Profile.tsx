@@ -10,7 +10,7 @@ import { openDmWith, userMenu } from '@/lib/menus';
 import { useMenuTrigger } from '@/components/ui/ContextMenu';
 import { Markdown } from '@/components/chat/Markdown';
 import { RoleIcon } from '@/components/ui/RoleIcon';
-import { profileGradient, profileTint, isHex } from '@/lib/profileTheme';
+import { headerBackground, bodyBackground, isHexPair, isHex } from '@/lib/profileTheme';
 import { useStreamer } from '@/lib/streamer';
 import { t } from '@/i18n';
 
@@ -28,8 +28,8 @@ export function ProfileCard({ userId, guildId, compact }: { userId: string; guil
   const banner = fileUrl(u.banner); const accent = u.accentColor ?? idColor(u.id);
   const myRoles = member && roles ? member.roles.map((r) => roles[r]).filter((r) => r && r.id !== guildId).sort((a, b) => b.position - a.position) : [];
   return (
-    <div className="overflow-hidden rounded-lg bg-[rgb(var(--modal-alt))]" style={{ background: isHex(accent) ? profileTint(accent) : undefined }} data-testid="profile-card" {...trig}>
-      <div className={compact ? 'h-[60px]' : 'h-[100px]'} data-banner={banner ? 'image' : 'gradient'} style={{ background: banner ? `center/cover url(${banner})` : isHex(accent) ? profileGradient(accent) : accent }} />
+    <div className="overflow-hidden rounded-lg bg-[rgb(var(--modal-alt))]" style={{ background: bodyBackground(u) }} data-theme-pair={isHexPair(u.themeColors) ? 'on' : 'off'} data-testid="profile-card" {...trig}>
+      <div className={compact ? 'h-[60px]' : 'h-[100px]'} data-banner={banner ? 'image' : isHexPair(u.themeColors) ? 'theme' : 'gradient'} style={{ background: headerBackground(u, banner, accent) }} />
       <div className="relative px-4 pb-4">
         <div className="-mt-10 mb-1 flex items-end justify-between"><div className="rounded-full border-[6px] border-[rgb(var(--modal-alt))]"><Avatar user={u} memberAvatar={member?.avatar} size={80} presence ring="rgb(var(--modal-alt))" online={presence} /></div>
           {isMe ? <button className="btn btn-secondary" onClick={() => { closeAll(); openSettings({ kind: 'user', tab: 'profile' }); }}><Settings size={14} />{t('Edit Profile')}</button> : (

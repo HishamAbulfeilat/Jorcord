@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { PlusCircle, Smile, SendHorizonal, X, Eye, EyeOff, Hash, Image as ImageIcon, Gift } from 'lucide-react';
-import { LIMITS, snowflake } from '@jorcord/shared';
-import type { Channel } from '@jorcord/shared';
+import { PlusCircle, Smile, SendHorizonal, X, Eye, EyeOff, Hash, Image as ImageIcon, Gift, Upload, BarChart3 } from 'lucide-react';
+import { LIMITS, Perm, snowflake } from '@jorcord/shared';
+import type { ApplicationCommand, Channel } from '@jorcord/shared';
 import { api } from '@/lib/api';
 import { getGateway } from '@/lib/gateway';
 import { useData } from '@/stores/data';
@@ -17,14 +17,24 @@ import { Avatar } from '@/components/ui/Avatar';
 import { myChannelPerms, ackLater } from '@/lib/session';
 import { intToHex } from '@/lib/perms';
 import { t } from '@/i18n';
+import { SlashForm, useCommandCatalog } from './SlashCommands';
+import { filterCommands, parseSlash } from '@/lib/commands';
+import { can } from '@/lib/perms';
+import { selfMember } from '@/stores/data';
 
 interface Staged { id: string; file: File; spoiler: boolean; preview?: string }
-type Suggest = { kind: 'user' | 'role' | 'channel' | 'emoji'; items: { key: string; label: string; sub?: string; insert: string; token?: [string, string]; avatar?: any; icon?: string; color?: string }[]; index: number; start: number; end: number } | null;
+type Suggest = { kind: 'user' | 'role' | 'channel' | 'emoji' | 'command'; items: { key: string; label: string; sub?: string; insert: string; token?: [string, string]; avatar?: any; icon?: string; color?: string; command?: ApplicationCommand; app?: string }[]; index: number; start: number; end: number } | null;
 
 export function Composer({ channel, stagedExternal }: { channel: Channel; stagedExternal?: File[] }) {
   const cid = channel.id; const gid = channel.guildId;
   const perms = useGuildPerms(gid ?? undefined, channel);
-  const cs = gid ? composerState(perms, channel) : composerState(myChannelPerms(cid) | (1n << 15n) | (1n << 11n), channel);
+  const pending = useData((s) => (gid ? !!selfMember(s, gid)?.pending : false));
+  const cs = gid ? composerState(perms, channel, { pending }) : composerState(myChannelPerms(cid) | (1n << 15n) | (1n << 11n), channel);
+  const canSlash = !!gid && cs.canSend && can(perms, Perm.USE_SLASH_COMMANDS);
+  const catalog = useCommandCatalog(gid, cid, canSlash);
+  const catalogRef = useRef(catalog.data); catalogRef.current = catalog.data;
+  const [slash, setSlash] = useState<ApplicationCommand | null>(null);
+  const openModal = useUI((s) => s.openModal); const openMenu = useUI((s) => s.openMenu);
   const draft = useUI((s) => s.drafts[cid] ?? ''); const setDraft = useUI((s) => s.setDraft);
   const replyId = useUI((s) => s.replyTo[cid]); const setReply = useUI((s) => s.setReply); const openPopout = useUI((s) => s.openPopout);
   const me = useData((s) => s.me); const mobile = useIsMobile();
@@ -38,7 +48,7 @@ export function Composer({ channel, stagedExternal }: { channel: Channel; staged
   const users = useData((s) => s.users);
   const placeholder = !cs.canSend ? (cs.reason ?? 'You cannot send messages here.') : channel.type === 'dm' || channel.type === 'group_dm' ? `Message @${dmName(channel, me?.id)}` : `Message #${channel.name}`;
 
-  useEffect(() => { setText(draft); tokens.current.clear(); setFiles([]); /* eslint-disable-next-line */ }, [cid]);
+  useEffect(() => { setText(draft); tokens.current.clear(); setFiles([]); setSlash(null); /* eslint-disable-next-line */ }, [cid]);
   useEffect(() => { if (stagedExternal?.length) addFiles(stagedExternal); /* eslint-disable-next-line */ }, [stagedExternal]);
   useEffect(() => { const t = setTimeout(() => setDraft(cid, text), 300); return () => clearTimeout(t); }, [text, cid, setDraft]);
   useEffect(() => { if (replyId) ta.current?.focus(); }, [replyId]);
@@ -63,6 +73,12 @@ export function Composer({ channel, stagedExternal }: { channel: Channel; staged
   const compute = (value: string, caret: number) => {
     const before = value.slice(0, caret);
     let m: RegExpMatchArray | null;
+    const sl = canSlash ? parseSlash(value) : null;
+    if (sl && !sl.hasSpace && catalogRef.current) {
+      const apps = new Map(catalogRef.current.applications.map((a) => [a.id, a]));
+      const items = filterCommands(catalogRef.current.commands, sl.name).map((c) => ({ key: c.id, label: `/${c.name}`, sub: c.description, insert: `/${c.name}`, command: c, app: apps.get(c.applicationId)?.name, avatar: { id: c.applicationId, username: apps.get(c.applicationId)?.name ?? 'app', displayName: apps.get(c.applicationId)?.name ?? 'app', avatar: apps.get(c.applicationId)?.icon ?? null } }));
+      return items.length ? { kind: 'command' as const, items, index: 0, start: 0, end: value.length } : null;
+    }
     if ((m = before.match(/(?:^|\s)@([\w.\-]{0,32})$/)) && gid && guild) {
       const q = m[1].toLowerCase(); const start = caret - m[1].length - 1;
       const members = Object.values(guild.members).filter((x) => (x.nick ?? x.user.displayName ?? x.user.username).toLowerCase().includes(q) || x.user.username.toLowerCase().includes(q)).slice(0, 8)
@@ -90,8 +106,17 @@ export function Composer({ channel, stagedExternal }: { channel: Channel; staged
     return null;
   };
 
+  // a refreshed catalog may now know the command being typed
+  useEffect(() => {
+    const cat = catalog.data; if (!cat || slash || !canSlash) return;
+    const sl = parseSlash(text); if (!sl) return;
+    if (sl.hasSpace && !sl.rest) { const hit = cat.commands.find((c) => c.type === 1 && c.name === sl.name); if (hit) startSlash(hit); }
+    else if (!sl.hasSpace) setSuggest(compute(text, ta.current?.selectionStart ?? text.length));
+  }, [catalog.data]); // eslint-disable-line
+  const startSlash = (c: ApplicationCommand) => { setText(''); setDraft(cid, ''); setSuggest(null); setSlash(c); };
   const applySuggest = (s: NonNullable<Suggest>, i = s.index) => {
     const it = s.items[i]; if (!it) return;
+    if (s.kind === 'command' && it.command) { startSlash(it.command); return; }
     const t = ta.current!; const insert = it.insert + ' ';
     const next = text.slice(0, s.start) + insert + text.slice(s.end);
     if (it.token) tokens.current.set(it.token[0], it.token[1]);
@@ -149,6 +174,10 @@ export function Composer({ channel, stagedExternal }: { channel: Channel; staged
   };
 
   const onChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const sl = canSlash ? parseSlash(e.target.value) : null;
+    // global commands have no gateway event: look again when someone starts a command and what we hold is a few seconds old
+    if (sl && !sl.hasSpace && Date.now() - catalog.dataUpdatedAt > 3_000) void catalog.refetch();
+    if (sl?.hasSpace && !sl.rest && catalogRef.current) { const hit = catalogRef.current.commands.find((c) => c.type === 1 && c.name === sl.name); if (hit) { startSlash(hit); return; } }
     setText(e.target.value); setSuggest(compute(e.target.value, e.target.selectionStart));
     if (e.target.value && cs.canSend) { const g = getGateway(); if (g.status === 'connected') g.sendTyping(cid); else throttledTyping(cid); }
   };
@@ -157,6 +186,7 @@ export function Composer({ channel, stagedExternal }: { channel: Channel; staged
   };
   const insert = (s: string) => { const t = ta.current; const p = t?.selectionStart ?? text.length; setText(text.slice(0, p) + s + text.slice(p)); requestAnimationFrame(() => { t?.focus(); t?.setSelectionRange(p + s.length, p + s.length); }); };
 
+  const canPoll = cs.canSend && (!gid || can(perms, Perm.SEND_POLLS)) && channel.type !== 'category';
   const over = text.length > LIMITS.maxMessageLength - 200;
   const canPostEmpty = files.length > 0; const hasText = text.trim().length > 0;
   const replyName = useMemo(() => (replyUser ? displayName(replyUser, gid ? guild?.members[replyUser.id] : undefined) : ''), [replyUser, gid, guild]);
@@ -166,12 +196,12 @@ export function Composer({ channel, stagedExternal }: { channel: Channel; staged
     <div className="relative shrink-0 px-4 pb-6 pt-0 max-md:pb-2" style={{ paddingBottom: mobile ? 'max(8px, var(--sab))' : undefined }}>
       {suggest && (
         <ul role="listbox" aria-label={t('Suggestions')} className="absolute inset-x-4 bottom-full z-30 mb-1 max-h-72 overflow-y-auto rounded-md bg-float p-2 shadow-elev">
-          <li className="px-2 pb-1 text-xs font-bold uppercase text-muted">{suggest.kind === 'user' ? 'Members' : suggest.kind === 'channel' ? 'Channels' : 'Emoji'}</li>
+          <li className="px-2 pb-1 text-xs font-bold uppercase text-muted">{suggest.kind === 'user' ? 'Members' : suggest.kind === 'channel' ? 'Channels' : suggest.kind === 'command' ? t('Commands') : 'Emoji'}</li>
           {suggest.items.map((it, i) => (
             <li key={it.key} role="option" aria-selected={i === suggest.index}>
               <button onMouseDown={(e) => { e.preventDefault(); applySuggest(suggest, i); }} onMouseEnter={() => setSuggest({ ...suggest, index: i })} className={cx('touch flex w-full items-center gap-2 rounded px-2 py-1 text-start md:min-h-[34px]', i === suggest.index ? 'bg-hover' : '')}>
                 {it.avatar ? <Avatar user={it.avatar} size={24} /> : it.icon?.startsWith('http') || it.icon?.startsWith('/') ? <img src={it.icon} alt="" className="h-6 w-6 object-contain" /> : <span className="flex h-6 w-6 items-center justify-center text-lg">{it.icon === '#' ? <Hash size={18} className="text-muted" /> : it.icon}</span>}
-                <span className="font-medium text-header" style={{ color: it.color }}>{it.label}</span>{it.sub && <span className="text-sm text-muted">{it.sub}</span>}
+                <span className="font-medium text-header" style={{ color: it.color }}>{it.label}</span>{it.sub && <span className="min-w-0 flex-1 truncate text-sm text-muted">{it.sub}</span>}{it.app && <span className="ms-auto shrink-0 text-xs text-muted">{it.app}</span>}
               </button>
             </li>
           ))}
@@ -201,10 +231,17 @@ export function Composer({ channel, stagedExternal }: { channel: Channel; staged
             ))}
           </ul>
         )}
-        <div className="flex items-end">
-          <button aria-label={t('Upload a file')} disabled={!cs.canAttach} onClick={() => fileInput.current?.click()} className="flex h-11 w-11 shrink-0 items-center justify-center text-interactive hover:text-interactive-hover disabled:cursor-not-allowed disabled:opacity-40"><PlusCircle size={24} /></button>
+        {slash && <SlashForm key={slash.id} channel={channel} command={slash} appName={catalog.data?.applications.find((a) => a.id === slash.applicationId)?.name} onDone={() => { setSlash(null); requestAnimationFrame(() => ta.current?.focus()); }} />}
+        <div className={cx('flex items-end', slash && 'hidden')}>
+          <button aria-label={t('Attach')} aria-haspopup="menu" disabled={!cs.canSend} onClick={(e) => {
+            const r = e.currentTarget.getBoundingClientRect();
+            openMenu(r.left, r.top - (canPoll ? 96 : 52), [
+              { label: t('Upload a File'), icon: Upload, disabled: !cs.canAttach, onClick: () => fileInput.current?.click() },
+              ...(canPoll ? [{ label: t('Create Poll'), icon: BarChart3, onClick: () => openModal({ kind: 'createPoll', channelId: cid }) }] : []),
+            ]);
+          }} className="flex h-11 w-11 shrink-0 items-center justify-center text-interactive hover:text-interactive-hover disabled:cursor-not-allowed disabled:opacity-40"><PlusCircle size={24} /></button>
           <input ref={fileInput} type="file" multiple hidden onChange={(e) => { addFiles([...(e.target.files ?? [])]); e.target.value = ''; }} />
-          <textarea ref={ta} value={text} rows={1} disabled={!cs.canSend} placeholder={placeholder} aria-label={placeholder} enterKeyHint={mobile ? 'enter' : 'send'} onChange={onChange} onKeyDown={onKey} onPaste={onPaste} onBlur={() => setTimeout(() => setSuggest(null), 100)}
+          <textarea ref={ta} value={text} rows={1} disabled={!cs.canSend} placeholder={placeholder} aria-label={placeholder} enterKeyHint={mobile ? 'enter' : 'send'} onChange={onChange} onKeyDown={onKey} onPaste={onPaste} onFocus={() => { if (canSlash && Date.now() - catalog.dataUpdatedAt > 10_000) void catalog.refetch(); }} onBlur={() => setTimeout(() => setSuggest(null), 100)}
             className="max-h-[45vh] min-h-[44px] flex-1 resize-none bg-transparent py-[11px] text-[16px] leading-[22px] text-normal outline-none placeholder:text-muted disabled:cursor-not-allowed" />
           {over && <span className={cx('self-center pe-2 text-xs font-semibold', text.length > LIMITS.maxMessageLength ? 'text-danger' : 'text-muted')}>{LIMITS.maxMessageLength - text.length}</span>}
           <button aria-label={t('Choose emoji or GIF')} disabled={!cs.canSend} onClick={(e) => openPopout({ kind: 'emoji', rect: e.currentTarget.getBoundingClientRect(), guildId: gid ?? undefined, stickers: !!gid, onPick: (p) => { if (p.sticker) void sendSticker(p.sticker); else if ((p as any).gif) send((p as any).gif); else if (p.char) insert(p.char); else if (p.id) { tokens.current.set(`:${p.name}:`, `<${p.animated ? 'a' : ''}:${p.name}:${p.id}>`); insert(`:${p.name}: `); } } })} className="flex h-11 w-11 shrink-0 items-center justify-center text-interactive hover:text-interactive-hover disabled:opacity-40"><Smile size={24} /></button>

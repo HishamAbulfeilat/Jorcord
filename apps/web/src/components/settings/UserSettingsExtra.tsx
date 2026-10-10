@@ -12,7 +12,7 @@ import { disablePush, enablePush, loadPushState, pushSupport } from '@/lib/push'
 import { desktop } from '@/lib/native';
 import { getServerUrl, isNative, nativePlatform } from '@/lib/server';
 import { switchServer } from '@/lib/serverSwitch';
-import { PROFILE_THEMES } from '@/lib/profileTheme';
+import { PROFILE_THEMES, THEME_PAIRS, themeGradient, type ThemePair } from '@/lib/profileTheme';
 import { useStreamer } from '@/lib/streamer';
 import { t, T } from '@/i18n';
 
@@ -120,6 +120,26 @@ export function ServerSection() {
 }
 
 /* ------------------------------------------------------------------ profile themes */
+/** Two-colour theme: presets + two free colour inputs; `null` = off (single accent colour applies). */
+export function ThemeColorsPicker({ value, onChange }: { value: ThemePair | null; onChange: (c: ThemePair | null) => void }) {
+  const cur: ThemePair = value ?? ['#5865f2', '#eb459e'];
+  return (
+    <div className="mb-4" data-testid="theme-colors">
+      <span className="label">{t('Gradient Theme')}</span>
+      <p className="-mt-1 mb-2 text-xs text-muted">{t('Two colours blended across your profile card. Overrides the single colour above.')}</p>
+      <div role="radiogroup" aria-label={t('Gradient Theme')} className="mb-2 flex flex-wrap gap-2">
+        {THEME_PAIRS.map((th) => { const on = !!value && value[0].toLowerCase() === th.colors[0] && value[1].toLowerCase() === th.colors[1]; return (
+          <button key={th.id} type="button" role="radio" aria-checked={on} aria-label={th.name} title={th.name} onClick={() => onChange(th.colors)} className={cx('flex h-10 w-16 items-center justify-center rounded-md border-2', on ? 'border-header' : 'border-transparent')} style={{ background: themeGradient(th.colors) }}>{on && <Check size={16} className="text-white" />}</button>); })}
+      </div>
+      <div className="flex flex-wrap items-center gap-3 text-sm text-interactive">
+        <label className="flex items-center gap-2">{t('Primary')}<input type="color" value={cur[0]} onChange={(e) => onChange([e.target.value, cur[1]])} className="h-9 w-12 cursor-pointer rounded bg-transparent" aria-label={t('Primary colour')} /></label>
+        <label className="flex items-center gap-2">{t('Accent')}<input type="color" value={cur[1]} onChange={(e) => onChange([cur[0], e.target.value])} className="h-9 w-12 cursor-pointer rounded bg-transparent" aria-label={t('Accent colour')} /></label>
+        {value && <button type="button" className="text-link hover:underline" onClick={() => onChange(null)}>{t('Remove gradient')}</button>}
+      </div>
+    </div>
+  );
+}
+
 export function ThemePicker({ value, onChange }: { value: string; onChange: (c: string) => void }) {
   return (
     <div className="mb-4">

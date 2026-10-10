@@ -22,6 +22,7 @@ import { CAT, applyChannelDrop, layoutOf, orderDiff } from '@/lib/channelOrder';
 import { WebhooksList } from './Webhooks';
 import { publicOrigin } from '@/lib/server';
 import { t, T } from '@/i18n';
+import { AUDIT_FILTER_GROUPS, actionLabel, entryDetail, entryType } from '@/lib/audit';
 
 export function GuildSettings({ guildId, initialTab }: { guildId: string; initialTab?: string }) {
   const g = useData((s) => s.guilds[guildId]); const me = useData((s) => selfMember(s, guildId)); const close = () => useUI.getState().openSettings(null);
@@ -59,9 +60,9 @@ export function GuildSettings({ guildId, initialTab }: { guildId: string; initia
 
 function Overview({ guildId }: { guildId: string }) {
   const g = useData((s) => s.guilds[guildId])!; const gd = g.guild;
-  const [f, setF] = useState({ name: gd.name, description: gd.description ?? '', icon: gd.icon, banner: gd.banner, systemChannelId: gd.systemChannelId ?? '', rulesChannelId: gd.rulesChannelId ?? '', discoverable: gd.features.includes('DISCOVERABLE') }); const [busy, setBusy] = useState(false);
-  const dirty = f.name !== gd.name || (f.description || null) !== (gd.description || null) || f.icon !== gd.icon || f.banner !== gd.banner || (f.systemChannelId || null) !== (gd.systemChannelId || null) || (f.rulesChannelId || null) !== (gd.rulesChannelId || null) || f.discoverable !== gd.features.includes('DISCOVERABLE');
-  const save = async () => { setBusy(true); try { const u = await api.guilds.patch(guildId, { name: f.name, description: f.description || null, icon: f.icon, banner: f.banner, systemChannelId: f.systemChannelId || null, rulesChannelId: f.rulesChannelId || null, discoverable: f.discoverable } as any); useData.getState().apply('GUILD_UPDATE', { ...gd, ...u }); toast(t('Server updated'), 'success'); } catch (e) { toastError(e); } setBusy(false); };
+  const [f, setF] = useState({ name: gd.name, description: gd.description ?? '', icon: gd.icon, banner: gd.banner, systemChannelId: gd.systemChannelId ?? '', rulesChannelId: gd.rulesChannelId ?? '', discoverable: gd.features.includes('DISCOVERABLE'), screening: gd.features.includes('MEMBER_SCREENING') }); const [busy, setBusy] = useState(false);
+  const dirty = f.name !== gd.name || (f.description || null) !== (gd.description || null) || f.icon !== gd.icon || f.banner !== gd.banner || (f.systemChannelId || null) !== (gd.systemChannelId || null) || (f.rulesChannelId || null) !== (gd.rulesChannelId || null) || f.discoverable !== gd.features.includes('DISCOVERABLE') || f.screening !== gd.features.includes('MEMBER_SCREENING');
+  const save = async () => { setBusy(true); try { const u = await api.guilds.patch(guildId, { name: f.name, description: f.description || null, icon: f.icon, banner: f.banner, systemChannelId: f.systemChannelId || null, rulesChannelId: f.rulesChannelId || null, discoverable: f.discoverable, memberScreening: f.screening && !!f.rulesChannelId }); useData.getState().apply('GUILD_UPDATE', { ...gd, ...u }); toast(t('Server updated'), 'success'); } catch (e) { toastError(e); } setBusy(false); };
   const texts = Object.values(g.channels).filter((c) => c.type === 'text');
   return (<>
     <H1>{t('Server Overview')}</H1>
@@ -70,9 +71,10 @@ function Overview({ guildId }: { guildId: string }) {
     <Field label={t('Description')}><textarea className="field min-h-[80px]" value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} placeholder={t('Tell people what this server is about')} /></Field>
     <Field label={t('System Messages Channel')} hint={t('We use this channel to post welcome messages and boost announcements.')}><select className="field" value={f.systemChannelId} onChange={(e) => setF({ ...f, systemChannelId: e.target.value })}><option value="">{t('No system messages')}</option>{texts.map((c) => <option key={c.id} value={c.id}>#{c.name}</option>)}</select></Field>
     <Field label={t('Rules Channel')} hint={t('New members review the messages in this channel on a welcome screen before they start chatting.')}><select className="field" value={f.rulesChannelId} onChange={(e) => setF({ ...f, rulesChannelId: e.target.value })}><option value="">{t('No rules screening')}</option>{texts.map((c) => <option key={c.id} value={c.id}>#{c.name}</option>)}</select></Field>
+    <Row title={t('Membership Screening')} desc={f.rulesChannelId ? t('New members must accept the rules before they can chat.') : t('Choose a rules channel first.')}><Toggle label={t('Membership Screening')} checked={f.screening && !!f.rulesChannelId} disabled={!f.rulesChannelId} onChange={(v) => setF({ ...f, screening: v })} /></Row>
     <Row title={t('Enable Discovery')} desc={t('Let people find this server on the Discover page.')}><Toggle label={t('Enable Discovery')} checked={f.discoverable} onChange={(v) => setF({ ...f, discoverable: v })} /></Row>
     <div className="mb-4 mt-4"><span className="label">{t('Server Banner')}</span><div className="relative h-28 overflow-hidden rounded-lg bg-rail">{f.banner && <img src={fileUrl(f.banner)!} alt="" className="h-full w-full object-cover" />}<label className="absolute inset-0 flex cursor-pointer items-center justify-center bg-black/40 text-sm font-semibold text-white opacity-0 hover:opacity-100 focus-within:opacity-100">{t('Upload banner')}<input type="file" accept="image/*" className="sr-only" onChange={async (e) => { const file = e.target.files?.[0]; if (file) { try { setF({ ...f, banner: await uploadImageFile(file) }); } catch (err) { toastError(err); } } }} /></label></div>{f.banner && <button className="mt-1 text-sm text-link" onClick={() => setF({ ...f, banner: null })}>{t('Remove banner')}</button>}</div>
-    <SaveBar dirty={dirty} busy={busy} onSave={save} onReset={() => setF({ name: gd.name, description: gd.description ?? '', icon: gd.icon, banner: gd.banner, systemChannelId: gd.systemChannelId ?? '', rulesChannelId: gd.rulesChannelId ?? '', discoverable: gd.features.includes('DISCOVERABLE') })} />
+    <SaveBar dirty={dirty} busy={busy} onSave={save} onReset={() => setF({ name: gd.name, description: gd.description ?? '', icon: gd.icon, banner: gd.banner, systemChannelId: gd.systemChannelId ?? '', rulesChannelId: gd.rulesChannelId ?? '', discoverable: gd.features.includes('DISCOVERABLE'), screening: gd.features.includes('MEMBER_SCREENING') })} />
   </>);
 }
 
@@ -196,16 +198,17 @@ function AutoMod({ guildId }: { guildId: string }) {
   </>);
 }
 
-const ACTION_LABEL = (a: string) => a.replace(/_/g, ' ').toLowerCase().replace(/^./, (c) => c.toUpperCase());
 function Audit({ guildId }: { guildId: string }) {
-  const [action, setAction] = useState(''); const users = useData((s) => s.users);
-  const q = useQuery({ queryKey: ['audit', guildId, action], queryFn: () => api.guilds.auditLogs(guildId, { limit: 100, action: action || undefined }) });
-  const actions = ['', 'CHANNEL_CREATE', 'CHANNEL_DELETE', 'ROLE_CREATE', 'ROLE_UPDATE', 'MEMBER_KICK', 'MEMBER_BAN_ADD', 'MESSAGE_DELETE', 'INVITE_CREATE', 'GUILD_UPDATE'];
+  const [type, setType] = useState(''); const users = useData((s) => s.users);
+  const q = useQuery({ queryKey: ['audit', guildId, type], queryFn: () => api.guilds.auditLogs(guildId, { limit: 100, ...(type ? { actionType: Number(type) } : {}) }) });
   return (<>
     <H1>{t('Audit Log')}</H1>
-    <select className="field mb-4 !w-auto" aria-label={t('Filter by action')} value={action} onChange={(e) => setAction(e.target.value)}>{actions.map((a) => <option key={a} value={a}>{a ? ACTION_LABEL(a) : 'All actions'}</option>)}</select>
+    <select className="field mb-4 !w-auto" aria-label={t('Filter by action')} value={type} onChange={(e) => setType(e.target.value)}>
+      <option value="">{t('All actions')}</option>
+      {AUDIT_FILTER_GROUPS.map((g) => <optgroup key={g.title} label={g.title}>{g.items.map((a) => <option key={a.value} value={a.type}>{a.label}</option>)}</optgroup>)}
+    </select>
     {q.isLoading && <Spinner />}{q.data?.length === 0 && <Empty icon={<ScrollText size={40} />} title={t('No entries')} />}
-    <ul>{q.data?.map((e) => { const actor = users[e.actorId]; return <li key={e.id} className="flex items-start gap-3 border-b border-divider/50 py-3 text-sm"><Avatar user={actor} size={32} /><div className="min-w-0 flex-1"><div><b className="text-header">{actor ? displayName(actor) : e.actorId}</b> <span className="text-muted">{ACTION_LABEL(e.action)}</span>{e.targetId && <span className="text-muted"> • target {users[e.targetId] ? displayName(users[e.targetId]) : e.targetId}</span>}</div>{e.reason && <div className="text-xs text-muted">Reason: {e.reason}</div>}<div className="text-xs text-muted">{fmtStamp(new Date(e.createdAt || snowflakeTime(e.id)).getTime())}</div></div></li>; })}</ul>
+    <ul>{q.data?.map((e) => { const actor = users[e.actorId]; const detail = entryDetail(e); return <li key={e.id} data-action={e.action} data-action-type={entryType(e)} className="flex items-start gap-3 border-b border-divider/50 py-3 text-sm"><Avatar user={actor} size={32} /><div className="min-w-0 flex-1"><div><b className="text-header">{actor ? displayName(actor) : e.actorId}</b> <span className="text-muted">{actionLabel(e.action)}</span>{e.targetId && users[e.targetId] && <span className="text-muted"> • {displayName(users[e.targetId])}</span>}</div>{detail && <div className="truncate text-xs text-muted">{detail}</div>}{e.reason && <div className="text-xs text-muted">Reason: {e.reason}</div>}<div className="text-xs text-muted">{fmtStamp(new Date(e.createdAt || snowflakeTime(e.id)).getTime())}</div></div></li>; })}</ul>
   </>);
 }
 

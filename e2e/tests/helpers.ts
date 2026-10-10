@@ -43,7 +43,7 @@ export const token = (page: Page) => page.evaluate(() => JSON.parse(localStorage
 export async function rest<T = any>(page: Page, method: string, path: string, body?: unknown): Promise<T> {
   const t = await token(page);
   return page.evaluate(async ({ method, path, body, t }) => {
-    const r = await fetch('/api/v1' + path, { method, headers: { 'content-type': 'application/json', authorization: `Bearer ${t}` }, body: body === undefined ? undefined : JSON.stringify(body) });
+    const r = await fetch('/api/v1' + path, { method, headers: { ...(body === undefined ? {} : { 'content-type': 'application/json' }), authorization: `Bearer ${t}` }, body: body === undefined ? undefined : JSON.stringify(body) });
     const text = await r.text();
     if (!r.ok) throw new Error(`${method} ${path} -> ${r.status} ${text}`);
     return text ? JSON.parse(text) : null;

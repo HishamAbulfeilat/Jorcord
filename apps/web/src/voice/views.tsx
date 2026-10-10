@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { Menu, Mic, MicOff, Phone, PhoneOff, Radio, Signal, Video, Volume2, Headphones, VolumeX, MonitorUp, Camera, CameraOff } from 'lucide-react';
+import { MessageSquare, Menu, Mic, MicOff, Phone, PhoneOff, Radio, Signal, Video, Volume2, Headphones, VolumeX, MonitorUp, Camera, CameraOff } from 'lucide-react';
 import type { Channel } from '@jorcord/shared';
 import { Perm } from '@jorcord/shared';
 import { useVoiceSnapshot } from '@jorcord/voice/react';
@@ -20,6 +20,9 @@ import { getVoiceClient, joinVoice, leaveVoice } from './controller';
 import { setCurrentChannel } from '@/lib/session';
 import { useState } from 'react';
 import { t } from '@/i18n';
+import { StageBar, canModerateStage } from './StageBar';
+import { VoiceChatPanel } from '@/components/chat/VoiceChat';
+import { channelUnread } from '@/stores/data';
 
 export function useChannelVoiceUsers(channelId: string) {
   return useData(useShallow((s) => Object.values(s.voiceStates).filter((v) => v.channelId === channelId).map((v) => s.users[v.userId] ?? { id: v.userId, username: 'user', displayName: 'user', avatar: null })));
@@ -42,6 +45,8 @@ export function VoiceChannelView({ channel }: { channel: Channel }) {
   const mine = inHere && snap.channelId === channel.id;
   useEffect(() => { setCurrentChannel(channel.id); return () => setCurrentChannel(null); }, [channel.id]);
   const Icon = stage ? Radio : Volume2;
+  const [chat, setChat] = useState(false);
+  const unread = useData(useShallow((s) => channelUnread(s, channel)));
   const noConnect = !can(perms, Perm.CONNECT) ? 'You do not have permission to connect to this channel.' : undefined;
   return (
     <div data-testid="voice-view" data-channel={channel.id} className="relative flex h-full min-w-0 flex-1 flex-col bg-chat">
@@ -50,9 +55,14 @@ export function VoiceChannelView({ channel }: { channel: Channel }) {
         <Icon size={24} className="shrink-0 text-muted" />
         <h1 className="truncate text-base font-semibold text-header">{channel.name}</h1>
         {stage && <span className="rounded bg-brand/20 px-1.5 py-0.5 text-[11px] font-bold uppercase tracking-wide text-mention">{t('Stage')}</span>}
-        {mine && <span className="ms-auto flex items-center gap-2 text-xs text-muted"><NetBars quality={snap.networkQuality} />{snap.status === 'connected' ? 'Connected' : snap.status}</span>}
+        <span className="ms-auto flex items-center gap-2 text-xs text-muted">
+          {mine && <><NetBars quality={snap.networkQuality} />{snap.status === 'connected' ? 'Connected' : snap.status}</>}
+          <Tip text={chat ? t('Hide Chat') : t('Show Chat')} side="bottom"><button aria-label={chat ? t('Hide Chat') : t('Show Chat')} aria-pressed={chat} onClick={() => setChat((v) => !v)} className={cx('relative flex h-8 w-8 items-center justify-center rounded', chat ? 'text-header' : 'text-interactive hover:text-interactive-hover')}><MessageSquare size={22} />{unread.mentions > 0 ? <span className="absolute end-0.5 top-0 h-2 w-2 rounded-full bg-danger" /> : unread.unread && !chat ? <span className="absolute end-1 top-1 h-2 w-2 rounded-full bg-header" /> : null}</button></Tip>
+        </span>
       </header>
-      <div className="relative flex min-h-0 flex-1 flex-col bg-[#000]/0">
+      {stage && <StageBar channel={channel} />}
+      <div className="relative flex min-h-0 flex-1">
+      <div className="relative flex min-h-0 min-w-0 flex-1 flex-col bg-[#000]/0">
         {mine ? (
           <>
             <VoiceBanners />
@@ -65,6 +75,8 @@ export function VoiceChannelView({ channel }: { channel: Channel }) {
           <Lobby name={channel.name ?? 'Voice'} stage={stage} users={users} busy={conn === 'connecting' && cid === channel.id} icon={<Icon size={40} />}
             disabledReason={noConnect} onJoin={() => void joinVoice(channel.id)} />
         )}
+      </div>
+      {chat && <VoiceChatPanel channel={channel} onClose={() => setChat(false)} />}
       </div>
     </div>
   );
@@ -122,4 +134,4 @@ export function MobileVoiceBar() {
 }
 import { useRouteIds } from '@/lib/nav';
 function useRouteChannel() { return useRouteIds(); }
-void Phone; void Video; void VolumeX;
+void Phone; void Video; void VolumeX; void canModerateStage;

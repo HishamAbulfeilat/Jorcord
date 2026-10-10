@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Id } from '@jorcord/shared';
+import type { Id, Modal } from '@jorcord/shared';
 
 export type Theme = 'dark' | 'light' | 'amoled';
 export interface Prefs {
@@ -49,7 +49,11 @@ export type ModalSpec =
   | { kind: 'prompt'; title: string; label: string; initial?: string; onSubmit: (v: string) => void | Promise<void> }
   | { kind: 'leaveGuild'; guildId: Id }
   | { kind: 'customStatus' } | { kind: 'folder'; folderId: string } | { kind: 'notifSettings'; scope: 'guild' | 'channel'; id: Id }
-  | { kind: 'onboarding'; guildId: Id; step?: 'welcome' | 'rules' } | { kind: 'streamerStart' };
+  | { kind: 'onboarding'; guildId: Id; step?: 'welcome' | 'rules' } | { kind: 'streamerStart' }
+  | { kind: 'interactionModal'; interactionId: Id; channelId: Id; modal: Modal }
+  | { kind: 'createPoll'; channelId: Id } | { kind: 'pollVoters'; channelId: Id; messageId: Id; answerId?: number }
+  | { kind: 'events'; guildId: Id } | { kind: 'eventEditor'; guildId: Id; eventId?: Id; channelId?: Id }
+  | { kind: 'screening'; guildId: Id } | { kind: 'threadSettings'; channelId: Id } | { kind: 'stage'; channelId: Id; mode: 'start' | 'edit' };
 export type SettingsSpec = { kind: 'user'; tab?: string } | { kind: 'guild'; guildId: Id; tab?: string } | null;
 export interface MenuItem { label?: string; icon?: any; onClick?: () => void; danger?: boolean; separator?: boolean; checked?: boolean; disabled?: boolean; hint?: string; children?: MenuItem[] }
 export interface Toast { id: number; kind: 'info' | 'success' | 'error'; text: string }
@@ -103,4 +107,9 @@ export const useUI = create<UIState>((set, get) => ({
 }));
 
 export const toast = (text: string, kind: Toast['kind'] = 'info') => useUI.getState().toast(text, kind);
-export const toastError = (e: unknown) => useUI.getState().toast((e as Error)?.message || 'Something went wrong', 'error');
+export const errorText = (e: unknown): string => {
+  const x = e as { message?: string; errors?: Record<string, { _errors?: { message?: string }[] }> } | undefined;
+  const field = x?.errors ? Object.entries(x.errors).map(([k, v]) => (v?._errors?.[0]?.message ? `${k}: ${v._errors[0].message}` : '')).find(Boolean) : '';
+  return field || x?.message || 'Something went wrong';
+};
+export const toastError = (e: unknown) => useUI.getState().toast(errorText(e), 'error');

@@ -62,8 +62,12 @@ export function roleReorder(orderedDesc: { id: Id; position: number }[], from: n
   return moved.map((r, i) => ({ id: r.id, position: positions[i]! })).filter((r, i) => orderedDesc.find((o) => o.id === r.id)!.position !== r.position);
 }
 
-/** dnd-kit's default attributes make the wrapper `role=button tabIndex=0`, which hijacks accessible names; keep only the harmless ones. */
+/**
+ * dnd-kit's default attributes make the wrapper `role=button tabIndex=0`, which hijacks accessible names; keep only the harmless ones.
+ * `aria-disabled` (set when sorting is off for people who cannot manage channels) is dropped too: it would mark every channel row as
+ * unavailable to assistive tech (and to Playwright >= 1.55, which treats an aria-disabled ancestor as a disabled control).
+ */
 export function plainAttrs(attrs: Record<string, any>): Record<string, any> {
-  const { role: _r, tabIndex: _t, 'aria-pressed': _p, ...rest } = attrs; void _r; void _t; void _p;
+  const { role: _r, tabIndex: _t, 'aria-pressed': _p, 'aria-disabled': _d, 'aria-roledescription': _rd, ...rest } = attrs; void _r; void _t; void _p; void _d; void _rd;
   return rest;
 }

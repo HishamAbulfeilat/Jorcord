@@ -33,11 +33,13 @@ export const MANAGEMENT_PERMS = Perm.MANAGE_GUILD | Perm.MANAGE_ROLES | Perm.MAN
 export const canOpenGuildSettings = (perms: bigint) => canAny(perms, Perm.MANAGE_GUILD, Perm.MANAGE_ROLES, Perm.MANAGE_CHANNELS, Perm.VIEW_AUDIT_LOG, Perm.MANAGE_EMOJIS, Perm.BAN_MEMBERS, Perm.MANAGE_WEBHOOKS);
 
 /** What the composer may do in a channel. */
-export function composerState(perms: bigint, channel: Pick<Channel, 'type' | 'archived'>): { canView: boolean; canSend: boolean; canAttach: boolean; canEmbed: boolean; reason?: string } {
+export function composerState(perms: bigint, channel: Pick<Channel, 'type' | 'archived'> & { locked?: boolean }, opts: { pending?: boolean } = {}): { canView: boolean; canSend: boolean; canAttach: boolean; canEmbed: boolean; reason?: string } {
   const canView = has(perms, Perm.VIEW_CHANNEL);
   const isThread = channel.type === 'thread';
-  const canSend = has(perms, isThread ? Perm.SEND_IN_THREADS : Perm.SEND_MESSAGES) && !channel.archived && channel.type !== 'category';
-  const reason = !canSend ? (channel.archived ? 'This thread is archived.' : 'You do not have permission to send messages in this channel.') : undefined;
+  // "locked" only matters once a thread is archived: then just MANAGE_THREADS may unarchive it or post (server: 403 errorCode 50083).
+  // An archived thread that is not locked is reopened by whoever posts, but the client asks for an explicit Unarchive first.
+  const canSend = has(perms, isThread ? Perm.SEND_IN_THREADS : Perm.SEND_MESSAGES) && !channel.archived && !opts.pending && channel.type !== 'category';
+  const reason = !canSend ? (opts.pending ? 'Accept the server rules to start chatting.' : channel.archived ? (channel.locked ? 'This thread is archived and locked.' : 'This thread is archived.') : 'You do not have permission to send messages in this channel.') : undefined;
   return { canView, canSend, canAttach: canSend && has(perms, Perm.ATTACH_FILES), canEmbed: has(perms, Perm.EMBED_LINKS), reason };
 }
 
@@ -112,6 +114,8 @@ export const PERMISSION_META: PermMeta[] = [
   P('VIEW_AUDIT_LOG', 'View Audit Log', 'View a record of who made which changes in this server.', 'General'),
   P('MANAGE_WEBHOOKS', 'Manage Webhooks', 'Create, edit, or delete webhooks.', 'General'),
   P('MANAGE_GUILD', 'Manage Server', 'Change the server name, icon and other settings.', 'General'),
+  P('MANAGE_EVENTS', 'Manage Events', 'Edit and cancel events created by anyone.', 'Events'),
+  P('CREATE_EVENTS', 'Create Events', 'Create events for the server (and edit or cancel your own).', 'Events'),
   P('CREATE_INVITE', 'Create Invite', 'Invite new people to this server.', 'Membership'),
   P('CHANGE_NICKNAME', 'Change Nickname', 'Change their own nickname.', 'Membership'),
   P('MANAGE_NICKNAMES', 'Manage Nicknames', 'Change the nicknames of other members.', 'Membership'),
@@ -132,6 +136,8 @@ export const PERMISSION_META: PermMeta[] = [
   P('READ_MESSAGE_HISTORY', 'Read Message History', 'Read messages sent previously in channels.', 'Text'),
   P('SEND_TTS', 'Send Text-to-Speech Messages', 'Send messages using text-to-speech.', 'Text'),
   P('USE_SLASH_COMMANDS', 'Use Application Commands', 'Use commands from applications.', 'Text'),
+  P('USE_EXTERNAL_APPS', 'Use External Apps', 'Let people see the replies of apps they run here to everyone, not only themselves.', 'Text'),
+  P('SEND_POLLS', 'Create Polls', 'Start polls in text channels.', 'Text'),
   P('CONNECT', 'Connect', 'Join voice channels.', 'Voice'),
   P('SPEAK', 'Speak', 'Talk in voice channels.', 'Voice'),
   P('STREAM', 'Video', 'Share video, screen share, or stream a game.', 'Voice'),

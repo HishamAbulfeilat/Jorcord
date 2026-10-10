@@ -13,10 +13,13 @@ import { useNav } from '@/lib/nav';
 import { ProfileCard } from './Profile';
 import { ChannelSettings } from '@/components/settings/ChannelSettings';
 import { goto } from '@/lib/menus';
+import { joinDiscoverable } from '@/components/home/DiscoveryPage';
+import { myChannelPerms } from '@/lib/session';
 import { publicOrigin } from '@/lib/server';
 import { useStreamer } from '@/lib/streamer';
 import { CustomStatusModal, FolderModal, NotifSettingsModal, OnboardingModal, ShortcutsModal, StreamerStartModal } from './ExtraModals';
 import { VoiceSettingsModal } from '@/voice/VoiceSettings';
+import { CreatePollModal, EventEditorModal, EventsModal, InteractionModal, PollVotersModal, ScreeningModal, StageModal, ThreadSettingsModal } from './PlatformModals';
 import { t } from '@/i18n';
 
 const TEMPLATES = [
@@ -83,7 +86,7 @@ function JoinServer({ close, code: initial }: { close: () => void; code?: string
       <Field label={t('Invite link *')}><input className="field" value={v} onChange={(e) => setV(e.target.value)} placeholder={`${publicOrigin()}/invite/aBcDeF`} autoFocus onKeyDown={(e) => { if (e.key === 'Enter' && code) join(code); }} /></Field>
       {err && <p className="-mt-2 mb-3 text-sm text-danger" role="alert">{err}</p>}
       {disc.data && disc.data.length > 0 && (<><h3 className="section-title mb-2">{t('Discoverable servers')}</h3><ul className="grid gap-2">{disc.data.slice(0, 6).map((g) => (
-        <li key={g.id} className="flex items-center gap-3 rounded-lg bg-modal-alt p-2"><span className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-xl bg-brand text-sm font-bold text-white">{g.icon ? <img src={fileUrl(g.icon)!} alt="" className="h-full w-full object-cover" /> : initials(g.name)}</span><span className="min-w-0 flex-1"><span className="block truncate font-semibold text-header">{g.name}</span><span className="block truncate text-xs text-muted">{g.description}</span></span><button className="btn btn-secondary" onClick={() => api.guilds.get(g.id).then((full) => { useData.getState().putGuild(full); close(); nav.go(g.id); }).catch(toastError)}>{t('View')}</button></li>))}</ul></>)}
+        <li key={g.id} className="flex items-center gap-3 rounded-lg bg-modal-alt p-2"><span className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-xl bg-brand text-sm font-bold text-white">{g.icon ? <img src={fileUrl(g.icon)!} alt="" className="h-full w-full object-cover" /> : initials(g.name)}</span><span className="min-w-0 flex-1"><span className="block truncate font-semibold text-header">{g.name}</span><span className="block truncate text-xs text-muted">{g.description}</span></span><button className="btn btn-secondary" onClick={() => joinDiscoverable(g).then((r) => { const full = (r as any).guild ?? r; if (full?.channels) useData.getState().putGuild(full); close(); nav.go(g.id); }).catch(toastError)}>{t('Join')}</button></li>))}</ul></>)}
     </Modal>
   );
 }
@@ -164,17 +167,26 @@ function ImageLightbox({ url, name, close }: { url: string; name?: string; close
 }
 
 function CreateThread({ channelId, messageId, suggested, close }: { channelId: string; messageId: string; suggested?: string; close: () => void }) {
-  const nav = useNav(); const [name, setName] = useState(suggested ?? ''); const [busy, setBusy] = useState(false); const g = useData((s) => s.guilds);
+  const nav = useNav(); const [name, setName] = useState(suggested ?? ''); const [busy, setBusy] = useState(false); const g = useData((s) => s.guilds); const [auto, setAuto] = useState(1440);
   return <Modal title={t('Create Thread')} width={420} onClose={close} footer={<><button className="btn btn-link" onClick={close}>{t('Cancel')}</button><button form="ct" type="submit" disabled={!name.trim() || busy} className="btn btn-primary btn-lg sm:ms-auto">{t('Create Thread')}</button></>}>
-    <form id="ct" onSubmit={async (e) => { e.preventDefault(); setBusy(true); try { const t = await api.messages.createThread(channelId, messageId, name.trim()); useData.getState().apply('THREAD_CREATE', t); close(); nav.go(t.guildId, t.id); } catch (err) { toastError(err); setBusy(false); } }}>
-      <Field label={t('Thread Name')}><input className="field" value={name} onChange={(e) => setName(e.target.value)} maxLength={100} autoFocus /></Field></form>{void g}</Modal>;
+    <form id="ct" onSubmit={async (e) => { e.preventDefault(); setBusy(true); try { const t = await api.messages.createThread(channelId, messageId, name.trim(), auto); useData.getState().apply('THREAD_CREATE', t); close(); nav.go(t.guildId, t.id); } catch (err) { toastError(err); setBusy(false); } }}>
+      <Field label={t('Thread Name')}><input className="field" value={name} onChange={(e) => setName(e.target.value)} maxLength={100} autoFocus /></Field>
+      <Field label={t('Hide After Inactivity')}><select className="field" value={auto} onChange={(e) => setAuto(Number(e.target.value))}>{[[60, '1 Hour'], [1440, '24 Hours'], [4320, '3 Days'], [10080, '1 Week']].map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></Field></form>{void g}</Modal>;
 }
 function ForumPost({ channelId, close }: { channelId: string; close: () => void }) {
-  const nav = useNav(); const [name, setName] = useState(''); const [content, setContent] = useState(''); const [busy, setBusy] = useState(false);
-  return <Modal title={t('New Post')} onClose={close} footer={<><button className="btn btn-link" onClick={close}>{t('Cancel')}</button><button form="fp" type="submit" disabled={!name.trim() || !content.trim() || busy} className="btn btn-primary btn-lg sm:ms-auto">{t('Post')}</button></>}>
-    <form id="fp" onSubmit={async (e) => { e.preventDefault(); setBusy(true); try { const r = await api.channels.forumPost(channelId, { name: name.trim(), content: content.trim() }); const t = r.channel ?? (r as any); useData.getState().apply('THREAD_CREATE', t); close(); nav.go(t.guildId, t.id); } catch (err) { toastError(err); setBusy(false); } }}>
+  const nav = useNav(); const [name, setName] = useState(''); const [content, setContent] = useState(''); const [busy, setBusy] = useState(false); const [picked, setPicked] = useState<string[]>([]);
+  const forum = useData((s) => Object.values(s.guilds).map((g) => g.channels[channelId]).find(Boolean)); const manage = (myChannelPerms(channelId) & Perm.MANAGE_THREADS) !== 0n;
+  const tags = forum?.availableTags ?? []; const needTag = !!forum?.requireTag && tags.length > 0;
+  return <Modal title={t('New Post')} onClose={close} footer={<><button className="btn btn-link" onClick={close}>{t('Cancel')}</button><button form="fp" type="submit" disabled={!name.trim() || !content.trim() || busy || (needTag && !picked.length)} className="btn btn-primary btn-lg sm:ms-auto">{t('Post')}</button></>}>
+    <form id="fp" onSubmit={async (e) => { e.preventDefault(); setBusy(true); try { const r = await api.channels.forumPost(channelId, { name: name.trim(), content: content.trim(), ...(picked.length ? { appliedTags: picked } : {}) }); const t = r.channel ?? (r as any); useData.getState().apply('THREAD_CREATE', t); close(); nav.go(t.guildId, t.id); } catch (err) { toastError(err); setBusy(false); } }}>
       <Field label={t('Post Title')}><input className="field" value={name} onChange={(e) => setName(e.target.value)} maxLength={100} autoFocus /></Field>
-      <Field label={t('Message')}><textarea className="field min-h-[120px]" value={content} onChange={(e) => setContent(e.target.value)} /></Field></form></Modal>;
+      <Field label={t('Message')}><textarea className="field min-h-[120px]" value={content} onChange={(e) => setContent(e.target.value)} /></Field>
+      {tags.length > 0 && (
+        <div><span className="label">{t('Tags')}{needTag && <span className="text-danger"> *</span>}</span>
+          <div className="flex flex-wrap gap-1.5" role="group" aria-label={t('Tags')}>{tags.map((tg) => { const on = picked.includes(tg.id); const blocked = tg.moderated && !manage; return (
+            <button key={tg.id} type="button" aria-pressed={on} disabled={blocked} title={blocked ? t('Only moderators can apply this tag') : undefined} onClick={() => setPicked(on ? picked.filter((x) => x !== tg.id) : [...picked, tg.id].slice(0, 5))}
+              className={cx('rounded-full border px-2.5 py-0.5 text-sm font-medium disabled:opacity-40', on ? 'border-brand bg-brand/20 text-header' : 'border-active text-interactive hover:bg-hover')}>{tg.emoji} {tg.name}</button>); })}</div></div>)}
+    </form></Modal>;
 }
 
 function Reactors({ spec, close }: { spec: { channelId: string; messageId: string; emoji: string; emojiId: string | null }; close: () => void }) {
@@ -213,6 +225,14 @@ export function ModalHost() {
     case 'reactors': return <Reactors spec={m} close={close} />;
     case 'leaveGuild': return <LeaveGuild guildId={m.guildId} close={close} />;
     case 'channelSettings': return <ChannelSettings channelId={m.channelId} close={close} />;
+    case 'interactionModal': return <InteractionModal key={m.interactionId} spec={m.modal} channelId={m.channelId} interactionId={m.interactionId} close={close} />;
+    case 'createPoll': return <CreatePollModal channelId={m.channelId} close={close} />;
+    case 'pollVoters': return <PollVotersModal channelId={m.channelId} messageId={m.messageId} answerId={m.answerId} close={close} />;
+    case 'events': return <EventsModal guildId={m.guildId} close={close} />;
+    case 'eventEditor': return <EventEditorModal key={m.eventId ?? 'new'} guildId={m.guildId} eventId={m.eventId} channelId={m.channelId} close={close} />;
+    case 'screening': return <ScreeningModal guildId={m.guildId} close={close} />;
+    case 'threadSettings': return <ThreadSettingsModal channelId={m.channelId} close={close} />;
+    case 'stage': return <StageModal channelId={m.channelId} mode={m.mode} close={close} />;
   }
 }
 void Plus; void Copy; void Mic;

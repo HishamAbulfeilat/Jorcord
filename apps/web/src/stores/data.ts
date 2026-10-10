@@ -126,6 +126,8 @@ export const useData = create<DataState>((set, get) => ({
       case 'PRESENCE_UPDATE': return set((st) => ({
         presences: { ...st.presences, [d.userId]: d.presence },
         users: st.users[d.userId] && d.customStatus !== undefined ? { ...st.users, [d.userId]: { ...st.users[d.userId], customStatus: d.customStatus } } : st.users,
+        // the server clears an expired status and broadcasts it: keep my own copy in sync too
+        me: st.me && st.me.id === d.userId && d.customStatus !== undefined ? { ...st.me, customStatus: d.customStatus } : st.me,
       }));
       case 'USER_UPDATE': return set((st) => ({
         users: { ...st.users, [d.id]: { ...st.users[d.id], ...d } },
@@ -137,6 +139,8 @@ export const useData = create<DataState>((set, get) => ({
       case 'READ_STATE_UPDATE': return set((st) => ({ readStates: { ...st.readStates, [d.channelId]: d } }));
       case 'VOICE_STATE_UPDATE': return set((st) => d.channelId ? { voiceStates: { ...st.voiceStates, [d.userId]: d } } : { voiceStates: omit(st.voiceStates, d.userId) });
       case 'EMOJIS_UPDATE': return patchGuild(d.guildId, (g) => ({ ...g, emojis: d.emojis }));
+      case 'STICKERS_UPDATE': return patchGuild(d.guildId, (g) => ({ ...g, stickers: d.stickers }));
+      case 'THREAD_DELETE': return patchGuild(d.guildId, (g) => { const { [d.id]: _, ...rest } = g.channels; return { ...g, channels: rest }; });
       default: return;
     }
   },

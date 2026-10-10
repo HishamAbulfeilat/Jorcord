@@ -36,3 +36,10 @@ describe('channel order', () => {
     expect(roleReorder(roles, 1, 1)).toEqual([]);
   });
 });
+
+import { plainAttrs } from './channelOrder';
+describe('plainAttrs', () => {
+  it('drops attributes that would hijack the row for assistive tech', () => {
+    expect(plainAttrs({ role: 'button', tabIndex: 0, 'aria-pressed': false, 'aria-disabled': true, 'aria-roledescription': 'sortable', 'aria-describedby': 'x' })).toEqual({ 'aria-describedby': 'x' });
+  });
+});

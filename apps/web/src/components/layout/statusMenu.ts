@@ -3,7 +3,6 @@ import type { Presence } from '@jorcord/shared';
 import { api } from '@/lib/api';
 import { useData } from '@/stores/data';
 import { useUI, toastError, type MenuItem } from '@/stores/ui';
-import { useLayout } from '@/stores/layout';
 import { t } from '@/i18n';
 
 export const setMyPresence = (p: Presence) => {
@@ -13,7 +12,7 @@ export const setMyPresence = (p: Presence) => {
 };
 export const clearCustomStatus = () => {
   const me = useData.getState().me; if (!me) return;
-  api.users.patchMe({ customStatus: null }).then((u) => { useData.getState().apply('USER_UPDATE', { ...me, ...u, customStatus: null }); useLayout.getState().setStatusExpiry(null); }).catch(toastError);
+  api.users.patchMe({ customStatus: null }).then((u) => { useData.getState().apply('USER_UPDATE', { ...me, ...u, customStatus: null }); }).catch(toastError);
 };
 export const statusMenu = (): MenuItem[] => {
   const s = useData.getState(); const cur = s.me ? s.presences[s.me.id] ?? 'online' : 'online'; const cs = s.me?.customStatus;

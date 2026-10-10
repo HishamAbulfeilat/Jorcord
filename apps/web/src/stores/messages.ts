@@ -1,6 +1,10 @@
 import { create } from 'zustand';
 import type { Id, Message, Reaction } from '@jorcord/shared';
 import { compareId } from '@/lib/format';
+import { applyPollVote, mergePollKeepingMine } from '@/lib/polls';
+
+/** Ephemeral replies (flags & 64) exist only in the client: never refetched, so they must survive a channel reload. */
+export const isEphemeral = (m: Pick<Message, 'flags'>) => ((m.flags ?? 0) & 64) !== 0;
 
 export interface ChannelMsgs {
   initSeq?: number; // bumped on every (re)initialisation so views can re-position
@@ -16,6 +20,9 @@ interface MsgState {
   setLoading(channelId: Id, v: boolean, error?: string): void;
   upsert(m: Message, me?: Id): void;
   update(m: Message): void;
+  /** Replace a message wholesale (the caller's own API response, which is exact for the viewer). */
+  replace(m: Message): void;
+  pollVote(channelId: Id, mid: Id, answerId: number, delta: 1 | -1, mine: boolean): void;
   remove(channelId: Id, id: Id): void;
   reaction(channelId: Id, mid: Id, emoji: string, emojiId: Id | null, delta: 1 | -1, mine: boolean): void;
   addPending(p: Pending): void; patchPending(nonce: string, p: Partial<Pending>): void; dropPending(nonce: string): void;
@@ -29,7 +36,7 @@ export const useMessages = create<MsgState>((set) => {
   const patch = (cid: Id, fn: (c: ChannelMsgs) => Partial<ChannelMsgs>) => set((s) => ({ ch: { ...s.ch, [cid]: { ...(s.ch[cid] ?? blank()), ...fn(s.ch[cid] ?? blank()) } } }));
   return {
     ch: {}, pending: [],
-    init: (cid, nf, limit, around) => patch(cid, (c) => ({ initSeq: (c.initSeq ?? 0) + 1, list: asc(nf), loading: false, loadedInitial: true, hasMoreOlder: nf.length >= limit || !!around, hasMoreNewer: !!around, error: undefined, jumpTo: around ?? null })),
+    init: (cid, nf, limit, around) => patch(cid, (c) => ({ initSeq: (c.initSeq ?? 0) + 1, list: asc([...nf, ...c.list.filter(isEphemeral)]), loading: false, loadedInitial: true, hasMoreOlder: nf.length >= limit || !!around, hasMoreNewer: !!around, error: undefined, jumpTo: around ?? null })),
     prepend: (cid, nf, limit) => patch(cid, (c) => ({ list: merge(nf, c.list), loading: false, hasMoreOlder: nf.length >= limit })),
     append: (cid, nf, limit) => patch(cid, (c) => ({ list: merge(c.list, nf), loading: false, hasMoreNewer: nf.length >= limit })),
     setLoading: (cid, loading, error) => patch(cid, () => ({ loading, error })),
@@ -39,7 +46,9 @@ export const useMessages = create<MsgState>((set) => {
       if (c.hasMoreNewer) return {};
       return { list: [...c.list, m] };
     }),
-    update: (m) => patch(m.channelId, (c) => ({ list: c.list.map((x) => (x.id === m.id ? { ...x, ...m } : x)) })),
+    update: (m) => patch(m.channelId, (c) => ({ list: c.list.map((x) => (x.id === m.id ? { ...x, ...m, ...(m.poll ? { poll: mergePollKeepingMine(m.poll, x.poll) } : {}) } : x)) })),
+    replace: (m) => patch(m.channelId, (c) => ({ list: c.list.map((x) => (x.id === m.id ? { ...x, ...m } : x)) })),
+    pollVote: (cid, mid, answerId, delta, mine) => patch(cid, (c) => ({ list: c.list.map((x) => (x.id === mid && x.poll ? { ...x, poll: applyPollVote(x.poll, answerId, delta, mine) } : x)) })),
     remove: (cid, id) => patch(cid, (c) => ({ list: c.list.filter((x) => x.id !== id) })),
     reaction: (cid, mid, emoji, emojiId, delta, mine) => patch(cid, (c) => ({
       list: c.list.map((m) => {

@@ -1,4 +1,5 @@
-import { ChevronDown, ChevronRight, Hash, Megaphone, MessagesSquare, Plus, Radio, UserPlus, Volume2, Settings, X, Lock, Volume1, Video, VolumeX, MicOff } from 'lucide-react';
+import { useMemo } from 'react';
+import { CalendarDays, ChevronDown, ChevronRight, Hash, Megaphone, MessagesSquare, Plus, Radio, UserPlus, Volume2, Settings, X, Lock, Volume1, Video, VolumeX, MicOff } from 'lucide-react';
 import { useVoiceSnapshot } from '@jorcord/voice/react';
 import { joinVoice } from '@/voice/controller';
 import { voiceUserMenu } from '@/voice/menu';
@@ -23,6 +24,10 @@ import { api } from '@/lib/api';
 import { toastError } from '@/stores/ui';
 import { CAT, applyChannelDrop, layoutOf, orderDiff, plainAttrs } from '@/lib/channelOrder';
 import { t } from '@/i18n';
+import { usePlatform } from '@/stores/platform';
+import { useLoadEvents } from '@/components/modals/PlatformModals';
+import { useGuildStages } from '@/voice/StageBar';
+import { isLive, isUpcoming } from '@/lib/events';
 
 export const ChannelIcon = ({ c, size = 20, className = '' }: { c: Pick<Channel, 'type' | 'overwrites'>; size?: number; className?: string }) => {
   const priv = c.overwrites?.some((o) => o.type === 'role' && (BigInt(o.deny || 0) & Perm.VIEW_CHANNEL) !== 0n);
@@ -32,6 +37,22 @@ export const ChannelIcon = ({ c, size = 20, className = '' }: { c: Pick<Channel,
   if (c.type === 'forum') return <MessagesSquare size={size} className={className} />;
   return priv ? <Lock size={size - 4} className={className} /> : <Hash size={size} className={className} />;
 };
+
+/** "N Events" row under the server header (Discord's sidebar entry): opens the events list. */
+function EventsEntry({ guildId }: { guildId: string }) {
+  useLoadEvents(guildId);
+  const evMap = usePlatform((s) => s.events[guildId]); const open = useUI((s) => s.openModal);
+  const upcoming = useMemo(() => Object.values(evMap ?? {}).filter(isUpcoming), [evMap]); const live = upcoming.some(isLive);
+  const perms = useGuildPerms(guildId);
+  if (!upcoming.length && !can(perms, Perm.CREATE_EVENTS)) return null;
+  return (
+    <button data-testid="events-entry" onClick={() => open({ kind: 'events', guildId })} className="mx-2 mt-2 flex items-center gap-2 rounded px-2 py-1.5 text-start text-sm font-medium text-interactive hover:bg-hover hover:text-interactive-hover">
+      <CalendarDays size={20} className={live ? 'text-success' : undefined} aria-hidden />
+      <span className="flex-1 truncate">{upcoming.length ? `${upcoming.length} ${upcoming.length === 1 ? t('Event') : t('Events')}` : t('Events')}</span>
+      {live && <span className="h-2 w-2 rounded-full bg-success" aria-label={t('Live')} />}
+    </button>
+  );
+}
 
 function VoiceMemberRow({ userId, channelId, speaking, children }: { userId: string; channelId: string; speaking: boolean; children: React.ReactNode }) {
   const trig = useMenuTrigger(() => voiceUserMenu(userId, channelId));
@@ -73,6 +94,7 @@ function ChannelRow({ c, guildId, canManage, canInvite }: { c: Channel; guildId:
   const trig = useMenuTrigger(() => channelMenu(c));
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: c.id, disabled: !canManage });
   const active = channelId === c.id;
+  const stage = usePlatform((s) => (c.type === 'stage' ? s.stages[c.id] : undefined));
   const emph = (unread || mentions > 0) && !muted;
   return (
     <li ref={setNodeRef} data-channel={c.id} style={{ transform: CSS.Transform.toString(transform), transition }} className={cx(isDragging && 'relative z-20 opacity-80')} {...plainAttrs(attributes)} {...listeners}>
@@ -88,6 +110,7 @@ function ChannelRow({ c, guildId, canManage, canInvite }: { c: Channel; guildId:
           {mentions > 0 && <Badge n={mentions} />}
         </span>
       </div>
+      {stage && <div data-testid="stage-live" className="mx-2 -mt-0.5 mb-1 ms-[34px] truncate text-xs text-success" title={stage.topic}><span aria-hidden>● </span><span className="sr-only">{t('Live')}: </span>{stage.topic}</div>}
       {(c.type === 'voice' || c.type === 'stage') && <VoiceMembers channelId={c.id} />}
     </li>
   );
@@ -111,6 +134,7 @@ export function ChannelSidebar({ guildId }: { guildId: string }) {
   const prefs = useUI((s) => s.prefs); const setPref = useUI((s) => s.setPref); const open = useUI((s) => s.openModal);
   const openMenu = useUI((s) => s.openMenu); const { channelId } = useRouteIds();
   const readStates = useData((s) => s.readStates);
+  useGuildStages(guildId);
   const canManage = can(perms, Perm.MANAGE_CHANNELS); const canInvite = can(perms, Perm.CREATE_INVITE);
   const sensors = useSensors(useSensor(MouseSensor, { activationConstraint: { distance: 6 } }), useSensor(TouchSensor, { activationConstraint: { delay: 400, tolerance: 6 } }));
   if (!g) return <div className="flex-1" />;
@@ -140,6 +164,7 @@ export function ChannelSidebar({ guildId }: { guildId: string }) {
         <span className="truncate text-[15px]">{g.name}</span>
         <ChevronDown size={18} />
       </button>
+      <EventsEntry guildId={guildId} />
       <div className="scroller min-h-0 flex-1 pb-4 pt-2" role="navigation" aria-label={t('Channels')}>
         <DndContext sensors={sensors} collisionDetection={collision} onDragEnd={onEnd}>
           <SortableContext items={uncategorized.map((c) => c.id)} strategy={verticalListSortingStrategy}><ul className="mb-1">{uncategorized.map(row)}</ul></SortableContext>

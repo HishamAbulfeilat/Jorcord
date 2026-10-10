@@ -18,12 +18,13 @@
   "peerDependenciesMeta": { "react": { "optional": true } },
   "optionalDependencies": { "@shiguredo/noise-suppression": "^2025.1.0" },
   "devDependencies": {
+    "@types/node": "^22.9.0",
     "@types/react": "^18.3.12",
     "livekit-server-sdk": "^2.19.1",
     "react": "^18.3.1",
     "tsx": "^4.19.2",
     "typescript": "^5.6.3",
-    "vitest": "^2.1.4",
+    "vitest": "^5.0.3",
     "@livekit/rtc-node": "^1.1.0"
   }
 }

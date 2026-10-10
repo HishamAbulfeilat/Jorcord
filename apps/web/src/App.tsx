@@ -9,6 +9,8 @@ import { AppShell } from '@/components/layout/AppShell';
 import { LoginPage, RegisterPage, ForgotPasswordPage, ResetPasswordPage, VerifyEmailPage } from '@/pages/AuthPages';
 import { InvitePage } from '@/pages/InvitePage';
 import { DemoPage } from '@/pages/DemoPage';
+import { DeveloperPortal } from '@/pages/DeveloperPortal';
+import { OAuthAuthorize } from '@/pages/OAuthAuthorize';
 import { ModalHost } from '@/components/modals/ModalHost';
 import { PopoutHost } from '@/components/modals/PopoutHost';
 import { ContextMenuHost } from '@/components/ui/ContextMenu';
@@ -95,6 +97,8 @@ export default function App() {
         <Route path="/verify-email" element={<VerifyEmailPage />} />
         <Route path="/invite/:code" element={<InvitePage />} />
         <Route path="/demo/*" element={<DemoPage />} />
+        <Route path="/developers/*" element={<DeveloperPortal />} />
+        <Route path="/oauth2/authorize" element={<OAuthAuthorize />} />
         <Route path="/discover" element={<Protected />} />
         <Route path="/channels/:guildId/:channelId?/:messageId?" element={<Protected />} />
         <Route path="*" element={<Navigate to="/channels/@me" replace />} />

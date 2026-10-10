@@ -1,6 +1,7 @@
 /** Typed REST client written against docs/CONTRACT.md. All calls go through the swappable transport. */
 import type {
   Attachment, AuditEntry, AutoModRule, Channel, Emoji, Guild, GuildFull, Invite, Member, Message, Relationship, ReadState, Role, SelfUser, Sticker, User, VoiceToken, Id, Presence, OverwriteDTO,
+  Application, ApplicationCommand, CommandOptionChoice, CreatePoll, ForumTag, InteractionOptionValue, ModalSubmitRow, OAuthAuthorizePreview, OAuthAuthorizeResult, ScheduledEvent, StageInstance,
 } from '@jorcord/shared';
 import { send } from './transport';
 
@@ -8,7 +9,15 @@ export interface AuthResult { user: SelfUser; accessToken: string; refreshToken:
 export interface UserProfile extends User { mutualGuilds?: { id: Id; name: string; icon: string | null; nick?: string | null }[]; mutualFriends?: User[] }
 export interface MessageQuery { limit?: number; before?: Id; after?: Id; around?: Id }
 export interface SearchQuery { q?: string; authorId?: Id; channelId?: Id; has?: string; before?: string }
-export interface SendMessageInput { content: string; replyTo?: Id | null; files?: File[]; nonce?: string; stickerIds?: Id[] }
+export interface SendMessageInput { content: string; replyTo?: Id | null; files?: File[]; nonce?: string; stickerIds?: Id[]; poll?: CreatePoll }
+export interface CreateEventInput { name: string; description?: string | null; entityType: number; channelId?: Id | null; scheduledStartTime: string; scheduledEndTime?: string | null; location?: string | null; privacyLevel?: 2 }
+export interface CommandCatalog { commands: ApplicationCommand[]; applications: { id: Id; name: string; icon: string | null; botUserId: Id }[] }
+export interface ScreeningInfo { enabled: boolean; rulesChannelId: Id | null; description: string | null; pending: boolean }
+export type InteractionInput =
+  | { type: 2; channelId: Id; data: { id: Id; options?: InteractionOptionValue[]; targetId?: Id } }
+  | { type: 4; channelId: Id; data: { id: Id; options: InteractionOptionValue[] } }
+  | { type: 3; channelId: Id; messageId: Id; data: { customId: string; values?: string[] } }
+  | { type: 5; channelId: Id; interactionId: Id; data: { customId: string; components: ModalSubmitRow[] } };
 export interface PushDevice { id: Id; platform: 'web' | 'android' | 'ios' | 'desktop'; createdAt: string | null; lastUsedAt: string | null; current?: boolean }
 export type PushRegistration = { platform: 'web' | 'desktop'; subscription: { endpoint: string; expirationTime?: number | null; keys: { p256dh: string; auth: string } } } | { platform: 'android' | 'ios'; token: string };
 export interface GuildNotify { muted: boolean; mutedUntil: string | null; suppressEveryone: boolean; suppressRoles: boolean; level: 'all' | 'mentions' | 'none' | null }
@@ -38,7 +47,7 @@ export const api = {
   },
   users: {
     me: () => send<SelfUser>({ method: 'GET', path: '/users/@me' }),
-    patchMe: (b: Partial<{ displayName: string | null; bio: string | null; pronouns: string | null; avatar: string | null; banner: string | null; accentColor: string | null; customStatus: User['customStatus']; theme: SelfUser['theme']; settings: Record<string, unknown> }>) => send<SelfUser>({ method: 'PATCH', path: '/users/@me', body: b }),
+    patchMe: (b: Partial<{ displayName: string | null; bio: string | null; pronouns: string | null; avatar: string | null; banner: string | null; accentColor: string | null; themeColors: [string, string] | null; customStatus: User['customStatus']; theme: SelfUser['theme']; settings: Record<string, unknown> }>) => send<SelfUser>({ method: 'PATCH', path: '/users/@me', body: b }),
     get: (id: Id) => send<UserProfile>({ method: 'GET', path: `/users/${id}` }),
     setPresence: (presence: Presence) => send({ method: 'PUT', path: '/users/@me/presence', body: { presence } }),
     guilds: () => send<Guild[]>({ method: 'GET', path: '/users/@me/guilds' }).then((x) => arr<Guild>(x)),
@@ -56,7 +65,7 @@ export const api = {
     create: (b: { name: string; icon?: string | null; template?: string }) => send<GuildFull>({ method: 'POST', path: '/guilds', body: b }),
     get: (id: Id) => send<GuildFull>({ method: 'GET', path: `/guilds/${id}` }),
     preview: (id: Id) => send<Guild & { approxMembers?: number }>({ method: 'GET', path: `/guilds/${id}/preview` }),
-    patch: (id: Id, b: Partial<Guild>) => send<Guild>({ method: 'PATCH', path: `/guilds/${id}`, body: b }),
+    patch: (id: Id, b: Partial<Guild> & { discoverable?: boolean; memberScreening?: boolean }) => send<Guild>({ method: 'PATCH', path: `/guilds/${id}`, body: b }),
     delete: (id: Id) => send({ method: 'DELETE', path: `/guilds/${id}` }),
     channels: (id: Id) => send<Channel[]>({ method: 'GET', path: `/guilds/${id}/channels` }).then((x) => arr<Channel>(x)),
     createChannel: (id: Id, b: Partial<Channel> & { name: string; type: Channel['type'] }) => send<Channel>({ method: 'POST', path: `/guilds/${id}/channels`, body: b }),
@@ -75,7 +84,7 @@ export const api = {
     bans: (id: Id) => send<{ user: User; reason: string | null }[]>({ method: 'GET', path: `/guilds/${id}/bans` }).then((x) => arr<{ user: User; reason: string | null }>(x)),
     invites: (id: Id) => send<Invite[]>({ method: 'GET', path: `/guilds/${id}/invites` }).then((x) => arr<Invite>(x)),
     createInvite: (id: Id, b: { channelId?: Id; maxUses?: number | null; maxAgeSeconds?: number | null; temporary?: boolean } = {}) => send<Invite>({ method: 'POST', path: `/guilds/${id}/invites`, body: b }),
-    auditLogs: (id: Id, q: { limit?: number; before?: Id; action?: string } = {}) => send<AuditEntry[]>({ method: 'GET', path: `/guilds/${id}/audit-logs`, query: q }).then((x) => arr<AuditEntry>(x)),
+    auditLogs: (id: Id, q: { limit?: number; before?: Id; action?: string; actionType?: number } = {}) => send<AuditEntry[]>({ method: 'GET', path: `/guilds/${id}/audit-logs`, query: q }).then((x) => arr<AuditEntry>(x)),
     emojis: (id: Id) => send<Emoji[]>({ method: 'GET', path: `/guilds/${id}/emojis` }).then((x) => arr<Emoji>(x)),
     createEmoji: (id: Id, b: { name: string; url: string; animated?: boolean }) => send<Emoji>({ method: 'POST', path: `/guilds/${id}/emojis`, body: b }),
     patchEmoji: (id: Id, eid: Id, b: { name: string }) => send<Emoji>({ method: 'PATCH', path: `/guilds/${id}/emojis/${eid}`, body: b }),
@@ -91,8 +100,47 @@ export const api = {
     boost: (id: Id) => send<Guild>({ method: 'POST', path: `/guilds/${id}/boosts` }),
     search: (id: Id, q: SearchQuery) => send<any>({ method: 'GET', path: `/guilds/${id}/messages/search`, query: q as any }).then((x) => arr<Message>(x)),
     discover: (q?: string) => send<Guild[]>({ method: 'GET', path: '/discover/guilds', query: q ? { q } : undefined }).then((x) => arr<Guild>(x)),
-    /** Proposed endpoint (see e2e/SERVER_ISSUES.md): join a DISCOVERABLE guild without an invite. */
-    joinDiscoverable: (id: Id) => send<GuildFull>({ method: 'POST', path: `/guilds/${id}/join` }),
+    /** Join a DISCOVERABLE guild without an invite (404 for guilds that are not discoverable). */
+    joinDiscoverable: (id: Id) => send<GuildFull>({ method: 'POST', path: `/discover/guilds/${id}/join` }),
+    screening: (id: Id) => send<ScreeningInfo>({ method: 'GET', path: `/guilds/${id}/screening` }),
+    /** Accept the server rules: lifts the read-only `pending` state of a new member. */
+    acceptScreening: (id: Id) => send<Member>({ method: 'PUT', path: `/guilds/${id}/members/@me/screening`, body: { acceptRules: true } }),
+    /** What the composer's slash-command picker offers in a channel. */
+    commands: (id: Id, channelId?: Id) => send<CommandCatalog>({ method: 'GET', path: `/guilds/${id}/application-commands`, query: channelId ? { channelId } : undefined }),
+    events: (id: Id) => send<ScheduledEvent[]>({ method: 'GET', path: `/guilds/${id}/scheduled-events` }).then((x) => arr<ScheduledEvent>(x)),
+    createEvent: (id: Id, b: CreateEventInput) => send<ScheduledEvent>({ method: 'POST', path: `/guilds/${id}/scheduled-events`, body: b }),
+    patchEvent: (id: Id, eid: Id, b: Partial<CreateEventInput> & { status?: number }) => send<ScheduledEvent>({ method: 'PATCH', path: `/guilds/${id}/scheduled-events/${eid}`, body: b }),
+    deleteEvent: (id: Id, eid: Id) => send({ method: 'DELETE', path: `/guilds/${id}/scheduled-events/${eid}` }),
+    eventInterest: (id: Id, eid: Id, on: boolean) => send({ method: on ? 'PUT' : 'DELETE', path: `/guilds/${id}/scheduled-events/${eid}/users/@me` }),
+    eventUsers: (id: Id, eid: Id) => send<{ user: User }[]>({ method: 'GET', path: `/guilds/${id}/scheduled-events/${eid}/users`, query: { limit: 100 } }).then((x) => arr<{ user: User }>(x)),
+    stageInstances: (id: Id) => send<StageInstance[]>({ method: 'GET', path: `/guilds/${id}/stage-instances` }).then((x) => arr<StageInstance>(x)),
+  },
+  stages: {
+    start: (channelId: Id, topic: string) => send<StageInstance>({ method: 'POST', path: '/stage-instances', body: { channelId, topic } }),
+    get: (channelId: Id) => send<StageInstance>({ method: 'GET', path: `/stage-instances/${channelId}` }),
+    setTopic: (channelId: Id, topic: string) => send<StageInstance>({ method: 'PATCH', path: `/stage-instances/${channelId}`, body: { topic } }),
+    end: (channelId: Id) => send({ method: 'DELETE', path: `/stage-instances/${channelId}` }),
+  },
+  applications: {
+    list: () => send<Application[]>({ method: 'GET', path: '/applications' }).then((x) => arr<Application>(x)),
+    get: (id: Id) => send<Application>({ method: 'GET', path: `/applications/${id}` }),
+    /** The response carries the bot token and client secret exactly once. */
+    create: (b: { name: string; description?: string; botPublic?: boolean; redirectUris?: string[] }) => send<Application>({ method: 'POST', path: '/applications', body: b }),
+    patch: (id: Id, b: Partial<Pick<Application, 'name' | 'description' | 'icon' | 'botPublic' | 'redirectUris' | 'interactionsEndpointUrl'>>) => send<Application>({ method: 'PATCH', path: `/applications/${id}`, body: b }),
+    delete: (id: Id) => send({ method: 'DELETE', path: `/applications/${id}` }),
+    resetToken: (id: Id) => send<{ token: string }>({ method: 'POST', path: `/applications/${id}/bot/reset-token` }),
+    resetSecret: (id: Id) => send<{ clientSecret: string }>({ method: 'POST', path: `/applications/${id}/reset-secret` }),
+    installs: (id: Id) => send<{ guildId: Id; scopes: string[]; installedAt: string }[]>({ method: 'GET', path: `/applications/${id}/installs` }).then((x) => arr<{ guildId: Id; scopes: string[]; installedAt: string }>(x)),
+    commands: (id: Id, guildId?: Id) => send<ApplicationCommand[]>({ method: 'GET', path: guildId ? `/applications/${id}/guilds/${guildId}/commands` : `/applications/${id}/commands` }).then((x) => arr<ApplicationCommand>(x)),
+    deleteCommand: (id: Id, cid: Id, guildId?: Id) => send({ method: 'DELETE', path: guildId ? `/applications/${id}/guilds/${guildId}/commands/${cid}` : `/applications/${id}/commands/${cid}` }),
+  },
+  oauth: {
+    preview: (q: { clientId: Id; scope: string; permissions?: string }) => send<OAuthAuthorizePreview>({ method: 'GET', path: '/oauth2/authorize', query: q }),
+    authorize: (b: { clientId: Id; scope: string; permissions?: string; guildId?: Id; redirectUri?: string; state?: string }) => send<OAuthAuthorizeResult>({ method: 'POST', path: '/oauth2/authorize', body: b }),
+  },
+  interactions: {
+    /** 202 `{id}`: the answer arrives over the gateway (MESSAGE_CREATE, INTERACTION_MODAL, INTERACTION_AUTOCOMPLETE_RESULT, INTERACTION_FAILED). */
+    send: (b: InteractionInput) => send<{ id: Id }>({ method: 'POST', path: '/interactions', body: b }),
   },
   channels: {
     patch: (id: Id, b: Partial<Channel>) => send<Channel>({ method: 'PATCH', path: `/channels/${id}`, body: b }),
@@ -104,7 +152,7 @@ export const api = {
     webhooks: (id: Id) => send<any[]>({ method: 'GET', path: `/channels/${id}/webhooks` }).then((x) => arr<any>(x)),
     createWebhook: (id: Id, name: string, avatar?: string | null) => send<any>({ method: 'POST', path: `/channels/${id}/webhooks`, body: { name, ...(avatar ? { avatar } : {}) } }),
     deleteWebhook: (id: Id, wid: Id) => send({ method: 'DELETE', path: `/channels/${id}/webhooks/${wid}` }),
-    forumPost: (id: Id, b: { name: string; content: string }) => send<{ channel: Channel; message?: Message }>({ method: 'POST', path: `/channels/${id}/forum/posts`, body: b }),
+    forumPost: (id: Id, b: { name: string; content: string; appliedTags?: Id[]; autoArchiveDuration?: number }) => send<{ channel: Channel; message?: Message }>({ method: 'POST', path: `/channels/${id}/forum/posts`, body: b }),
     /** Active or archived threads of a channel: `{threads,members,hasMore}`. */
     threads: (id: Id, archived = false) => send<any>({ method: 'GET', path: `/channels/${id}/threads/${archived ? 'archived' : 'active'}` }).then((x) => (Array.isArray(x) ? x : (x?.threads ?? [])) as Channel[]),
     addRecipient: (channelId: Id, userId: Id) => send({ method: 'PUT', path: `/channels/${channelId}/recipients/${userId}` }),
@@ -119,7 +167,7 @@ export const api = {
         m.files.forEach((file) => f.append('files[]', file, file.name));
         return send<Message>({ method: 'POST', path: `/channels/${channelId}/messages`, form: f });
       }
-      return send<Message>({ method: 'POST', path: `/channels/${channelId}/messages`, body: { content: m.content, replyTo: m.replyTo ?? null, ...(m.stickerIds?.length ? { stickerIds: m.stickerIds } : {}) } });
+      return send<Message>({ method: 'POST', path: `/channels/${channelId}/messages`, body: { content: m.content, replyTo: m.replyTo ?? null, ...(m.stickerIds?.length ? { stickerIds: m.stickerIds } : {}), ...(m.poll ? { poll: m.poll } : {}) } });
     },
     edit: (channelId: Id, id: Id, content: string) => send<Message>({ method: 'PATCH', path: `/channels/${channelId}/messages/${id}`, body: { content } }),
     delete: (channelId: Id, id: Id) => send({ method: 'DELETE', path: `/channels/${channelId}/messages/${id}` }),
@@ -130,7 +178,12 @@ export const api = {
     pins: (channelId: Id) => send<Message[]>({ method: 'GET', path: `/channels/${channelId}/pins` }).then((x) => arr<Message>(x)),
     pin: (channelId: Id, id: Id) => send({ method: 'PUT', path: `/channels/${channelId}/pins/${id}` }),
     unpin: (channelId: Id, id: Id) => send({ method: 'DELETE', path: `/channels/${channelId}/pins/${id}` }),
-    createThread: (channelId: Id, id: Id, name: string) => send<Channel>({ method: 'POST', path: `/channels/${channelId}/messages/${id}/threads`, body: { name } }),
+    createThread: (channelId: Id, id: Id, name: string, autoArchiveDuration?: number) => send<Channel>({ method: 'POST', path: `/channels/${channelId}/messages/${id}/threads`, body: { name, ...(autoArchiveDuration ? { autoArchiveDuration } : {}) } }),
+    /** Replaces my votes with `answerIds` ([] clears them). Returns the poll message as I see it. */
+    vote: (channelId: Id, id: Id, answerIds: number[]) => send<Message>({ method: 'PUT', path: `/channels/${channelId}/polls/${id}/votes`, body: { answerIds } }),
+    removeVote: (channelId: Id, id: Id) => send<Message>({ method: 'DELETE', path: `/channels/${channelId}/polls/${id}/votes/@me` }),
+    voters: (channelId: Id, id: Id, answerId: number) => send<{ users: User[] }>({ method: 'GET', path: `/channels/${channelId}/polls/${id}/answers/${answerId}`, query: { limit: 100 } }).then((x) => x?.users ?? []),
+    endPoll: (channelId: Id, id: Id) => send<Message>({ method: 'POST', path: `/channels/${channelId}/polls/${id}/expire` }),
   },
   invites: {
     get: (code: string) => send<Invite>({ method: 'GET', path: `/invites/${code}`, auth: false }),

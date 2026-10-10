@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Hash, Lock, Plus, Trash2, Settings as Cog, Shield, User as UserIcon, Webhook as WebhookIcon } from 'lucide-react';
+import { Hash, Lock, Plus, Tag, Trash2, Settings as Cog, Shield, User as UserIcon, Webhook as WebhookIcon } from 'lucide-react';
 import { WebhooksList } from './Webhooks';
 import { t } from '@/i18n';
-import type { Channel, OverwriteDTO } from '@jorcord/shared';
+import { AUTO_ARCHIVE_DURATIONS } from '@jorcord/shared';
+import type { Channel, ForumTag, OverwriteDTO } from '@jorcord/shared';
 import { api } from '@/lib/api';
 import { useData } from '@/stores/data';
 import { useUI, toast, toastError } from '@/stores/ui';
@@ -45,7 +46,7 @@ export function ChannelSettings({ channelId, close }: { channelId: string; close
   const [adding, setAdding] = useState(false); const [aq, setAq] = useState('');
   return (
     <SettingsLayout title={`#${ch.name}`} tab={tab} onTab={setTab} onClose={close}
-      groups={[{ title: ch.name ?? 'Channel', items: [{ id: 'overview', label: 'Overview', icon: Cog }, { id: 'permissions', label: 'Permissions', icon: Lock }, ...(ch.type === 'text' || ch.type === 'announcement' ? [{ id: 'integrations', label: 'Integrations', icon: WebhookIcon }] : [])] }, { items: [{ id: 'delete', label: 'Delete Channel', icon: Trash2, danger: true }] }]}>
+      groups={[{ title: ch.name ?? 'Channel', items: [{ id: 'overview', label: 'Overview', icon: Cog }, { id: 'permissions', label: 'Permissions', icon: Lock }, ...(ch.type === 'forum' ? [{ id: 'tags', label: 'Tags', icon: Tag }] : []), ...(ch.type === 'text' || ch.type === 'announcement' ? [{ id: 'integrations', label: 'Integrations', icon: WebhookIcon }] : [])] }, { items: [{ id: 'delete', label: 'Delete Channel', icon: Trash2, danger: true }] }]}>
       {tab === 'overview' && (<>
         <H1>{t('Overview')}</H1>
         <Field label={t('Channel Name')}><div className="relative">{ch.type !== 'category' && <Hash size={16} className="absolute start-2.5 top-3 text-muted" />}<input className={cx('field', ch.type !== 'category' && 'ps-8')} value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></div></Field>
@@ -71,8 +72,42 @@ export function ChannelSettings({ channelId, close }: { channelId: string; close
         </div>
         <SaveBar dirty={dirtyOws} busy={busy} onSave={saveOws} onReset={() => setOws(ch.overwrites ?? [])} />
       </>)}
+      {tab === 'tags' && ch.type === 'forum' && <ForumTagsTab ch={ch} />}
       {tab === 'integrations' && (<><H1>{t('Integrations')}</H1><p className="mb-4 text-sm text-muted">{t('Webhooks let other services post messages into this channel.')}</p><WebhooksList channelId={ch.id} /></>)}
       {tab === 'delete' && (<><H1>{t('Delete Channel')}</H1><p className="mb-4 text-muted">{t('Deleting a channel removes all of its messages permanently.')}</p><button className="btn btn-danger btn-lg" onClick={() => openModal({ kind: 'confirm', title: 'Delete Channel', body: `Are you sure you want to delete #${ch.name}? This cannot be undone.`, confirmLabel: 'Delete Channel', danger: true, onConfirm: async () => { try { await api.channels.delete(ch.id); } catch (e) { toastError(e); } } })}>{t('Delete Channel')}</button></>)}
     </SettingsLayout>
   );
+}
+
+const AUTO_LABEL: Record<number, string> = { 60: '1 Hour', 1440: '24 Hours', 4320: '3 Days', 10080: '1 Week' };
+type TagDraft = Omit<ForumTag, 'id'> & { id?: string; key: string };
+let tagKey = 0;
+/** Forum tag catalogue + defaults (PATCH availableTags / requireTag / defaultAutoArchiveDuration). Existing ids are sent back so tags keep their posts. */
+function ForumTagsTab({ ch }: { ch: Channel }) {
+  const init = (): TagDraft[] => (ch.availableTags ?? []).map((tg) => ({ ...tg, key: tg.id }));
+  const [tags, setTags] = useState<TagDraft[]>(init); const [require, setRequire] = useState(!!ch.requireTag); const [auto, setAuto] = useState(ch.defaultAutoArchiveDuration ?? 1440); const [busy, setBusy] = useState(false);
+  const dirty = JSON.stringify(tags.map(({ key, ...r }) => r)) !== JSON.stringify(init().map(({ key, ...r }) => r)) || require !== !!ch.requireTag || auto !== (ch.defaultAutoArchiveDuration ?? 1440);
+  const set = (key: string, p: Partial<TagDraft>) => setTags((l) => l.map((x) => (x.key === key ? { ...x, ...p } : x)));
+  const save = async () => {
+    setBusy(true);
+    try {
+      const u = await api.channels.patch(ch.id, { availableTags: tags.filter((x) => x.name.trim()).map(({ key, id, name, emoji, moderated }) => ({ ...(id ? { id } : {}), name: name.trim(), emoji: emoji || null, moderated })) as ForumTag[], requireTag: require, defaultAutoArchiveDuration: auto });
+      useData.getState().apply('CHANNEL_UPDATE', { ...ch, ...u }); setTags((u.availableTags ?? []).map((tg) => ({ ...tg, key: tg.id }))); toast(t('Tags saved'), 'success');
+    } catch (e) { toastError(e); } setBusy(false);
+  };
+  return (<>
+    <H1>{t('Tags')}</H1>
+    <p className="mb-4 text-sm text-muted">{t('Tags help people find the right posts. Moderated tags can only be applied by members who manage threads.')}</p>
+    <ul className="mb-3 flex flex-col gap-2" aria-label={t('Tags')}>{tags.map((tg, i) => (
+      <li key={tg.key} data-tag={tg.name} className="flex flex-wrap items-center gap-2 rounded bg-side p-2">
+        <input className="field !w-14 text-center" aria-label={`Tag ${i + 1} emoji`} maxLength={8} value={tg.emoji ?? ''} onChange={(e) => set(tg.key, { emoji: e.target.value || null })} placeholder="🙂" />
+        <input className="field min-w-[140px] flex-1" aria-label={`Tag ${i + 1} name`} maxLength={20} value={tg.name} onChange={(e) => set(tg.key, { name: e.target.value })} placeholder={t('Tag name')} />
+        <label className="flex items-center gap-1.5 text-sm text-interactive"><input type="checkbox" className="h-4 w-4 accent-brand" checked={tg.moderated} onChange={(e) => set(tg.key, { moderated: e.target.checked })} />{t('Moderated')}</label>
+        <button aria-label={`Remove tag ${tg.name || i + 1}`} className="p-2 text-danger" onClick={() => setTags((l) => l.filter((x) => x.key !== tg.key))}><Trash2 size={16} /></button>
+      </li>))}</ul>
+    <button className="btn btn-secondary mb-5" disabled={tags.length >= 20} onClick={() => setTags((l) => [...l, { key: 'n' + ++tagKey, name: '', emoji: null, moderated: false }])}><Plus size={14} />{t('Add Tag')}</button>
+    <div className="flex items-center justify-between border-t border-divider py-4"><div><div className="font-medium text-header">{t('Require tag on new posts')}</div><div className="text-sm text-muted">{t('Members must pick at least one tag when they create a post.')}</div></div><Toggle label={t('Require tag')} checked={require} onChange={setRequire} /></div>
+    <Field label={t('Hide After Inactivity')} hint={t('Default for new posts.')}><select className="field" value={auto} onChange={(e) => setAuto(Number(e.target.value))}>{AUTO_ARCHIVE_DURATIONS.map((d) => <option key={d} value={d}>{AUTO_LABEL[d]}</option>)}</select></Field>
+    <SaveBar dirty={dirty} busy={busy} onSave={save} onReset={() => { setTags(init()); setRequire(!!ch.requireTag); setAuto(ch.defaultAutoArchiveDuration ?? 1440); }} />
+  </>);
 }

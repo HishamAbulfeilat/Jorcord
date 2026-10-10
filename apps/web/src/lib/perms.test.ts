@@ -77,3 +77,16 @@ describe('member list + role helpers', () => {
     expect(hasPermBit(togglePerm(b, 'ATTACH_FILES', false), 'ATTACH_FILES')).toBe(false);
   });
 });
+
+describe('composerState: screening and locked threads', () => {
+  const p = effectivePerms({ guild, roles, member: mem('u') });
+  it('pending members cannot send until they accept the rules', () => {
+    expect(composerState(p, { type: 'text' }, { pending: true })).toMatchObject({ canSend: false, canAttach: false, reason: 'Accept the server rules to start chatting.' });
+    expect(composerState(p, { type: 'text' }, { pending: false }).canSend).toBe(true);
+  });
+  it('locking only bites once the thread is archived (Discord semantics)', () => {
+    expect(composerState(p, { type: 'thread', locked: true }).canSend).toBe(true);
+    expect(composerState(p, { type: 'thread', locked: true, archived: true })).toMatchObject({ canSend: false, reason: 'This thread is archived and locked.' });
+    expect(composerState(p, { type: 'thread', archived: true })).toMatchObject({ canSend: false, reason: 'This thread is archived.' });
+  });
+});

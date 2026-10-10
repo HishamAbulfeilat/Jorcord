@@ -21,6 +21,8 @@ import { myChannelPerms } from '@/lib/session';
 import { useNav } from '@/lib/nav';
 import { useIsMobile } from '@/lib/hooks';
 import { Tip } from '@/components/ui/Tooltip';
+import { EphemeralNotice, InteractionHeader, MessageComponents, PollResultBody, PollView, ThinkingBody, isLoadingMsg } from './MessageExtras';
+import { isEphemeral } from '@/stores/messages';
 
 const SYSTEM: Record<string, (n: string) => string> = {
   join: () => t('just joined the server. Say hi!'), pin: () => t('pinned a message to this channel.'), boost: () => t('just boosted the server!'),
@@ -104,7 +106,8 @@ export const MessageItem = memo(function MessageItem({ m, grouped, highlighted }
   useEffect(() => { if (m.guildId && m.stickerIds.length && (stickers?.length ?? 0) < m.stickerIds.length) void refreshStickers(m.guildId); }, [m.guildId, m.stickerIds.length, stickers?.length]); // eslint-disable-line
   const mentioned = !!me && (m.mentions.includes(me.id) || m.mentionEveryone) && m.author.id !== me.id;
   const startEdit = () => setEditing(m.id);
-  const menuItems = () => messageMenu(m, { startEdit, pickEmoji: () => openPopout({ kind: 'emoji', rect: new DOMRect(window.innerWidth / 2, window.innerHeight / 2, 0, 0), guildId: m.guildId ?? undefined, onPick: (p) => addReaction(m, p) }) });
+  const ephemeral = isEphemeral(m);
+  const menuItems = () => ephemeral ? [{ label: t('Dismiss message'), onClick: () => useMessages.getState().remove(m.channelId, m.id) }] : messageMenu(m, { startEdit, pickEmoji: () => openPopout({ kind: 'emoji', rect: new DOMRect(window.innerWidth / 2, window.innerHeight / 2, 0, 0), guildId: m.guildId ?? undefined, onPick: (p) => addReaction(m, p) }) });
   const trig = useMenuTrigger(menuItems);
   const userTrig = useMenuTrigger(() => userMenu(m.author.id, m.guildId));
   const openUser = (e: React.MouseEvent) => { e.stopPropagation(); openPopout({ kind: 'user', userId: m.author.id, guildId: m.guildId ?? undefined, rect: (e.currentTarget as HTMLElement).getBoundingClientRect() }); };
@@ -122,7 +125,7 @@ export const MessageItem = memo(function MessageItem({ m, grouped, highlighted }
   }
   const body = (
     <>
-      {editing ? <Editor m={m} done={() => setEditing(null)} /> : m.content ? (
+      {isLoadingMsg(m) ? <ThinkingBody m={m} /> : m.type === 'poll_result' ? <PollResultBody m={m} /> : editing ? <Editor m={m} done={() => setEditing(null)} /> : m.content ? (
         <div className="relative pe-4 text-[16px] leading-[1.375rem] text-normal">
           <Markdown content={m.content} guildId={m.guildId} />
           {m.editedAt && <time className="ms-1 select-none text-[10px] text-muted" title={fmtFull(new Date(m.editedAt).getTime())}>(edited)</time>}
@@ -132,22 +135,26 @@ export const MessageItem = memo(function MessageItem({ m, grouped, highlighted }
       {stickers && stickers.length > 0 && <div className="mt-1 flex gap-2">{stickers.map((s) => <img key={s.id} src={fileUrl(s.url) ?? s.url} alt={s.name} title={s.name} className="h-[160px] w-[160px] object-contain" />)}</div>}
       {m.embeds.length > 0 && <div className="mt-1 flex flex-col items-start gap-1">{m.embeds.map((e, i) => <EmbedView key={i} e={e} />)}</div>}
       {m.pinned && <div className="mt-0.5 flex items-center gap-1 text-[11px] font-medium text-muted" data-testid="pinned-mark"><Pin size={11} aria-hidden />{t('Pinned')}</div>}
-      <ReactionBar m={m} />
+      {m.poll && <PollView m={m} />}
+      {!!m.components?.length && !isLoadingMsg(m) && <MessageComponents m={m} />}
+      {ephemeral && <EphemeralNotice m={m} />}
+      {!ephemeral && <ReactionBar m={m} />}
       {m.threadId && <button onClick={() => nav.go(m.guildId, m.threadId)} className="mt-1 flex items-center gap-1.5 rounded border border-divider bg-side px-2 py-1 text-sm text-link hover:underline"><MessagesSquare size={14} />View thread</button>}
     </>
   );
   void nav; void mobile; void Hash; void CornerUpLeft; void fileUrl;
   return (
-    <div className={cx(base, 'msg-cozy', !grouped && !m.replyTo ? 'mt-[17px] pt-[2px]' : m.replyTo ? 'mt-[17px]' : '')} id={`msg-${m.id}`} data-mid={m.id} {...trig} onDoubleClick={() => { if (me && canEditMessage(m, me.id) && !mobile) startEdit(); }}>
+    <div className={cx(base, 'msg-cozy', !grouped && !m.replyTo && !m.interaction ? 'mt-[17px] pt-[2px]' : m.replyTo || m.interaction ? 'mt-[17px]' : '', ephemeral && 'bg-brand/[0.06]')} id={`msg-${m.id}`} data-mid={m.id} {...trig} onDoubleClick={() => { if (me && canEditMessage(m, me.id) && !mobile) startEdit(); }}>
       {m.replyTo && <ReplyPreview m={m} />}
+      {m.interaction && !m.replyTo && <InteractionHeader m={m} />}
       <div className="relative flex gap-4 pb-[2px]">
-        {grouped && !m.replyTo ? (
+        {grouped && !m.replyTo && !m.interaction ? (
           <time dateTime={new Date(ts).toISOString()} title={fmtFull(ts)} className="mt-[3px] w-10 shrink-0 select-none whitespace-nowrap text-end text-[10px] leading-[1.375rem] text-muted opacity-0 group-hover/msg:opacity-100">{fmtTime(ts)}</time>
         ) : (
           <button onClick={openUser} {...userTrig} aria-label={`${info.name} profile`} className="mt-0.5 h-10 w-10 shrink-0"><Avatar user={info.user} size={40} memberAvatar={info.member?.avatar} className="hover:opacity-90" /></button>
         )}
         <div className="min-w-0 flex-1">
-          {(!grouped || m.replyTo) && (
+          {(!grouped || m.replyTo || m.interaction) && (
             <div className="flex items-baseline gap-2 leading-[1.375rem]">
               <button onClick={openUser} {...userTrig} className="truncate font-medium text-header hover:underline" style={{ color: info.color }}>{info.name}</button>
               {info.icon && <RoleIcon role={info.icon} size={16} className="self-center" />}
@@ -158,7 +165,7 @@ export const MessageItem = memo(function MessageItem({ m, grouped, highlighted }
           {body}
         </div>
       </div>
-      {!editing && <Toolbar m={m} startEdit={startEdit} onMenu={(e) => { const r = e.currentTarget.getBoundingClientRect(); openMenu(r.left - 200, r.bottom + 4, menuItems()); }} />}
+      {!editing && !ephemeral && <Toolbar m={m} startEdit={startEdit} onMenu={(e) => { const r = e.currentTarget.getBoundingClientRect(); openMenu(r.left - 200, r.bottom + 4, menuItems()); }} />}
     </div>
   );
 });

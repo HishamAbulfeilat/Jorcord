@@ -12,6 +12,6 @@
     "e2e:shots": "SHOTS=1 playwright test -c e2e/playwright.config.ts screenshots"
   },
   "devDependencies": {
-    "@playwright/test": "1.49.1"
+    "@playwright/test": "1.56.1"
   }
 }

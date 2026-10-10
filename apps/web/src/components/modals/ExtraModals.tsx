@@ -25,17 +25,18 @@ export function clearAtFor(opt: number | 'today' | null, now = new Date()): numb
 }
 
 export function CustomStatusModal({ close }: { close: () => void }) {
-  const me = useData((s) => s.me)!; const setExpiry = useLayout((s) => s.setStatusExpiry);
+  const me = useData((s) => s.me)!;
   const [text, setText] = useState(me.customStatus?.text ?? ''); const [emoji, setEmoji] = useState(me.customStatus?.emoji ?? '');
   const [after, setAfter] = useState(0); const [picker, setPicker] = useState(false); const [busy, setBusy] = useState(false);
   const save = async (clear = false) => {
     setBusy(true);
     try {
-      const cs = !clear && (text.trim() || emoji) ? { text: text.trim() || null, emoji: emoji || null } : null;
+      // the server enforces the expiry (customStatus.expiresAt): it clears the status and broadcasts PRESENCE_UPDATE
+      const at = clearAtFor(CLEAR_AFTER[after]![1]);
+      const cs = !clear && (text.trim() || emoji) ? { text: text.trim() || null, emoji: emoji || null, expiresAt: at ? new Date(at).toISOString() : null } : null;
       const u = await api.users.patchMe({ customStatus: cs });
       useData.getState().apply('USER_UPDATE', { ...me, ...u, customStatus: cs });
       useData.getState().apply('PRESENCE_UPDATE', { userId: me.id, presence: useData.getState().presences[me.id] ?? 'online', customStatus: cs } as any);
-      setExpiry(cs ? clearAtFor(CLEAR_AFTER[after]![1]) : null);
       close();
     } catch (e) { toastError(e); setBusy(false); }
   };
@@ -49,6 +50,7 @@ export function CustomStatusModal({ close }: { close: () => void }) {
         {(text || emoji) && <button type="button" aria-label={t('Clear')} onClick={() => { setText(''); setEmoji(''); }} className="px-2 text-interactive hover:text-header"><X size={16} /></button>}
         {picker && <div className="absolute start-0 top-11 z-10"><EmojiPicker onPick={(e) => { if (e.char) setEmoji(e.char); setPicker(false); }} /></div>}
       </div>
+      {me.customStatus?.expiresAt && <p className="mb-2 text-xs text-muted" data-testid="status-expiry">{t('Clears {time}', { time: fmtStamp(new Date(me.customStatus.expiresAt).getTime()) })}</p>}
       <Field label={t('Clear after')}>
         <select className="field" value={after} onChange={(e) => setAfter(Number(e.target.value))}>{CLEAR_AFTER.map(([l], i) => <option key={l} value={i}>{t(l)}</option>)}</select>
       </Field>

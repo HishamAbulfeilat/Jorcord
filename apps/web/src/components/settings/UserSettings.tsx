@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { VoiceSettingsForm } from '@/voice/VoiceSettings';
 import { useQuery } from '@tanstack/react-query';
-import { Accessibility, Bell, Globe, Keyboard, LogOut, Mic, Palette, Shield, User as UserIcon, UserCircle, Monitor, Radio, Laptop, Smile } from 'lucide-react';
-import { NotificationsTab, StreamerTab, DesktopTab, ServerSection, ThemePicker } from './UserSettingsExtra';
+import { Accessibility, Bell, Globe, Keyboard, LogOut, Mic, Palette, Shield, User as UserIcon, UserCircle, Monitor, Radio, Laptop, Smile, Code2 } from 'lucide-react';
+import { NotificationsTab, StreamerTab, DesktopTab, ServerSection, ThemePicker, ThemeColorsPicker } from './UserSettingsExtra';
 import { isTauri } from '@/lib/server';
 import { LOCALES } from '@/i18n';
 import { t, T } from '@/i18n';
 import { useStreamer, maskEmail } from '@/lib/streamer';
-import { profileGradient, isHex } from '@/lib/profileTheme';
+import { profileGradient, isHex, headerBackground, isHexPair, type ThemePair } from '@/lib/profileTheme';
 import { api } from '@/lib/api';
 import { useData } from '@/stores/data';
 import { useUI, defaultKeybinds, toast, toastError, type Theme } from '@/stores/ui';
@@ -21,14 +22,16 @@ import { ProfileCard } from '@/components/modals/Profile';
 
 let lastTab = 'account';
 export function UserSettings({ initialTab }: { initialTab?: string }) {
+  const navigate = useNavigate();
   const [tab, setTabRaw] = useState(initialTab ?? lastTab); const setTab = (x: string) => { lastTab = x; setTabRaw(x); }; const close = () => { lastTab = 'account'; useUI.getState().openSettings(null); };
   const groups = [
     { title: t('User Settings'), items: [{ id: 'account', label: t('My Account'), icon: UserIcon }, { id: 'profile', label: t('Profile'), icon: UserCircle }, { id: 'security', label: t('Security & Devices'), icon: Shield }] },
     { title: t('App Settings'), items: [{ id: 'appearance', label: t('Appearance'), icon: Palette }, { id: 'accessibility', label: t('Accessibility'), icon: Accessibility }, { id: 'voice', label: t('Voice & Video'), icon: Mic }, { id: 'notifications', label: t('Notifications'), icon: Bell }, { id: 'keybinds', label: t('Keybinds'), icon: Keyboard }, { id: 'streamer', label: t('Streamer Mode'), icon: Radio }, { id: 'language', label: t('Language'), icon: Globe }, ...(isTauri() ? [{ id: 'desktop', label: t('Desktop App'), icon: Laptop }] : [])] },
+    { title: t('Developers'), items: [{ id: 'developer', label: t('Developer Portal'), icon: Code2 }] },
     { items: [{ id: 'logout', label: t('Log Out'), icon: LogOut, danger: true }] },
   ];
   return (
-    <SettingsLayout title={t('User Settings')} groups={groups} tab={tab} onTab={(t) => { if (t === 'logout') { logout(); close(); } else setTab(t); }} onClose={close}>
+    <SettingsLayout title={t('User Settings')} groups={groups} tab={tab} onTab={(t) => { if (t === 'logout') { logout(); close(); } else if (t === 'developer') { close(); navigate('/developers'); } else setTab(t); }} onClose={close}>
       {tab === 'account' && <Account go={setTab} />}
       {tab === 'profile' && <Profile />}
       {tab === 'security' && <Security />}
@@ -48,7 +51,7 @@ function Account({ go }: { go: (t: string) => void }) {
   const me = useData((s) => s.me)!; const [pw, setPw] = useState({ cur: '', next: '' }); const [busy, setBusy] = useState(false); const st = useStreamer();
   return (<>
     <H1>{t('My Account')}</H1>
-    <div className="overflow-hidden rounded-lg bg-side"><div className="h-24" style={{ background: me.banner ? `center/cover url(${fileUrl(me.banner)})` : isHex(me.accentColor) ? profileGradient(me.accentColor) : idColor(me.id) }} />
+    <div className="overflow-hidden rounded-lg bg-side"><div className="h-24" style={{ background: headerBackground(me, me.banner ? fileUrl(me.banner) : null, idColor(me.id)) }} />
       <div className="flex items-center gap-4 px-4 pb-4"><div className="-mt-8 rounded-full border-[6px] border-[rgb(var(--side))]"><Avatar user={me} size={80} presence /></div><div className="mt-2 text-xl font-bold text-header">{me.displayName || me.username}</div><button className="btn btn-primary ms-auto" onClick={() => go('profile')}>{t('Edit User Profile')}</button></div>
       <dl className="m-4 space-y-4 rounded-lg bg-[rgb(var(--modal-alt))] p-4"><div><dt className="label !mb-0.5">{t('Username')}</dt><dd className="text-header">{me.username}</dd></div><div><dt className="label !mb-0.5">{t('Email')}</dt><dd className="text-header" data-testid="account-email">{st.hidePersonal ? maskEmail(me.email) : me.email}{!me.verified && <span className="ms-2 text-xs text-warn">unverified</span>}</dd></div></dl></div>
     <ServerSection />
@@ -63,10 +66,10 @@ function Account({ go }: { go: (t: string) => void }) {
 
 function Profile() {
   const me = useData((s) => s.me)!;
-  const init = { displayName: me.displayName ?? '', pronouns: me.pronouns ?? '', bio: me.bio ?? '', avatar: me.avatar, banner: me.banner, accentColor: me.accentColor ?? '#5865f2', };
+  const init = { displayName: me.displayName ?? '', pronouns: me.pronouns ?? '', bio: me.bio ?? '', avatar: me.avatar, banner: me.banner, accentColor: me.accentColor ?? '#5865f2', themeColors: (isHexPair(me.themeColors) ? me.themeColors : null) as ThemePair | null };
   const [f, setF] = useState(init); const [busy, setBusy] = useState(false);
   const dirty = JSON.stringify(f) !== JSON.stringify(init);
-  const save = async () => { setBusy(true); try { const u = await api.users.patchMe({ displayName: f.displayName || null, pronouns: f.pronouns || null, bio: f.bio || null, avatar: f.avatar, banner: f.banner, accentColor: f.accentColor, }); useData.getState().apply('USER_UPDATE', { ...me, ...u }); toast(t('Profile saved'), 'success'); } catch (e) { toastError(e); } setBusy(false); };
+  const save = async () => { setBusy(true); try { const u = await api.users.patchMe({ displayName: f.displayName || null, pronouns: f.pronouns || null, bio: f.bio || null, avatar: f.avatar, banner: f.banner, accentColor: f.accentColor, themeColors: f.themeColors }); useData.getState().apply('USER_UPDATE', { ...me, ...u }); toast(t('Profile saved'), 'success'); } catch (e) { toastError(e); } setBusy(false); };
   return (<>
     <H1>{t('Profile')}</H1>
     <div className="flex flex-col gap-8 lg:flex-row"><div className="min-w-0 flex-1">
@@ -75,6 +78,7 @@ function Profile() {
       <div className="mb-4"><span className="label">{t('Avatar')}</span><IconPicker value={f.avatar} onChange={(v) => setF({ ...f, avatar: v })} size={72} label={t('Avatar')} /><span className="mt-1 block text-xs text-muted">{t('GIF and animated WebP avatars and banners are supported.')}</span></div>
       <div className="mb-4"><span className="label">{t('Banner')}</span><div className="relative h-24 overflow-hidden rounded-lg" style={{ background: f.banner ? `center/cover url(${fileUrl(f.banner)})` : f.accentColor }}><label className="absolute inset-0 flex cursor-pointer items-center justify-center bg-black/40 text-sm font-semibold text-white opacity-0 hover:opacity-100 focus-within:opacity-100">{t('Change banner')}<input type="file" accept="image/*" className="sr-only" onChange={async (e) => { const file = e.target.files?.[0]; e.target.value = ''; if (!file) return; try { const url = await api.files.uploadImage(file); setF((s) => ({ ...s, banner: url })); } catch (err) { toastError(err); } }} /></label></div>{f.banner && <button className="mt-1 text-sm text-link" onClick={() => setF({ ...f, banner: null })}>{t('Remove banner')}</button>}</div>
       <ThemePicker value={f.accentColor} onChange={(c) => setF({ ...f, accentColor: c })} />
+      <ThemeColorsPicker value={f.themeColors} onChange={(c) => setF({ ...f, themeColors: c })} />
       <div className="mb-4"><span className="label">{t('Custom Status')}</span><button type="button" className="btn btn-secondary" onClick={() => useUI.getState().openModal({ kind: 'customStatus' })}><Smile size={16} />{me.customStatus?.text || me.customStatus?.emoji ? `${me.customStatus.emoji ?? ''} ${me.customStatus.text ?? ''}`.trim() : t('Set a custom status')}</button></div>
       <Field label={t('About Me')} hint={t('You can use markdown and links.')}><textarea className="field min-h-[110px]" value={f.bio} maxLength={190} onChange={(e) => setF({ ...f, bio: e.target.value })} /></Field>
     </div>
@@ -83,7 +87,7 @@ function Profile() {
   </>);
 }
 function PreviewCard({ me, f }: { me: any; f: any }) {
-  return <div className="overflow-hidden rounded-lg bg-[rgb(var(--modal-alt))]"><div className="h-[60px]" style={{ background: f.banner ? `center/cover url(${fileUrl(f.banner)})` : isHex(f.accentColor) ? profileGradient(f.accentColor) : f.accentColor }} />
+  return <div className="overflow-hidden rounded-lg bg-[rgb(var(--modal-alt))]"><div className="h-[60px]" data-testid="preview-banner" style={{ background: headerBackground({ banner: f.banner, themeColors: f.themeColors, accentColor: f.accentColor }, f.banner ? fileUrl(f.banner) : null, f.accentColor) }} />
     <div className="px-4 pb-4"><div className="-mt-10 mb-2 w-fit rounded-full border-[6px] border-[rgb(var(--modal-alt))]"><Avatar user={{ ...me, avatar: f.avatar }} size={80} /></div>
       <div className="rounded-lg bg-[rgb(var(--rail)/0.5)] p-3"><div className="text-xl font-bold text-header">{f.displayName || me.username}</div><div className="text-sm">{me.username}{f.pronouns && <span className="text-muted"> • {f.pronouns}</span>}</div>{f.bio && <><hr className="my-3 border-divider" /><div className="text-xs font-bold uppercase text-header">{t('About Me')}</div><p className="whitespace-pre-wrap text-sm">{f.bio}</p></>}</div></div></div>;
 }

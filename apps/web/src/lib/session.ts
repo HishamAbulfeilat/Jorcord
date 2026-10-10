@@ -14,21 +14,47 @@ import { playSound } from './sound';
 import { useNotif } from '@/stores/notif';
 import { streamerActive } from './streamer';
 import { getServerUrl } from './server';
+import { usePlatform } from '@/stores/platform';
+import { isEphemeral } from '@/stores/messages';
+import { onAutocompleteResult, onInteractionFailed, onInteractionModal, settleForMessage } from './interactions';
+import { queryClient } from './queryClient';
+import { setRateLimitNotifier } from './transport';
+import { toast } from '@/stores/ui';
 
 let unsubs: (() => void)[] = [];
 
 export function startSession(token: string) {
   endSession(false);
   const gw = getGateway();
-  const names: (keyof Events)[] = ['READY', 'GUILD_CREATE', 'GUILD_UPDATE', 'GUILD_DELETE', 'CHANNEL_CREATE', 'CHANNEL_UPDATE', 'CHANNEL_DELETE', 'ROLE_CREATE', 'ROLE_UPDATE', 'ROLE_DELETE', 'MEMBER_ADD', 'MEMBER_UPDATE', 'MEMBER_REMOVE', 'TYPING_START', 'PRESENCE_UPDATE', 'USER_UPDATE', 'RELATIONSHIP_ADD', 'RELATIONSHIP_REMOVE', 'READ_STATE_UPDATE', 'VOICE_STATE_UPDATE', 'EMOJIS_UPDATE', 'THREAD_CREATE', 'THREAD_UPDATE'];
+  const names: (keyof Events)[] = ['READY', 'GUILD_CREATE', 'GUILD_UPDATE', 'GUILD_DELETE', 'CHANNEL_CREATE', 'CHANNEL_UPDATE', 'CHANNEL_DELETE', 'ROLE_CREATE', 'ROLE_UPDATE', 'ROLE_DELETE', 'MEMBER_ADD', 'MEMBER_UPDATE', 'MEMBER_REMOVE', 'TYPING_START', 'PRESENCE_UPDATE', 'USER_UPDATE', 'RELATIONSHIP_ADD', 'RELATIONSHIP_REMOVE', 'READ_STATE_UPDATE', 'VOICE_STATE_UPDATE', 'EMOJIS_UPDATE', 'STICKERS_UPDATE', 'THREAD_CREATE', 'THREAD_UPDATE', 'THREAD_DELETE'];
   let readies = 0;
-  for (const n of names) unsubs.push(gw.on(n, (d: any) => { if (n === 'READY' && ++readies > 1) useMessages.setState({ ch: {} }); /* missed events after a failed resume: reload open channels */ useData.getState().apply(n, d); }));
+  for (const n of names) unsubs.push(gw.on(n, (d: any) => { if (n === 'READY' && ++readies > 1) { useMessages.setState({ ch: {} }); usePlatform.setState({ eventsLoaded: {}, stagesLoaded: {} }); } /* missed events after a failed resume: reload open channels */ useData.getState().apply(n, d); }));
+  // a bot joining or leaving changes which commands the picker may offer
+  for (const n of ['MEMBER_ADD', 'MEMBER_REMOVE'] as const) unsubs.push(gw.on(n, (d: any) => { const bot = d.user?.bot ?? useData.getState().users[d.userId]?.bot; if (bot) void queryClient.invalidateQueries({ queryKey: ['commands', d.guildId] }); }));
   unsubs.push(gw.on('GUILD_MEMBERS_CHUNK', (d) => useData.getState().putMembers(d.guildId, d.members)));
   unsubs.push(gw.on('MESSAGE_CREATE', onMessageCreate));
-  unsubs.push(gw.on('MESSAGE_UPDATE', (m) => { useMessages.getState().update(m); }));
+  unsubs.push(gw.on('MESSAGE_UPDATE', (m) => { useMessages.getState().update(m); settleForMessage(m); }));
   unsubs.push(gw.on('MESSAGE_DELETE', (d) => useMessages.getState().remove(d.channelId, d.id)));
   unsubs.push(gw.on('MESSAGE_REACTION_ADD', (d) => useMessages.getState().reaction(d.channelId, d.messageId, d.emoji, d.emojiId, 1, d.userId === useData.getState().me?.id)));
   unsubs.push(gw.on('MESSAGE_REACTION_REMOVE', (d) => useMessages.getState().reaction(d.channelId, d.messageId, d.emoji, d.emojiId, -1, d.userId === useData.getState().me?.id)));
+  // ---- platform pass ----
+  const meId = () => useData.getState().me?.id;
+  unsubs.push(gw.on('MESSAGE_POLL_VOTE_ADD', (d) => { useMessages.getState().pollVote(d.channelId, d.messageId, d.answerId, 1, d.userId === meId()); refreshPoll(d.channelId, d.messageId); }));
+  unsubs.push(gw.on('MESSAGE_POLL_VOTE_REMOVE', (d) => { useMessages.getState().pollVote(d.channelId, d.messageId, d.answerId, -1, d.userId === meId()); refreshPoll(d.channelId, d.messageId); }));
+  unsubs.push(gw.on('INTERACTION_FAILED', onInteractionFailed));
+  unsubs.push(gw.on('INTERACTION_MODAL', onInteractionModal));
+  unsubs.push(gw.on('INTERACTION_AUTOCOMPLETE_RESULT', onAutocompleteResult));
+  unsubs.push(gw.on('GUILD_SCHEDULED_EVENT_CREATE', (e) => usePlatform.getState().upsertEvent(e)));
+  unsubs.push(gw.on('GUILD_SCHEDULED_EVENT_UPDATE', (e) => usePlatform.getState().upsertEvent(e)));
+  unsubs.push(gw.on('GUILD_SCHEDULED_EVENT_DELETE', (e) => usePlatform.getState().removeEvent(e)));
+  unsubs.push(gw.on('GUILD_SCHEDULED_EVENT_USER_ADD', (d) => usePlatform.getState().eventInterest(d.guildId, d.guildScheduledEventId, 1, d.userId === meId())));
+  unsubs.push(gw.on('GUILD_SCHEDULED_EVENT_USER_REMOVE', (d) => usePlatform.getState().eventInterest(d.guildId, d.guildScheduledEventId, -1, d.userId === meId())));
+  unsubs.push(gw.on('STAGE_INSTANCE_CREATE', (s) => usePlatform.getState().setStage(s)));
+  unsubs.push(gw.on('STAGE_INSTANCE_UPDATE', (s) => usePlatform.getState().setStage(s)));
+  unsubs.push(gw.on('STAGE_INSTANCE_DELETE', (s) => usePlatform.getState().removeStage(s.channelId)));
+  for (const n of ['APPLICATION_COMMAND_CREATE', 'APPLICATION_COMMAND_UPDATE', 'APPLICATION_COMMAND_DELETE'] as const) unsubs.push(gw.on(n, (c) => { void queryClient.invalidateQueries({ queryKey: ['commands', c.guildId] }); }));
+  // 429s: the transport already waits and retries short ones; tell the person why things are slow
+  setRateLimitNotifier((ms, why) => { if (why === '429' && ms >= 1500) toast(`You are being rate limited. Retrying in ${Math.ceil(ms / 1000)}s…`, 'info'); });
   unsubs.push(gw.on('CHANNEL_PINS_UPDATE', (d) => {
     window.dispatchEvent(new CustomEvent('jorcord:pins', { detail: d.channelId }));
     // keep the "pinned" mark of already loaded messages in sync for everyone in the channel
@@ -42,14 +68,27 @@ export function startSession(token: string) {
   gw.connect(token);
 }
 
+const pollTimers = new Map<string, ReturnType<typeof setTimeout>>();
+/** Vote events only say "someone voted for answer N": re-read the poll shortly after to get the exact distinct-voter total (one read per burst of events). */
+function refreshPoll(channelId: string, messageId: string) {
+  if (!useMessages.getState().ch[channelId]?.list.some((m) => m.id === messageId)) return;
+  clearTimeout(pollTimers.get(messageId));
+  pollTimers.set(messageId, setTimeout(() => {
+    pollTimers.delete(messageId);
+    api.messages.list(channelId, { limit: 3, around: messageId }).then((l) => { const m = l.find((x) => x.id === messageId); if (m?.poll) useMessages.getState().replace(m); }).catch(() => {});
+  }, 250));
+}
+
 export function endSession(reset = true) {
   unsubs.forEach((u) => u()); unsubs = [];
   getGateway().disconnect();
-  if (reset) { useData.getState().reset(); }
+  if (reset) { useData.getState().reset(); usePlatform.getState().reset(); }
 }
 
 function onMessageCreate(m: Message) {
   const data = useData.getState();
+  settleForMessage(m);
+  if (isEphemeral(m)) { useMessages.getState().upsert(m); return; } // "Only you can see this": no unread, no sound, never part of history
   data.apply('MESSAGE_CREATE', m);
   useMessages.getState().upsert(m);
   const me = data.me; if (!me) return;

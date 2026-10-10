@@ -18,7 +18,13 @@ import { useNav } from '@/lib/nav';
 import { Markdown } from './Markdown';
 import { markChannelRead } from '@/lib/menus';
 import { DmCallPanel, startCall } from '@/voice/DmCall';
-import { Phone, Video } from 'lucide-react';
+import { Phone, Video, Settings as Cog, Lock, Archive } from 'lucide-react';
+import { Perm } from '@jorcord/shared';
+import { can } from '@/lib/perms';
+import { myChannelPerms } from '@/lib/session';
+import { selfMember } from '@/stores/data';
+import { api } from '@/lib/api';
+import { toastError } from '@/stores/ui';
 import { t } from '@/i18n';
 
 export function HeaderButton({ label, active, onClick, children, badge }: { label: string; active?: boolean; onClick: () => void; children: React.ReactNode; badge?: boolean }) {
@@ -40,10 +46,12 @@ export function ChannelHeader({ channel }: { channel: Channel }) {
       {isDm ? (other ? <Avatar user={other} size={24} presence /> : <Users size={24} className="text-muted" />) : isThread ? <MessagesSquare size={22} className="text-muted" /> : <ChannelIcon c={channel} size={24} className="shrink-0 text-muted" />}
       {isDm && <AtSign size={0} />}
       <h1 className="truncate text-base font-semibold text-header">{isDm ? dmName(channel, me?.id) : channel.name}</h1>
+      {isThread && channel.locked && <Lock size={16} className="shrink-0 text-muted" aria-label={t('Locked')} />}
       {channel.topic && !mobile && <><span className="mx-1 h-6 w-px bg-divider" aria-hidden /><div className="min-w-0 flex-1 truncate text-sm text-muted" title={channel.topic}><Markdown content={channel.topic} guildId={channel.guildId} inline /></div></>}
       <div className="ms-auto flex items-center gap-1 md:gap-2">
         {isDm && <HeaderButton label={t('Start Voice Call')} onClick={() => void startCall(channel.id, false)}><Phone size={22} /></HeaderButton>}
         {isDm && <HeaderButton label={t('Start Video Call')} onClick={() => void startCall(channel.id, true)}><Video size={24} /></HeaderButton>}
+        {isThread && (can(myChannelPerms(channel.id), Perm.MANAGE_THREADS) || channel.ownerId === me?.id) && <HeaderButton label={t('Thread Settings')} onClick={() => openModal({ kind: 'threadSettings', channelId: channel.id })}><Cog size={22} /></HeaderButton>}
         {!isDm && !isThread && <HeaderButton label={t('Threads')} active={panel === 'threads'} onClick={() => toggle('threads')}><MessagesSquare size={24} /></HeaderButton>}
         {!mobile && <HeaderButton label={muted ? 'Unmute Channel' : 'Mute Channel'} onClick={() => setPref('mutedChannels', { ...prefs.mutedChannels, [channel.id]: !muted })}>{muted ? <BellOff size={24} /> : <Bell size={24} />}</HeaderButton>}
         <HeaderButton label={t('Pinned Messages')} active={panel === 'pins'} onClick={() => toggle('pins')}><Pin size={24} /></HeaderButton>
@@ -91,6 +99,8 @@ export function ChatView({ channel }: { channel: Channel }) {
           {isDm && <DmCallPanel channel={channel} />}
           <MessageList key={cid} channel={channel} lastReadSnapshot={snapshot.current.v} />
           <div className="relative"><TypingIndicator channelId={cid} guildId={gid} /></div>
+          <ThreadBanner channel={channel} />
+          <ScreeningBanner guildId={gid} />
           <Composer key={'c' + cid} channel={channel} stagedExternal={dropped} />
           {drag && (
             <div className="pointer-events-none absolute inset-0 z-40 flex items-center justify-center bg-brand/20 backdrop-blur-sm" aria-hidden>
@@ -106,6 +116,32 @@ export function ChatView({ channel }: { channel: Channel }) {
       {narrow && !mobile && panel === 'members' && (gid || channel.type === 'group_dm') && (
         <div className="absolute inset-y-0 end-0 z-30 shadow-elev">{gid ? <MemberList guildId={gid} /> : <DmMemberPanel channelId={cid} />}</div>
       )}
+    </div>
+  );
+}
+
+/** Archived / locked thread notice with the one action that makes sense (unarchive). */
+function ThreadBanner({ channel }: { channel: Channel }) {
+  const manage = can(myChannelPerms(channel.id), Perm.MANAGE_THREADS);
+  if (channel.type !== 'thread' || (!channel.archived && !channel.locked)) return null;
+  const unarchive = () => api.channels.patch(channel.id, { archived: false }).then((u) => useData.getState().apply('THREAD_UPDATE', { ...channel, ...u, archived: false })).catch(toastError);
+  return (
+    <div role="status" data-testid="thread-banner" className="mx-4 mb-2 flex items-center gap-2 rounded-md bg-side px-3 py-2 text-sm text-muted">
+      {channel.archived ? <Archive size={16} aria-hidden /> : <Lock size={16} aria-hidden />}
+      <span className="min-w-0 flex-1">{channel.archived ? (channel.locked ? t('This thread is archived and locked.') : t('This thread is archived.')) : t('This thread is locked: once it is archived only moderators can reopen it.')}</span>
+      {channel.archived && (!channel.locked || manage) && <button className="btn btn-primary" onClick={unarchive}>{t('Unarchive')}</button>}
+    </div>
+  );
+}
+
+/** New members of a screened server are read-only until they accept the rules. */
+function ScreeningBanner({ guildId }: { guildId: string | null }) {
+  const pending = useData((s) => (guildId ? !!selfMember(s, guildId)?.pending : false)); const open = useUI((s) => s.openModal);
+  if (!guildId || !pending) return null;
+  return (
+    <div role="status" data-testid="screening-banner" className="mx-4 mb-2 flex flex-wrap items-center gap-2 rounded-md bg-brand/15 px-3 py-2 text-sm text-header">
+      <span className="min-w-0 flex-1">{t('Review and accept the server rules to start chatting.')}</span>
+      <button className="btn btn-primary" onClick={() => open({ kind: 'screening', guildId })}>{t('Review Rules')}</button>
     </div>
   );
 }

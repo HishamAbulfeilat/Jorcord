@@ -31,7 +31,7 @@ export function buildRows(list: Message[], pending: { nonce: string; createdAt: 
     const newDay = !prev || !sameDay(msgTime(prev.id, prev.createdAt), t);
     if (newDay) rows.push({ key: `d${t - (t % 86400000)}-${m.id}`, kind: 'date', label: fmtDateDivider(t) });
     if (!newPlaced && opts.lastRead && compareId(m.id, opts.lastRead) > 0 && m.author.id !== opts.meId && prev) { rows.push({ key: 'new', kind: 'new' }); newPlaced = true; }
-    const grouped = !!prev && !newDay && prev.author.id === m.author.id && prev.type !== 'join' && prev.type !== 'pin' && m.type !== 'join' && m.type !== 'pin' && t - msgTime(prev.id, prev.createdAt) < 7 * 60000 && !m.replyTo && !prev.webhookId === !m.webhookId && !(rows[rows.length - 1].kind === 'new');
+    const grouped = !!prev && !newDay && prev.author.id === m.author.id && prev.type !== 'join' && prev.type !== 'pin' && m.type !== 'join' && m.type !== 'pin' && t - msgTime(prev.id, prev.createdAt) < 7 * 60000 && !m.replyTo && !m.interaction && !prev.components?.length && !prev.webhookId === !m.webhookId && !(rows[rows.length - 1].kind === 'new');
     rows.push({ key: m.id, kind: 'msg', m, grouped });
     prev = m;
   }

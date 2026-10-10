@@ -13,10 +13,10 @@ import { t, tn } from '@/i18n';
 
 type Found = Guild & { approxMembers?: number };
 
-/** Join a discoverable server: via its vanity code when it has one, else the (proposed) direct-join endpoint. */
+/** Join a discoverable server with `POST /discover/guilds/:id/join` (an invite is not needed); older servers without it fall back to the vanity code. */
 export async function joinDiscoverable(g: Found) {
-  if (g.vanityUrl) return api.invites.join(g.vanityUrl);
-  return api.guilds.joinDiscoverable(g.id);
+  try { return await api.guilds.joinDiscoverable(g.id); }
+  catch (e) { if (g.vanityUrl && (e as { status?: number }).status === 404) return api.invites.join(g.vanityUrl); throw e; }
 }
 
 function Card({ g }: { g: Found }) {
