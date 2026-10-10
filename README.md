@@ -32,7 +32,7 @@ Get everything from the [latest release](https://github.com/HishamAbulfeilat/Jor
 ```
 git clone https://github.com/HishamAbulfeilat/Jorcord && cd Jorcord
 ./scripts/init-env.sh        # writes .env with random secrets (Windows PowerShell: .\scripts\init-env.ps1)
-docker compose up -d         # server :3000, Postgres, Redis, LiveKit, MinIO
+docker compose up -d --build   # builds the server locally; starts Postgres, Redis, LiveKit (add --profile s3 for MinIO)
 ```
 Open the web app (hosted copy, or the downloaded desktop/mobile app) and enter `http://localhost:3000` as the server address.
 Every client asks for a server on first launch; for a server on another machine use an HTTPS address and add the web app's origin to `CORS_ORIGINS` in `.env`.

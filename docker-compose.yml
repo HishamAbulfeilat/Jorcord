@@ -1,4 +1,4 @@
-# Jorcord backend stack: server + Postgres + Redis + LiveKit + MinIO (S3).
+# Jorcord backend stack: server + Postgres + Redis + LiveKit (files on a local volume; MinIO/S3 optional via `--profile s3`).
 #   cp .env.example .env   # (see docs/DEPLOY.md) set at least JWT_SECRET, POSTGRES_PASSWORD, LIVEKIT_API_SECRET, MINIO_ROOT_PASSWORD
 #   docker compose up -d --build
 # The web client is a static bundle (apps/web) served by any static host / reverse proxy; see docs/DEPLOY.md.
@@ -13,7 +13,6 @@ services:
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
-      minio-setup: { condition: service_completed_successfully }
       livekit: { condition: service_started }
     ports: ["${SERVER_PORT:-3000}:3000"]
     environment:
@@ -29,13 +28,13 @@ services:
       LIVEKIT_API_URL: http://livekit:7880
       LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:-jorcord}
       LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:?set LIVEKIT_API_SECRET (>= 32 chars)}
-      # Object storage (MinIO). Swap for AWS S3 by changing the S3_* values and dropping the minio services.
-      STORAGE_DRIVER: s3
-      S3_ENDPOINT: http://minio:9000
+      # Files go to the server-data volume by default. For S3/MinIO: `docker compose --profile s3 up -d` with STORAGE_DRIVER=s3 in .env.
+      STORAGE_DRIVER: ${STORAGE_DRIVER:-local}
+      S3_ENDPOINT: ${S3_ENDPOINT:-http://minio:9000}
       S3_REGION: us-east-1
       S3_BUCKET: ${S3_BUCKET:-jorcord-files}
       S3_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-jorcord}
-      S3_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD (>= 8 chars)}
+      S3_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-unused-without-s3}
       S3_FORCE_PATH_STYLE: "true"
       SMTP_URL: ${SMTP_URL:-}
       MAIL_FROM: ${MAIL_FROM:-Jorcord <no-reply@localhost>}
@@ -107,6 +106,7 @@ services:
       - "50000-50200:50000-50200/udp"   # media; widen range + mapping for big deployments
 
   minio:
+    profiles: [s3]
     image: minio/minio:RELEASE.2024-10-13T13-34-11Z
     restart: unless-stopped
     command: ["server", "/data", "--console-address", ":9001"]
@@ -123,7 +123,8 @@ services:
 
   # One-shot: create the bucket (private; files are only reachable through the Jorcord server).
   minio-setup:
-    image: minio/mc:RELEASE.2024-10-08T09-37-26Z
+    profiles: [s3]
+    image: minio/mc:latest
     depends_on:
       minio: { condition: service_healthy }
     restart: "no"
