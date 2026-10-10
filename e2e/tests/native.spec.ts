@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { newUser, createServer, makeInvite, rest, injectNative, openUserSettings, closeSettings } from './helpers';
+import { clickMenu, newUser, createServer, makeInvite, rest, injectNative, openUserSettings, closeSettings } from './helpers';
 
 const SERVER = 'http://127.0.0.1:3100';
 test('Capacitor wrapper: connect screen, cross-origin API/WS, deep link, back button, push, no screen share', async ({ browser }) => {
@@ -54,9 +54,12 @@ test('Capacitor: screen share is hidden in a voice channel', async ({ browser })
   const u = 'ios' + Math.random().toString(36).slice(2, 8);
   await page.getByLabel('Email').fill(`${u}@example.test`); await page.getByLabel('Username').fill(u); await page.getByLabel('Password').fill('correct-horse-battery'); await page.getByLabel(/I agree/).check();
   await page.getByRole('button', { name: /continue/i }).click(); await page.waitForURL(/\/channels\/@me/);
-  await createServer(page, 'Voice HQ');
+  const t = await page.evaluate(() => JSON.parse(localStorage.getItem('jorcord.auth.v1')!).access);
+  const r = await page.request.post(SERVER + '/api/v1/guilds', { data: { name: 'Voice HQ' }, headers: { authorization: 'Bearer ' + t } }); expect(r.ok()).toBeTruthy();
+  await page.reload();
+  await page.getByRole('tab', { name: 'Home' }).click(); await page.getByRole('dialog', { name: 'Navigation' }).getByRole('button', { name: 'Voice HQ' }).click();
   await page.getByRole('button', { name: 'Open navigation' }).click();
-  await page.getByRole('dialog', { name: 'Navigation' }).getByRole('button', { name: 'General', exact: true }).click();
+  await page.getByRole('dialog', { name: 'Navigation' }).getByRole('navigation', { name: 'Channels' }).getByRole('button', { name: 'General', exact: true }).click();
   await expect(page.getByTestId('voice-view').getByRole('button', { name: 'Disconnect' })).toBeVisible();
   await expect(page.getByRole('button', { name: /Share Your Screen|Go Live/ })).toHaveCount(0);
   await ctx.close();

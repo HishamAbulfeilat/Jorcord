@@ -1,3 +1,4 @@
+import type { Component, FieldErrors, ForumTag, Poll } from './platform';
 /** Wire types shared by server and clients. IDs are snowflake strings; bigints (permissions) travel as strings. */
 export type Id = string;
 export type Presence = 'online' | 'idle' | 'dnd' | 'invisible' | 'offline';
@@ -22,6 +23,9 @@ export interface Channel {
   parentId: Id | null; nsfw: boolean; slowmode: number; bitrate: number | null; userLimit: number | null;
   overwrites: OverwriteDTO[]; lastMessageId: Id | null; recipients?: User[]; ownerId?: Id | null;
   archived?: boolean; createdAt: string;
+  /** Additive (platform pass). Forum parents: tag catalogue; threads: tags applied + lifecycle. */
+  availableTags?: ForumTag[]; requireTag?: boolean; defaultAutoArchiveDuration?: number;
+  appliedTags?: Id[]; autoArchiveDuration?: number; locked?: boolean; archiveAt?: string | null;
 }
 export interface Member { guildId: Id; user: User; nick: string | null; roles: Id[]; joinedAt: string; timeoutUntil: string | null; avatar?: string | null }
 export interface Attachment { id: Id; filename: string; contentType: string; size: number; url: string; width: number | null; height: number | null; spoiler: boolean }
@@ -29,22 +33,25 @@ export interface Embed { type: 'link' | 'image' | 'video' | 'rich'; url?: string
 export interface Reaction { emoji: string; emojiId: Id | null; count: number; me: boolean }
 export interface Message {
   id: Id; channelId: Id; guildId: Id | null; author: User; content: string; createdAt: string; editedAt: string | null;
-  type: 'default' | 'reply' | 'join' | 'pin' | 'boost' | 'thread_created' | 'call';
+  type: 'default' | 'reply' | 'join' | 'pin' | 'boost' | 'thread_created' | 'call' | 'poll_result';
   replyTo: Id | null; referenced?: Message | null; mentions: Id[]; mentionRoles: Id[]; mentionEveryone: boolean;
   attachments: Attachment[]; embeds: Embed[]; reactions: Reaction[]; pinned: boolean; stickerIds: Id[]; threadId: Id | null; webhookId?: Id | null;
+  /** Additive (platform pass). */
+  components?: Component[]; poll?: Poll | null; flags?: number; applicationId?: Id | null;
+  interaction?: { id: Id; type: number; name: string | null; userId: Id } | null;
 }
 export interface Invite { code: string; guildId: Id; channelId: Id; inviterId: Id; uses: number; maxUses: number | null; expiresAt: string | null; temporary: boolean; guild?: Pick<Guild, 'id' | 'name' | 'icon'>; approxMembers?: number }
 export interface Relationship { user: User; type: 'friend' | 'blocked' | 'incoming' | 'outgoing' }
 export interface Emoji { id: Id; guildId: Id; name: string; animated: boolean; url: string }
 export interface Sticker { id: Id; guildId: Id; name: string; url: string; format: 'png' | 'apng' | 'lottie' | 'gif' }
 export interface VoiceState { userId: Id; guildId: Id | null; channelId: Id | null; selfMute: boolean; selfDeaf: boolean; serverMute: boolean; serverDeaf: boolean; video: boolean; streaming: boolean; suppress: boolean; /** ISO time when the user asked to speak on a stage (null/absent = no request). */ requestToSpeakAt?: string | null }
-export interface AuditEntry { id: Id; guildId: Id; actorId: Id; action: string; targetId: Id | null; changes: unknown; reason: string | null; createdAt: string }
+export interface AuditEntry { id: Id; guildId: Id; actorId: Id; action: string; /** numeric AuditActionType (additive) */ actionType?: number; targetId: Id | null; changes: unknown; reason: string | null; createdAt: string }
 export interface ReadState { channelId: Id; lastReadId: Id | null; mentionCount: number }
 export interface Webhook { id: Id; guildId: Id; channelId: Id; name: string; avatar: string | null; token?: string }
 export interface AutoModRule { id: Id; guildId: Id; name: string; enabled: boolean; trigger: 'keyword' | 'spam' | 'mention_spam' | 'link'; keywords: string[]; action: 'block' | 'timeout' | 'alert'; exemptRoles: Id[] }
 export interface VoiceToken { token: string; url: string; room: string }
 export interface Page<T> { items: T[]; nextCursor: Id | null }
-export interface ApiError { code: string; message: string; details?: unknown }
+export interface ApiError { code: string; message: string; details?: unknown; /** Discord-style numeric code (additive; see ErrorCode). */ errorCode?: number; /** Field-level validation errors (additive). */ errors?: FieldErrors; retry_after?: number; global?: boolean }
 
 // ---- Push notifications (server: POST/DELETE /users/@me/push-devices, GET /push/vapid-public-key, /users/@me/notification-settings) ----
 export type PushPlatform = 'web' | 'android' | 'ios' | 'desktop';

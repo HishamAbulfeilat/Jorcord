@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { ApiError } from '../errors';
+import { ApiError, fieldErrors } from '../errors';
 
 export const idSchema = z.string().regex(/^\d{1,20}$/, 'invalid id');
 export const isId = (s: unknown): s is string => typeof s === 'string' && /^\d{1,20}$/.test(s);
@@ -7,7 +7,7 @@ export const isId = (s: unknown): s is string => typeof s === 'string' && /^\d{1
 /** Validate with zod, mapping failures to a 400 ApiError. */
 export function parse<S extends z.ZodTypeAny>(schema: S, data: unknown): z.infer<S> {
   const r = schema.safeParse(data ?? {});
-  if (!r.success) throw new ApiError(400, 'VALIDATION_ERROR', 'Invalid request', r.error.issues.map((i) => ({ path: i.path.join('.'), message: i.message })));
+  if (!r.success) throw new ApiError(400, 'VALIDATION_ERROR', 'Invalid request', r.error.issues.map((i) => ({ path: i.path.join('.'), message: i.message }))).with({ errors: fieldErrors(r.error.issues) });
   return r.data;
 }
 export const iso = (v: unknown): string | null => (v ? new Date(v as any).toISOString() : null);

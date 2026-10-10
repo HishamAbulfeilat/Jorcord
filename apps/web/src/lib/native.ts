@@ -72,6 +72,7 @@ export const desktop = {
   },
 };
 
+let coldStartHandled = false;
 /** Register every wrapper listener. Returns the cleanup. */
 export function initNative(o: { navigate: (to: string) => void; canGoBack: () => boolean; goBack: () => void }): () => void {
   const offs: (() => void)[] = [];
@@ -79,20 +80,21 @@ export function initNative(o: { navigate: (to: string) => void; canGoBack: () =>
   if (isTauri()) {
     const t = tauri();
     void Promise.resolve(t.event?.listen?.('jorcord://open', (e: { payload: unknown }) => onUrl(String(e.payload)))).then((un: any) => { if (typeof un === 'function') offs.push(un); }).catch(() => {});
-    void Promise.resolve(t.deepLink?.getCurrent?.()).then((urls: string[] | null) => urls?.forEach(onUrl)).catch(() => {});
+    if (!coldStartHandled) void Promise.resolve(t.deepLink?.getCurrent?.()).then((urls: string[] | null) => urls?.forEach(onUrl)).catch(() => {});
   }
   if (isCapacitor()) {
     const App = capPlugin('App');
     const add = (ev: string, fn: (d: any) => void) => { try { void Promise.resolve(App?.addListener?.(ev, fn)).then((h: any) => h?.remove && offs.push(() => h.remove())); } catch { /* */ } };
     add('appUrlOpen', (d: { url: string }) => onUrl(d.url));
     add('backButton', () => { handleBack({ canGoBack: o.canGoBack(), goBack: o.goBack, exit: () => { void App?.exitApp?.(); } }); });
-    void Promise.resolve(App?.getLaunchUrl?.()).then((r: { url?: string } | undefined) => r?.url && onUrl(r.url)).catch(() => {});
+    if (!coldStartHandled) void Promise.resolve(App?.getLaunchUrl?.()).then((r: { url?: string } | undefined) => r?.url && onUrl(r.url)).catch(() => {});
     // Keyboard plugin uses resize:'body'; keep the composer above it when the plugin reports a height.
     const kb = capPlugin('Keyboard');
     const setKb = (h: number) => document.documentElement.style.setProperty('--kb', `${h}px`);
     try { void Promise.resolve(kb?.addListener?.('keyboardWillShow', (i: { keyboardHeight: number }) => setKb(i.keyboardHeight))).then((h: any) => h?.remove && offs.push(() => h.remove())); } catch { /* */ }
     try { void Promise.resolve(kb?.addListener?.('keyboardWillHide', () => setKb(0))).then((h: any) => h?.remove && offs.push(() => h.remove())); } catch { /* */ }
   }
+  coldStartHandled = true; // the launch URL belongs to this page load only
   // Web / PWA: the service worker posts notification clicks back to the open tab.
   const sw = (e: MessageEvent) => { if (e.data?.type === 'jorcord:goto') window.dispatchEvent(new CustomEvent('jorcord:goto', { detail: { guildId: e.data.guildId, channelId: e.data.channelId } })); };
   navigator.serviceWorker?.addEventListener?.('message', sw); offs.push(() => navigator.serviceWorker?.removeEventListener?.('message', sw));

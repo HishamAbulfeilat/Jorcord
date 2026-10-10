@@ -9,7 +9,7 @@ import { loadConfig, type Config } from './config';
 import type { Ctx } from './ctx';
 import { createDb } from './db';
 import { migrate } from './db/migrate';
-import { ApiError } from './errors';
+import { ApiError, fieldErrors } from './errors';
 import { Hub } from './gateway/hub';
 import { gatewayRoutes } from './gateway/ws';
 import { RateLimiter, installRateLimit } from './lib/ratelimit';
@@ -59,7 +59,7 @@ export async function buildApp(opts: BuildOptions = {}): Promise<{ app: FastifyI
 
   await app.register(cors, {
     origin: config.corsOrigins, credentials: false, methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'], maxAge: 600,
-    exposedHeaders: ['retry-after', 'content-range', 'accept-ranges', 'x-request-id'],
+    exposedHeaders: ['retry-after', 'content-range', 'accept-ranges', 'x-request-id', 'x-ratelimit-limit', 'x-ratelimit-remaining', 'x-ratelimit-reset', 'x-ratelimit-reset-after', 'x-ratelimit-bucket', 'x-ratelimit-global', 'x-ratelimit-scope'],
   });
   await app.register(multipart, { limits: { fileSize: config.maxUploadBytes, files: 10, fields: 20, fieldSize: 64 * 1024 } });
   await app.register(websocket, { options: { maxPayload: 64 * 1024 } });
@@ -75,7 +75,7 @@ export async function buildApp(opts: BuildOptions = {}): Promise<{ app: FastifyI
       if (err.headers) reply.headers(err.headers);
       return reply.code(err.status).send(err.toBody());
     }
-    if (err instanceof ZodError) return reply.code(400).send({ code: 'VALIDATION_ERROR', message: 'Invalid request', details: err.issues });
+    if (err instanceof ZodError) return reply.code(400).send({ code: 'VALIDATION_ERROR', message: 'Invalid request', details: err.issues, errorCode: 50035, errors: fieldErrors(err.issues) });
     if (err.code === 'FST_REQ_FILE_TOO_LARGE' || err.code === 'FST_ERR_CTP_BODY_TOO_LARGE') return reply.code(413).send({ code: 'PAYLOAD_TOO_LARGE', message: 'Payload too large' });
     if (typeof err.statusCode === 'number' && err.statusCode >= 400 && err.statusCode < 500) return reply.code(err.statusCode).send({ code: String(err.code ?? 'BAD_REQUEST'), message: err.message });
     req.log.error({ err }, 'unhandled error');

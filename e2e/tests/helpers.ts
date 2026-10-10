@@ -98,7 +98,7 @@ export async function openUserSettings(page: Page, tab?: string | RegExp) {
 }
 export async function openGuildSettings(page: Page, name: string, tab?: string | RegExp) {
   await page.getByRole('button', { name: `${name} server menu` }).click();
-  await page.getByRole('menuitem', { name: 'Server Settings' }).click();
+  await clickMenu(page, 'Server Settings');
   if (tab) await page.getByRole('dialog', { name }).getByRole('button', { name: tab }).click();
 }
 export const closeSettings = (page: Page) => page.getByRole('button', { name: 'Close settings' }).click();
@@ -134,3 +134,6 @@ export async function injectNative(ctx: BrowserContext, kind: 'android' | 'ios' 
     }
   }, { kind, opts });
 }
+
+/** Context-menu items ignore clicks in the first 400ms (finger-lift guard). */
+export async function clickMenu(page: Page, name: string | RegExp) { await page.waitForTimeout(450); await page.getByRole('menuitem', { name }).click(); }

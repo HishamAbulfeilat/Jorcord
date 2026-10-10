@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { newUser, createServer, makeInvite, joinViaInvite, sendMessage, msg, rest, guildId, openUserSettings, openGuildSettings, closeSettings, PNG, GIF, type User } from './helpers';
+import { clickMenu, newUser, createServer, makeInvite, joinViaInvite, sendMessage, msg, rest, guildId, openUserSettings, openGuildSettings, closeSettings, PNG, GIF, type User } from './helpers';
 
 let A: User, B: User, gid: string;
 test.describe.configure({ mode: 'serial' });
@@ -49,7 +49,7 @@ test('webhooks: create in channel settings, execute, delete', async () => {
 test('role icon shows next to the author name', async () => {
   const role = await rest(A.page, 'POST', `/guilds/${gid}/roles`, { name: 'Captain', color: 0 });
   await openGuildSettings(A.page, 'Feature HQ', 'Roles');
-  await A.page.getByRole('button', { name: 'Captain' }).click();
+  await A.page.getByRole('button', { name: 'Captain', exact: true }).click();
   await A.page.locator('input[type=file]').last().setInputFiles({ name: 'i.png', mimeType: 'image/png', buffer: PNG });
   await expect(A.page.getByRole('img').filter({ has: A.page.locator('img[src*="files"]') }).first().or(A.page.locator('img[src*="files"]').first())).toBeVisible();
   await A.page.getByRole('button', { name: 'Save Changes' }).click();
@@ -73,7 +73,7 @@ test('drag to reorder channels and categories persists', async () => {
   await expect.poll(async () => (await rest(A.page, 'GET', `/guilds/${gid}/channels`)).find((c: any) => c.name === 'beta').position).toBe(0);
   await A.page.reload();
   const order = await nav.locator('li[data-channel]').allInnerTexts();
-  expect(order.findIndex((t) => t.trim() === 'beta')).toBeLessThan(order.findIndex((t) => t.trim() === 'general'));
+  expect(order.findIndex((t) => /^beta/.test(t.trim()))).toBeLessThan(order.findIndex((t) => /^general/.test(t.trim())));
   // category order
   const catHeads = nav.locator('section[data-category]');
   await drag(A.page, catHeads.nth(1).locator('div').first(), catHeads.nth(0).locator('div').first(), 'top');
@@ -94,7 +94,7 @@ test('server rail: reorder, folders by dropping a server on another, persists', 
   await A.page.waitForTimeout(1200); await A.page.reload();
   await expect(rail.locator('[data-folder]')).toHaveCount(1);
   await rail.locator('[data-folder]').first().click({ button: 'right' });
-  await A.page.getByRole('menuitem', { name: 'Ungroup Servers' }).click();
+  await clickMenu(A.page, 'Ungroup Servers');
   await expect(rail.locator('[data-folder]')).toHaveCount(0);
 });
 
@@ -159,12 +159,12 @@ test('profile: theme, animated avatar and banner are saved and visible to others
 
 test('custom status with emoji, visible to others, then cleared', async () => {
   await A.page.getByRole('button', { name: 'Set status' }).click();
-  await A.page.getByRole('menuitem', { name: 'Set Custom Status' }).click();
+  await clickMenu(A.page, 'Set Custom Status');
   await A.page.getByLabel('Select emoji').click(); await A.page.getByRole('gridcell').first().click();
   await A.page.getByLabel('Status', { exact: true }).fill('in a meeting');
   await A.page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(B.page.getByRole('complementary', { name: 'Members' })).toContainText('in a meeting');
-  await A.page.getByRole('button', { name: 'Set status' }).click(); await A.page.getByRole('menuitem', { name: 'Clear Custom Status' }).click();
+  await A.page.getByRole('button', { name: 'Set status' }).click(); await clickMenu(A.page, 'Clear Custom Status');
   await expect(B.page.getByRole('complementary', { name: 'Members' })).not.toContainText('in a meeting');
 });
 
@@ -186,7 +186,7 @@ test('streamer mode masks private info; Go Live from the channel menu auto-enabl
   await openUserSettings(A.page, 'Streamer Mode'); await A.page.getByRole('switch', { name: 'Enable Streamer Mode' }).click(); await closeSettings(A.page);
   await expect(A.page.getByTestId('streamer-badge')).toHaveCount(0);
   await A.page.getByRole('navigation', { name: 'Channels' }).getByRole('button', { name: 'General', exact: true }).click({ button: 'right' });
-  await A.page.getByRole('menuitem', { name: 'Go Live' }).click();
+  await clickMenu(A.page, 'Go Live');
   await expect(A.page.getByTestId('share-popover')).toBeVisible();
   await A.page.getByTestId('share-popover').getByRole('button', { name: 'Go Live' }).click();
   await expect(A.page.getByTestId('streamer-badge')).toBeVisible();
@@ -196,7 +196,7 @@ test('streamer mode masks private info; Go Live from the channel menu auto-enabl
 
 test('notification settings: server level + timed mute are stored on the server', async () => {
   await A.page.getByRole('button', { name: 'Feature HQ server menu' }).click();
-  await A.page.getByRole('menuitem', { name: 'Notification Settings' }).click();
+  await clickMenu(A.page, 'Notification Settings');
   await A.page.getByRole('radio', { name: 'Only @mentions' }).check();
   await A.page.getByRole('switch', { name: 'Suppress @everyone and @here' }).click();
   await A.page.getByLabel('Mute duration').selectOption({ label: 'For 1 Hour' });

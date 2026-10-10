@@ -1,4 +1,5 @@
 /** Gateway protocol: JSON over WebSocket at /gateway. Opcode model mirrors Discord's. */
+import type { Application, ApplicationCommand, Interaction, Modal, ScheduledEvent, StageInstance, CommandOptionChoice } from './platform';
 import type { Channel, Guild, Id, Member, Message, Presence, ReadState, Relationship, Role, SelfUser, User, VoiceState, Emoji, Sticker } from './types';
 
 export const Op = { DISPATCH: 0, HEARTBEAT: 1, IDENTIFY: 2, PRESENCE_UPDATE: 3, VOICE_STATE_UPDATE: 4, RESUME: 6, RECONNECT: 7, REQUEST_MEMBERS: 8, TYPING: 9, HELLO: 10, HEARTBEAT_ACK: 11 } as const;
@@ -33,10 +34,28 @@ export interface Events {
   THREAD_CREATE: Channel; THREAD_UPDATE: Channel;
   THREAD_MEMBERS_UPDATE: { id: Id; guildId: Id; addedUserIds: Id[]; removedUserIds: Id[] };
   /** Reply to gateway op REQUEST_MEMBERS (sent only to the requesting session). */
+  /** Platform pass (additive). Bots receive INTERACTION_CREATE on their gateway session (or via the signed HTTP endpoint). */
+  INTERACTION_CREATE: Interaction;
+  /** To the invoking user: the app did not acknowledge within 3s. */
+  INTERACTION_FAILED: { id: Id; applicationId: Id; channelId: Id | null };
+  /** To the invoking user: the app answered an autocomplete interaction (callback type 8). */
+  INTERACTION_AUTOCOMPLETE_RESULT: { interactionId: Id; applicationId: Id; choices: CommandOptionChoice[] };
+  /** To the invoking user: the app opened a modal (callback type 9). Submit with POST /interactions {type:5}. */
+  INTERACTION_MODAL: { interactionId: Id; applicationId: Id; modal: Modal };
+  APPLICATION_COMMAND_CREATE: ApplicationCommand; APPLICATION_COMMAND_UPDATE: ApplicationCommand; APPLICATION_COMMAND_DELETE: ApplicationCommand;
+  APPLICATION_UPDATE: Omit<Application, 'token' | 'clientSecret'>;
+  MESSAGE_POLL_VOTE_ADD: { userId: Id; channelId: Id; messageId: Id; answerId: number };
+  MESSAGE_POLL_VOTE_REMOVE: { userId: Id; channelId: Id; messageId: Id; answerId: number };
+  GUILD_SCHEDULED_EVENT_CREATE: ScheduledEvent; GUILD_SCHEDULED_EVENT_UPDATE: ScheduledEvent; GUILD_SCHEDULED_EVENT_DELETE: ScheduledEvent;
+  GUILD_SCHEDULED_EVENT_USER_ADD: { guildScheduledEventId: Id; userId: Id; guildId: Id };
+  GUILD_SCHEDULED_EVENT_USER_REMOVE: { guildScheduledEventId: Id; userId: Id; guildId: Id };
+  STAGE_INSTANCE_CREATE: StageInstance; STAGE_INSTANCE_UPDATE: StageInstance; STAGE_INSTANCE_DELETE: StageInstance;
+  THREAD_DELETE: { id: Id; guildId: Id; parentId: Id | null };
   GUILD_MEMBERS_CHUNK: { guildId: Id; members: Member[]; notFound: Id[]; chunkIndex: number; chunkCount: number; nonce?: string };
 }
 export type EventName = keyof Events;
 
+/** `token` is a user access token, or `Bot <token>` for an application's bot. */
 export interface IdentifyPayload { token: string; sessionId?: string; seq?: number; properties?: { os?: string; client?: string } }
 export interface VoiceStateUpdatePayload { guildId: Id | null; channelId: Id | null; selfMute?: boolean; selfDeaf?: boolean; video?: boolean; streaming?: boolean }
 export const HEARTBEAT_INTERVAL_MS = 30_000;

@@ -114,12 +114,12 @@ export function guildRoutes(app: FastifyInstance, ctx: Ctx) {
   // ---------- audit log ----------
   app.get('/guilds/:id/audit-logs', async (req) => {
     const { id } = parse(gid, req.params);
-    const q = parse(z.object({ limit: z.coerce.number().optional(), before: idSchema.optional(), action: z.string().max(64).optional(), actorId: idSchema.optional() }), req.query);
+    const q = parse(z.object({ limit: z.coerce.number().optional(), before: idSchema.optional(), action: z.string().max(64).optional(), actionType: z.coerce.number().int().min(0).max(1000).optional(), actorId: idSchema.optional() }), req.query);
     need(guildPerms(await guildAccess(ctx, req.userId, id)), Perm.VIEW_AUDIT_LOG);
     const rows = await ctx.db.query(
-      `SELECT * FROM audit_log WHERE guild_id = $1 AND ($2::text IS NULL OR id < $2) AND ($3::text IS NULL OR action = $3) AND ($4::text IS NULL OR actor_id = $4) ORDER BY id DESC LIMIT $5`,
-      [id, q.before ?? null, q.action ?? null, q.actorId ?? null, limitParam(q.limit)]);
-    return rows.map((r) => ({ id: r.id, guildId: r.guild_id, actorId: r.actor_id, action: r.action, targetId: r.target_id ?? null, changes: r.changes ?? null, reason: r.reason ?? null, createdAt: iso(r.created_at) }));
+      `SELECT * FROM audit_log WHERE guild_id = $1 AND ($2::text IS NULL OR id < $2) AND ($3::text IS NULL OR action = $3) AND ($4::text IS NULL OR actor_id = $4) AND ($6::int IS NULL OR action_type = $6) ORDER BY id DESC LIMIT $5`,
+      [id, q.before ?? null, q.action ?? null, q.actorId ?? null, limitParam(q.limit), q.actionType ?? null]);
+    return rows.map((r) => ({ id: r.id, guildId: r.guild_id, actorId: r.actor_id, action: r.action, actionType: r.action_type ?? undefined, targetId: r.target_id ?? null, changes: r.changes ?? null, reason: r.reason ?? null, createdAt: iso(r.created_at) }));
   });
 
   // ---------- emojis & stickers ----------

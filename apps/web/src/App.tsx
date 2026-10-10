@@ -1,4 +1,4 @@
-import { useEffect, useState, useSyncExternalStore } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/stores/auth';
 import { useData } from '@/stores/data';
@@ -69,8 +69,9 @@ function Protected() {
 
 /** Deep links + hardware back + native glue; mounted for logged-out screens too (invite links open on the login page). */
 function NativeBridge() {
-  const navigate = useNavigate();
-  useEffect(() => initNative({ navigate, canGoBack: () => window.history.length > 1 && !/^\/channels\/@me\/?$/.test(location.pathname), goBack: () => navigate(-1) }), [navigate]);
+  const navigate = useNavigate(); const ref = useRef(navigate); ref.current = navigate;
+  // register once: re-registering on every navigation would replay the cold-start deep link
+  useEffect(() => initNative({ navigate: (to) => ref.current(to), canGoBack: () => window.history.length > 1 && !/^\/channels\/@me\/?$/.test(location.pathname), goBack: () => ref.current(-1) }), []);
   return null;
 }
 
