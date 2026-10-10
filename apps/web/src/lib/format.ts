@@ -1,5 +1,6 @@
 import { snowflakeTime } from '@jorcord/shared';
 import type { Channel, Member, User } from '@jorcord/shared';
+import { getLocaleTag } from '@/i18n';
 import { apiBase, publicOrigin, serverPath } from './server';
 
 export const fileUrl = (p: string | null | undefined): string | null => {
@@ -14,7 +15,7 @@ export const displayName = (u: Pick<User, 'username' | 'displayName'>, m?: Pick<
 export const initials = (s: string) => s.split(/\s+/).map((w) => w[0]).join('').slice(0, 3).toUpperCase();
 
 export const msgTime = (id: string, iso?: string) => (iso ? new Date(iso).getTime() : snowflakeTime(id));
-export const fmtTime = (ms: number) => new Date(ms).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+export const fmtTime = (ms: number) => new Date(ms).toLocaleTimeString(getLocaleTag(), { hour: 'numeric', minute: '2-digit' });
 export function fmtStamp(ms: number) {
   const d = new Date(ms), now = new Date();
   const sameDay = d.toDateString() === now.toDateString();
@@ -23,8 +24,8 @@ export function fmtStamp(ms: number) {
   if (d.toDateString() === y.toDateString()) return `Yesterday at ${fmtTime(ms)}`;
   return `${d.toLocaleDateString()} ${fmtTime(ms)}`;
 }
-export const fmtDateDivider = (ms: number) => new Date(ms).toLocaleDateString([], { year: 'numeric', month: 'long', day: 'numeric' });
-export const fmtFull = (ms: number) => new Date(ms).toLocaleString([], { dateStyle: 'full', timeStyle: 'short' });
+export const fmtDateDivider = (ms: number) => new Date(ms).toLocaleDateString(getLocaleTag(), { year: 'numeric', month: 'long', day: 'numeric' });
+export const fmtFull = (ms: number) => new Date(ms).toLocaleString(getLocaleTag(), { dateStyle: 'full', timeStyle: 'short' });
 export const sameDay = (a: number, b: number) => new Date(a).toDateString() === new Date(b).toDateString();
 export function fmtBytes(n: number) {
   if (n < 1024) return `${n} B`;
