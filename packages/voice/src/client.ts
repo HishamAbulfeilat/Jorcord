@@ -18,7 +18,11 @@ import {
 } from './presets';
 import { detectPlatform, mobileConstraints, type Platform } from './mobile';
 import { initialSpeaking, speakingReducer, type SpeakingState } from './speaking';
-import { parseVideoStats, type StatsSample } from './stats';
+import { parseVideoStats, parseConnectionStats, type StatsSample, type ConnectionStats, type ConnSample } from './stats';
+import {
+  backoffDelay, initialReconnect, lossReasonOf, reconnectReducer, statusOf,
+  type BackoffOptions, type LossReason, type ReconnectEvent, type ReconnectPhase, type ReconnectState, DEFAULT_BACKOFF,
+} from './reconnect';
 
 export type VoiceStatus = 'idle' | 'connecting' | 'connected' | 'reconnecting' | 'disconnected';
 export type InputMode = 'open' | 'vad' | 'ptt';
@@ -57,14 +61,32 @@ export interface VoiceSnapshot {
   networkQuality: NetworkQuality; audioBlocked: boolean; e2ee: boolean; platform: Platform;
   devices: { audioinput: MediaDeviceInfo[]; audiooutput: MediaDeviceInfo[]; videoinput: MediaDeviceInfo[] };
   settings: VoiceSettings; activeCodec: VideoCodecName | null;
+  /** Auto-reconnect progress (phase 'waiting' has `nextRetryAt`). */
+  reconnect: { phase: ReconnectPhase; attempt: number; maxAttempts: number; nextRetryAt: number | null; reason: LossReason | null };
+  /** Ping / loss / ICE path of the live session (null until the first sample). */
+  connection: ConnectionStats | null;
+  /** Signalling URL in use and the LiveKit server version, for the diagnostics panel. */
+  serverUrl: string | null; serverVersion: string | null;
+  /** Camera/screen were on before a drop. The camera is restored automatically; a screen share needs a user gesture. */
+  screenResumeNeeded: boolean;
 }
 
 export interface VoiceClientOptions {
   settings?: Partial<VoiceSettings>;
   /** Provide an E2EE handle from createE2EE() */
   e2ee?: { keyProvider: BaseKeyProvider; worker: Worker };
-  /** Called when the signal connection dies permanently so the app can refetch a token. */
+  /** Called when the session ended for good: removed by a moderator / replaced elsewhere ('server') or every retry failed ('error'). */
   onDisconnected?: (reason: 'client' | 'server' | 'error') => void;
+  /** Fetches a fresh token for a full rejoin when LiveKit's own resume fails. Without it there is no auto-rejoin. */
+  getToken?: (channelId: string) => Promise<Pick<VoiceToken, 'token' | 'url'>>;
+  /** Fired after an automatic rejoin succeeded (the app re-announces its gateway voice state). */
+  onReconnected?: () => void;
+  /** Fired when the session drops and the client starts recovering. */
+  onConnectionLost?: (reason: LossReason) => void;
+  /** Join timeout (signalling + ICE). Default 15s. */
+  connectTimeoutMs?: number;
+  maxReconnectAttempts?: number;
+  backoff?: BackoffOptions;
   roomOptions?: Partial<RoomOptions>;
 }
 
@@ -89,9 +111,21 @@ export class VoiceClient {
   private rnnoiseAttached = false;
   private micGate: { ctx: AudioContext; analyser: AnalyserNode; buf: Float32Array; src: MediaStreamAudioSourceNode; track: MediaStreamTrack } | undefined;
   private opts: VoiceClientOptions;
+  private rc: ReconnectState;
+  private nextRetryAt: number | null = null;
+  private leaving = false;
+  private rejoinRun = 0;
+  private wakeSleep: (() => void) | undefined;
+  private channelId: string | null = null;
+  private statsTimer: ReturnType<typeof setInterval> | undefined;
+  private connPrev: ConnSample | undefined;
+  private intent = { camera: false, cameraDeviceId: undefined as string | undefined, screen: false };
+  private unbindWindow: (() => void) | undefined;
+  private hiddenAt = 0;
 
   constructor(opts: VoiceClientOptions = {}) {
     this.opts = opts;
+    this.rc = initialReconnect(opts.maxReconnectAttempts);
     const settings: VoiceSettings = { ...DEFAULT_SETTINGS, ...opts.settings, audio: { ...DEFAULT_AUDIO, ...opts.settings?.audio } };
     const platform = detectPlatform();
     this.supportedCodecs = detectSupportedVideoCodecs();
@@ -119,8 +153,11 @@ export class VoiceClient {
       networkQuality: 'unknown', audioBlocked: false, e2ee: !!opts.e2ee, platform,
       devices: { audioinput: [], audiooutput: [], videoinput: [] },
       settings, activeCodec: null,
+      reconnect: { phase: 'idle', attempt: 0, maxAttempts: this.rc.maxAttempts, nextRetryAt: null, reason: null },
+      connection: null, serverUrl: null, serverVersion: null, screenResumeNeeded: false,
     };
     this.bindRoom();
+    this.bindWindow();
   }
 
   // ---- store API (useSyncExternalStore friendly) ----
@@ -141,16 +178,65 @@ export class VoiceClient {
   clearError() { this.emit({ error: null }); }
 
   // ---- connection ----
+  private rcDispatch(e: ReconnectEvent) {
+    this.rc = reconnectReducer(this.rc, e, this.opts.backoff ?? DEFAULT_BACKOFF);
+    if (this.rc.phase !== 'waiting') this.nextRetryAt = null;
+    this.emit({ status: statusOf(this.rc.phase), reconnect: this.reconnectView() });
+  }
+  private reconnectView(): VoiceSnapshot['reconnect'] {
+    return { phase: this.rc.phase, attempt: this.rc.attempt, maxAttempts: this.rc.maxAttempts, nextRetryAt: this.nextRetryAt, reason: this.rc.reason };
+  }
+
+  /** Join: signalling + ICE must come up within `connectTimeoutMs`, otherwise the real reason is thrown (never hangs). */
   async connect(token: Pick<VoiceToken, 'token' | 'url'>, channelId: string): Promise<void> {
-    if (this.room.state !== ConnectionState.Disconnected) await this.disconnect();
-    this.emit({ status: 'connecting', error: null, channelId });
+    this.rejoinRun++; // cancel a running auto-rejoin
+    this.channelId = channelId;
+    this.intent = { camera: false, cameraDeviceId: undefined, screen: false };
+    this.rc = initialReconnect(this.rc.maxAttempts);
+    this.emit({ error: null, channelId, screenResumeNeeded: false });
+    this.rcDispatch({ type: 'want' });
     try {
-      await this.room.connect(token.url, token.token, { autoSubscribe: true });
+      await this.establish(token);
     } catch (e) {
+      this.rcDispatch({ type: 'leave' });
       this.emit({ status: 'disconnected' });
       throw this.fail(e, 'connect');
     }
+    this.rcDispatch({ type: 'connected' });
+    await this.afterConnect();
+  }
+
+  private async establish(token: Pick<VoiceToken, 'token' | 'url'>): Promise<void> {
+    if (this.room.state !== ConnectionState.Disconnected) await this.shutdownRoom();
+    const total = this.opts.connectTimeoutMs ?? 15_000;
+    let signalUp = false;
+    const onSignal = () => { signalUp = true; };
+    this.room.once(RoomEvent.SignalConnected, onSignal);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<never>((_, rej) => {
+      timer = setTimeout(() => rej(Object.assign(new Error(signalUp ? 'Timed out waiting for the media connection' : 'Timed out connecting to the voice server'), { name: 'VoiceConnectTimeout', phase: signalUp ? 'ice' : 'signal' })), total);
+    });
+    try {
+      await Promise.race([
+        this.room.connect(token.url, token.token, { autoSubscribe: true, maxRetries: 0, websocketTimeout: Math.max(5000, total - 4000), peerConnectionTimeout: Math.max(8000, total - 3000) }),
+        timeout,
+      ]);
+    } catch (e) {
+      await this.shutdownRoom().catch(() => {});
+      throw e;
+    } finally { clearTimeout(timer); this.room.off(RoomEvent.SignalConnected, onSignal); }
+    this.emit({ serverUrl: token.url, serverVersion: this.room.serverInfo?.version ?? null });
+  }
+
+  /** Disconnect the Room without letting the Disconnected handler treat it as a connection loss. */
+  private async shutdownRoom() {
+    this.leaving = true;
+    try { await this.room.disconnect(true); } finally { this.leaving = false; }
+  }
+
+  private async afterConnect() {
     this.startPolling();
+    this.startStatsPolling();
     this.setupPtt();
     this.ensureAudioHost();
     await this.refreshDevices();
@@ -158,18 +244,133 @@ export class VoiceClient {
     try { await this.applyMicState(true); } catch (e) { this.fail(e, 'media'); }
   }
 
-  async disconnect(): Promise<void> {
-    this.stopPtt?.(); this.stopPtt = undefined;
+  private stopTimers() {
     if (this.pollTimer) clearInterval(this.pollTimer);
     this.pollTimer = undefined;
+    if (this.statsTimer) clearInterval(this.statsTimer);
+    this.statsTimer = undefined; this.connPrev = undefined;
+    this.stopPtt?.(); this.stopPtt = undefined;
     this.teardownGate();
-    await this.room.disconnect(true);
-    this.audioHost?.remove(); this.audioHost = undefined;
-    this.speaking = initialSpeaking;
-    this.emit({ status: 'idle', channelId: null, cameraOn: false, screenOn: false });
+    this.rnnoiseAttached = false;
   }
 
-  async dispose() { await this.disconnect(); this.listeners.clear(); }
+  /** User leave. Cancels any recovery in progress and forgets camera/screen intent. */
+  async disconnect(): Promise<void> {
+    this.rejoinRun++; this.wakeSleep?.();
+    this.stopTimers();
+    this.rc = initialReconnect(this.rc.maxAttempts); this.nextRetryAt = null;
+    this.intent = { camera: false, cameraDeviceId: undefined, screen: false };
+    await this.shutdownRoom();
+    this.audioHost?.remove(); this.audioHost = undefined;
+    this.speaking = initialSpeaking; this.channelId = null;
+    this.emit({ status: 'idle', channelId: null, cameraOn: false, screenOn: false, connection: null, screenResumeNeeded: false, reconnect: this.reconnectView() });
+  }
+
+  /** Manual "Retry" after recovery gave up (or to skip the backoff wait). */
+  retry() {
+    if (this.rc.phase === 'waiting') { this.wakeSleep?.(); return; }
+    if (this.rc.phase === 'failed' && this.channelId) { this.rcDispatch({ type: 'retry-now' }); void this.runRejoin(); }
+  }
+
+  private onLost(reason: LossReason) {
+    this.stopTimers();
+    this.rcDispatch({ type: 'lost', reason });
+    if (!this.rc.wanted) { this.emit({ status: 'disconnected', connection: null }); this.opts.onDisconnected?.('server'); return; }
+    this.opts.onConnectionLost?.(reason);
+    if (this.opts.getToken) void this.runRejoin();
+    else { this.rcDispatch({ type: 'attempt-failed', fatal: true }); this.opts.onDisconnected?.('error'); }
+  }
+
+  private sleep(ms: number): Promise<void> {
+    return new Promise((res) => {
+      const t = setTimeout(done, ms);
+      function done() { clearTimeout(t); res(); }
+      this.wakeSleep = () => { this.wakeSleep = undefined; done(); };
+    });
+  }
+
+  /** Full rejoin loop: exponential backoff, a fresh token every attempt, restoring mute/devices/camera on success. */
+  private async runRejoin() {
+    const run = ++this.rejoinRun; const alive = () => run === this.rejoinRun && this.rc.wanted;
+    const channelId = this.channelId;
+    if (!channelId || !this.opts.getToken) return;
+    while (alive()) {
+      if (this.rc.phase === 'waiting') {
+        this.nextRetryAt = Date.now() + this.rc.delayMs; this.emit({ reconnect: this.reconnectView() });
+        await this.sleep(backoffDelay(this.rc.attempt, this.opts.backoff ?? DEFAULT_BACKOFF, 0.2));
+        // offline: wait for the browser to come back instead of burning attempts
+        while (alive() && typeof navigator !== 'undefined' && navigator.onLine === false) await this.sleep(30_000);
+        if (!alive()) return;
+      }
+      this.rcDispatch({ type: 'attempt-start' });
+      try {
+        let tok: Pick<VoiceToken, 'token' | 'url'>;
+        try { tok = await this.opts.getToken(channelId); } catch (e) { const st = (e as any)?.status; const err: any = this.fail(e, 'token'); err.fatal = st === 400 || st === 401 || st === 403 || st === 404; throw err; }
+        if (!alive()) return;
+        await this.establish(tok);
+        if (!alive()) { await this.shutdownRoom().catch(() => {}); return; }
+        this.rcDispatch({ type: 'connected' });
+        this.emit({ error: null });
+        await this.afterConnect();
+        await this.restoreIntent();
+        this.opts.onReconnected?.();
+        return;
+      } catch (e: any) {
+        if (!alive()) return;
+        const err = e?.code ? e : this.fail(e, 'connect');
+        this.emit({ error: err });
+        this.rcDispatch({ type: 'attempt-failed', fatal: !!e?.fatal });
+        if (!this.rc.wanted) { this.emit({ status: 'disconnected', connection: null }); this.opts.onDisconnected?.('error'); return; }
+      }
+    }
+  }
+
+  /** After a rejoin: bring the camera back; a screen share needs a fresh user gesture, so just flag it. */
+  private async restoreIntent() {
+    if (this.intent.camera) { try { await this.setCamera(true, this.intent.cameraDeviceId); } catch { /* the user can re-enable */ } }
+    if (this.intent.screen) {
+      try { await this.startScreenShare(); this.emit({ screenResumeNeeded: false }); }
+      catch { this.emit({ screenResumeNeeded: true, error: null }); }
+    }
+  }
+
+  /** Clear the "resume your screen share" prompt (user dismissed it or shared again). */
+  dismissScreenResume() { this.intent.screen = false; this.emit({ screenResumeNeeded: false }); }
+
+  private bindWindow() {
+    if (typeof window === 'undefined') return;
+    const wake = () => { if (this.rc.phase === 'waiting') this.wakeSleep?.(); };
+    const onVisible = () => {
+      if (document.visibilityState === 'hidden') { this.hiddenAt = Date.now(); return; }
+      // back from sleep / background: a dead socket can take LiveKit ~15s to notice; skip our backoff if we're already recovering
+      wake();
+      if (this.rc.phase === 'failed' && Date.now() - this.hiddenAt > 1000) this.retry();
+    };
+    const onOnline = () => { wake(); if (this.rc.phase === 'failed') this.retry(); };
+    window.addEventListener('online', onOnline);
+    window.addEventListener('pageshow', wake);
+    document.addEventListener('visibilitychange', onVisible);
+    this.unbindWindow = () => { window.removeEventListener('online', onOnline); window.removeEventListener('pageshow', wake); document.removeEventListener('visibilitychange', onVisible); };
+  }
+
+  private startStatsPolling() {
+    if (this.statsTimer) clearInterval(this.statsTimer);
+    this.connPrev = undefined;
+    const tick = async () => {
+      try {
+        const pm: any = (this.room.engine as any)?.pcManager;
+        const reports = (await Promise.all([pm?.publisher?.getStats?.(), pm?.subscriber?.getStats?.()])).filter(Boolean) as any[];
+        if (!reports.length) return;
+        const { stats, sample } = parseConnectionStats(reports, Date.now(), this.connPrev);
+        this.connPrev = sample;
+        this.emit({ connection: stats });
+      } catch { /* stats are best effort */ }
+    };
+    void tick();
+    this.statsTimer = setInterval(() => void tick(), 2000);
+  }
+
+  async dispose() { this.unbindWindow?.(); await this.disconnect(); this.listeners.clear(); }
 
   // ---- audio ----
   get isMicActive() { return !this.selfMuted && !this.snap.deafened; }
@@ -308,7 +509,7 @@ export class VoiceClient {
     try { await this.room.switchActiveDevice('audiooutput', deviceId); } catch (e) { this.fail(e); }
     await this.setAudioDeviceState({ outputDeviceId: deviceId });
   }
-  async setCameraDevice(deviceId: string) { await this.room.switchActiveDevice('videoinput', deviceId, true); this.emit(); }
+  async setCameraDevice(deviceId: string) { this.intent.cameraDeviceId = deviceId; await this.room.switchActiveDevice('videoinput', deviceId, true); this.emit(); }
   private async setAudioDeviceState(p: Partial<AudioSettings>) {
     this.snap = { ...this.snap, settings: { ...this.snap.settings, audio: { ...this.snap.settings.audio, ...p } } };
     this.emit();
@@ -369,7 +570,7 @@ export class VoiceClient {
   async setCamera(on: boolean, deviceId?: string) {
     const lp = this.room.localParticipant;
     try {
-      if (!on) { await lp.setCameraEnabled(false); this.emit({ cameraOn: false }); return; }
+      if (!on) { this.intent.camera = false; await lp.setCameraEnabled(false); this.emit({ cameraOn: false }); return; }
       const { options, resolved, codec } = this.publishOptsFor('camera', this.snap.settings.cameraPreset, 'motion');
       const cap: VideoCaptureOptions = {
         resolution: { width: resolved.width, height: resolved.height, frameRate: resolved.fps },
@@ -377,6 +578,7 @@ export class VoiceClient {
         ...(this.snap.platform.isMobile ? { facingMode: 'user' as const } : {}),
       };
       await lp.setCameraEnabled(true, cap, options);
+      this.intent.camera = true; this.intent.cameraDeviceId = deviceId ?? this.intent.cameraDeviceId;
       this.emit({ cameraOn: true, activeCodec: codec });
     } catch (e) { this.emit({ cameraOn: !!lp.getTrackPublication(Track.Source.Camera) }); throw this.fail(e, 'media'); }
   }
@@ -397,10 +599,11 @@ export class VoiceClient {
     try {
       await this.room.localParticipant.setScreenShareEnabled(true, cap, options);
       this.snap = { ...this.snap, settings: { ...this.snap.settings, screenPreset: preset, screenHint: hint, screenAudio: audio } };
-      this.emit({ screenOn: true, activeCodec: codec });
+      this.intent.screen = true;
+      this.emit({ screenOn: true, activeCodec: codec, screenResumeNeeded: false });
     } catch (e) { this.emit({ screenOn: false }); throw this.fail(e, 'screen'); }
   }
-  async stopScreenShare() { await this.room.localParticipant.setScreenShareEnabled(false); this.emit({ screenOn: false }); }
+  async stopScreenShare() { this.intent.screen = false; this.emit({ screenResumeNeeded: false }); await this.room.localParticipant.setScreenShareEnabled(false); this.emit({ screenOn: false }); }
 
   /** Change live screen-share quality without re-prompting the picker (applyConstraints + sender bitrate). */
   async setLiveStreamQuality(presetId: StreamPresetId, hint?: ContentHint) {
@@ -522,8 +725,10 @@ export class VoiceClient {
       .on(RoomEvent.TrackPublished, touch).on(RoomEvent.TrackUnpublished, touch)
       .on(RoomEvent.LocalTrackPublished, touch)
       .on(RoomEvent.LocalTrackUnpublished, (pub: LocalTrackPublication) => {
-        if (pub.source === Track.Source.ScreenShare) this.emit({ screenOn: false });
-        if (pub.source === Track.Source.Camera) this.emit({ cameraOn: false });
+        // stopped while healthy (browser "Stop sharing" button, device unplugged) = the user's intent changed; a drop is not
+        const healthy = !this.leaving && this.rc.phase === 'connected' && this.room.state === ConnectionState.Connected;
+        if (pub.source === Track.Source.ScreenShare) { if (healthy) this.intent.screen = false; this.emit({ screenOn: false }); }
+        if (pub.source === Track.Source.Camera) { if (healthy) this.intent.camera = false; this.emit({ cameraOn: false }); }
         touch();
       })
       .on(RoomEvent.TrackSubscribed, (track, _pub, _p) => {
@@ -539,13 +744,13 @@ export class VoiceClient {
       .on(RoomEvent.ParticipantAttributesChanged, touch)
       .on(RoomEvent.ParticipantPermissionsChanged, () => { void this.applyMicState().catch(() => {}); touch(); })
       .on(RoomEvent.ConnectionQualityChanged, (q, p) => { if (p.isLocal) this.emit({ networkQuality: mapConnectionQuality(q) }); else touch(); })
-      .on(RoomEvent.Reconnecting, () => this.emit({ status: 'reconnecting' }))
-      .on(RoomEvent.SignalReconnecting, () => this.emit({ status: 'reconnecting' }))
-      .on(RoomEvent.Reconnected, () => { this.emit({ status: 'connected' }); this.applyVolumes(); })
+      .on(RoomEvent.Reconnecting, () => this.rcDispatch({ type: 'resuming' }))
+      .on(RoomEvent.SignalReconnecting, () => this.rcDispatch({ type: 'resuming' }))
+      .on(RoomEvent.Reconnected, () => { this.rcDispatch({ type: 'connected' }); this.applyVolumes(); this.connPrev = undefined; })
       .on(RoomEvent.Disconnected, (reason) => {
-        if (this.snap.status === 'idle') return;
-        this.emit({ status: 'disconnected' });
-        this.opts.onDisconnected?.(reason === undefined || (reason as number) === 1 ? 'client' : 'server');
+        // only a live session counts as "lost"; join attempts report their own failure
+        if (this.leaving || (this.rc.phase !== 'connected' && this.rc.phase !== 'resuming')) return;
+        this.onLost(lossReasonOf(reason as number | undefined));
       })
       .on(RoomEvent.AudioPlaybackStatusChanged, () => this.emit({ audioBlocked: !r.canPlaybackAudio }))
       .on(RoomEvent.MediaDevicesChanged, () => { void this.refreshDevices(); })

@@ -41,6 +41,7 @@ export function startSession(token: string) {
   const meId = () => useData.getState().me?.id;
   unsubs.push(gw.on('MESSAGE_POLL_VOTE_ADD', (d) => { useMessages.getState().pollVote(d.channelId, d.messageId, d.answerId, 1, d.userId === meId()); refreshPoll(d.channelId, d.messageId); }));
   unsubs.push(gw.on('MESSAGE_POLL_VOTE_REMOVE', (d) => { useMessages.getState().pollVote(d.channelId, d.messageId, d.answerId, -1, d.userId === meId()); refreshPoll(d.channelId, d.messageId); }));
+  unsubs.push(gw.on('USER_NOTE_UPDATE', (d) => queryClient.setQueryData(['user', d.userId], (old: any) => (old ? { ...old, note: d.note } : old))));
   unsubs.push(gw.on('INTERACTION_FAILED', onInteractionFailed));
   unsubs.push(gw.on('INTERACTION_MODAL', onInteractionModal));
   unsubs.push(gw.on('INTERACTION_AUTOCOMPLETE_RESULT', onAutocompleteResult));

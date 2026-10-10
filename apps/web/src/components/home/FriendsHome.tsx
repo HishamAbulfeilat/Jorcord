@@ -86,7 +86,7 @@ export function FriendsHome() {
           <Tabs label={t('Friends')} value={tab} onChange={setTab} tabs={[{ id: 'online', label: 'Online' }, { id: 'all', label: 'All' }, { id: 'pending', label: 'Pending', badge: pending }, { id: 'blocked', label: 'Blocked' }, { id: 'add', label: 'Add Friend' }]} />
         </div>
         <button aria-label={t('New group DM')} onClick={() => open({ kind: 'newDm' })} className="hidden h-8 w-8 items-center justify-center text-interactive hover:text-header md:flex"><MessageSquare size={22} /></button>
-        <button aria-label={t('Inbox')} className="hidden h-8 w-8 items-center justify-center text-interactive hover:text-header md:flex"><Inbox size={22} /></button>
+        <button aria-label={t('Inbox')} onClick={() => open({ kind: 'inbox' })} className="flex h-9 w-9 items-center justify-center text-interactive hover:text-header md:h-8 md:w-8"><Inbox size={22} /></button>
       </header>
       {tab === 'add' ? <div className="scroller min-h-0 flex-1"><AddFriend /></div> : (
         <div className="scroller min-h-0 flex-1 p-4 md:px-8 md:py-4">

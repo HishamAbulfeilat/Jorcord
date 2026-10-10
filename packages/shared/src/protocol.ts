@@ -53,6 +53,8 @@ export interface Events {
   GUILD_SCHEDULED_EVENT_USER_REMOVE: { guildScheduledEventId: Id; userId: Id; guildId: Id };
   STAGE_INSTANCE_CREATE: StageInstance; STAGE_INSTANCE_UPDATE: StageInstance; STAGE_INSTANCE_DELETE: StageInstance;
   THREAD_DELETE: { id: Id; guildId: Id; parentId: Id | null };
+  /** To the caller's own sessions: a private note about another user changed (`note: null` = removed). */
+  USER_NOTE_UPDATE: { userId: Id; note: string | null };
   GUILD_MEMBERS_CHUNK: { guildId: Id; members: Member[]; notFound: Id[]; chunkIndex: number; chunkCount: number; nonce?: string };
 }
 export type EventName = keyof Events;

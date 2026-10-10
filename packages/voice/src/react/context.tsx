@@ -17,7 +17,8 @@ export interface VoiceProviderProps extends VoiceClientOptions {
 
 export function VoiceProvider({ children, fetchToken, apiBase = '', getAuthToken, client: external, ...opts }: VoiceProviderProps) {
   const ref = useRef<VoiceClient | null>(external ?? null);
-  if (!ref.current) ref.current = new VoiceClient(opts);
+  const fetchRef = useRef<((channelId: string) => Promise<VoiceToken>) | undefined>(undefined);
+  if (!ref.current) ref.current = new VoiceClient({ getToken: (id) => fetchRef.current!(id), ...opts });
   const client = ref.current;
   const getAuth = useRef(getAuthToken); getAuth.current = getAuthToken;
   const custom = useRef(fetchToken); custom.current = fetchToken;
@@ -31,10 +32,11 @@ export function VoiceProvider({ children, fetchToken, apiBase = '', getAuthToken
         headers: { 'content-type': 'application/json', ...(t ? { authorization: `Bearer ${t}` } : {}) },
         body: JSON.stringify({ channelId }),
       });
-      if (!res.ok) throw Object.assign(new Error(`voice token ${res.status}`), { name: 'TokenError' });
+      if (!res.ok) throw Object.assign(new Error(`voice token ${res.status}`), { name: 'TokenError', status: res.status });
       return (await res.json()) as VoiceToken;
     },
   }), [client, apiBase]);
+  fetchRef.current = value.fetchToken;
   useEffect(() => () => { if (!external) void client.dispose(); }, [client, external]);
   return <VoiceContext.Provider value={value}>{children}</VoiceContext.Provider>;
 }

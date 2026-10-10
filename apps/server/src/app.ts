@@ -26,6 +26,7 @@ import { invitePublicRoutes, memberRoutes } from './routes/members';
 import { messageRoutes } from './routes/messages';
 import { fileRoutes, miscRoutes, voiceWebhookRoutes } from './routes/misc';
 import { pushPublicRoutes, pushRoutes } from './routes/push';
+import { socialRoutes } from './routes/social';
 import { userRoutes } from './routes/users';
 import { voiceRoutes } from './routes/voice';
 import { createStorage } from './storage';
@@ -121,7 +122,7 @@ export async function buildApp(opts: BuildOptions = {}): Promise<{ app: FastifyI
       priv.addHook('preHandler', authenticate(ctx));
       authRoutes(priv, ctx); userRoutes(priv, ctx); guildRoutes(priv, ctx); channelRoutes(priv, ctx);
       memberRoutes(priv, ctx); messageRoutes(priv, ctx); miscRoutes(priv, ctx); voiceRoutes(priv, ctx); pushRoutes(priv, ctx);
-      applicationRoutes(priv, ctx); commandRoutes(priv, ctx); interactionRoutes(priv, ctx); pollRoutes(priv, ctx); eventRoutes(priv, ctx);
+      applicationRoutes(priv, ctx); commandRoutes(priv, ctx); interactionRoutes(priv, ctx); pollRoutes(priv, ctx); eventRoutes(priv, ctx); socialRoutes(priv, ctx);
     });
   }, { prefix: '/api/v1' });
 

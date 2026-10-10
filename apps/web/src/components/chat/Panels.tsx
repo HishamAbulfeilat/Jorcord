@@ -26,10 +26,10 @@ function PanelShell({ title, onClose, children, actions }: { title: string; onCl
   );
 }
 
-function ResultCard({ m, channel }: { m: Message; channel?: Channel }) {
+export function ResultCard({ m, channel, onOpen }: { m: Message; channel?: Channel; onOpen?: () => void }) {
   const nav = useNav(); const u = useData((s) => s.users[m.author.id]) ?? m.author;
   const member = useData((s) => (m.guildId ? s.guilds[m.guildId]?.members[m.author.id] : undefined));
-  const go = () => { nav.go(m.guildId, m.channelId); setTimeout(() => window.dispatchEvent(new CustomEvent('jorcord:jump', { detail: { channelId: m.channelId, messageId: m.id } })), 400); };
+  const go = () => { onOpen?.(); nav.go(m.guildId, m.channelId); setTimeout(() => window.dispatchEvent(new CustomEvent('jorcord:jump', { detail: { channelId: m.channelId, messageId: m.id } })), 400); };
   return (
     <button onClick={go} className="mb-2 block w-full rounded-md border border-divider bg-chat p-3 text-start hover:bg-chat-hover">
       {channel && <div className="mb-1 flex items-center gap-1 text-xs text-muted"><Hash size={12} />{channel.name}</div>}

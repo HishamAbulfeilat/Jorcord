@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { MessageSquare, UserPlus, UserMinus, Settings } from 'lucide-react';
 import { api } from '@/lib/api';
@@ -13,6 +14,20 @@ import { RoleIcon } from '@/components/ui/RoleIcon';
 import { headerBackground, bodyBackground, isHexPair, isHex } from '@/lib/profileTheme';
 import { useStreamer } from '@/lib/streamer';
 import { t } from '@/i18n';
+
+/** Private note about a user: saved on blur, visible only to me. */
+function NoteBox({ userId, note }: { userId: string; note: string | null | undefined }) {
+  const [v, setV] = useState(note ?? ''); const [saved, setSaved] = useState(note ?? '');
+  useEffect(() => { setV(note ?? ''); setSaved(note ?? ''); }, [note]);
+  const save = () => { if (v === saved) return; setSaved(v); api.users.setNote(userId, v).catch((e) => { setSaved(note ?? ''); toastError(e); }); };
+  return (
+    <div className="mt-3">
+      <label htmlFor={`note-${userId}`} className="mb-1 block text-xs font-bold uppercase text-header">{t('Note')} <span className="font-normal normal-case text-muted">({t('only visible to you')})</span></label>
+      <textarea id={`note-${userId}`} data-testid="user-note" value={v} maxLength={256} rows={v.length > 40 ? 3 : 1} onChange={(e) => setV(e.target.value)} onBlur={save} placeholder={t('Click to add a note')}
+        className="w-full resize-none rounded bg-transparent p-1 text-xs text-normal outline-none placeholder:text-muted hover:bg-black/10 focus:bg-black/20" />
+    </div>
+  );
+}
 
 export function ProfileCard({ userId, guildId, compact }: { userId: string; guildId?: string; compact?: boolean }) {
   const cached = useData((s) => s.users[userId]); const presence = useData((s) => s.presences[userId]);
@@ -50,6 +65,8 @@ export function ProfileCard({ userId, guildId, compact }: { userId: string; guil
           <h4 className="mb-1 text-xs font-bold uppercase text-header">{t('Member Since')}</h4>
           <div className="mb-3 flex gap-3 text-sm"><span>{fmtStamp(new Date(u.createdAt).getTime()).replace(/ at .*/, '')}</span>{member && <span className="text-muted">• Joined {new Date(member.joinedAt).toLocaleDateString()}</span>}</div>
           {guildId && myRoles.length > 0 && (<><h4 className="mb-1 text-xs font-bold uppercase text-header">{t('Roles')}</h4><ul className="flex flex-wrap gap-1">{myRoles.map((r) => <li key={r.id} className="flex items-center gap-1.5 rounded bg-active px-2 py-0.5 text-xs font-medium text-header">{r.icon ? <RoleIcon role={r} size={14} /> : <span className="h-3 w-3 rounded-full" style={{ background: r.color ? intToHex(r.color) : 'rgb(var(--muted))' }} />}{r.name}</li>)}</ul></>)}
+          {!isMe && q.data && <NoteBox userId={userId} note={q.data.note} />}
+          {!compact && q.data?.mutualFriends && q.data.mutualFriends.length > 0 && !isMe && (<><h4 className="mb-1 mt-3 text-xs font-bold uppercase text-header">{t('Mutual Friends')} — {q.data.mutualFriends.length}</h4><ul className="flex flex-wrap gap-1" data-testid="mutual-friends">{q.data.mutualFriends.map((f) => <li key={f.id} className="flex items-center gap-1 rounded bg-active py-0.5 pe-2 ps-0.5 text-xs"><Avatar user={f} size={18} />{displayName(f)}</li>)}</ul></>)}
           {!compact && q.data?.mutualGuilds && q.data.mutualGuilds.length > 0 && !isMe && (<><h4 className="mb-1 mt-3 text-xs font-bold uppercase text-header">Mutual Servers — {q.data.mutualGuilds.length}</h4><ul className="flex flex-wrap gap-1">{q.data.mutualGuilds.map((g) => <li key={g.id} className="rounded bg-active px-2 py-0.5 text-xs">{g.name}</li>)}</ul></>)}
         </div>
       </div>

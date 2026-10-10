@@ -148,7 +148,11 @@ export function userRoutes(app: FastifyInstance, ctx: Ctx) {
     if (!user) throw notFound('User');
     const mutual = await ctx.db.query(
       'SELECT g.id, g.name, g.icon FROM guilds g JOIN members a ON a.guild_id = g.id AND a.user_id = $1 JOIN members b ON b.guild_id = g.id AND b.user_id = $2', [req.userId, id]);
-    return { ...user, mutualGuilds: mutual };
+    const mutualFriendIds = id === req.userId ? [] : (await ctx.db.query(
+      `SELECT a.other_id FROM relationships a JOIN relationships b ON b.other_id = a.other_id AND b.user_id = $2 AND b.type = 'friend' WHERE a.user_id = $1 AND a.type = 'friend' LIMIT 100`, [req.userId, id])).map((r) => r.other_id as string);
+    const mf = await usersByIds(ctx, mutualFriendIds);
+    const [note] = await ctx.db.query('SELECT note FROM user_notes WHERE user_id = $1 AND target_id = $2', [req.userId, id]);
+    return { ...user, mutualGuilds: mutual, mutualFriends: [...mf.values()], note: (note?.note as string | undefined) ?? null };
   });
 
   app.put('/users/@me/presence', async (req, reply) => {

@@ -8,9 +8,9 @@ Rank = order in which this pass implements items (R1 first). `-` = not planned i
 
 | Rank | Feature | Status | Notice | Evidence / notes |
 |---|---|---|---|---|
-| R1 | Inbox / recent mentions panel | todo (button is inert) | 5 | `FriendsHome.tsx` Inbox button has no handler; no mentions query endpoint |
+| R1 | Inbox / recent mentions panel | DONE (`routes/social.ts`, `SocialModals.tsx`) | 5 | `FriendsHome.tsx` Inbox button has no handler; no mentions query endpoint |
 | R2 | Privacy: who can DM you, friend-request controls, message requests for non-friends | todo | 5 | `POST /users/@me/channels` only checks friend-or-shared-server; no settings |
-| R3 | User notes (private note on a profile) + mutual friends on profiles | todo / partial | 4 | mutual servers done (`routes/users.ts` GET /users/:id); `mutualFriends` typed in `lib/api.ts` but never sent; no notes |
+| R3 | User notes (private note on a profile) + mutual friends on profiles | DONE (`routes/social.ts`, `Profile.tsx`) | 4 | mutual servers done (`routes/users.ts` GET /users/:id); `mutualFriends` typed in `lib/api.ts` but never sent; no notes |
 | R4 | Message forwarding | todo | 4 | no `forward` in messages; no snapshot model |
 | R5 | Message reminders ("Remind me") + saved messages ("Saved for later") | todo | 3 | no table/route |
 | R6 | Verification levels, raid protection, explicit-media filter, default notification level (Safety Setup) | todo | 4 | `Guild` has none; screening only |

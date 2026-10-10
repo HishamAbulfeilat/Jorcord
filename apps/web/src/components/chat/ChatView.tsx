@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Bell, BellOff, Hash, Menu, MessagesSquare, Pin, Search, Upload, Users, X, AtSign, ArrowLeft, UserPlus } from 'lucide-react';
+import { Bell, BellOff, Hash, Menu, MessagesSquare, Pin, Search, Upload, Users, X, AtSign, ArrowLeft, UserPlus, Inbox } from 'lucide-react';
 import type { Channel } from '@jorcord/shared';
 import { useData } from '@/stores/data';
 import { useUI } from '@/stores/ui';
@@ -57,6 +57,7 @@ export function ChannelHeader({ channel }: { channel: Channel }) {
         <HeaderButton label={t('Pinned Messages')} active={panel === 'pins'} onClick={() => toggle('pins')}><Pin size={24} /></HeaderButton>
         {isDm && channel.type === 'dm' && !mobile && <HeaderButton label={t('Add Friends to DM')} onClick={() => openModal({ kind: 'newDm' })}><UserPlus size={24} /></HeaderButton>}
         {(!isDm || channel.type === 'group_dm') && <HeaderButton label={t('Member List')} active={mobile ? undefined : panel === 'members'} onClick={() => (mobile ? setRight(true) : toggle('members'))}><Users size={24} /></HeaderButton>}
+        {!mobile && <HeaderButton label={t('Inbox')} onClick={() => openModal({ kind: 'inbox' })}><Inbox size={24} /></HeaderButton>}
         {mobile ? <HeaderButton label={t('Search')} onClick={() => toggle('search')}><Search size={22} /></HeaderButton> : (
           <button onClick={() => toggle('search')} aria-label={t('Search')} className={cx('flex h-6 w-36 items-center justify-between rounded bg-rail px-1.5 text-start text-[13px] text-muted transition-all hover:w-44', panel === 'search' && 'w-44')}>{t('Search')}<Search size={14} /></button>
         )}

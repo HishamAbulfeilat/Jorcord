@@ -6,7 +6,7 @@ import type {
 import { send } from './transport';
 
 export interface AuthResult { user: SelfUser; accessToken: string; refreshToken: string }
-export interface UserProfile extends User { mutualGuilds?: { id: Id; name: string; icon: string | null; nick?: string | null }[]; mutualFriends?: User[] }
+export interface UserProfile extends User { note?: string | null; mutualGuilds?: { id: Id; name: string; icon: string | null; nick?: string | null }[]; mutualFriends?: User[] }
 export interface MessageQuery { limit?: number; before?: Id; after?: Id; around?: Id }
 export interface SearchQuery { q?: string; authorId?: Id; channelId?: Id; has?: string; before?: string }
 export interface SendMessageInput { content: string; replyTo?: Id | null; files?: File[]; nonce?: string; stickerIds?: Id[]; poll?: CreatePoll }
@@ -60,6 +60,10 @@ export const api = {
     removeRelationship: (userId: Id) => send({ method: 'DELETE', path: `/users/@me/relationships/${userId}` }),
     readStates: () => send<ReadState[]>({ method: 'GET', path: '/users/@me/read-states' }).then((x) => arr<ReadState>(x)),
     /** Friend request by username: the contract addresses relationships by user id, so resolve through a username lookup. */
+    /** Private note about another user (author-only). */
+    setNote: (userId: Id, note: string) => send({ method: 'PUT', path: `/users/@me/notes/${userId}`, body: { note } }),
+    /** Inbox: recent @mentions (user, my roles, @everyone) in channels I can read. */
+    mentions: (q: { before?: Id; limit?: number; guildId?: Id; roles?: boolean; everyone?: boolean } = {}) => send<Message[]>({ method: 'GET', path: '/users/@me/mentions', query: { ...q, roles: q.roles === undefined ? undefined : String(q.roles), everyone: q.everyone === undefined ? undefined : String(q.everyone) } as any }).then((x) => arr<Message>(x)),
     findByUsername: (username: string) => send<User[] | User>({ method: 'GET', path: '/users', query: { username } }).then((x) => (Array.isArray(x) ? x : x ? [x] : [])),
   },
   guilds: {
