@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { ALL_PERMS, LIMITS, Perm, has, snowflake, type Invite } from '@jorcord/shared';
 import type { Ctx } from '../ctx';
 import { clearServerTag } from '../services/cosmetics';
+import { bumpDaily } from './guildextras';
 import { assertInvitesOpen, detectRaid } from '../services/safety';
 import { ApiError, badRequest, forbidden, notFound } from '../errors';
 import { idSchema, iso, limitParam, parse } from '../lib/ids';
@@ -52,6 +53,7 @@ export async function joinGuild(ctx: Ctx, userId: string, guildId: string, invit
     const m = await memberDTO(ctx, guildId, userId);
     if (m) await ctx.hub.toGuild(guildId, 'MEMBER_ADD', m, { exclude: userId });
     await announceJoin(ctx, guildId, userId);
+    await bumpDaily(ctx, guildId, 'joins');
     await detectRaid(ctx, guildId).catch((e) => ctx.log.warn({ err: e }, 'raid detection failed'));
     if (full.systemChannelId) await postSystemMessage(ctx, full.systemChannelId, userId, 'join').catch((e) => ctx.log.warn({ err: e }, 'join message failed'));
   return full;
@@ -231,6 +233,7 @@ export function memberRoutes(app: FastifyInstance, ctx: Ctx) {
   async function removeMember(guildId: string, userId: string) {
     await ctx.db.query('DELETE FROM members WHERE guild_id = $1 AND user_id = $2', [guildId, userId]);
     await clearServerTag(ctx, guildId, userId);
+    await bumpDaily(ctx, guildId, 'leaves');
     await ctx.pcache.invalidate({ k: 'member', guildId, userId });
     await ctx.hub.toUser(userId, 'GUILD_DELETE', { id: guildId });
     await ctx.hub.toGuild(guildId, 'MEMBER_REMOVE', { guildId, userId });

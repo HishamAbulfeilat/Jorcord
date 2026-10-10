@@ -5,6 +5,7 @@ import { Check, Copy, Gamepad2, GraduationCap, Hash, Heart, Megaphone, MessagesS
 import { Perm } from '@jorcord/shared';
 import { api } from '@/lib/api';
 import { useData } from '@/stores/data';
+import { useNavigate } from 'react-router-dom';
 import { useUI, toast, toastError } from '@/stores/ui';
 import { Modal, Field, Spinner } from '@/components/ui/primitives';
 import { Avatar } from '@/components/ui/Avatar';
@@ -48,6 +49,7 @@ export function IconPicker({ value, onChange, label = 'Upload', size = 80 }: { v
 }
 
 function CreateServer({ close }: { close: () => void }) {
+  const nav2 = useNavigate();
   const me = useData((s) => s.me); const nav = useNav(); const open = useUI((s) => s.openModal);
   const [step, setStep] = useState<'pick' | 'name'>('pick'); const [tpl, setTpl] = useState('own');
   const [name, setName] = useState(me ? `${me.displayName || me.username}'s server` : ''); const [icon, setIcon] = useState<string | null>(null); const [busy, setBusy] = useState(false);
@@ -57,7 +59,7 @@ function CreateServer({ close }: { close: () => void }) {
     catch (err) { toastError(err); setBusy(false); }
   };
   if (step === 'pick') return (
-    <Modal title={t('Create Your Server')} onClose={close} footer={<div className="flex w-full flex-col items-center gap-1"><span className="font-bold text-header">{t('Have an invite already?')}</span><button className="btn btn-secondary w-full" onClick={() => open({ kind: 'joinServer' })}>{t('Join a Server')}</button></div>}>
+    <Modal title={t('Create Your Server')} onClose={close} footer={<div className="flex w-full flex-col items-center gap-1"><span className="font-bold text-header">{t('Have an invite already?')}</span><button className="btn btn-link w-full" onClick={() => open({ kind: 'prompt', title: 'Use a Template', label: 'Template link or code', onSubmit: (v) => { const code = v.trim().replace(/\/+$/, '').split('/').pop() ?? ''; if (/^[A-Za-z0-9]{12}$/.test(code)) { close(); nav2(`/template/${code}`); } else toastError(new Error('That is not a template link')); } })}>{t('Start from a template link')}</button><button className="btn btn-secondary w-full" onClick={() => open({ kind: 'joinServer' })}>{t('Join a Server')}</button></div>}>
       <p className="mb-4 text-center text-sm text-muted">{t('Your server is where you and your friends hang out. Make yours and start talking.')}</p>
       <ul className="grid gap-2">{TEMPLATES.map((t) => <li key={t.id}><button onClick={() => { setTpl(t.id); setStep('name'); }} className="touch flex w-full items-center gap-3 rounded-lg border border-divider bg-modal-alt px-4 py-3 text-start font-bold text-header hover:bg-hover"><t.icon size={28} className="text-brand" /><span className="flex-1">{t.label}</span><span className="text-muted">›</span></button></li>)}</ul>
     </Modal>

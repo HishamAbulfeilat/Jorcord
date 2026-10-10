@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ShieldCheck, Tag, Volume2, Ban, Bot, Compass, GripVertical, Hash, Webhook as WebhookIcon, Sticker as StickerIcon, Copy as CopyIcon, Link2, ListChecks, Rocket, Settings as Cog, Shield, Smile, Trash2, Users, ScrollText, Plus, Search, Crown } from 'lucide-react';
+import { FileText, PanelTop, BarChart3, ShieldCheck, Tag, Volume2, Ban, Bot, Compass, GripVertical, Hash, Webhook as WebhookIcon, Sticker as StickerIcon, Copy as CopyIcon, Link2, ListChecks, Rocket, Settings as Cog, Shield, Smile, Trash2, Users, ScrollText, Plus, Search, Crown } from 'lucide-react';
 import { Perm } from '@jorcord/shared';
 import type { AutoModPreset, AutoModRule, Channel } from '@jorcord/shared';
 import { api } from '@/lib/api';
@@ -27,6 +27,7 @@ import { SoundboardTab } from '@/components/Soundboard';
 import { ServerTagEditor } from './CosmeticsPicker';
 import { SafetyTab } from './SafetyTab';
 import { OnboardingTab } from './OnboardingTab';
+import { TemplateTab, WidgetTab, InsightsTab, VanityUrl } from './ServerExtrasTabs';
 import { AUDIT_FILTER_GROUPS, actionLabel, entryDetail, entryType } from '@/lib/audit';
 
 export function GuildSettings({ guildId, initialTab }: { guildId: string; initialTab?: string }) {
@@ -36,7 +37,7 @@ export function GuildSettings({ guildId, initialTab }: { guildId: string; initia
   const items = useMemo(() => {
     const it = (id: string, label: string, icon: any, ok: boolean) => (ok ? [{ id, label: t(label), icon }] : []);
     return [
-      { title: g?.guild.name ?? 'Server', items: [...it('overview', T('Overview'), Cog, can(perms, Perm.MANAGE_GUILD)), ...it('roles', T('Roles'), Shield, can(perms, Perm.MANAGE_ROLES)), ...it('channels', T('Channels'), Hash, can(perms, Perm.MANAGE_CHANNELS)), ...it('emoji', T('Emoji'), Smile, can(perms, Perm.MANAGE_EMOJIS)), ...it('stickers', T('Stickers'), StickerIcon, can(perms, Perm.MANAGE_EMOJIS)), ...it('soundboard', T('Soundboard'), Volume2, can(perms, Perm.MANAGE_EMOJIS)), ...it('safety', T('Safety Setup'), ShieldCheck, can(perms, Perm.MANAGE_GUILD)), ...it('onboarding', T('Onboarding'), ListChecks, can(perms, Perm.MANAGE_GUILD)), ...it('servertag', T('Server Tag'), Tag, can(perms, Perm.MANAGE_GUILD)), ...it('integrations', T('Integrations'), WebhookIcon, can(perms, Perm.MANAGE_WEBHOOKS)), ...it('commands', T('Command Permissions'), Bot, can(perms, Perm.MANAGE_GUILD) && can(perms, Perm.MANAGE_ROLES)), ...it('boosts', T('Server Boost'), Rocket, true)] },
+      { title: g?.guild.name ?? 'Server', items: [...it('overview', T('Overview'), Cog, can(perms, Perm.MANAGE_GUILD)), ...it('roles', T('Roles'), Shield, can(perms, Perm.MANAGE_ROLES)), ...it('channels', T('Channels'), Hash, can(perms, Perm.MANAGE_CHANNELS)), ...it('emoji', T('Emoji'), Smile, can(perms, Perm.MANAGE_EMOJIS)), ...it('stickers', T('Stickers'), StickerIcon, can(perms, Perm.MANAGE_EMOJIS)), ...it('soundboard', T('Soundboard'), Volume2, can(perms, Perm.MANAGE_EMOJIS)), ...it('safety', T('Safety Setup'), ShieldCheck, can(perms, Perm.MANAGE_GUILD)), ...it('onboarding', T('Onboarding'), ListChecks, can(perms, Perm.MANAGE_GUILD)), ...it('template', T('Server Template'), FileText, can(perms, Perm.MANAGE_GUILD)), ...it('widget', T('Widget'), PanelTop, can(perms, Perm.MANAGE_GUILD)), ...it('insights', T('Insights'), BarChart3, can(perms, Perm.MANAGE_GUILD)), ...it('servertag', T('Server Tag'), Tag, can(perms, Perm.MANAGE_GUILD)), ...it('integrations', T('Integrations'), WebhookIcon, can(perms, Perm.MANAGE_WEBHOOKS)), ...it('commands', T('Command Permissions'), Bot, can(perms, Perm.MANAGE_GUILD) && can(perms, Perm.MANAGE_ROLES)), ...it('boosts', T('Server Boost'), Rocket, true)] },
       { title: t('Moderation'), items: [...it('members', T('Members'), Users, can(perms, Perm.KICK_MEMBERS) || can(perms, Perm.MANAGE_ROLES) || can(perms, Perm.MANAGE_GUILD)), ...it('invites', T('Invites'), Link2, can(perms, Perm.MANAGE_GUILD) || can(perms, Perm.CREATE_INVITE)), ...it('automod', T('AutoMod'), Bot, can(perms, Perm.MANAGE_GUILD)), ...it('audit', T('Audit Log'), ScrollText, can(perms, Perm.VIEW_AUDIT_LOG)), ...it('bans', T('Bans'), Ban, can(perms, Perm.BAN_MEMBERS))] },
       ...(isOwner ? [{ items: [{ id: 'delete', label: t('Delete Server'), icon: Trash2, danger: true }] }] : []),
     ].filter((gr) => gr.items.length);
@@ -54,6 +55,9 @@ export function GuildSettings({ guildId, initialTab }: { guildId: string; initia
       {tab === 'soundboard' && <SoundboardTab guildId={guildId} />}
       {tab === 'safety' && <SafetyTab guildId={guildId} />}
       {tab === 'onboarding' && <OnboardingTab guildId={guildId} />}
+      {tab === 'template' && <TemplateTab guildId={guildId} />}
+      {tab === 'widget' && <WidgetTab guildId={guildId} />}
+      {tab === 'insights' && <InsightsTab guildId={guildId} />}
       {tab === 'servertag' && <ServerTagTab guildId={guildId} />}
       {tab === 'integrations' && <IntegrationsTab guildId={guildId} />}
       {tab === 'commands' && <CommandPermissions guildId={guildId} />}
@@ -84,6 +88,7 @@ function Overview({ guildId }: { guildId: string }) {
     <Row title={t('Membership Screening')} desc={f.rulesChannelId ? t('New members must accept the rules before they can chat.') : t('Choose a rules channel first.')}><Toggle label={t('Membership Screening')} checked={f.screening && !!f.rulesChannelId} disabled={!f.rulesChannelId} onChange={(v) => setF({ ...f, screening: v })} /></Row>
     <Row title={t('Enable Discovery')} desc={t('Let people find this server on the Discover page.')}><Toggle label={t('Enable Discovery')} checked={f.discoverable} onChange={(v) => setF({ ...f, discoverable: v })} /></Row>
     <div className="mb-4 mt-4"><span className="label">{t('Server Banner')}</span><div className="relative h-28 overflow-hidden rounded-lg bg-rail">{f.banner && <img src={fileUrl(f.banner)!} alt="" className="h-full w-full object-cover" />}<label className="absolute inset-0 flex cursor-pointer items-center justify-center bg-black/40 text-sm font-semibold text-white opacity-0 hover:opacity-100 focus-within:opacity-100">{t('Upload banner')}<input type="file" accept="image/*" className="sr-only" onChange={async (e) => { const file = e.target.files?.[0]; if (file) { try { setF({ ...f, banner: await uploadImageFile(file) }); } catch (err) { toastError(err); } } }} /></label></div>{f.banner && <button className="mt-1 text-sm text-link" onClick={() => setF({ ...f, banner: null })}>{t('Remove banner')}</button>}</div>
+    <VanityUrl guildId={guildId} />
     <SaveBar dirty={dirty} busy={busy} onSave={save} onReset={() => setF({ name: gd.name, description: gd.description ?? '', icon: gd.icon, banner: gd.banner, systemChannelId: gd.systemChannelId ?? '', rulesChannelId: gd.rulesChannelId ?? '', discoverable: gd.features.includes('DISCOVERABLE'), screening: gd.features.includes('MEMBER_SCREENING') })} />
   </>);
 }

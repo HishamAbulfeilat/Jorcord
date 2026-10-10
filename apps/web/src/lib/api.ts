@@ -1,7 +1,7 @@
 /** Typed REST client written against docs/CONTRACT.md. All calls go through the swappable transport. */
 import type {
   Activity, Attachment, AuditEntry, AutoModRule, Channel, Emoji, Guild, GuildFull, Invite, Member, Message, Relationship, ReadState, Role, SelfUser, Sticker, User, VoiceToken, Id, Presence, OverwriteDTO,
-  Reminder, SoundboardSound, ChannelFollow, Onboarding, OnboardingResponse, GuildSafety, SafetyPreset, Application, ApplicationCommand, CommandPermissionOverwrite, CommandOptionChoice, CreatePoll, ForumTag, InteractionOptionValue, ModalSubmitRow, OAuthAuthorizePreview, OAuthAuthorizeResult, ScheduledEvent, StageInstance,
+  Reminder, SoundboardSound, GuildTemplate, GuildWidgetSettings, GuildInsights, ChannelFollow, Onboarding, OnboardingResponse, GuildSafety, SafetyPreset, Application, ApplicationCommand, CommandPermissionOverwrite, CommandOptionChoice, CreatePoll, ForumTag, InteractionOptionValue, ModalSubmitRow, OAuthAuthorizePreview, OAuthAuthorizeResult, ScheduledEvent, StageInstance,
 } from '@jorcord/shared';
 import { send } from './transport';
 
@@ -142,6 +142,16 @@ export const api = {
     onboarding: (id: Id) => send<Onboarding>({ method: 'GET', path: `/guilds/${id}/onboarding` }),
     putOnboarding: (id: Id, b: Partial<Pick<Onboarding, 'enabled' | 'defaultChannelIds'>> & { prompts?: any[] }) => send<Onboarding>({ method: 'PUT', path: `/guilds/${id}/onboarding`, body: b }),
     answerOnboarding: (id: Id, optionIds: Id[]) => send<OnboardingResponse>({ method: 'PUT', path: `/guilds/${id}/onboarding/responses`, body: { optionIds } }),
+    templates: (id: Id) => send<GuildTemplate[]>({ method: 'GET', path: `/guilds/${id}/templates` }).then((x) => arr<GuildTemplate>(x)),
+    createTemplate: (id: Id, b: { name: string; description?: string | null }) => send<GuildTemplate>({ method: 'POST', path: `/guilds/${id}/templates`, body: b }),
+    syncTemplate: (id: Id, code: string) => send<GuildTemplate>({ method: 'PUT', path: `/guilds/${id}/templates/${code}` }),
+    patchTemplate: (id: Id, code: string, b: { name?: string; description?: string | null }) => send<GuildTemplate>({ method: 'PATCH', path: `/guilds/${id}/templates/${code}`, body: b }),
+    deleteTemplate: (id: Id, code: string) => send({ method: 'DELETE', path: `/guilds/${id}/templates/${code}` }),
+    template: (code: string) => send<GuildTemplate>({ method: 'GET', path: `/guilds/templates/${code}` }),
+    createFromTemplate: (code: string, b: { name: string; icon?: string | null }) => send<GuildFull>({ method: 'POST', path: `/guilds/templates/${code}`, body: b }),
+    widget: (id: Id) => send<GuildWidgetSettings>({ method: 'GET', path: `/guilds/${id}/widget` }),
+    patchWidget: (id: Id, b: Partial<{ enabled: boolean; channelId: Id | null }>) => send<GuildWidgetSettings>({ method: 'PATCH', path: `/guilds/${id}/widget`, body: b }),
+    insights: (id: Id, days: 7 | 14 | 30) => send<GuildInsights>({ method: 'GET', path: `/guilds/${id}/insights`, query: { days } }),
     sounds: (id: Id) => send<SoundboardSound[]>({ method: 'GET', path: `/guilds/${id}/soundboard-sounds` }).then((x) => arr<SoundboardSound>(x)),
     createSound: (id: Id, b: { name: string; url: string; emoji?: string | null; volume?: number }) => send<SoundboardSound>({ method: 'POST', path: `/guilds/${id}/soundboard-sounds`, body: b }),
     patchSound: (id: Id, sid: Id, b: Partial<{ name: string; emoji: string | null; volume: number }>) => send<SoundboardSound>({ method: 'PATCH', path: `/guilds/${id}/soundboard-sounds/${sid}`, body: b }),

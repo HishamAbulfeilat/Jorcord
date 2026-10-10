@@ -11,6 +11,7 @@ import { lazyNamed, Lazy } from '@/lib/lazy';
 const auth = () => import('@/pages/AuthPages');
 const LoginPage = lazyNamed(auth, 'LoginPage'), RegisterPage = lazyNamed(auth, 'RegisterPage'), ForgotPasswordPage = lazyNamed(auth, 'ForgotPasswordPage'), ResetPasswordPage = lazyNamed(auth, 'ResetPasswordPage'), VerifyEmailPage = lazyNamed(auth, 'VerifyEmailPage');
 const InvitePage = lazyNamed(() => import('@/pages/InvitePage'), 'InvitePage');
+const TemplatePage = lazyNamed(() => import('@/pages/TemplatePage'), 'TemplatePage');
 const DemoPage = lazyNamed(() => import('@/pages/DemoPage'), 'DemoPage');
 const DeveloperPortal = lazyNamed(() => import('@/pages/DeveloperPortal'), 'DeveloperPortal');
 const OAuthAuthorize = lazyNamed(() => import('@/pages/OAuthAuthorize'), 'OAuthAuthorize');
@@ -99,6 +100,7 @@ export default function App() {
         <Route path="/reset-password" element={<ResetPasswordPage />} />
         <Route path="/verify-email" element={<VerifyEmailPage />} />
         <Route path="/invite/:code" element={<InvitePage />} />
+        <Route path="/template/:code" element={<TemplatePage />} />
         <Route path="/demo/*" element={<DemoPage />} />
         <Route path="/developers/*" element={<DeveloperPortal />} />
         <Route path="/oauth2/authorize" element={<OAuthAuthorize />} />

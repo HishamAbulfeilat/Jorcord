@@ -21,7 +21,7 @@ Rank = order in which this pass implements items (R1 first). `-` = not planned i
 | R11 | Announcement channels: follow + crosspost | DONE (`routes/follows.ts`, `FollowsList.tsx`, `FollowChannelModal`) | 3 | channel type exists, no routes |
 | R12 | NSFW age-gate interstitial | DONE (`services/agegate.ts`, `ChatView.tsx` AgeGate) | 3 | `nsfw` flag stored, no gate in web |
 | R13 | Server welcome screen (channel list) + onboarding questions (channels & roles prompts) | DONE (`routes/onboarding.ts`, `OnboardingModals.tsx`, `OnboardingTab.tsx`) | 3 | rules screening + welcome modal done (`ExtraModals.tsx` OnboardingModal); no questions/default channels |
-| R14 | User-created guild templates (share code), widget, vanity URL claim UI, server insights/analytics | partial/todo | 2 | built-in presets only (`services/guilds.ts`); vanity PATCH exists |
+| R14 | User-created guild templates (share code), widget, vanity URL claim UI, server insights/analytics | DONE (`routes/guildextras.ts`, `services/templates.ts`, `ServerExtrasTabs.tsx`, `TemplatePage.tsx`) | 2 | built-in presets only (`services/guilds.ts`); vanity PATCH exists |
 | R15 | GIF favorites, saved media | todo | 3 | `GET /gifs/*` only |
 | R16 | Account switching (multi-account) | todo | 3 | single session store (`lib/session.ts`) |
 | R17 | Connections on profile (links to Twitch/GitHub...) | todo | 2 | none |

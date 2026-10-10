@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { Relationship } from '@jorcord/shared';
 import { AVATAR_DECORATION_IDS, NAME_PLATE_IDS, PROFILE_EFFECT_IDS, snowflake } from '@jorcord/shared';
+import { bumpDaily } from './guildextras';
 import { clearServerTag, setServerTag } from '../services/cosmetics';
 import type { Ctx } from '../ctx';
 import { ApiError, badRequest, forbidden, notFound } from '../errors';
@@ -192,6 +193,7 @@ export function userRoutes(app: FastifyInstance, ctx: Ctx) {
     if (g.owner_id === req.userId) throw new ApiError(400, 'OWNER_CANNOT_LEAVE', 'Transfer ownership or delete the guild instead');
     await ctx.db.query('DELETE FROM members WHERE guild_id = $1 AND user_id = $2', [guildId, req.userId]);
     await clearServerTag(ctx, guildId, req.userId);
+    await bumpDaily(ctx, guildId, 'leaves');
     await ctx.pcache.invalidate({ k: 'member', guildId, userId: req.userId });
     await ctx.hub.toUser(req.userId, 'GUILD_DELETE', { id: guildId });
     await ctx.hub.toGuild(guildId, 'MEMBER_REMOVE', { guildId, userId: req.userId });

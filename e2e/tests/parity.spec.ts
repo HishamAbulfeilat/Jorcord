@@ -189,3 +189,51 @@ test('announcements: follow a channel into your own server, publish, and the cop
     await rest(B.page, 'GET', `/channels/${bGeneral.id}/follows`).then((l) => expect(l).toHaveLength(1));
   } finally { await B.ctx.close(); }
 });
+
+test('server template link creates a copy, the widget is public, insights show activity', async ({ browser }) => {
+  const B = await newUser(browser, 'Cloner');
+  try {
+    const gid = await guildId(A.page);
+    // template
+    await openGuildSettings(A.page, 'Sound Lab', 'Server Template');
+    const dlg = A.page.getByRole('dialog', { name: 'Sound Lab' });
+    await dlg.getByLabel('Template name').fill('Lab Kit');
+    await dlg.getByRole('button', { name: 'Generate Template Link' }).click();
+    const link = await dlg.getByLabel('Template link').inputValue();
+    expect(link).toMatch(/\/template\/[A-Za-z0-9]{12}$/);
+    await rest(A.page, 'POST', `/guilds/${gid}/channels`, { name: 'after-sync', type: 'text' });
+    await A.page.getByRole('button', { name: 'Server Overview' }).or(dlg.getByRole('button', { name: 'Overview' })).first().click();
+    await dlg.getByRole('button', { name: 'Server Template' }).click();
+    await expect(dlg.getByTestId('template-dirty')).toBeVisible();
+    await dlg.getByRole('button', { name: 'Sync Template' }).click();
+    await expect(dlg.getByTestId('template-dirty')).toHaveCount(0);
+    // B uses it
+    await B.page.goto(new URL(link).pathname);
+    await expect(B.page.getByTestId('template-page')).toContainText('Lab Kit');
+    await B.page.getByLabel('Server Name').fill('Cloned Lab');
+    await B.page.getByRole('button', { name: 'Create Server' }).click();
+    await B.page.waitForURL(/\/channels\/\d+/);
+    await expect(B.page.getByRole('button', { name: 'Cloned Lab server menu' })).toBeVisible();
+    await expect(B.page.getByRole('navigation', { name: 'Channels' }).getByRole('button', { name: /after-sync/ })).toBeVisible();
+    // widget
+    await dlg.getByRole('button', { name: 'Widget' }).click();
+    await dlg.getByRole('switch', { name: 'Enable server widget' }).click();
+    await expect(dlg.getByTestId('widget-preview')).toBeVisible();
+    const w = await A.page.evaluate(async (id) => (await fetch(`/api/v1/guilds/${id}/widget.json`)).json(), gid);
+    expect(w.name).toBe('Sound Lab');
+    expect(await dlg.getByTestId('widget-preview').evaluate((i: HTMLImageElement) => new Promise<number>((res) => (i.complete ? res(i.naturalWidth) : (i.onload = () => res(i.naturalWidth)))))).toBeGreaterThan(0);
+    // insights
+    await dlg.getByRole('button', { name: 'Insights' }).click();
+    await expect(dlg.getByTestId('insights-tab')).toBeVisible();
+    await expect(dlg.getByTestId('insight-members')).not.toHaveText('0');
+    await dlg.getByRole('radio', { name: '30 days' }).click();
+    await expect(dlg.getByRole('radio', { name: '30 days' })).toHaveAttribute('aria-checked', 'true');
+    // vanity invite link
+    await dlg.getByRole('button', { name: 'Overview' }).first().click();
+    const vanity = `soundlab-${Math.random().toString(36).slice(2, 7)}`;
+    await dlg.getByLabel('Custom invite link').fill(vanity);
+    await dlg.getByRole('button', { name: 'Claim' }).click();
+    await expect.poll(async () => (await rest(A.page, 'GET', `/guilds/${gid}`)).vanityUrl).toBe(vanity);
+    await closeSettings(A.page);
+  } finally { await B.ctx.close(); }
+});
