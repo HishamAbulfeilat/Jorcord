@@ -40,7 +40,7 @@ describe('criteria (pure)', () => {
     expect([c('>=', 5), c('>=', 6), c('<=', 5), c('=', 5), c('!=', 5), c('=', 4)].map((x) => evalCriterion(x, f).met)).toEqual([true, false, true, true, false, false]);
     expect(evalCriterion(c('=', true, 'pro'), f).met).toBe(true); expect(evalCriterion(c('=', 1, 'pro'), f).met).toBe(false); // type must match
     expect(evalCriterion(c('>=', 1, 'missing'), f)).toEqual({ met: false, current: null });
-    expect(evalCriterion({ ...c('!=', 1), appId: 'other' }, f).met).toBe(true);
+    expect(evalCriterion({ type: 'app_metadata', appId: 'other', key: 'level', op: '!=', value: 1 }, f).met).toBe(true);
   });
   it('all criteria must hold; an empty list never grants', () => {
     const cs: LinkedCriterion[] = [{ type: 'message_count', value: 5 }, { type: 'account_age_days', value: 100 }];
