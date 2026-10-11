@@ -28,7 +28,7 @@ Rank = order in which this pass implements items (R1 first). `-` = not planned i
 | R18 | Soundboard (guild sounds + play in voice) | DONE (`routes/soundboard.ts`, `components/Soundboard.tsx`) | 4 | upload/limits, play over gateway event, USE_SOUNDBOARD, per-user + global mute, voice dock button |
 | R19 | Message edit history | todo | 1 | `edited_at` only; Discord itself does not show history, skip |
 | R20 | Server boost levels page perks list | DONE (`routes/guilds.ts`, `services/boosts.ts`, `BoostTab.tsx`; levels 1-3, enforced emoji/sticker slots, progress, boosters, booster role, announcements) | 2 | boosts free/unlimited (`GuildSettings` boosts tab) |
-| R21 | Linked roles, integrations (Twitch/YouTube), app directory | todo | 1 | skip |
+| R21 | Linked roles, app directory (Twitch/YouTube integrations skipped on purpose, see `PARITY.md`) | DONE (`routes/linkedroles.ts`, `services/linkedroles.ts`, `LinkedRolesTab.tsx`, `routes/directory.ts`, `AppDirectory.tsx`, Developer Portal listing; bot metadata API) | 1 | criteria: account/join age, messages, verified connection, app metadata |
 | R22 | Mod view / member safety flags, bulk-ban, prune | todo | 2 | ban/kick/timeout done |
 
 ## B. Already done (verified in this pass)
