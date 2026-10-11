@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { BadgeCheck, MessageSquare, UserPlus, UserMinus, Settings } from 'lucide-react';
+import { BadgeCheck, ShieldAlert, MessageSquare, UserPlus, UserMinus, Settings } from 'lucide-react';
 import { api } from '@/lib/api';
-import { useData } from '@/stores/data';
+import { useData, selfMember } from '@/stores/data';
+import { Perm } from '@jorcord/shared';
 import { useUI, toast, toastError } from '@/stores/ui';
 import { Avatar, PRESENCE_LABEL } from '@/components/ui/Avatar';
 import { cx, displayName, fileUrl, idColor, fmtStamp } from '@/lib/format';
-import { intToHex } from '@/lib/perms';
+import { intToHex, effectivePerms } from '@/lib/perms';
 import { openDmWith, userMenu } from '@/lib/menus';
 import { useMenuTrigger } from '@/components/ui/ContextMenu';
 import { Markdown } from '@/components/chat/Markdown';
@@ -31,6 +32,12 @@ function NoteBox({ userId, note }: { userId: string; note: string | null | undef
   );
 }
 
+/** Does the viewer hold any moderation permission in this server? (The server re-checks everything.) */
+function modPerms(guildId: string): boolean {
+  const s = useData.getState(); const g = s.guilds[guildId]; const me = selfMember(s, guildId); if (!g || !me) return false;
+  const p = effectivePerms({ guild: g.guild, roles: Object.values(g.roles), member: me });
+  return (p & (Perm.KICK_MEMBERS | Perm.BAN_MEMBERS | Perm.MODERATE_MEMBERS | Perm.MANAGE_GUILD | Perm.ADMINISTRATOR)) !== 0n;
+}
 export function ProfileCard({ userId, guildId, compact }: { userId: string; guildId?: string; compact?: boolean }) {
   const cached = useData((s) => s.users[userId]); const presence = useData((s) => s.presences[userId]);
   const member = useData((s) => (guildId ? s.guilds[guildId]?.members[userId] : undefined));
@@ -42,6 +49,7 @@ export function ProfileCard({ userId, guildId, compact }: { userId: string; guil
   const trig = useMenuTrigger(() => userMenu(userId, guildId));
   if (!u?.id) return <div className="p-6 text-center text-muted">{t('Loading…')}</div>;
   const isMe = me?.id === userId;
+  const canModView = !!guildId && !isMe && !!member && modPerms(guildId);
   const banner = fileUrl(u.banner); const accent = u.accentColor ?? idColor(u.id);
   const myRoles = member && roles ? member.roles.map((r) => roles[r]).filter((r) => r && r.id !== guildId).sort((a, b) => b.position - a.position) : [];
   return (
@@ -55,6 +63,7 @@ export function ProfileCard({ userId, guildId, compact }: { userId: string; guil
                 : rel === 'outgoing' ? <button className="btn btn-secondary" disabled>{t('Request Sent')}</button>
                 : rel === 'blocked' ? null : <button className="btn btn-primary" onClick={() => api.users.setRelationship(userId, 'friend').then(() => toast(rel === 'incoming' ? 'Friend added' : 'Friend request sent', 'success')).catch(toastError)}><UserPlus size={16} />{rel === 'incoming' ? t('Accept') : t('Add Friend')}</button>}
               <button className="btn btn-secondary" aria-label="Message" onClick={() => { closeAll(); openDmWith(userId); }}><MessageSquare size={16} /></button>
+              {canModView && <button className="btn btn-secondary" aria-label={t('Mod View')} title={t('Mod View')} onClick={() => { closeAll(); useUI.getState().openModal({ kind: 'modView', guildId: guildId!, userId }); }}><ShieldAlert size={16} /></button>}
             </div>)}
         </div>
         <div className="rounded-lg bg-[rgb(var(--rail)/0.5)] p-3">

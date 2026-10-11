@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { ModViewModal } from './ModView';
 import { createPortal } from 'react-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Check, Copy, Gamepad2, GraduationCap, Hash, Heart, Megaphone, MessagesSquare, Mic, Plus, Radio, Users, X, Upload, Globe, Palette, Volume2 } from 'lucide-react';
@@ -225,6 +226,7 @@ export function ModalHost() {
     case 'folder': return <FolderModal folderId={m.folderId} close={close} />;
     case 'notifSettings': return <NotifSettingsModal scope={m.scope} id={m.id} close={close} />;
     case 'forward': return <ForwardModal message={m.message} close={close} />;
+    case 'modView': return <ModViewModal guildId={m.guildId} userId={m.userId} close={close} />;
     case 'inbox': return <InboxModal initialTab={m.tab} close={close} />;
     case 'followChannel': return <FollowChannelModal channelId={m.channelId} close={close} />;
     case 'customize': return <CustomizeModal guildId={m.guildId} close={close} />;

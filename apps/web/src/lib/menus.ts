@@ -1,7 +1,7 @@
 /** Context-menu builders. Pure functions over store state; navigation goes through a window event the shell listens to. */
 import { Perm } from '@jorcord/shared';
 import type { Channel, Id, Message } from '@jorcord/shared';
-import { Rocket, Star, Megaphone, EyeOff, ListChecks, AlarmClock, Bookmark, Forward, ArrowDown, ArrowUp, Bell, FolderMinus, FolderPlus as FolderAdd, Folder as FolderI, MonitorUp, Unlink, AtSign, BellOff, Check, Copy, Edit3, Hash, LogOut, MessageSquare, Pencil, Pin, PinOff, Reply, Settings, ShieldBan, Smile, Trash2, UserMinus, UserPlus, Link2, UserX, Clock, BookOpen, Plus, FolderPlus, Mail, Ban } from 'lucide-react';
+import { ShieldAlert, Rocket, Star, Megaphone, EyeOff, ListChecks, AlarmClock, Bookmark, Forward, ArrowDown, ArrowUp, Bell, FolderMinus, FolderPlus as FolderAdd, Folder as FolderI, MonitorUp, Unlink, AtSign, BellOff, Check, Copy, Edit3, Hash, LogOut, MessageSquare, Pencil, Pin, PinOff, Reply, Settings, ShieldBan, Smile, Trash2, UserMinus, UserPlus, Link2, UserX, Clock, BookOpen, Plus, FolderPlus, Mail, Ban } from 'lucide-react';
 import { api } from './api';
 import { queryClient } from './queryClient';
 import { useSocial } from '@/stores/social';
@@ -130,6 +130,7 @@ export function userMenu(userId: Id, guildId?: Id | null): MenuItem[] {
       if (canManageMember(g.guild, roles, actor, target, p, Perm.MODERATE_MEMBERS)) mod.push({ label: t('Timeout 10 min'), icon: Clock, onClick: () => api.guilds.patchMember(guildId, userId, { timeoutUntil: new Date(Date.now() + 600000).toISOString() }).then(() => toast(t('Member timed out'), 'success')).catch(toastError) });
       if (canManageMember(g.guild, roles, actor, target, p, Perm.KICK_MEMBERS)) mod.push({ label: `Kick ${target.user.username}`, icon: UserMinus, danger: true, onClick: () => ui().openModal({ kind: 'confirm', title: t('Kick Member'), body: `Kick ${target.user.username} from the server? They can rejoin with an invite.`, confirmLabel: 'Kick', danger: true, onConfirm: () => api.guilds.kick(guildId, userId).catch(toastError) }) });
       if (canManageMember(g.guild, roles, actor, target, p, Perm.BAN_MEMBERS)) mod.push({ label: `Ban ${target.user.username}`, icon: Ban, danger: true, onClick: () => ui().openModal({ kind: 'prompt', title: 'Ban Member', label: t('Reason (optional)'), onSubmit: (reason) => api.guilds.ban(guildId, userId, { reason, deleteMessageSeconds: 0 }).then(() => toast(t('Member banned'), 'success')).catch(toastError) }) });
+      if (p & (Perm.KICK_MEMBERS | Perm.BAN_MEMBERS | Perm.MODERATE_MEMBERS | Perm.MANAGE_GUILD) || (p & Perm.ADMINISTRATOR)) mod.unshift({ label: t('Mod View'), icon: ShieldAlert, onClick: () => ui().openModal({ kind: 'modView', guildId, userId }) });
       if (mod.length) items.push({ separator: true }, ...mod);
     }
   }

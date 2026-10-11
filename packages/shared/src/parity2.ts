@@ -58,3 +58,26 @@ export interface DirectoryApp {
   id: Id; name: string; summary: string; description: string; icon: string | null; botUserId: Id; category: DirectoryCategory; tags: string[];
   /** servers the bot is in */ installs: number; /** permission bits the app suggests when installing */ permissions: string; listedAt: string;
 }
+
+// ---------- moderation tools ----------
+export type SafetyFlag = 'new_account' | 'raid_joined' | 'spam_suspect' | 'dm_restricted';
+export const SAFETY_FLAGS: { id: SafetyFlag; label: string; hint: string }[] = [
+  { id: 'new_account', label: 'New account', hint: 'Account is less than 7 days old' },
+  { id: 'raid_joined', label: 'Raid joined', hint: 'Joined during a detected raid' },
+  { id: 'spam_suspect', label: 'Spam suspect', hint: 'Tripped AutoMod 3 or more times in the last 24 hours' },
+  { id: 'dm_restricted', label: 'DMs restricted', hint: 'Does not accept direct messages from server members' },
+];
+export const MOD_LIMITS = { noteLength: 1000, notesPerMember: 25, warningLength: 500, bulkIds: 200, bulkMax: 200, pruneMaxDays: 30, pruneBatch: 1000, filterMinutesMax: 10080 } as const;
+export interface ModWarning { id: Id; guildId: Id; userId: Id; moderatorId: Id | null; reason: string; source: 'manual' | 'automod'; ruleId: Id | null; createdAt: string }
+export interface ModNote { id: Id; guildId: Id; userId: Id; authorId: Id | null; note: string; createdAt: string }
+export interface ModHistoryEntry { action: string; moderatorId: Id | null; reason: string | null; createdAt: string }
+export interface ModView {
+  user: User; isMember: boolean; joinedAt: string | null; accountCreatedAt: string; roles: Id[]; timeoutUntil: string | null; banned: boolean;
+  flags: SafetyFlag[];
+  counts: { timeouts: number; bans: number; kicks: number; warnings: number; automodHits24h: number };
+  history: ModHistoryEntry[]; warnings: ModWarning[]; notes: ModNote[];
+  mutualGuilds: { id: Id; name: string }[]; messages7d: number;
+}
+export interface BulkModerationFilter { joinedWithinMinutes?: number; noRoles?: boolean; accountYoungerThanDays?: number; raidFlagged?: boolean }
+export interface BulkModerationResult { dryRun: boolean; action: 'ban' | 'kick'; matched: number; affected: number; skipped: { userId: Id; reason: string }[]; users: { id: Id; username: string }[] }
+export interface PruneResult { dryRun: boolean; days: number; count: number; removed: number; remaining: number }

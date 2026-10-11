@@ -58,6 +58,8 @@ export interface Events {
   THREAD_DELETE: { id: Id; guildId: Id; parentId: Id | null };
   /** A server's linked roles (criteria) changed: refetch GET /guilds/:id/linked-roles. Role grants themselves arrive as MEMBER_UPDATE. */
   LINKED_ROLES_UPDATE: { guildId: Id };
+  /** To the warned member only: a moderator (or AutoMod) warned them in this server. */
+  MOD_WARNING: { guildId: Id; guildName: string; reason: string; createdAt: string };
   /** To the caller's own sessions: a private note about another user changed (`note: null` = removed). */
   /** To me: a DM became (or stopped being) a message request. */
   MESSAGE_REQUEST_UPDATE: { channelId: Id; request: boolean };

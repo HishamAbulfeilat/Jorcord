@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { newUser, createServer, openGuildSettings, openUserSettings, closeSettings, rest, guildId, makeInvite, joinViaInvite, sendMessage, msg, clickMenu, type User } from './helpers';
 
-let A: User;
+let A: User; let labId = '';
 test.describe.configure({ mode: 'serial' });
 test.beforeAll(async ({ browser }) => { A = await newUser(browser, 'Warden'); });
 test.afterAll(async () => { await A?.ctx.close(); });
@@ -10,7 +10,7 @@ test('automod: regex + block/alert rule from Settings, sandbox preview, alert em
   const B = await newUser(browser, 'Offender');
   try {
     await createServer(A.page, 'Mod Lab');
-    const gid = await guildId(A.page);
+    const gid = await guildId(A.page); labId = gid;
     const log = await rest(A.page, 'POST', `/guilds/${gid}/channels`, { name: 'mod-log', type: 'text' });
     await openGuildSettings(A.page, 'Mod Lab', 'AutoMod');
     const dlg = A.page.getByRole('dialog', { name: 'Mod Lab' });
@@ -166,4 +166,58 @@ test('app directory: list a bot from the Developer Portal; people find it in Dis
     await dir.getByLabel('Search apps').fill('quizzy');
     await expect(dir.getByText('No apps found')).toBeVisible();
   } finally { await B.ctx.close(); }
+});
+
+test('mod tools: Mod View with flags, warnings and notes, /warn, bulk ban by id list, prune preview, CSV export', async ({ browser }) => {
+  const T1 = await newUser(browser, 'Troll1'), T2 = await newUser(browser, 'Troll2');
+  try {
+    await A.page.goto(`/channels/${labId}`);
+    const gid = await guildId(A.page);
+    const path = await makeInvite(A.page);
+    await joinViaInvite(T1.page, path); await joinViaInvite(T2.page, path);
+    const id1 = (await rest(T1.page, 'GET', '/users/@me')).id as string, id2 = (await rest(T2.page, 'GET', '/users/@me')).id as string;
+    // Mod View from the member list
+    await A.page.getByRole('navigation', { name: 'Channels' }).getByRole('button', { name: /general/ }).first().click();
+    const members = A.page.getByRole('complementary', { name: 'Members' });
+    await members.getByRole('button', { name: /Troll1/ }).click();
+    await A.page.getByRole('button', { name: 'Mod View', exact: true }).click();
+    const mv = A.page.getByTestId('mod-view');
+    await expect(mv.getByTestId('safety-flags')).toContainText('New account');
+    await expect(mv.getByTestId('mod-counts')).toContainText('Warnings');
+    await mv.getByLabel('Warning reason').fill('Posting spam links');
+    await mv.getByRole('button', { name: 'Warn', exact: true }).click();
+    await expect(mv.getByTestId('mod-warnings')).toContainText('Posting spam links');
+    await mv.getByLabel('New note').fill('Second strike means a ban');
+    await mv.getByRole('button', { name: 'Add Note' }).click();
+    await expect(mv.getByTestId('mod-notes')).toContainText('Second strike means a ban');
+    // the warned member is told live
+    await A.page.keyboard.press('Escape');
+    // /warn from the composer is a moderation action, not a message
+    await sendMessage(A.page, '/warn @Troll1 Please read the rules');
+    await expect.poll(async () => (await rest(A.page, 'GET', `/guilds/${gid}/members/${id1}/warnings`)).map((w: any) => w.reason)).toContain('Please read the rules');
+    await expect(msg(A.page, '/warn @Troll1')).toHaveCount(0);
+    // Mod Tools: preview then ban by id list
+    await openGuildSettings(A.page, 'Mod Lab', 'Mod Tools');
+    const dlg = A.page.getByRole('dialog', { name: 'Mod Lab' });
+    await dlg.getByLabel('User ids').fill(`${id2}\n${id2}\nnot-an-id`);
+    await dlg.getByRole('button', { name: 'Preview' }).click();
+    await expect(dlg.getByRole('alert')).toContainText('Not a user id');
+    await dlg.getByLabel('User ids').fill(`${id2}`);
+    await dlg.getByRole('button', { name: 'Preview' }).click();
+    await expect(dlg.getByTestId('bulk-result')).toContainText('Would affect 1 of 1');
+    expect((await rest(A.page, 'GET', `/guilds/${gid}/bans`))).toHaveLength(0);
+    await dlg.getByRole('button', { name: /^Ban 1$/ }).click();
+    await A.page.getByRole('button', { name: 'Ban', exact: true }).last().click();
+    await expect.poll(async () => (await rest(A.page, 'GET', `/guilds/${gid}/bans`)).map((b: any) => b.user.id)).toEqual([id2]);
+    // prune: nobody here is inactive for 30 days
+    await dlg.getByRole('button', { name: 'Count members' }).click();
+    await expect(dlg.getByTestId('prune-result')).toContainText('0 members would be pruned');
+    // CSV export downloads a file with the moderation entries
+    const [dl] = await Promise.all([A.page.waitForEvent('download'), dlg.getByRole('button', { name: 'Download CSV' }).click()]);
+    expect(dl.suggestedFilename()).toBe(`mod-log-${gid}.csv`);
+    const csv = (await (await import('node:fs/promises')).readFile(await dl.path()!, 'utf8')).replace(/^﻿/, '');
+    expect(csv.split('\r\n')[0]).toBe('id,time,action,actor_id,actor_name,target_id,target_name,reason,details');
+    expect(csv).toContain('MEMBER_WARN'); expect(csv).toContain('MEMBER_BULK_BAN');
+    await closeSettings(A.page);
+  } finally { await T1.ctx.close(); await T2.ctx.close(); }
 });

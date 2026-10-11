@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { parseWarnCommand } from '@/lib/modtools';
 import { PlusCircle, Smile, SendHorizonal, X, Eye, EyeOff, Hash, Image as ImageIcon, Gift, Upload, BarChart3 } from 'lucide-react';
 import { LIMITS, Perm, snowflake } from '@jorcord/shared';
 import type { ApplicationCommand, Channel } from '@jorcord/shared';
@@ -134,6 +135,12 @@ export function Composer({ channel, stagedExternal }: { channel: Channel; staged
   const send = async (gif?: string) => {
     const content = gif ?? finalize(text);
     if (!cs.canSend || (!content && !files.length)) return;
+    const warnCmd = !gif && channel.guildId ? parseWarnCommand(content, (n) => { const ms = Object.values(useData.getState().guilds[channel.guildId!]?.members ?? {}); const k = n.toLowerCase(); return ms.find((m) => m.user.username.toLowerCase() === k || m.nick?.toLowerCase() === k || m.user.displayName?.toLowerCase() === k)?.user.id; }) : null;
+    if (warnCmd) { // /warn @member reason: a moderation action, never posted as a message
+      if ('error' in warnCmd) { toast(warnCmd.error, 'error'); return; }
+      try { await api.guilds.warn(channel.guildId!, warnCmd.userId, warnCmd.reason); toast(t('Warning added'), 'success'); setText(''); setDraft(cid, ''); tokens.current.clear(); setSuggest(null); } catch (e) { toastError(e); }
+      return;
+    }
     if (content.length > LIMITS.maxMessageLength) { toast(`Message is too long (${content.length}/${LIMITS.maxMessageLength}).`, 'error'); return; }
     const nonce = snowflake(); const toSend = files.map((f) => (f.spoiler && !f.file.name.startsWith('SPOILER_') ? new File([f.file], 'SPOILER_' + f.file.name, { type: f.file.type }) : f.file));
     const reply = replyId ?? null;

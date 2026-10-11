@@ -61,6 +61,16 @@ export async function joinGuild(ctx: Ctx, userId: string, guildId: string, invit
   return full;
 }
 
+export async function removeMemberFromGuild(ctx: Ctx, guildId: string, userId: string) {
+  await ctx.db.query('DELETE FROM members WHERE guild_id = $1 AND user_id = $2', [guildId, userId]);
+  await clearServerTag(ctx, guildId, userId);
+  await bumpDaily(ctx, guildId, 'leaves');
+  await ctx.pcache.invalidate({ k: 'member', guildId, userId });
+  await ctx.hub.toUser(userId, 'GUILD_DELETE', { id: guildId });
+  await ctx.hub.toGuild(guildId, 'MEMBER_REMOVE', { guildId, userId });
+  await uninstallBot(ctx, guildId, userId); // bots: drop the install record + managed role
+}
+
 export function memberRoutes(app: FastifyInstance, ctx: Ctx) {
   const pushRole = async (guildId: string, id: string) => { const [r] = await ctx.db.query('SELECT * FROM roles WHERE id = $1', [id]); if (r) await ctx.hub.toGuild(guildId, 'ROLE_UPDATE', roleDTO(r)); };
   const pushMember = async (guildId: string, userId: string) => { const m = await memberDTO(ctx, guildId, userId); if (m) await ctx.hub.toGuild(guildId, 'MEMBER_UPDATE', m); };
@@ -236,15 +246,7 @@ export function memberRoutes(app: FastifyInstance, ctx: Ctx) {
   });
   const effectiveGuildPerms = async (guildId: string, userId: string) => { const g = await loadGuildPerm(ctx, guildId, userId); return g ? guildPerms(g) : 0n; };
 
-  async function removeMember(guildId: string, userId: string) {
-    await ctx.db.query('DELETE FROM members WHERE guild_id = $1 AND user_id = $2', [guildId, userId]);
-    await clearServerTag(ctx, guildId, userId);
-    await bumpDaily(ctx, guildId, 'leaves');
-    await ctx.pcache.invalidate({ k: 'member', guildId, userId });
-    await ctx.hub.toUser(userId, 'GUILD_DELETE', { id: guildId });
-    await ctx.hub.toGuild(guildId, 'MEMBER_REMOVE', { guildId, userId });
-    await uninstallBot(ctx, guildId, userId); // bots: drop the install record + managed role
-  }
+  const removeMember = (guildId: string, userId: string) => removeMemberFromGuild(ctx, guildId, userId);
   app.delete('/guilds/:id/members/:userId', async (req, reply) => {
     const p = parse(z.object({ id: idSchema, userId: idSchema }), req.params);
     const actor = await guildAccess(ctx, req.userId, p.id);

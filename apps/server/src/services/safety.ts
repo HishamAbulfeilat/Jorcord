@@ -66,6 +66,7 @@ export async function detectRaid(ctx: Ctx, guildId: string) {
   if (c.n < cfg.maxJoins) return;
   const rows = await ctx.db.query(`UPDATE guilds SET invites_paused_until = now() + ($2::int * interval '1 minute') WHERE id = $1 AND (invites_paused_until IS NULL OR invites_paused_until < now()) RETURNING *`, [guildId, cfg.lockMinutes]);
   if (!rows.length) return;
+  await ctx.db.query(`UPDATE members SET raid_flagged = true WHERE guild_id = $1 AND user_id <> $3 AND joined_at > now() - ($2::int * interval '1 second')`, [guildId, cfg.windowSeconds, g.owner_id]); // moderators see "raid joined" on these members
   await audit(ctx, guildId, g.owner_id, 'RAID_DETECTED', null, { joins: c.n, windowSeconds: cfg.windowSeconds, lockMinutes: cfg.lockMinutes });
   const [fresh] = await ctx.db.query(`${GUILD_SELECT} WHERE g.id = $1`, [guildId]);
   await ctx.hub.toGuild(guildId, 'GUILD_UPDATE', guildDTO(fresh));
