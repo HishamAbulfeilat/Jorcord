@@ -26,6 +26,10 @@ import { t, T } from '@/i18n';
 import { SoundboardTab } from '@/components/Soundboard';
 import { ServerTagEditor } from './CosmeticsPicker';
 import { SafetyTab } from './SafetyTab';
+import { AutoModTab } from './AutoModTab';
+import { BoostTab } from './BoostTab';
+import { LinkedRolesTab } from './LinkedRolesTab';
+import { ModToolsTab } from './ModToolsTab';
 import { OnboardingTab } from './OnboardingTab';
 import { TemplateTab, WidgetTab, InsightsTab, VanityUrl } from './ServerExtrasTabs';
 import { AUDIT_FILTER_GROUPS, actionLabel, entryDetail, entryType } from '@/lib/audit';
@@ -37,8 +41,8 @@ export function GuildSettings({ guildId, initialTab }: { guildId: string; initia
   const items = useMemo(() => {
     const it = (id: string, label: string, icon: any, ok: boolean) => (ok ? [{ id, label: t(label), icon }] : []);
     return [
-      { title: g?.guild.name ?? 'Server', items: [...it('overview', T('Overview'), Cog, can(perms, Perm.MANAGE_GUILD)), ...it('roles', T('Roles'), Shield, can(perms, Perm.MANAGE_ROLES)), ...it('channels', T('Channels'), Hash, can(perms, Perm.MANAGE_CHANNELS)), ...it('emoji', T('Emoji'), Smile, can(perms, Perm.MANAGE_EMOJIS)), ...it('stickers', T('Stickers'), StickerIcon, can(perms, Perm.MANAGE_EMOJIS)), ...it('soundboard', T('Soundboard'), Volume2, can(perms, Perm.MANAGE_EMOJIS)), ...it('safety', T('Safety Setup'), ShieldCheck, can(perms, Perm.MANAGE_GUILD)), ...it('onboarding', T('Onboarding'), ListChecks, can(perms, Perm.MANAGE_GUILD)), ...it('template', T('Server Template'), FileText, can(perms, Perm.MANAGE_GUILD)), ...it('widget', T('Widget'), PanelTop, can(perms, Perm.MANAGE_GUILD)), ...it('insights', T('Insights'), BarChart3, can(perms, Perm.MANAGE_GUILD)), ...it('servertag', T('Server Tag'), Tag, can(perms, Perm.MANAGE_GUILD)), ...it('integrations', T('Integrations'), WebhookIcon, can(perms, Perm.MANAGE_WEBHOOKS)), ...it('commands', T('Command Permissions'), Bot, can(perms, Perm.MANAGE_GUILD) && can(perms, Perm.MANAGE_ROLES)), ...it('boosts', T('Server Boost'), Rocket, true)] },
-      { title: t('Moderation'), items: [...it('members', T('Members'), Users, can(perms, Perm.KICK_MEMBERS) || can(perms, Perm.MANAGE_ROLES) || can(perms, Perm.MANAGE_GUILD)), ...it('invites', T('Invites'), Link2, can(perms, Perm.MANAGE_GUILD) || can(perms, Perm.CREATE_INVITE)), ...it('automod', T('AutoMod'), Bot, can(perms, Perm.MANAGE_GUILD)), ...it('audit', T('Audit Log'), ScrollText, can(perms, Perm.VIEW_AUDIT_LOG)), ...it('bans', T('Bans'), Ban, can(perms, Perm.BAN_MEMBERS))] },
+      { title: g?.guild.name ?? 'Server', items: [...it('overview', T('Overview'), Cog, can(perms, Perm.MANAGE_GUILD)), ...it('roles', T('Roles'), Shield, can(perms, Perm.MANAGE_ROLES)), ...it('channels', T('Channels'), Hash, can(perms, Perm.MANAGE_CHANNELS)), ...it('emoji', T('Emoji'), Smile, can(perms, Perm.MANAGE_EMOJIS)), ...it('stickers', T('Stickers'), StickerIcon, can(perms, Perm.MANAGE_EMOJIS)), ...it('soundboard', T('Soundboard'), Volume2, can(perms, Perm.MANAGE_EMOJIS)), ...it('safety', T('Safety Setup'), ShieldCheck, can(perms, Perm.MANAGE_GUILD)), ...it('onboarding', T('Onboarding'), ListChecks, can(perms, Perm.MANAGE_GUILD)), ...it('template', T('Server Template'), FileText, can(perms, Perm.MANAGE_GUILD)), ...it('widget', T('Widget'), PanelTop, can(perms, Perm.MANAGE_GUILD)), ...it('insights', T('Insights'), BarChart3, can(perms, Perm.MANAGE_GUILD)), ...it('servertag', T('Server Tag'), Tag, can(perms, Perm.MANAGE_GUILD)), ...it('integrations', T('Integrations'), WebhookIcon, can(perms, Perm.MANAGE_WEBHOOKS)), ...it('commands', T('Command Permissions'), Bot, can(perms, Perm.MANAGE_GUILD) && can(perms, Perm.MANAGE_ROLES)), ...it('boosts', T('Server Boost'), Rocket, true), ...it('linkedroles', T('Linked Roles'), Link2, true)] },
+      { title: t('Moderation'), items: [...it('members', T('Members'), Users, can(perms, Perm.KICK_MEMBERS) || can(perms, Perm.MANAGE_ROLES) || can(perms, Perm.MANAGE_GUILD)), ...it('invites', T('Invites'), Link2, can(perms, Perm.MANAGE_GUILD) || can(perms, Perm.CREATE_INVITE)), ...it('automod', T('AutoMod'), Bot, can(perms, Perm.MANAGE_GUILD)), ...it('audit', T('Audit Log'), ScrollText, can(perms, Perm.VIEW_AUDIT_LOG)), ...it('bans', T('Bans'), Ban, can(perms, Perm.BAN_MEMBERS)), ...it('modtools', T('Mod Tools'), Shield, can(perms, Perm.KICK_MEMBERS) || can(perms, Perm.BAN_MEMBERS) || can(perms, Perm.VIEW_AUDIT_LOG))] },
       ...(isOwner ? [{ items: [{ id: 'delete', label: t('Delete Server'), icon: Trash2, danger: true }] }] : []),
     ].filter((gr) => gr.items.length);
   }, [perms, g?.guild.name, isOwner]);
@@ -61,10 +65,12 @@ export function GuildSettings({ guildId, initialTab }: { guildId: string; initia
       {tab === 'servertag' && <ServerTagTab guildId={guildId} />}
       {tab === 'integrations' && <IntegrationsTab guildId={guildId} />}
       {tab === 'commands' && <CommandPermissions guildId={guildId} />}
-      {tab === 'boosts' && <Boosts guildId={guildId} />}
+      {tab === 'modtools' && <ModToolsTab guildId={guildId} canKick={can(perms, Perm.KICK_MEMBERS)} canBan={can(perms, Perm.BAN_MEMBERS)} canAudit={can(perms, Perm.VIEW_AUDIT_LOG)} />}
+      {tab === 'linkedroles' && <LinkedRolesTab guildId={guildId} canManage={can(perms, Perm.MANAGE_ROLES)} />}
+      {tab === 'boosts' && <BoostTab guildId={guildId} canManage={can(perms, Perm.MANAGE_GUILD)} />}
       {tab === 'members' && <MembersTab guildId={guildId} />}
       {tab === 'invites' && <InvitesTab guildId={guildId} />}
-      {tab === 'automod' && <AutoMod guildId={guildId} />}
+      {tab === 'automod' && <AutoModTab guildId={guildId} />}
       {tab === 'audit' && <Audit guildId={guildId} />}
       {tab === 'bans' && <Bans guildId={guildId} />}
       {tab === 'delete' && <DeleteServer guildId={guildId} />}
@@ -142,21 +148,6 @@ function EmojiTab({ guildId }: { guildId: string }) {
   </>);
 }
 
-function Boosts({ guildId }: { guildId: string }) {
-  const g = useData((s) => s.guilds[guildId])!.guild; const [busy, setBusy] = useState(false);
-  const tiers = [{ n: 2, label: 'Level 1', perks: ['Animated server icon', '128 kbps voice', '+50 emoji slots'] }, { n: 7, label: 'Level 2', perks: ['Server banner', '256 kbps voice', '1080p 60fps screen share'] }, { n: 14, label: 'Level 3', perks: ['Vanity invite URL', '384 kbps voice', '4K 60fps screen share'] }];
-  const next = tiers.find((t) => g.boostCount < t.n);
-  return (<>
-    <H1>{t('Server Boost')}</H1>
-    <div className="mb-6 overflow-hidden rounded-xl bg-gradient-to-br from-brand to-[#eb459e] p-6 text-white">
-      <div className="flex items-center gap-3"><Rocket size={36} /><div><div className="text-2xl font-extrabold">Level {g.boostLevel}</div><div className="text-sm opacity-90">{g.boostCount} boost{g.boostCount === 1 ? '' : 's'} • Boosting is always free on Jorcord</div></div></div>
-      {next && <div className="mt-4"><div className="mb-1 flex justify-between text-xs font-semibold"><span>{g.boostCount} / {next.n} for {next.label}</span></div><div className="h-2 overflow-hidden rounded-full bg-black/30"><div className="h-full bg-white" style={{ width: `${Math.min(100, (g.boostCount / next.n) * 100)}%` }} /></div></div>}
-      <button disabled={busy} onClick={async () => { setBusy(true); try { const u = await api.guilds.boost(guildId); useData.getState().apply('GUILD_UPDATE', { ...g, ...u }); toast(t('Thanks for boosting!'), 'success'); } catch (e) { toastError(e); } setBusy(false); }} className="btn btn-lg mt-5 bg-white font-bold text-brand hover:bg-white/90">{t('Boost This Server')}</button>
-    </div>
-    <div className="grid gap-3 sm:grid-cols-3">{tiers.map((t, i) => <div key={t.label} className={cx('rounded-lg border p-4', g.boostLevel > i ? 'border-brand bg-brand/10' : 'border-divider bg-side')}><div className="mb-1 font-bold text-header">{t.label} <span className="text-xs font-normal text-muted">{t.n} boosts</span></div><ul className="space-y-1 text-sm text-muted">{t.perks.map((p) => <li key={p}>✓ {p}</li>)}</ul></div>)}</div>
-  </>);
-}
-
 function MembersTab({ guildId }: { guildId: string }) {
   const g = useData((s) => s.guilds[guildId])!; const me = useData((s) => selfMember(s, guildId))!; const [q, setQ] = useState(''); const open = useUI((s) => s.openModal);
   const perms = effectivePerms({ guild: g.guild, roles: Object.values(g.roles), member: me });
@@ -190,44 +181,6 @@ function InvitesTab({ guildId }: { guildId: string }) {
     <div className="mb-5 flex items-center justify-between"><h1 className="text-xl font-bold text-header">{t('Invites')}</h1><button className="btn btn-primary" onClick={() => useUI.getState().openModal({ kind: 'invite', guildId })}>{t('Create Invite')}</button></div>
     {q.isLoading && <Spinner />}{q.data?.length === 0 && <Empty icon={<Link2 size={40} />} title={t('No active invites')} />}
     <ul>{q.data?.map((i) => <li key={i.code} className="flex items-center gap-3 border-b border-divider/50 py-3 text-sm"><div className="min-w-0 flex-1"><div className="font-mono text-header">{i.code}</div><div className="text-xs text-muted">by {users[i.inviterId] ? displayName(users[i.inviterId]) : i.inviterId} • {i.uses}{i.maxUses ? `/${i.maxUses}` : ''} uses • {i.expiresAt ? `expires ${fmtStamp(new Date(i.expiresAt).getTime())}` : 'never expires'}</div></div><button className="btn btn-secondary" onClick={() => copyText(inviteUrl(i.code)).then(() => toast(t('Copied'), 'success'))}>{t('Copy')}</button><button aria-label={t('Revoke invite')} className="p-2 text-danger" onClick={() => api.invites.delete(i.code).then(() => qc.invalidateQueries({ queryKey: ['invites', guildId] })).catch(toastError)}><Trash2 size={16} /></button></li>)}</ul>
-  </>);
-}
-
-function AutoMod({ guildId }: { guildId: string }) {
-  const q = useQuery({ queryKey: ['automod', guildId], queryFn: () => api.guilds.automod(guildId) }); const qc = useQueryClient();
-  const chans = useData((s) => s.guilds[guildId]?.channels);
-  const textChans = Object.values(chans ?? {}).filter((c) => c.type === 'text' || c.type === 'announcement' || c.type === 'forum');
-  const blank = { name: '', trigger: 'keyword' as AutoModRule['trigger'], keywords: '', allow: '', presets: ['profanity'] as AutoModPreset[], mentionLimit: 5, action: 'block' as AutoModRule['action'], timeoutMin: 1, message: '', exemptChannels: [] as string[] };
-  const [f, setF] = useState(blank);
-  const refetch = () => qc.invalidateQueries({ queryKey: ['automod', guildId] });
-  const words = (v: string) => v.split(',').map((x) => x.trim()).filter(Boolean);
-  const togglePreset = (p: AutoModPreset) => setF({ ...f, presets: f.presets.includes(p) ? f.presets.filter((x) => x !== p) : [...f.presets, p] });
-  const PRESETS: [AutoModPreset, string][] = [['profanity', t('Profanity')], ['sexual_content', t('Sexual content')], ['slurs', t('Slurs')]];
-  const create = () => api.guilds.createAutomod(guildId, {
-    name: f.name, trigger: f.trigger, keywords: f.trigger === 'keyword' ? words(f.keywords) : [], action: f.action, enabled: true, exemptRoles: [],
-    ...(f.trigger === 'keyword' || f.trigger === 'keyword_preset' ? { allowList: words(f.allow) } : {}), ...(f.trigger === 'keyword_preset' ? { presets: f.presets } : {}),
-    ...(f.trigger === 'mention_spam' ? { mentionLimit: f.mentionLimit } : {}), ...(f.action === 'timeout' ? { timeoutSeconds: Math.round(f.timeoutMin * 60) } : {}),
-    ...(f.action === 'block' && f.message.trim() ? { customMessage: f.message.trim() } : {}), exemptChannels: f.exemptChannels,
-  }).then(() => { setF({ ...blank, trigger: f.trigger }); refetch(); }).catch(toastError);
-  return (<>
-    <H1>{t('AutoMod')}</H1>
-    <p className="mb-4 text-sm text-muted">{t('Automatically moderate your server by blocking messages, timing out offenders, or alerting moderators.')}</p>
-    <div className="mb-6 rounded-lg bg-side p-4">
-      <h3 className="mb-3 font-bold text-header">{t('Create rule')}</h3>
-      <div className="grid gap-3 sm:grid-cols-2"><Field label={t('Name')}><input className="field" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></Field>
-        <Field label={t('Trigger')}><select className="field" value={f.trigger} onChange={(e) => setF({ ...f, trigger: e.target.value as any })}><option value="keyword">{t('Block custom words')}</option><option value="keyword_preset">{t('Commonly flagged words')}</option><option value="spam">{t('Spam')}</option><option value="mention_spam">{t('Mention spam')}</option><option value="link">{t('Links')}</option></select></Field></div>
-      {f.trigger === 'keyword' && <Field label={t('Keywords (comma separated)')}><input className="field" value={f.keywords} onChange={(e) => setF({ ...f, keywords: e.target.value })} placeholder={t('word1, word2')} /></Field>}
-      {f.trigger === 'keyword_preset' && <fieldset className="mb-3"><legend className="label">{t('Word lists')}</legend><div className="flex flex-wrap gap-3">{PRESETS.map(([id, label]) => <label key={id} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={f.presets.includes(id)} onChange={() => togglePreset(id)} />{label}</label>)}</div></fieldset>}
-      {(f.trigger === 'keyword' || f.trigger === 'keyword_preset') && <Field label={t('Allowed words and phrases (comma separated)')}><input className="field" value={f.allow} onChange={(e) => setF({ ...f, allow: e.target.value })} /></Field>}
-      {f.trigger === 'mention_spam' && <Field label={t('Mentions per message before the rule triggers')}><input className="field !w-28" type="number" min={1} max={50} value={f.mentionLimit} onChange={(e) => setF({ ...f, mentionLimit: Math.min(50, Math.max(1, Number(e.target.value) || 1)) })} /></Field>}
-      <Field label={t('Action')}><select className="field" value={f.action} onChange={(e) => setF({ ...f, action: e.target.value as any })}><option value="block">{t('Block message')}</option><option value="timeout">{t('Timeout member')}</option><option value="alert">{t('Send alert')}</option></select></Field>
-      {f.action === 'timeout' && <Field label={t('Timeout length (minutes)')}><input className="field !w-28" type="number" min={1} max={10080} value={f.timeoutMin} onChange={(e) => setF({ ...f, timeoutMin: Math.min(10080, Math.max(1, Number(e.target.value) || 1)) })} /></Field>}
-      {f.action === 'block' && <Field label={t('Message shown to the sender (optional)')}><input className="field" maxLength={150} value={f.message} onChange={(e) => setF({ ...f, message: e.target.value })} /></Field>}
-      {textChans.length > 0 && <Field label={t('Exempt channels')}><select multiple aria-label={t('Exempt channels')} className="field h-24" value={f.exemptChannels} onChange={(e) => setF({ ...f, exemptChannels: [...e.target.selectedOptions].map((o) => o.value) })}>{textChans.map((c) => <option key={c.id} value={c.id}>#{c.name}</option>)}</select></Field>}
-      <button disabled={!f.name.trim() || (f.trigger === 'keyword_preset' && !f.presets.length)} className="btn btn-primary" onClick={() => void create()}>{t('Create Rule')}</button>
-    </div>
-    {q.isLoading && <Spinner />}
-    <ul>{q.data?.map((r) => <li key={r.id} className="flex items-center gap-3 border-b border-divider/50 py-3"><div className="min-w-0 flex-1"><div className="font-semibold text-header">{r.name}</div><div className="truncate text-xs text-muted">{r.trigger} → {r.action}{r.keywords.length ? ` • ${r.keywords.join(', ')}` : ''}</div></div><Toggle label={`Enable ${r.name}`} checked={r.enabled} onChange={(v) => api.guilds.patchAutomod(guildId, r.id, { enabled: v }).then(refetch).catch(toastError)} /><button aria-label={t('Delete rule')} className="p-2 text-danger" onClick={() => api.guilds.deleteAutomod(guildId, r.id).then(refetch).catch(toastError)}><Trash2 size={16} /></button></li>)}</ul>
   </>);
 }
 

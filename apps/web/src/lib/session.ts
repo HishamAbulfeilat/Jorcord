@@ -50,6 +50,7 @@ export function startSession(token: string) {
     toast(`Reminder: ${(r.message.content || r.message.attachments[0]?.filename || 'a message').slice(0, 80)}`, 'info');
     window.dispatchEvent(new CustomEvent('jorcord:reminder', { detail: r }));
   }));
+  unsubs.push(gw.on('LINKED_ROLES_UPDATE', (d) => queryClient.invalidateQueries({ queryKey: ['linked-roles', d.guildId] })));
   unsubs.push(gw.on('USER_NOTE_UPDATE', (d) => queryClient.setQueryData(['user', d.userId], (old: any) => (old ? { ...old, note: d.note } : old))));
   unsubs.push(gw.on('SOUNDBOARD_SOUNDS_UPDATE', (d) => queryClient.setQueryData(['sounds', d.guildId], d.sounds)));
   unsubs.push(gw.on('VOICE_CHANNEL_EFFECT_SEND', (d) => onVoiceEffect(d, meId())));

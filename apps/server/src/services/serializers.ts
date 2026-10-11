@@ -1,10 +1,10 @@
-import { snowflakeTime } from '@jorcord/shared';
+import { boostLevelFor, snowflakeTime } from '@jorcord/shared';
 import type { Activity, Attachment, Channel, Component, Embed, Guild, Member, Message, OverwriteDTO, Poll, Reaction, Role, SelfUser, User } from '@jorcord/shared';
 import type { Ctx } from '../ctx';
 import { iso } from '../lib/ids';
 import { normalizePrivacy } from './privacy';
 
-export const boostLevel = (n: number) => (n >= 14 ? 3 : n >= 7 ? 2 : n >= 2 ? 1 : 0);
+export const boostLevel = boostLevelFor;
 
 /** A custom status past its `expiresAt` reads as cleared everywhere (the sweeper also clears the row and tells peers). */
 export function liveStatus(cs: any): User['customStatus'] {
@@ -77,10 +77,12 @@ export async function membersDTO(ctx: Ctx, rows: any[]): Promise<Member[]> {
   const users = await usersByIds(ctx, rows.map((r) => r.user_id));
   const guildIds = [...new Set(rows.map((r) => r.guild_id))];
   const roles = await ctx.db.query('SELECT guild_id, user_id, role_id FROM member_roles WHERE guild_id = ANY($1::text[]) AND user_id = ANY($2::text[])', [guildIds, rows.map((r) => r.user_id)]);
+  const boosts = await ctx.db.query('SELECT guild_id, user_id, min(created_at) AS since FROM boosts WHERE guild_id = ANY($1::text[]) AND user_id = ANY($2::text[]) GROUP BY guild_id, user_id', [guildIds, rows.map((r) => r.user_id)]);
   return rows.filter((r) => users.has(r.user_id)).map((r) => ({
     guildId: r.guild_id, user: users.get(r.user_id)!, nick: r.nick ?? null,
     roles: roles.filter((x) => x.guild_id === r.guild_id && x.user_id === r.user_id).map((x) => x.role_id),
     joinedAt: iso(r.joined_at)!, timeoutUntil: iso(r.timeout_until), avatar: r.avatar ?? null, pending: !!r.pending,
+    boostingSince: iso(boosts.find((x) => x.guild_id === r.guild_id && x.user_id === r.user_id)?.since),
   }));
 }
 export async function memberDTO(ctx: Ctx, guildId: string, userId: string): Promise<Member | null> {

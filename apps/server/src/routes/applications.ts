@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { ALL_PERMS, OAuthScopes, PRIVILEGED_INTENTS, Perm, snowflake, type OAuthAuthorizePreview, type OAuthAuthorizeResult, type OAuthScope } from '@jorcord/shared';
+import { ALL_PERMS, DIRECTORY_CATEGORY_IDS, DIRECTORY_TAG_RE, OAuthScopes, PRIVILEGED_INTENTS, Perm, snowflake, type OAuthAuthorizePreview, type OAuthAuthorizeResult, type OAuthScope } from '@jorcord/shared';
 import type { Ctx } from '../ctx';
 import { ApiError, badRequest, forbidden, notFound, unauthorized } from '../errors';
 import { generateAppKeys } from '../lib/interactionSig';
@@ -24,6 +24,9 @@ const appFields = {
   redirectUris: z.array(redirectUri).max(10), botPublic: z.boolean(), interactionsEndpointUrl: z.string().max(512).url().nullable(),
   /** Privileged gateway intents (GUILD_MEMBERS | GUILD_PRESENCES | MESSAGE_CONTENT) this bot may request at IDENTIFY. */
   privilegedIntents: z.number().int().min(0).refine((n) => (n & ~PRIVILEGED_INTENTS) === 0, 'only privileged intent bits may be set'),
+  /** App Directory listing (public bots only). */
+  directoryListed: z.boolean(), directoryCategory: z.enum(DIRECTORY_CATEGORY_IDS), directorySummary: z.string().trim().max(140),
+  directoryTags: z.array(z.string().regex(DIRECTORY_TAG_RE, 'tags are 2-20 chars: a-z 0-9 -')).max(5), directoryPermissions: z.string().regex(/^\d{1,20}$/),
 };
 const MAX_APPS_PER_USER = 25;
 
@@ -72,8 +75,22 @@ export function applicationRoutes(app: FastifyInstance, ctx: Ctx) {
     if (b.interactionsEndpointUrl) limitOrThrow(ctx.rl, `ix-endpoint-verify:${req.userId}`, 10, 60_000, ctx.config.rateLimit); // each attempt makes the server issue an outbound request
     if (b.interactionsEndpointUrl) await pingInteractionsEndpoint(ctx, row, b.interactionsEndpointUrl); // must answer a signed PING with {type:1}
     const sets: string[] = [], vals: unknown[] = [id];
-    const col: Record<string, string> = { name: 'name', description: 'description', icon: 'icon', redirectUris: 'redirect_uris', botPublic: 'bot_public', interactionsEndpointUrl: 'interactions_endpoint_url', privilegedIntents: 'privileged_intents' };
-    for (const [k, v] of Object.entries(b)) { vals.push(k === 'redirectUris' ? JSON.stringify(v) : v); sets.push(`${col[k]} = $${vals.length}${k === 'redirectUris' ? '::jsonb' : ''}`); }
+    const col: Record<string, string> = { name: 'name', description: 'description', icon: 'icon', redirectUris: 'redirect_uris', botPublic: 'bot_public', interactionsEndpointUrl: 'interactions_endpoint_url', privilegedIntents: 'privileged_intents',
+      directoryListed: 'directory_listed', directoryCategory: 'directory_category', directorySummary: 'directory_summary', directoryTags: 'directory_tags', directoryPermissions: 'directory_permissions' };
+    // a private bot is never listed; listing needs a public bot with a real description and summary
+    const bag = b as Record<string, any>;
+    if (bag.botPublic === false) bag.directoryListed = false;
+    const willList = bag.directoryListed ?? row.directory_listed;
+    if (willList && bag.directoryListed === true) {
+      if (!(bag.botPublic ?? row.bot_public)) throw badRequest('Only public bots can be listed in the App Directory');
+      if (String(bag.description ?? row.description ?? '').trim().length < 10) throw badRequest('Write a description of at least 10 characters before listing');
+      if (String(bag.directorySummary ?? row.directory_summary ?? '').trim().length < 10) throw badRequest('Write a summary of at least 10 characters before listing');
+    }
+    if (bag.directoryPermissions !== undefined) bag.directoryPermissions = (BigInt(bag.directoryPermissions) & ALL_PERMS).toString();
+    if (bag.directoryTags) bag.directoryTags = [...new Set(bag.directoryTags as string[])];
+    const jsonCols = new Set(['redirectUris', 'directoryTags']);
+    for (const [k, v] of Object.entries(b)) { vals.push(jsonCols.has(k) ? JSON.stringify(v) : v); sets.push(`${col[k]} = $${vals.length}${jsonCols.has(k) ? '::jsonb' : ''}`); }
+    if (bag.directoryListed === true && !row.directory_listed) sets.push('directory_listed_at = now()');
     const dropped = b.privilegedIntents !== undefined && (row.privileged_intents & ~b.privilegedIntents) !== 0;
     if (sets.length) await ctx.db.query(`UPDATE applications SET ${sets.join(', ')} WHERE id = $1`, vals);
     if (dropped) ctx.hub.disconnectAuthSession(`bot:${id}`); // sessions that rely on a switched-off privileged intent must re-identify

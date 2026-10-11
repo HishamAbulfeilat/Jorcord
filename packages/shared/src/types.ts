@@ -48,7 +48,7 @@ export interface Channel {
   availableTags?: ForumTag[]; requireTag?: boolean; defaultAutoArchiveDuration?: number;
   appliedTags?: Id[]; autoArchiveDuration?: number; locked?: boolean; archiveAt?: string | null;
 }
-export interface Member { guildId: Id; user: User; nick: string | null; roles: Id[]; joinedAt: string; timeoutUntil: string | null; avatar?: string | null; /** true until the member accepts the server rules (membership screening) */ pending?: boolean }
+export interface Member { guildId: Id; user: User; nick: string | null; roles: Id[]; joinedAt: string; timeoutUntil: string | null; avatar?: string | null; /** true until the member accepts the server rules (membership screening) */ pending?: boolean; /** ISO time of their first active boost of this server */ boostingSince?: string | null }
 export interface Attachment { id: Id; filename: string; contentType: string; size: number; url: string; width: number | null; height: number | null; spoiler: boolean }
 export interface Embed { type: 'link' | 'image' | 'video' | 'rich'; url?: string; title?: string; description?: string; color?: number; thumbnail?: string; image?: string; video?: string; siteName?: string; fields?: { name: string; value: string; inline?: boolean }[]; footer?: string; author?: string }
 export interface Reaction { emoji: string; emojiId: Id | null; count: number; me: boolean }
@@ -77,12 +77,17 @@ export interface VoiceState { userId: Id; guildId: Id | null; channelId: Id | nu
 export interface AuditEntry { id: Id; guildId: Id; actorId: Id; action: string; /** numeric AuditActionType (additive) */ actionType?: number; targetId: Id | null; changes: unknown; reason: string | null; createdAt: string }
 export interface ReadState { channelId: Id; lastReadId: Id | null; mentionCount: number }
 export interface Webhook { id: Id; guildId: Id; channelId: Id; name: string; avatar: string | null; token?: string }
-export type AutoModTrigger = 'keyword' | 'keyword_preset' | 'spam' | 'mention_spam' | 'link';
+export type AutoModTrigger = 'keyword' | 'keyword_preset' | 'spam' | 'mention_spam' | 'link' | 'regex' | 'invite_link' | 'caps' | 'repeated_chars';
+export type AutoModAction = 'block' | 'timeout' | 'alert' | 'warn';
+/** Trigger tuning: spamCount messages within spamSeconds; capsPercent of letters (at least capsMinLength letters); a run of repeatLimit identical characters. */
+export interface AutoModOptions { spamCount?: number; spamSeconds?: number; capsPercent?: number; capsMinLength?: number; repeatLimit?: number }
 export type AutoModPreset = 'profanity' | 'sexual_content' | 'slurs';
 export interface AutoModRule {
-  id: Id; guildId: Id; name: string; enabled: boolean; trigger: AutoModTrigger; keywords: string[]; action: 'block' | 'timeout' | 'alert'; exemptRoles: Id[];
+  id: Id; guildId: Id; name: string; enabled: boolean; trigger: AutoModTrigger; keywords: string[]; action: AutoModAction; exemptRoles: Id[];
   /** Additive (AutoMod depth). */
   presets?: AutoModPreset[]; allowList?: string[]; mentionLimit?: number; exemptChannels?: Id[]; timeoutSeconds?: number; customMessage?: string | null;
+  /** AutoMod v3: every action runs (block/timeout/warn stop the message, alert only logs); `action` is the first one. */
+  actions?: AutoModAction[]; alertChannelId?: Id | null; regexPatterns?: string[]; testMode?: boolean; options?: AutoModOptions;
 }
 export interface VoiceToken { token: string; url: string; room: string }
 export interface Page<T> { items: T[]; nextCursor: Id | null }

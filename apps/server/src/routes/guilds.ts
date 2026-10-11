@@ -6,6 +6,8 @@ import type { Ctx } from '../ctx';
 import { ApiError, badRequest, conflict, forbidden, notFound } from '../errors';
 import { assetUrl, idSchema, iso, limitParam, parse } from '../lib/ids';
 import { limitOrThrow } from '../lib/ratelimit';
+import { addBoosts, boostSummary, MAX_BOOSTS_PER_REQUEST, removeBoost, slotLimits, syncBoosterRole } from '../services/boosts';
+import { rowActions, testRules, validateRegexPatterns } from '../services/automod';
 import { audit, buildGuildFull, createGuild, GUILD_TEMPLATES } from '../services/guilds';
 import { postSystemMessage } from '../services/messages';
 import { guildAccess, guildPerms, need } from '../services/perms';
@@ -108,16 +110,35 @@ export function guildRoutes(app: FastifyInstance, ctx: Ctx) {
     return rows.map((r) => ({ ...guildDTO(r), approxMembers: r.approx }));
   });
 
-  // ---------- boosts (free) ----------
+  // ---------- boosts (free, unlimited) ----------
+  app.get('/guilds/:id/boosts', async (req) => {
+    const { id } = parse(gid, req.params); await guildAccess(ctx, req.userId, id);
+    return boostSummary(ctx, id, req.userId);
+  });
   app.post('/guilds/:id/boosts', async (req, reply) => {
+    const { id } = parse(gid, req.params);
+    const b = parse(z.object({ count: z.number().int().min(1).max(MAX_BOOSTS_PER_REQUEST).optional() }).strict(), req.body);
+    limitOrThrow(ctx.rl, `boost:${req.userId}`, 30, 3600_000, ctx.config.rateLimit);
+    await guildAccess(ctx, req.userId, id);
+    await addBoosts(ctx, id, req.userId, b.count ?? 1);
+    return reply.code(201).send((await getGuildDTO(ctx, id))!);
+  });
+  /** Takes back one of your boosts. */
+  app.delete('/guilds/:id/boosts', async (req) => {
     const { id } = parse(gid, req.params);
     limitOrThrow(ctx.rl, `boost:${req.userId}`, 30, 3600_000, ctx.config.rateLimit);
     await guildAccess(ctx, req.userId, id);
-    await ctx.db.query('INSERT INTO boosts (id, guild_id, user_id) VALUES ($1,$2,$3)', [snowflake(), id, req.userId]);
-    const dto = (await getGuildDTO(ctx, id))!;
-    await ctx.hub.toGuild(id, 'GUILD_UPDATE', dto);
-    if (dto.systemChannelId) await postSystemMessage(ctx, dto.systemChannelId, req.userId, 'boost', '').catch(() => {});
-    return reply.code(201).send(dto);
+    if (!(await removeBoost(ctx, id, req.userId))) throw notFound('Boost');
+    return boostSummary(ctx, id, req.userId);
+  });
+  app.patch('/guilds/:id/boosts/settings', async (req) => {
+    const { id } = parse(gid, req.params);
+    const b = parse(z.object({ announce: z.boolean(), boosterRole: z.boolean() }).partial().strict(), req.body);
+    need(guildPerms(await guildAccess(ctx, req.userId, id)), Perm.MANAGE_GUILD);
+    if (b.announce !== undefined) await ctx.db.query('UPDATE guilds SET boost_announce = $2 WHERE id = $1', [id, b.announce]);
+    if (b.boosterRole !== undefined) { await ctx.db.query('UPDATE guilds SET booster_role_enabled = $2 WHERE id = $1', [id, b.boosterRole]); await syncBoosterRole(ctx, id); }
+    await audit(ctx, id, req.userId, 'BOOST_UPDATE', id, b);
+    return boostSummary(ctx, id, req.userId);
   });
 
   // ---------- audit log ----------
@@ -147,7 +168,8 @@ export function guildRoutes(app: FastifyInstance, ctx: Ctx) {
     const b = parse(z.object({ name: nameSchema, url: assetUrl, animated: z.boolean().optional() }).strict(), req.body);
     need(guildPerms(await guildAccess(ctx, req.userId, id)), Perm.MANAGE_EMOJIS);
     const [c] = await ctx.db.query('SELECT count(*)::int AS n FROM emojis WHERE guild_id = $1', [id]);
-    if (c.n >= LIMITS.maxEmojiPerServer) throw new ApiError(400, 'MAX_EMOJIS', 'Emoji limit reached');
+    const slots = await slotLimits(ctx, id);
+    if (c.n >= slots.emojiSlots) throw new ApiError(400, 'MAX_EMOJIS', `Emoji limit reached (${slots.emojiSlots} at boost level ${slots.level}; boosting is free)`);
     const eid = snowflake();
     await ctx.db.query('INSERT INTO emojis (id, guild_id, name, animated, url) VALUES ($1,$2,$3,$4,$5)', [eid, id, b.name, b.animated ?? false, b.url]);
     await audit(ctx, id, req.userId, 'EMOJI_CREATE', eid, b); await emojiPush(id);
@@ -180,7 +202,8 @@ export function guildRoutes(app: FastifyInstance, ctx: Ctx) {
     const b = parse(z.object({ name: z.string().trim().min(2).max(30), url: assetUrl, format: z.enum(['png', 'apng', 'lottie', 'gif']).optional() }).strict(), req.body);
     need(guildPerms(await guildAccess(ctx, req.userId, id)), Perm.MANAGE_EMOJIS);
     const [c] = await ctx.db.query('SELECT count(*)::int AS n FROM stickers WHERE guild_id = $1', [id]);
-    if (c.n >= LIMITS.maxStickersPerServer) throw new ApiError(400, 'MAX_STICKERS', 'Sticker limit reached');
+    const slots = await slotLimits(ctx, id);
+    if (c.n >= slots.stickerSlots) throw new ApiError(400, 'MAX_STICKERS', `Sticker limit reached (${slots.stickerSlots} at boost level ${slots.level}; boosting is free)`);
     const sid = snowflake();
     await ctx.db.query('INSERT INTO stickers (id, guild_id, name, url, format) VALUES ($1,$2,$3,$4,$5)', [sid, id, b.name, b.url, b.format ?? 'png']);
     await audit(ctx, id, req.userId, 'STICKER_CREATE', sid, b);
@@ -208,18 +231,30 @@ export function guildRoutes(app: FastifyInstance, ctx: Ctx) {
   });
 
   // ---------- automod ----------
-  const ruleRow = (r: any) => ({ id: r.id, guildId: r.guild_id, name: r.name, enabled: r.enabled, trigger: r.trigger, keywords: r.keywords, action: r.action, exemptRoles: r.exempt_roles,
-    presets: r.presets ?? [], allowList: r.allow_list ?? [], mentionLimit: r.mention_limit ?? 5, exemptChannels: r.exempt_channels ?? [], timeoutSeconds: r.timeout_seconds ?? 60, customMessage: r.custom_message ?? null });
+  const ruleRow = (r: any) => ({ id: r.id, guildId: r.guild_id, name: r.name, enabled: r.enabled, trigger: r.trigger, keywords: r.keywords, action: rowActions(r)[0]!, exemptRoles: r.exempt_roles,
+    presets: r.presets ?? [], allowList: r.allow_list ?? [], mentionLimit: r.mention_limit ?? 5, exemptChannels: r.exempt_channels ?? [], timeoutSeconds: r.timeout_seconds ?? 60, customMessage: r.custom_message ?? null,
+    actions: rowActions(r), alertChannelId: r.alert_channel_id ?? null, regexPatterns: r.regex_patterns ?? [], testMode: !!r.test_mode, options: r.options ?? {} });
+  const actionEnum = z.enum(['block', 'timeout', 'alert', 'warn']);
   const ruleBody = z.object({
-    name: z.string().trim().min(1).max(100), enabled: z.boolean(), trigger: z.enum(['keyword', 'keyword_preset', 'spam', 'mention_spam', 'link']),
-    keywords: z.array(z.string().min(1).max(60)).max(100), action: z.enum(['block', 'timeout', 'alert']), exemptRoles: z.array(idSchema).max(20),
+    name: z.string().trim().min(1).max(100), enabled: z.boolean(), trigger: z.enum(['keyword', 'keyword_preset', 'spam', 'mention_spam', 'link', 'regex', 'invite_link', 'caps', 'repeated_chars']),
+    keywords: z.array(z.string().min(1).max(60)).max(100), action: actionEnum, actions: z.array(actionEnum).min(1).max(4), exemptRoles: z.array(idSchema).max(20),
     presets: z.array(z.enum(['profanity', 'sexual_content', 'slurs'])).max(3), allowList: z.array(z.string().min(1).max(60)).max(100),
     mentionLimit: z.number().int().min(1).max(50), exemptChannels: z.array(idSchema).max(50), timeoutSeconds: z.number().int().min(10).max(7 * 86400),
-    customMessage: z.string().trim().max(150).nullable(),
+    customMessage: z.string().trim().max(150).nullable(), alertChannelId: idSchema.nullable(), regexPatterns: z.array(z.string().min(1).max(100)).max(10), testMode: z.boolean(),
+    options: z.object({ spamCount: z.number().int().min(2).max(30), spamSeconds: z.number().int().min(2).max(60), capsPercent: z.number().int().min(50).max(100), capsMinLength: z.number().int().min(5).max(200), repeatLimit: z.number().int().min(5).max(100) }).partial().strict(),
   }).strict();
-  const checkRule = (b: { trigger?: string; presets?: string[] }, creating: boolean) => {
+  const checkRule = (b: { trigger?: string; presets?: string[]; regexPatterns?: string[] }, creating: boolean) => {
     if (b.trigger === 'keyword_preset' && !b.presets?.length && creating) throw badRequest('Pick at least one preset');
+    if (b.trigger === 'regex' && creating && !b.regexPatterns?.length) throw badRequest('Add at least one pattern');
+    if (b.regexPatterns) validateRegexPatterns(b.regexPatterns);
   };
+  const checkAlertChannel = async (guildId: string, channelId: string | null | undefined) => {
+    if (!channelId) return;
+    const [c] = await ctx.db.query('SELECT type FROM channels WHERE id = $1 AND guild_id = $2', [channelId, guildId]);
+    if (!c || (c.type !== 'text' && c.type !== 'announcement')) throw badRequest('Alert channel must be a text channel in this server');
+  };
+  /** `action` (single, older clients) and `actions` (list) are the same thing; the list wins. */
+  const normActions = (b: Record<string, any>) => { if (b.actions) b.action = b.actions[0]; else if (b.action) b.actions = [b.action]; };
   const checkChannels = async (guildId: string, ids: string[]) => {
     if (!ids.length) return;
     const ok = await ctx.db.query('SELECT id FROM channels WHERE guild_id = $1 AND id = ANY($2::text[])', [guildId, ids]);
@@ -230,6 +265,13 @@ export function guildRoutes(app: FastifyInstance, ctx: Ctx) {
     const ok = await ctx.db.query('SELECT id FROM roles WHERE guild_id = $1 AND id = ANY($2::text[])', [guildId, roles]);
     if (ok.length !== new Set(roles).size) throw badRequest('Unknown role in exemptRoles');
   };
+  app.post('/guilds/:id/automod/test', async (req) => {
+    const { id } = parse(gid, req.params);
+    const b = parse(z.object({ content: z.string().max(4000), mentionCount: z.number().int().min(0).max(100).optional() }).strict(), req.body);
+    need(guildPerms(await guildAccess(ctx, req.userId, id)), Perm.MANAGE_GUILD);
+    limitOrThrow(ctx.rl, `automod-test:${req.userId}`, 30, 60_000, ctx.config.rateLimit);
+    return testRules(await ctx.db.query('SELECT * FROM automod_rules WHERE guild_id = $1 ORDER BY id', [id]), b.content, b.mentionCount ?? 0);
+  });
   app.get('/guilds/:id/automod/rules', async (req) => {
     const { id } = parse(gid, req.params);
     need(guildPerms(await guildAccess(ctx, req.userId, id)), Perm.MANAGE_GUILD);
@@ -237,12 +279,17 @@ export function guildRoutes(app: FastifyInstance, ctx: Ctx) {
   });
   app.post('/guilds/:id/automod/rules', async (req, reply) => {
     const { id } = parse(gid, req.params);
-    const b = parse(ruleBody.partial({ enabled: true, keywords: true, exemptRoles: true, presets: true, allowList: true, mentionLimit: true, exemptChannels: true, timeoutSeconds: true, customMessage: true }), req.body);
+    const b = parse(ruleBody.partial({ enabled: true, keywords: true, exemptRoles: true, presets: true, allowList: true, mentionLimit: true, exemptChannels: true, timeoutSeconds: true, customMessage: true, action: true, actions: true, alertChannelId: true, regexPatterns: true, testMode: true, options: true }), req.body);
     need(guildPerms(await guildAccess(ctx, req.userId, id)), Perm.MANAGE_GUILD);
-    await checkRoles(id, b.exemptRoles ?? []); await checkChannels(id, b.exemptChannels ?? []); checkRule(b, true);
+    normActions(b); if (!b.actions) throw badRequest('Pick at least one action');
+    if (b.actions.includes('alert') && !b.alertChannelId && !b.testMode) throw badRequest('Choose an alert channel for the alert action');
+    await checkRoles(id, b.exemptRoles ?? []); await checkChannels(id, b.exemptChannels ?? []); await checkAlertChannel(id, b.alertChannelId); checkRule(b, true);
+    const [cnt] = await ctx.db.query('SELECT count(*)::int AS n FROM automod_rules WHERE guild_id = $1', [id]);
+    if (cnt.n >= 50) throw new ApiError(400, 'LIMIT_REACHED', 'A server can have at most 50 AutoMod rules');
     const rid = snowflake();
-    await ctx.db.query('INSERT INTO automod_rules (id, guild_id, name, enabled, trigger, keywords, action, exempt_roles, presets, allow_list, mention_limit, exempt_channels, timeout_seconds, custom_message) VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,$8::jsonb,$9::jsonb,$10::jsonb,$11,$12::jsonb,$13,$14)',
-      [rid, id, b.name, b.enabled ?? true, b.trigger, JSON.stringify(b.keywords ?? []), b.action, JSON.stringify(b.exemptRoles ?? []), JSON.stringify(b.presets ?? []), JSON.stringify(b.allowList ?? []), b.mentionLimit ?? 5, JSON.stringify(b.exemptChannels ?? []), b.timeoutSeconds ?? 60, b.customMessage ?? null]);
+    await ctx.db.query('INSERT INTO automod_rules (id, guild_id, name, enabled, trigger, keywords, action, exempt_roles, presets, allow_list, mention_limit, exempt_channels, timeout_seconds, custom_message, actions, alert_channel_id, regex_patterns, test_mode, options) VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,$8::jsonb,$9::jsonb,$10::jsonb,$11,$12::jsonb,$13,$14,$15::jsonb,$16,$17::jsonb,$18,$19::jsonb)',
+      [rid, id, b.name, b.enabled ?? true, b.trigger, JSON.stringify(b.keywords ?? []), b.action, JSON.stringify(b.exemptRoles ?? []), JSON.stringify(b.presets ?? []), JSON.stringify(b.allowList ?? []), b.mentionLimit ?? 5, JSON.stringify(b.exemptChannels ?? []), b.timeoutSeconds ?? 60, b.customMessage ?? null,
+        JSON.stringify(b.actions), b.alertChannelId ?? null, JSON.stringify(b.regexPatterns ?? []), b.testMode ?? false, JSON.stringify(b.options ?? {})]);
     await audit(ctx, id, req.userId, 'AUTOMOD_RULE_CREATE', rid, b);
     return reply.code(201).send(ruleRow((await ctx.db.query('SELECT * FROM automod_rules WHERE id = $1', [rid]))[0]));
   });
@@ -252,8 +299,10 @@ export function guildRoutes(app: FastifyInstance, ctx: Ctx) {
     need(guildPerms(await guildAccess(ctx, req.userId, p.id)), Perm.MANAGE_GUILD);
     if (b.exemptRoles) await checkRoles(p.id, b.exemptRoles);
     if (b.exemptChannels) await checkChannels(p.id, b.exemptChannels);
+    await checkAlertChannel(p.id, b.alertChannelId); checkRule(b, false); normActions(b);
     const col: Record<string, [string, boolean]> = { name: ['name', false], enabled: ['enabled', false], trigger: ['trigger', false], keywords: ['keywords', true], action: ['action', false], exemptRoles: ['exempt_roles', true],
-      presets: ['presets', true], allowList: ['allow_list', true], mentionLimit: ['mention_limit', false], exemptChannels: ['exempt_channels', true], timeoutSeconds: ['timeout_seconds', false], customMessage: ['custom_message', false] };
+      presets: ['presets', true], allowList: ['allow_list', true], mentionLimit: ['mention_limit', false], exemptChannels: ['exempt_channels', true], timeoutSeconds: ['timeout_seconds', false], customMessage: ['custom_message', false],
+      actions: ['actions', true], alertChannelId: ['alert_channel_id', false], regexPatterns: ['regex_patterns', true], testMode: ['test_mode', false], options: ['options', true] };
     const sets: string[] = [], vals: unknown[] = [p.ruleId, p.id];
     for (const [k, v] of Object.entries(b)) { const c = col[k]; if (!c) continue; vals.push(c[1] ? JSON.stringify(v) : v); sets.push(`${c[0]} = $${vals.length}${c[1] ? '::jsonb' : ''}`); }
     const rows = sets.length ? await ctx.db.query(`UPDATE automod_rules SET ${sets.join(', ')} WHERE id = $1 AND guild_id = $2 RETURNING *`, vals)

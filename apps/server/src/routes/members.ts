@@ -12,6 +12,7 @@ import { randomToken } from '../lib/crypto';
 import { limitOrThrow } from '../lib/ratelimit';
 import { audit, buildGuildFull } from '../services/guilds';
 import { trackVisibility } from '../services/visibility';
+import { refreshMember } from '../services/linkedroles';
 import { postSystemMessage } from '../services/messages';
 import { channelAccess, guildAccess, guildPerms, loadGuildPerm, need, needOutrank, needOutrankMember } from '../services/perms';
 import { GUILD_SELECT, guildDTO, liveStatus, memberDTO, membersDTO, roleDTO, usersByIds } from '../services/serializers';
@@ -55,8 +56,19 @@ export async function joinGuild(ctx: Ctx, userId: string, guildId: string, invit
     await announceJoin(ctx, guildId, userId);
     await bumpDaily(ctx, guildId, 'joins');
     await detectRaid(ctx, guildId).catch((e) => ctx.log.warn({ err: e }, 'raid detection failed'));
+    await refreshMember(ctx, guildId, userId).catch((e) => ctx.log.warn({ err: e }, 'linked role refresh failed')); // criteria such as account age can hold on day one
     if (full.systemChannelId) await postSystemMessage(ctx, full.systemChannelId, userId, 'join').catch((e) => ctx.log.warn({ err: e }, 'join message failed'));
   return full;
+}
+
+export async function removeMemberFromGuild(ctx: Ctx, guildId: string, userId: string) {
+  await ctx.db.query('DELETE FROM members WHERE guild_id = $1 AND user_id = $2', [guildId, userId]);
+  await clearServerTag(ctx, guildId, userId);
+  await bumpDaily(ctx, guildId, 'leaves');
+  await ctx.pcache.invalidate({ k: 'member', guildId, userId });
+  await ctx.hub.toUser(userId, 'GUILD_DELETE', { id: guildId });
+  await ctx.hub.toGuild(guildId, 'MEMBER_REMOVE', { guildId, userId });
+  await uninstallBot(ctx, guildId, userId); // bots: drop the install record + managed role
 }
 
 export function memberRoutes(app: FastifyInstance, ctx: Ctx) {
@@ -138,9 +150,10 @@ export function memberRoutes(app: FastifyInstance, ctx: Ctx) {
     const p = parse(z.object({ id: idSchema, roleId: idSchema }), req.params);
     const gp = await guildAccess(ctx, req.userId, p.id);
     need(guildPerms(gp), Perm.MANAGE_ROLES);
-    const [role0] = await ctx.db.query('SELECT managed_app_id FROM roles WHERE id = $1 AND guild_id = $2', [p.roleId, p.id]);
+    const [role0] = await ctx.db.query('SELECT managed_app_id, managed_kind FROM roles WHERE id = $1 AND guild_id = $2', [p.roleId, p.id]);
     if (p.roleId === p.id) throw badRequest('Cannot delete @everyone');
     if (role0?.managed_app_id) throw badRequest('Integration roles are removed by removing the bot');
+    if (role0?.managed_kind) throw badRequest(role0.managed_kind === 'booster' ? 'The booster role is managed: turn it off in Server Boost settings' : 'Linked roles are removed in Linked Roles settings');
     const [role] = await ctx.db.query('SELECT * FROM roles WHERE id = $1 AND guild_id = $2', [p.roleId, p.id]);
     if (!role) throw notFound('Role');
     needOutrank(gp, role.position);
@@ -197,10 +210,13 @@ export function memberRoutes(app: FastifyInstance, ctx: Ctx) {
     if (b.roles !== undefined) {
       need(perms, Perm.MANAGE_ROLES);
       if (!self) needOutrankMember(actor, target);
-      const want = [...new Set(b.roles)].filter((r) => r !== p.id);
+      const have = new Set(target.memberRoleIds);
+      // server-managed roles (booster, linked) are neither handed out nor taken away by hand: whatever the client sends, the member keeps exactly the ones they have
+      const managedRows = await ctx.db.query('SELECT id FROM roles WHERE guild_id = $1 AND managed_kind IS NOT NULL', [p.id]); const managed = new Set(managedRows.map((r) => r.id as string));
+      if (b.roles.some((r) => managed.has(r) && !have.has(r))) throw badRequest('That role is assigned automatically');
+      const want = [...new Set([...b.roles.filter((r) => !managed.has(r)), ...[...have].filter((r) => managed.has(r))])].filter((r) => r !== p.id);
       const found = want.length ? await ctx.db.query('SELECT id, position, permissions FROM roles WHERE guild_id = $1 AND id = ANY($2::text[])', [p.id, want]) : [];
       if (found.length !== want.length) throw badRequest('Unknown role');
-      const have = new Set(target.memberRoleIds);
       const pos = (rid: string) => target.rolePos[rid] ?? found.find((f) => f.id === rid)?.position ?? 0;
       const adds = want.filter((r) => !have.has(r)), removes = [...have].filter((r) => !want.includes(r));
       for (const r of [...adds, ...removes]) needOutrank(actor, pos(r)); // may only touch roles strictly below own top role
@@ -230,15 +246,7 @@ export function memberRoutes(app: FastifyInstance, ctx: Ctx) {
   });
   const effectiveGuildPerms = async (guildId: string, userId: string) => { const g = await loadGuildPerm(ctx, guildId, userId); return g ? guildPerms(g) : 0n; };
 
-  async function removeMember(guildId: string, userId: string) {
-    await ctx.db.query('DELETE FROM members WHERE guild_id = $1 AND user_id = $2', [guildId, userId]);
-    await clearServerTag(ctx, guildId, userId);
-    await bumpDaily(ctx, guildId, 'leaves');
-    await ctx.pcache.invalidate({ k: 'member', guildId, userId });
-    await ctx.hub.toUser(userId, 'GUILD_DELETE', { id: guildId });
-    await ctx.hub.toGuild(guildId, 'MEMBER_REMOVE', { guildId, userId });
-    await uninstallBot(ctx, guildId, userId); // bots: drop the install record + managed role
-  }
+  const removeMember = (guildId: string, userId: string) => removeMemberFromGuild(ctx, guildId, userId);
   app.delete('/guilds/:id/members/:userId', async (req, reply) => {
     const p = parse(z.object({ id: idSchema, userId: idSchema }), req.params);
     const actor = await guildAccess(ctx, req.userId, p.id);

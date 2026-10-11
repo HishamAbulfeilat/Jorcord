@@ -46,6 +46,7 @@ export const AuditActionType = {
   STAGE_INVITE_SPEAKER: 300, STAGE_SUPPRESS_SPEAKER: 301, VOICE_MOVE: 302, VOICE_DISCONNECT: 303, VOICE_MODERATE: 304,
   SOUNDBOARD_SOUND_CREATE: 150, SOUNDBOARD_SOUND_UPDATE: 151, SOUNDBOARD_SOUND_DELETE: 152,
   RAID_DETECTED: 160, SAFETY_UPDATE: 161, ONBOARDING_UPDATE: 162, CHANNEL_FOLLOW_CREATE: 170, CHANNEL_FOLLOW_DELETE: 171, TEMPLATE_CREATE: 180, TEMPLATE_UPDATE: 181, TEMPLATE_DELETE: 182, WIDGET_UPDATE: 183,
+  AUTOMOD_TEST: 146, MEMBER_WARN: 190, MEMBER_WARN_DELETE: 191, MEMBER_BULK_BAN: 192, MEMBER_BULK_KICK: 193, MOD_NOTE_UPDATE: 194, LINKED_ROLE_CREATE: 200, LINKED_ROLE_UPDATE: 201, LINKED_ROLE_DELETE: 202, BOOST_UPDATE: 203,
   POLL_END: 310, APPLICATION_UPDATE: 311, APPLICATION_TOKEN_RESET: 312, FORUM_TAG_UPDATE: 313,
 } as const;
 export type AuditAction = keyof typeof AuditActionType;
@@ -57,6 +58,8 @@ export interface Application {
   id: Id; ownerId: Id; name: string; description: string; icon: string | null; botUser: User; botPublic: boolean; redirectUris: string[];
   /** Hex Ed25519 public key; Jorcord signs HTTP interaction deliveries and bots verify with this key. */
   publicKey: string; interactionsEndpointUrl: string | null; createdAt: string;
+  /** App Directory listing settings (additive). */
+  directory?: { listed: boolean; category: string; summary: string; tags: string[]; permissions: string };
   /** Privileged gateway intents the owner enabled (bitfield of Intents.GUILD_MEMBERS | GUILD_PRESENCES | MESSAGE_CONTENT). */ privilegedIntents?: number;
   /** Only present in the create response and in the bot token reset response: the one time the bot token / client secret is shown. */
   token?: string; clientSecret?: string;

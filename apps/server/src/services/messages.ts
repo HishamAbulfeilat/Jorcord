@@ -1,7 +1,8 @@
-import { LIMITS, Perm, has, snowflake, type Attachment, type Component, type CrosspostOrigin, type ForwardSnapshot, type Message } from '@jorcord/shared';
+import { LIMITS, Perm, has, snowflake, type Attachment, type Component, type Embed, type CrosspostOrigin, type ForwardSnapshot, type Message } from '@jorcord/shared';
 import type { Ctx } from '../ctx';
 import { ApiError, badRequest, forbidden } from '../errors';
 import { checkAutomod } from './automod';
+import { noteMessage } from './linkedroles';
 import { applyMediaFilter, checkVerification } from './safety';
 import { loadGuildPerms, viewersAmong, permsFor, loadOverwrites } from './perms';
 import { channelDTO, messageDTO } from './serializers';
@@ -42,6 +43,8 @@ export interface NewMessage {
   forward?: ForwardSnapshot | null;
   /** Crossposted copy: where it came from. */
   crosspost?: CrosspostOrigin | null;
+  /** Server-generated embeds (AutoMod alerts, boost announcements). Never taken from user input. */
+  embeds?: Embed[];
 }
 
 export async function createMessage(ctx: Ctx, m: NewMessage): Promise<Message> {
@@ -49,7 +52,7 @@ export async function createMessage(ctx: Ctx, m: NewMessage): Promise<Message> {
   const content = m.content;
   if (content.length > LIMITS.maxMessageLength) throw badRequest(`Message exceeds ${LIMITS.maxMessageLength} characters`);
   const attachments = !m.skipChecks && !m.webhookId ? await applyMediaFilter(ctx, channel, m.authorId, m.attachments ?? []) : m.attachments ?? [];
-  if (!content.trim() && !attachments.length && !(m.stickerIds?.length) && !m.components?.length && !m.poll && !m.allowEmpty && !m.forward && m.type !== 'join' && m.type !== 'thread_created' && m.type !== 'poll_result') throw badRequest('Cannot send an empty message');
+  if (!content.trim() && !attachments.length && !(m.stickerIds?.length) && !m.components?.length && !m.poll && !m.allowEmpty && !m.embeds?.length && !m.forward && m.type !== 'join' && m.type !== 'boost' && m.type !== 'thread_created' && m.type !== 'poll_result') throw badRequest('Cannot send an empty message');
   if (channel.guild_id && !m.skipChecks && !m.webhookId) await checkVerification(ctx, channel.guild_id, m.authorId, m.senderPerms);
   const ment = await parseMentions(ctx, channel, content, m.senderPerms);
   if (channel.guild_id && !m.skipChecks) await checkAutomod(ctx, channel.guild_id, m.authorId, m.memberRoleIds ?? [], m.senderPerms, m.forward ? `${content}\n${m.forward.content}` : content, ment.mentions.length + ment.mentionRoles.length, [channel.id, ...(channel.parent_id ? [channel.parent_id] : [])]);
@@ -72,6 +75,7 @@ export async function createMessage(ctx: Ctx, m: NewMessage): Promise<Message> {
       /https?:\/\//i.test(content), attachments.some((a) => a.contentType.startsWith('image/')), attachments.length > 0, m.webhookUsername ?? null, m.webhookAvatar ?? null,
       JSON.stringify(m.components ?? []), m.flags ?? 0, m.applicationId ?? null, m.interaction ? JSON.stringify(m.interaction) : null, m.poll ? JSON.stringify(m.poll) : null, m.pollExpiry ?? null]);
   if (m.forward) await ctx.db.query('UPDATE messages SET forward = $2::jsonb WHERE id = $1', [id, JSON.stringify(m.forward)]);
+  if (m.embeds?.length) await ctx.db.query('UPDATE messages SET embeds = $2::jsonb WHERE id = $1', [id, JSON.stringify(m.embeds.slice(0, LIMITS.maxEmbedsPerMessage))]);
   if (m.crosspost) await ctx.db.query('UPDATE messages SET crosspost = $2::jsonb WHERE id = $1', [id, JSON.stringify(m.crosspost)]);
   await ctx.db.query('UPDATE channels SET last_message_id = $2, archived = false, activity_at = now() WHERE id = $1', [channel.id, id]);
   // author has read their own message
@@ -83,6 +87,7 @@ export async function createMessage(ctx: Ctx, m: NewMessage): Promise<Message> {
   if (channel.type === 'dm') await settleMessageRequest(ctx, channel, m.authorId, !channel.last_message_id);
   await ctx.hub.toChannel(channel.id, 'MESSAGE_CREATE', dto);
   await bumpMentionCounts(ctx, channel, m.authorId, ment, !channel.guild_id).catch((e) => ctx.log.warn({ err: e }, 'mention count failed'));
+  if (channel.guild_id && !m.skipChecks && !m.webhookId) void noteMessage(ctx, channel.guild_id, m.authorId).catch((e) => ctx.log.warn({ err: e }, 'linked role check failed')); // message_count criteria
   ctx.push.notifyMessage(channel, dto); // async + best effort; honours presence, DND, mute and block rules
   if (ctx.config.unfurlOnSend && has(m.senderPerms, Perm.EMBED_LINKS)) void unfurlMessage(ctx, row, channel).catch(() => {});
   return dto;

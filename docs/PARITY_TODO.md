@@ -14,7 +14,7 @@ Rank = order in which this pass implements items (R1 first). `-` = not planned i
 | R4 | Message forwarding | DONE (`routes/messages.ts`, `SocialModals.tsx`, `MessageItem.tsx`) | 4 | no `forward` in messages; no snapshot model |
 | R5 | Message reminders ("Remind me") + saved messages ("Saved for later") | DONE (`routes/social.ts`, `services/reminders.ts`, Inbox tabs) | 3 | no table/route |
 | R6 | Verification levels, raid protection, explicit-media filter, default notification level (Safety Setup) | DONE (`routes/safety.ts`, `services/safety.ts`, `SafetyTab.tsx`; media filter blurs instead of classifying) | 4 | `Guild` has none; screening only |
-| R7 | AutoMod: keyword presets, mention-spam limit, allow-list, exempt channels, timeout length, custom message | DONE (`services/automod.ts`, `GuildSettings.tsx`); alert channel and regex still todo | 3 | 4 triggers, `exemptRoles` only (`routes/guilds.ts` automod, `services/messages.ts`) |
+| R7 | AutoMod: keyword presets, mention-spam limit, allow-list, exempt channels, timeout length, custom message | DONE (`services/automod.ts`, `lib/saferegex.ts`, `AutoModTab.tsx`; alert channel, safe-regex, 4 more triggers, multi-action, test mode) | 3 | 4 triggers, `exemptRoles` only (`routes/guilds.ts` automod, `services/messages.ts`) |
 | R8 | Avatar decorations, profile effects, name plates, server tag (guild tag beside name) | DONE (`services/cosmetics.ts`, `cosmetics.css`, `CosmeticsPicker.tsx`) | 4 | only accent/banner/`themeColors` (`profileTheme.ts`) |
 | R9 | Activities / rich presence (Playing X, Listening, Streaming, Competing) shown in member list, profile and friends "Now Playing" | DONE (`routes/activities.ts`, `ActivityLine.tsx`, bot-sdk `setActivity`) | 4 | `PRESENCE_UPDATE` has status+customStatus only |
 | R10 | Activity privacy (hide activity) DONE; Hide muted channels DONE (`channelHide.ts`), onboarding "Browse Channels" toggle DONE | 3 | no setting |
@@ -27,9 +27,9 @@ Rank = order in which this pass implements items (R1 first). `-` = not planned i
 | R17 | Connections on profile (links to Twitch/GitHub...) | DONE (`routes/connections.ts`, `ConnectionsTab.tsx`; self-declared + verify-by-code, no third-party OAuth) | 2 | none |
 | R18 | Soundboard (guild sounds + play in voice) | DONE (`routes/soundboard.ts`, `components/Soundboard.tsx`) | 4 | upload/limits, play over gateway event, USE_SOUNDBOARD, per-user + global mute, voice dock button |
 | R19 | Message edit history | todo | 1 | `edited_at` only; Discord itself does not show history, skip |
-| R20 | Server boost levels page perks list | partial | 2 | boosts free/unlimited (`GuildSettings` boosts tab) |
-| R21 | Linked roles, integrations (Twitch/YouTube), app directory | todo | 1 | skip |
-| R22 | Mod view / member safety flags, bulk-ban, prune | todo | 2 | ban/kick/timeout done |
+| R20 | Server boost levels page perks list | DONE (`routes/guilds.ts`, `services/boosts.ts`, `BoostTab.tsx`; levels 1-3, enforced emoji/sticker slots, progress, boosters, booster role, announcements) | 2 | boosts free/unlimited (`GuildSettings` boosts tab) |
+| R21 | Linked roles, app directory (Twitch/YouTube integrations skipped on purpose, see `PARITY.md`) | DONE (`routes/linkedroles.ts`, `services/linkedroles.ts`, `LinkedRolesTab.tsx`, `routes/directory.ts`, `AppDirectory.tsx`, Developer Portal listing; bot metadata API) | 1 | criteria: account/join age, messages, verified connection, app metadata |
+| R22 | Mod view / member safety flags, bulk-ban, prune, warnings, mod notes, mod-log CSV | DONE (`routes/modtools.ts`, `ModView.tsx`, `ModToolsTab.tsx`, composer `/warn`) | 2 | ban/kick/timeout were already done |
 
 ## B. Already done (verified in this pass)
 
@@ -48,4 +48,4 @@ Second pass (soundboard through multi-account), one commit each, prefix `parity:
 6. Announcement follow/crosspost (R11).
 7. Templates, widget, insights, vanity UI (R14).
 8. GIF favorites (R15). 9. Connections (R17, self-declared + verify by code). 10. Multi-account (R16).
-Still open: R19 (skipped on purpose), R20, R21, R22; AutoMod alert channel/regex (R7).
+Third pass (R7 AutoMod v3, R20 boost levels, R21 linked roles + App Directory, R22 mod tools): all done. Only R19 stays skipped on purpose (Discord has no edit history either).

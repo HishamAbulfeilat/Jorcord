@@ -13,6 +13,8 @@ const LABELS: Record<string, string> = {
   THREAD_CREATE: 'created a thread', THREAD_UPDATE: 'updated a thread', THREAD_DELETE: 'deleted a thread', APPLICATION_COMMAND_PERMISSION_UPDATE: 'updated command permissions',
   AUTOMOD_RULE_CREATE: 'created an AutoMod rule', AUTOMOD_RULE_UPDATE: 'updated an AutoMod rule', AUTOMOD_RULE_DELETE: 'deleted an AutoMod rule', AUTOMOD_BLOCK: 'AutoMod blocked a message', AUTOMOD_ALERT: 'AutoMod sent an alert',
   STAGE_INVITE_SPEAKER: 'invited a speaker', STAGE_SUPPRESS_SPEAKER: 'moved a speaker to the audience', VOICE_MOVE: 'moved a member', VOICE_DISCONNECT: 'disconnected a member', VOICE_MODERATE: 'moderated a member in voice',
+  AUTOMOD_TEST: 'AutoMod test hit', MEMBER_WARN: 'warned a member', MEMBER_WARN_DELETE: 'removed a warning', MEMBER_BULK_BAN: 'bulk banned members', MEMBER_BULK_KICK: 'bulk kicked members', MOD_NOTE_UPDATE: 'edited a mod note',
+  LINKED_ROLE_CREATE: 'created a linked role', LINKED_ROLE_UPDATE: 'updated a linked role', LINKED_ROLE_DELETE: 'removed a linked role', BOOST_UPDATE: 'updated boost settings',
   POLL_END: 'ended a poll', APPLICATION_UPDATE: 'updated an application', APPLICATION_TOKEN_RESET: 'reset a bot token', FORUM_TAG_UPDATE: 'updated forum tags',
 };
 export const humanize = (a: string) => a.replace(/_/g, ' ').toLowerCase().replace(/^./, (c) => c.toUpperCase());
@@ -22,7 +24,8 @@ export interface AuditFilter { value: string; label: string; type?: number }
 const GROUPS: { title: string; actions: string[] }[] = [
   { title: 'Server', actions: ['GUILD_UPDATE', 'BOT_ADD', 'INVITE_CREATE', 'INVITE_DELETE', 'WEBHOOK_CREATE', 'WEBHOOK_UPDATE', 'WEBHOOK_DELETE', 'APPLICATION_COMMAND_PERMISSION_UPDATE'] },
   { title: 'Channels', actions: ['CHANNEL_CREATE', 'CHANNEL_UPDATE', 'CHANNEL_DELETE', 'OVERWRITE_UPDATE', 'THREAD_CREATE', 'THREAD_UPDATE', 'THREAD_DELETE', 'FORUM_TAG_UPDATE'] },
-  { title: 'Members', actions: ['MEMBER_KICK', 'MEMBER_BAN_ADD', 'MEMBER_BAN_REMOVE', 'MEMBER_UPDATE', 'MEMBER_ROLE_UPDATE', 'MEMBER_TIMEOUT'] },
+  { title: 'Members', actions: ['MEMBER_KICK', 'MEMBER_BAN_ADD', 'MEMBER_BAN_REMOVE', 'MEMBER_UPDATE', 'MEMBER_ROLE_UPDATE', 'MEMBER_TIMEOUT', 'MEMBER_PRUNE', 'MEMBER_WARN', 'MEMBER_WARN_DELETE', 'MEMBER_BULK_BAN', 'MEMBER_BULK_KICK'] },
+  { title: 'AutoMod', actions: ['AUTOMOD_RULE_CREATE', 'AUTOMOD_RULE_UPDATE', 'AUTOMOD_RULE_DELETE', 'AUTOMOD_BLOCK', 'AUTOMOD_ALERT', 'AUTOMOD_TEST'] },
   { title: 'Roles', actions: ['ROLE_CREATE', 'ROLE_UPDATE', 'ROLE_DELETE'] },
   { title: 'Messages', actions: ['MESSAGE_DELETE', 'MESSAGE_BULK_DELETE', 'MESSAGE_PIN', 'MESSAGE_UNPIN', 'POLL_END'] },
   { title: 'Expressions', actions: ['EMOJI_CREATE', 'EMOJI_UPDATE', 'EMOJI_DELETE', 'STICKER_CREATE', 'STICKER_UPDATE', 'STICKER_DELETE'] },

@@ -32,6 +32,9 @@ import { connectionRoutes } from './routes/connections';
 import { favoriteRoutes } from './routes/favorites';
 import { guildExtrasRoutes, widgetPublicRoutes } from './routes/guildextras';
 import { followRoutes } from './routes/follows';
+import { linkedRoleRoutes } from './routes/linkedroles';
+import { directoryRoutes } from './routes/directory';
+import { modToolRoutes } from './routes/modtools';
 import { onboardingRoutes } from './routes/onboarding';
 import { safetyRoutes } from './routes/safety';
 import { soundboardRoutes } from './routes/soundboard';
@@ -133,7 +136,7 @@ export async function buildApp(opts: BuildOptions = {}): Promise<{ app: FastifyI
       priv.addHook('preHandler', authenticate(ctx));
       authRoutes(priv, ctx); userRoutes(priv, ctx); guildRoutes(priv, ctx); channelRoutes(priv, ctx);
       memberRoutes(priv, ctx); messageRoutes(priv, ctx); miscRoutes(priv, ctx); voiceRoutes(priv, ctx); pushRoutes(priv, ctx);
-      applicationRoutes(priv, ctx); commandRoutes(priv, ctx); interactionRoutes(priv, ctx); pollRoutes(priv, ctx); eventRoutes(priv, ctx); socialRoutes(priv, ctx); soundboardRoutes(priv, ctx); activityRoutes(priv, ctx); safetyRoutes(priv, ctx); onboardingRoutes(priv, ctx); followRoutes(priv, ctx); guildExtrasRoutes(priv, ctx); favoriteRoutes(priv, ctx); connectionRoutes(priv, ctx);
+      applicationRoutes(priv, ctx); commandRoutes(priv, ctx); interactionRoutes(priv, ctx); pollRoutes(priv, ctx); eventRoutes(priv, ctx); socialRoutes(priv, ctx); soundboardRoutes(priv, ctx); activityRoutes(priv, ctx); safetyRoutes(priv, ctx); onboardingRoutes(priv, ctx); followRoutes(priv, ctx); guildExtrasRoutes(priv, ctx); favoriteRoutes(priv, ctx); connectionRoutes(priv, ctx); linkedRoleRoutes(priv, ctx); directoryRoutes(priv, ctx); modToolRoutes(priv, ctx);
     });
   }, { prefix: '/api/v1' });
 

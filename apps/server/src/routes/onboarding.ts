@@ -54,11 +54,12 @@ export function onboardingRoutes(app: FastifyInstance, ctx: Ctx) {
       for (const c of [...(b.defaultChannelIds ?? []), ...(b.prompts ?? []).flatMap((p) => p.options.flatMap((o) => o.channelIds))]) if (!channels.has(c) || channels.get(c) === 'category' || channels.get(c) === 'thread') throw badRequest('Unknown or unsupported channel in onboarding');
       const roleIds = [...new Set((b.prompts ?? []).flatMap((p) => p.options.flatMap((o) => o.roleIds)))];
       if (roleIds.length) {
-        const roles = await ctx.db.query('SELECT id, position, permissions, managed_app_id FROM roles WHERE guild_id = $1 AND id = ANY($2::text[])', [id, roleIds]);
+        const roles = await ctx.db.query('SELECT id, position, permissions, managed_app_id, managed_kind FROM roles WHERE guild_id = $1 AND id = ANY($2::text[])', [id, roleIds]);
         if (roles.length !== roleIds.length || roleIds.includes(id)) throw badRequest('Unknown role in onboarding');
         need(perms, Perm.MANAGE_ROLES);
         for (const r of roles) {
           if (r.managed_app_id) throw badRequest('Bot roles cannot be handed out');
+          if (r.managed_kind) throw badRequest('Booster and linked roles cannot be handed out');
           needOutrank(actor, r.position);
           if (!has(perms, Perm.ADMINISTRATOR) && (BigInt(r.permissions) & ~perms) !== 0n) throw new ApiError(403, 'ESCALATION', 'Cannot hand out permissions you do not have');
         }

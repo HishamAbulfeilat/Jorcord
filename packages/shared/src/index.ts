@@ -5,3 +5,4 @@ export * from './protocol';
 export * from './types';
 export * from './platform';
 export * from './parity';
+export * from './parity2';
