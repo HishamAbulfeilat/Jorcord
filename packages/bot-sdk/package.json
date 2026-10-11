@@ -1,6 +1,6 @@
 {
   "name": "@jorcord/bot-sdk",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "description": "Tiny Jorcord bot SDK: REST helper, resilient gateway client, slash commands and interaction replies.",
   "main": "src/index.ts",
