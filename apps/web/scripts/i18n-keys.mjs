@@ -1,7 +1,8 @@
 // Lists every translatable source string: t('...'), t("..."), T('...'), tn(n, 'a', 'b').  Usage: node scripts/i18n-keys.mjs [--json]
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-const root = new URL('../src', import.meta.url).pathname;
+import { fileURLToPath } from 'node:url';
+const root = fileURLToPath(new URL('../src', import.meta.url));
 const files = [];
 (function walk(d) { for (const f of readdirSync(d)) { const p = join(d, f); if (statSync(p).isDirectory()) { if (!p.includes('/i18n')) walk(p); } else if (/\.tsx?$/.test(f) && !/\.test\./.test(f)) files.push(p); } })(root);
 const keys = new Set();

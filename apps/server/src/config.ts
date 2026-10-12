@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { LIMITS } from '@jorcord/shared';
 
 export interface Config {
@@ -51,7 +52,7 @@ const readMaybeFile = (inline: string | undefined, file: string | undefined): st
   return null;
 };
 
-const here = new URL('.', import.meta.url).pathname;
+const here = fileURLToPath(new URL('.', import.meta.url));
 
 export function loadConfig(overrides: Partial<Config> = {}, env: NodeJS.ProcessEnv = process.env): Config {
   const isProd = (env.NODE_ENV ?? 'development') === 'production';

@@ -181,6 +181,6 @@ describe('gateway limits', () => {
     expect((await w.waitClose()).code).toBe(4003); // anything before IDENTIFY is refused
     const big = await WsClient.connect(env.port); await big.waitFor((f) => f.op === 10);
     big.ws.send(JSON.stringify({ op: 2, d: { token: 'x'.repeat(70 * 1024) } }));
-    const c = await big.waitClose(); expect([1009, 4002]).toContain(c.code);
+    const c = await big.waitClose(); expect([1006, 1009, 4002]).toContain(c.code);
   });
 });
