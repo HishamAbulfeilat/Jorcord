@@ -133,7 +133,7 @@ export function messageRoutes(app: FastifyInstance, ctx: Ctx) {
     } else body = parse(sendBody, req.body);
     if (body.attachments?.length) need(a.perms, Perm.ATTACH_FILES);
     if (body.replyTo) need(a.perms, Perm.READ_MESSAGE_HISTORY);
-    if ((body.flags ?? 0) & ~4) throw badRequest('Unsupported message flags');
+    if ((body.flags ?? 0) & ~(4 | (1 << 12))) throw badRequest('Unsupported message flags'); // SUPPRESS_EMBEDS | SUPPRESS_NOTIFICATIONS (@silent)
     let components;
     if (body.components !== undefined) {
       if (!req.isBot) throw new ApiError(403, 'USER_FORBIDDEN', 'Only bots can send components').num(20002);

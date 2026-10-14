@@ -224,6 +224,21 @@ describe('push delivery', () => {
     expect(sent.map((s) => [s.dev.userId, s.payload.kind, s.payload.channelId])).toEqual([[b.id, 'call', dm.id]]);
     w.close();
   });
+
+  it("@silent (flags & 4096) messages push nobody but still collect badges; bad flags are rejected", async () => {
+    const { owner, general, members: [bob] } = await guildWith('silent');
+    await webDevice(bob);
+    // senders cannot invent other flags
+    expect((await post(owner, general.id, 'bad flags', { flags: 8 })).status).toBe(400);
+    expect((await post(owner, general.id, 'embeds-only flag ok', { flags: 4 })).status).toBe(201);
+    reset();
+    const msg = (await post(owner, general.id, `silent <@${bob!.id}>`, { flags: 4 | (1 << 12) })).body;
+    await flush();
+    expect(msg.flags).toBe(4 | (1 << 12));
+    expect(to(bob!)).toHaveLength(0); // no push
+    const rs = (await api.req('GET', '/users/@me/read-states', bob!.token)).body.find((r: any) => r.channelId === general.id);
+    expect(rs.mentionCount).toBe(1); // the badge still happens
+  });
 });
 
 describe('transports', () => {

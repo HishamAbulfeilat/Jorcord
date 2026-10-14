@@ -5,7 +5,7 @@ import net from 'node:net';
 import { join } from 'node:path';
 import { SignJWT, importPKCS8 } from 'jose';
 import webpush from 'web-push';
-import type { Message } from '@jorcord/shared';
+import { MessageFlags, type Message } from '@jorcord/shared';
 import type { Ctx } from '../ctx';
 import { safeLookup } from '../lib/ssrf';
 import { viewersAmong } from './perms';
@@ -273,6 +273,7 @@ export function createPush(ctx: Ctx): PushService {
 }
 
 async function notifyMessage(ctx: Ctx, svc: PushService, channel: any, msg: Message) {
+  if ((msg.flags ?? 0) & MessageFlags.SUPPRESS_NOTIFICATIONS) return; // "@silent": badges still happen, no push
   const authorId = msg.author.id;
   const cands = new Map<string, Reason>();
   const add = (id: string, r: Reason) => { const cur = cands.get(id); if (cur === undefined || REASON_RANK[r] < REASON_RANK[cur]) cands.set(id, r); };

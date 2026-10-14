@@ -86,7 +86,7 @@ export const InteractionType = { PING: 1, APPLICATION_COMMAND: 2, MESSAGE_COMPON
 export const InteractionCallbackType = { PONG: 1, CHANNEL_MESSAGE_WITH_SOURCE: 4, DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE: 5, DEFERRED_UPDATE_MESSAGE: 6, UPDATE_MESSAGE: 7, APPLICATION_COMMAND_AUTOCOMPLETE_RESULT: 8, MODAL: 9 } as const;
 export const INTERACTION_TOKEN_TTL_MS = 15 * 60_000;
 export const INTERACTION_ACK_DEADLINE_MS = 3000;
-export const MessageFlags = { CROSSPOSTED: 1 << 0, IS_CROSSPOST: 1 << 1, SUPPRESS_EMBEDS: 1 << 2, EPHEMERAL: 1 << 6, LOADING: 1 << 7 } as const;
+export const MessageFlags = { CROSSPOSTED: 1 << 0, IS_CROSSPOST: 1 << 1, SUPPRESS_EMBEDS: 1 << 2, EPHEMERAL: 1 << 6, LOADING: 1 << 7, SUPPRESS_NOTIFICATIONS: 1 << 12 } as const;
 export interface InteractionOptionValue { name: string; type: number; value?: string | number | boolean; options?: InteractionOptionValue[]; focused?: boolean }
 export interface Interaction {
   id: Id; applicationId: Id; type: number; token: string; version: 1; guildId: Id | null; channelId: Id | null; user: User; member?: unknown;
