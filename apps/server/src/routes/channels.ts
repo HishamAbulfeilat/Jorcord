@@ -9,6 +9,7 @@ import { randomToken, safeEqual } from '../lib/crypto';
 import { limitOrThrow } from '../lib/ratelimit';
 import { audit, insertChannel, visibleChannelRows } from '../services/guilds';
 import { createMessage } from '../services/messages';
+import { parseEmbeds } from '../lib/embeds';
 import { addGroupRecipient, removeGroupRecipient } from '../services/dms';
 import { trackVisibility } from '../services/visibility';
 import { joinThread, leaveThread } from '../services/threads';
@@ -523,12 +524,15 @@ export function webhookPublicRoutes(app: FastifyInstance, ctx: Ctx) {
     const p = parse(webhookParams, req.params);
     const q = parse(z.object({ wait: z.enum(['true', 'false']).optional() }), req.query);
     const b = parse(z.object({
-      content: z.string().min(1).max(4000),
+      content: z.string().min(1).max(4000).optional(),
+      embeds: z.unknown().optional(), // validated by lib/embeds
       username: z.string().trim().min(1).max(80).regex(/^[^\u0000-\u001f\u007f]+$/, 'invalid characters').optional(),
       avatarUrl: assetUrl.optional(), avatar_url: assetUrl.optional(),
       /** Post into a thread of the webhook's channel instead. */
       threadId: idSchema.optional(),
     }).strict(), req.body);
+    if (!b.content && !b.embeds) throw badRequest('Provide content and/or embeds');
+    const embeds = parseEmbeds(b.embeds, true); // webhook = bot-classed sender
     const [w] = await ctx.db.query('SELECT * FROM webhooks WHERE id = $1', [p.id]);
     checkToken(w, p);
     limitOrThrow(ctx.rl, `webhook:${w.id}`, 60, 60_000, ctx.config.rateLimit);
@@ -539,7 +543,7 @@ export function webhookPublicRoutes(app: FastifyInstance, ctx: Ctx) {
       if (!thread || (thread.type !== 'thread' && thread.type !== 'post') || thread.parent_id !== w.channel_id) throw badRequest('threadId must be a thread of the webhook channel');
       channel = thread;
     }
-    const msg = await createMessage(ctx, { channel, authorId: w.bot_user_id, content: b.content, webhookId: w.id, senderPerms: 0n, skipChecks: true, webhookUsername: b.username ?? null, webhookAvatar: b.avatarUrl ?? b.avatar_url ?? null });
+    const msg = await createMessage(ctx, { channel, authorId: w.bot_user_id, content: b.content ?? '', webhookId: w.id, senderPerms: 0n, skipChecks: true, webhookUsername: b.username ?? null, webhookAvatar: b.avatarUrl ?? b.avatar_url ?? null, embeds });
     if (q.wait === 'true') return reply.code(200).send(msg); // Discord shape: wait=true returns the message
     return reply.code(204).send();
   });

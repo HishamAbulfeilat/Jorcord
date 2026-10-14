@@ -141,7 +141,7 @@ Source tags: **DD** public docs, **RE** seen in local client analysis, **JP** Jo
 |---|---|---|---|---|
 | Send/edit/delete/reply/bulk delete/pins/reactions | done | - | - | |
 | Markdown, code blocks, spoilers, mentions, embeds (server unfurl) | done/partial | - | - | |
-| Client/bot-sent rich embeds (author, fields, footer, up to 10) | partial | P1 | S | |
+| Client/bot-sent rich embeds (author, fields, footer, up to 10) | mostly done | P1 | S | bots send + webhook execute; `lib/embeds.ts` validation; tests `parity-embeds.test.ts` |
 | Message components v1 + modals | done | - | - | |
 | **Components V2** (container, section, text display, media gallery, file, separator, thumbnail) | missing | P1 | M | DD:components/reference |
 | Message flags (suppress embeds, ephemeral, silent, voice message, components v2) | partial | P1 | M | |

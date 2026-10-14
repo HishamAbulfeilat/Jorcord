@@ -7,6 +7,7 @@ import { ApiError, badRequest, forbidden, notFound } from '../errors';
 import { idSchema, limitParam, parse } from '../lib/ids';
 import { limitOrThrow } from '../lib/ratelimit';
 import { parseComponents } from '../lib/components';
+import { parseEmbeds } from '../lib/embeds';
 import { buildPoll } from '../services/polls';
 import { claimAttachments, saveUpload } from '../services/files';
 import { audit, visibleChannelRows } from '../services/guilds';
@@ -24,6 +25,8 @@ const sendBody = z.object({
   attachments: z.array(idSchema).max(10).optional(), stickerIds: z.array(idSchema).max(3).optional(),
   /** Bots only: action rows of buttons / select menus (validated by lib/components). */
   components: z.unknown().optional(),
+  /** Bots only: sender-sent rich embeds (validated by lib/embeds). */
+  embeds: z.unknown().optional(),
   /** Needs SEND_POLLS. */
   poll: z.unknown().optional(),
   flags: z.number().int().optional(),
@@ -136,6 +139,8 @@ export function messageRoutes(app: FastifyInstance, ctx: Ctx) {
       if (!req.isBot) throw new ApiError(403, 'USER_FORBIDDEN', 'Only bots can send components').num(20002);
       components = parseComponents(body.components);
     }
+    let embeds;
+    if (body.embeds !== undefined) embeds = parseEmbeds(body.embeds, req.isBot); // enforces the bots-only rule itself
     let pollInput: ReturnType<typeof buildPoll> | undefined;
     if (body.poll !== undefined) {
       if (a.channel.guild_id) need(a.perms, Perm.SEND_POLLS);
@@ -144,7 +149,7 @@ export function messageRoutes(app: FastifyInstance, ctx: Ctx) {
     let forward: ForwardSnapshot | undefined;
     if (body.forward) {
       if (req.isBot) throw new ApiError(403, 'USER_FORBIDDEN', 'Bots cannot forward messages').num(20002);
-      if (body.content?.trim() || body.attachments?.length || body.stickerIds?.length || body.replyTo || body.components !== undefined || body.poll !== undefined) throw badRequest('A forward cannot carry other content');
+      if (body.content?.trim() || body.attachments?.length || body.stickerIds?.length || body.replyTo || body.components !== undefined || body.poll !== undefined || body.embeds !== undefined) throw badRequest('A forward cannot carry other content');
       limitOrThrow(ctx.rl, `msg-forward:${req.userId}`, 20, 60_000, ctx.config.rateLimit);
       forward = await snapshotForForward(ctx, req.userId, body.forward.channelId, body.forward.messageId);
       if (forward.attachments.length) need(a.perms, Perm.ATTACH_FILES);
@@ -152,7 +157,7 @@ export function messageRoutes(app: FastifyInstance, ctx: Ctx) {
     const attachments = await claimAttachments(ctx, req.userId, body.attachments ?? []);
     try {
       const msg = await createMessage(ctx, { channel: a.channel, authorId: req.userId, content: body.content ?? '', replyTo: body.replyTo, attachments, stickerIds: body.stickerIds, senderPerms: a.perms, memberRoleIds: a.gp?.memberRoleIds,
-        components, flags: body.flags, applicationId: req.applicationId, poll: pollInput?.poll, pollExpiry: pollInput?.expiry, forward, allowedMentions: body.allowedMentions });
+        components, embeds, flags: body.flags, applicationId: req.applicationId, poll: pollInput?.poll, pollExpiry: pollInput?.expiry, forward, allowedMentions: body.allowedMentions });
       if (a.channel.type === 'thread') await joinThread(ctx, a.channel, req.userId).catch(() => {}); // posting in a thread follows it
       return reply.code(201).send(msg);
     } catch (e) {
