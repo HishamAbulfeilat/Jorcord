@@ -1,12 +1,12 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { MOD_LIMITS, Perm, has, snowflake, type BulkModerationResult, type ModHistoryEntry, type ModNote, type ModView, type ModWarning, type PruneResult, type SafetyFlag } from '@jorcord/shared';
+import { MOD_LIMITS, Perm, has, snowflake, REPORT_REASONS, type Attachment, type BulkModerationResult, type ModHistoryEntry, type ModNote, type ModView, type ModWarning, type PruneResult, type ReportReason, type Report, type SafetyFlag } from '@jorcord/shared';
 import type { Ctx } from '../ctx';
 import { ApiError, badRequest, forbidden, notFound } from '../errors';
 import { idSchema, iso, limitParam, parse } from '../lib/ids';
 import { limitOrThrow } from '../lib/ratelimit';
 import { audit } from '../services/guilds';
-import { guildAccess, guildPerms, loadGuildPerm, loadGuildPerms, need, needOutrankMember, type GuildPerm } from '../services/perms';
+import { channelAccess, guildAccess, guildPerms, loadGuildPerm, loadGuildPerms, need, needOutrankMember, type GuildPerm } from '../services/perms';
 import { normalizePrivacy } from '../services/privacy';
 import { usersByIds, userDTO } from '../services/serializers';
 import { removeMemberFromGuild } from './members';
@@ -200,6 +200,61 @@ export function modToolRoutes(app: FastifyInstance, ctx: Ctx) {
     for (const u of batch) await removeMemberFromGuild(ctx, id, u);
     await audit(ctx, id, req.userId, 'MEMBER_PRUNE', null, { days: b.days, removed: batch.length, includeRoles: b.includeRoles });
     return { dryRun: false, days: b.days, count: eligible.length, removed: batch.length, remaining: eligible.length - batch.length };
+  });
+
+  // ---------- reports (mod queue): users report member messages, moderators triage see CONTRACT.md ----------
+  const reasonEnum = z.enum(REPORT_REASONS);
+  const reportDTO = (r: any, message: { content: string; attachments: unknown } | null): Report => ({
+    id: r.id, guildId: r.guild_id, channelId: r.channel_id, messageId: r.message_id, reporterId: r.reporter_id, targetUserId: r.target_user_id,
+    reason: r.reason as ReportReason, description: r.description ?? null,
+    message: message ? { content: message.content, attachments: (message.attachments ?? []) as Attachment[] } : null,
+    status: r.status, handledBy: r.handled_by ?? null, handledAt: r.handled_at ? iso(r.handled_at) : null, createdAt: iso(r.created_at)!,
+  });
+  const joinedReport = async (guildId: string, reportId: string) =>
+    (await ctx.db.query(`SELECT r.*, m.content AS msg_content, m.attachments AS msg_attachments FROM reports r LEFT JOIN messages m ON m.id = r.message_id
+      WHERE r.guild_id = $1 AND r.id = $2`, [guildId, reportId]))[0];
+
+  app.post('/channels/:id/messages/:mid/report', async (req, reply) => {
+    const p = parse(z.object({ id: idSchema, mid: idSchema }), req.params);
+    const b = parse(z.object({ reason: reasonEnum, description: z.string().max(1000).optional() }).strict(), req.body);
+    limitOrThrow(ctx.rl, `report:${req.userId}`, 10, 3_600_000, ctx.config.rateLimit); // 10 reports/h/user
+    const a = await channelAccess(ctx, req.userId, p.id); // the sender must be able to see what they report
+    if (!a.channel.guild_id) throw badRequest('Reports are for server messages'); // DMs have no moderator queue
+    const [msg] = await ctx.db.query('SELECT author_id FROM messages WHERE id = $1 AND channel_id = $2', [p.mid, p.id]);
+    if (!msg) throw notFound('Message');
+    if (msg.author_id === req.userId) throw badRequest('You cannot report your own message');
+    const dup = await ctx.db.query(`SELECT 1 AS x FROM reports WHERE message_id = $1 AND reporter_id = $2 AND status = 'open'`, [p.mid, req.userId]);
+    if (dup.length) throw new ApiError(409, 'ALREADY_REPORTED', 'You already reported this message');
+    const rid = snowflake();
+    await ctx.db.query('INSERT INTO reports (id, guild_id, channel_id, message_id, reporter_id, target_user_id, reason, description) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)',
+      [rid, a.channel.guild_id, p.id, p.mid, req.userId, msg.author_id, b.reason, b.description ?? null]);
+    await audit(ctx, a.channel.guild_id, req.userId, 'REPORT_CREATE', p.mid, { reason: b.reason, channelId: p.id, targetUserId: msg.author_id });
+    await ctx.hub.toGuild(a.channel.guild_id, 'GUILD_REPORTS_UPDATE', { guildId: a.channel.guild_id });
+    return reply.code(201).send({ id: rid });
+  });
+
+  app.get('/guilds/:id/reports', async (req) => {
+    const { id } = parse(gid, req.params);
+    const q = parse(z.object({ status: z.enum(['open', 'resolved', 'dismissed', 'all']).default('open'), limit: z.coerce.number().optional(), before: idSchema.optional() }), req.query);
+    needAnyMod(guildPerms(await guildAccess(ctx, req.userId, id))); // same gate as Mod View
+    const rows = await ctx.db.query(`SELECT r.*, m.content AS msg_content, m.attachments AS msg_attachments FROM reports r LEFT JOIN messages m ON m.id = r.message_id
+      WHERE r.guild_id = $1 AND ($2 OR r.status = $3) AND ($4::text IS NULL OR r.id < $4::text) ORDER BY r.id DESC LIMIT $5`,
+      [id, q.status === 'all', q.status, q.before ?? null, limitParam(q.limit, 50, 100)]);
+    return rows.map((r) => reportDTO(r, r.msg_content === null && r.msg_attachments === null ? null : { content: r.msg_content ?? '', attachments: r.msg_attachments }));
+  });
+
+  app.patch('/guilds/:id/reports/:rid', async (req) => {
+    const p = parse(z.object({ id: idSchema, rid: idSchema }), req.params);
+    const b = parse(z.object({ status: z.enum(['resolved', 'dismissed']) }).strict(), req.body);
+    needAnyMod(guildPerms(await guildAccess(ctx, req.userId, p.id)));
+    const [was] = await ctx.db.query('SELECT status FROM reports WHERE id = $1 AND guild_id = $2', [p.rid, p.id]);
+    if (!was) throw notFound('Report');
+    if (was.status !== 'open') throw new ApiError(409, 'ALREADY_HANDLED', 'The report is already handled');
+    await ctx.db.query(`UPDATE reports SET status = $2, handled_by = $3, handled_at = now() WHERE id = $1`, [p.rid, b.status, req.userId]);
+    await audit(ctx, p.id, req.userId, b.status === 'resolved' ? 'REPORT_RESOLVE' : 'REPORT_DISMISS', p.rid);
+    await ctx.hub.toGuild(p.id, 'GUILD_REPORTS_UPDATE', { guildId: p.id });
+    const [r] = await Promise.all([joinedReport(p.id, p.rid)]);
+    return reportDTO(r, r.msg_content === null && r.msg_attachments === null ? null : { content: r.msg_content ?? '', attachments: r.msg_attachments });
   });
 
   // ---------- moderation log export ----------

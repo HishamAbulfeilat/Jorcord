@@ -222,7 +222,7 @@ Source tags: **DD** public docs, **RE** seen in local client analysis, **JP** Jo
 |---|---|---|---|
 | Ban/kick/timeout, audit log | done/partial | - | |
 | AutoMod depth: presets, regex, allow-lists, exempt channels, timeout duration, alert channel, MEMBER_PROFILE trigger, execution event | partial | P2 | M |
-| Reports (user, message, server) + moderator queue | missing | P1 | M |
+| Reports (user, message, server) + moderator queue | mostly done (server) | P1 | M | POST /messages/:mid/report, GET/PATCH /guilds/:id/reports with message snapshot, `GUILD_REPORTS_UPDATE`, audit entries; tests `parity-reports.test.ts`; web queue UI still to wire |
 | Raid protection (join-rate lockdown), verification gating | missing | P1 | M |
 | Explicit-image scan / safe-DM filter | missing | P3 | L (needs a model or third-party) |
 | Age gate for NSFW | partial | P2 | S |

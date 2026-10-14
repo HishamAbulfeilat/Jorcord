@@ -73,6 +73,8 @@ export interface Events {
   VOICE_CHANNEL_EFFECT_SEND: { guildId: Id | null; channelId: Id; userId: Id; sound: SoundboardSound };
   /** To my own sessions: a GIF favorite was added or removed. */
   GIF_FAVORITES_UPDATE: { item?: GifFavorite; removedId?: Id };
+  /** Reports (mod queue): a report was created or triaged; clients with moderation perms re-read the queue. */
+  GUILD_REPORTS_UPDATE: { guildId: Id };
   GUILD_MEMBERS_CHUNK: { guildId: Id; members: Member[]; notFound: Id[]; chunkIndex: number; chunkCount: number; nonce?: string };
 }
 export type EventName = keyof Events;

@@ -1,5 +1,5 @@
 /** Parity pass 3: boost levels, linked roles, app directory, moderation tools (additive types shared by server and clients). */
-import type { Id, User } from './types';
+import type { Attachment, Id, User } from './types';
 
 // ---------- server boosts ----------
 /** Boosts needed for each level (index = level). Boosting is free and unlimited per member. */
@@ -71,6 +71,19 @@ export const MOD_LIMITS = { noteLength: 1000, notesPerMember: 25, warningLength:
 export interface ModWarning { id: Id; guildId: Id; userId: Id; moderatorId: Id | null; reason: string; source: 'manual' | 'automod'; ruleId: Id | null; createdAt: string }
 export interface ModNote { id: Id; guildId: Id; userId: Id; authorId: Id | null; note: string; createdAt: string }
 export interface ModHistoryEntry { action: string; moderatorId: Id | null; reason: string | null; createdAt: string }
+
+// ---------- reports (mod queue) ----------
+export const REPORT_REASONS = ['spam', 'harassment', 'inappropriate_content', 'impersonation', 'security', 'other'] as const;
+export type ReportReason = (typeof REPORT_REASONS)[number];
+export type ReportStatus = 'open' | 'resolved' | 'dismissed';
+/** A user report against another member's message; moderators triage it in the queue. */
+export interface Report {
+  id: Id; guildId: Id; channelId: Id; messageId: Id; reporterId: Id; targetUserId: Id;
+  reason: ReportReason; description?: string | null;
+  /** Snapshot of the message at report time (content + author display), null when unreachable. */
+  message?: { content: string; attachments: Attachment[] } | null;
+  status: ReportStatus; handledBy?: Id | null; handledAt?: string | null; createdAt: string;
+}
 export interface ModView {
   user: User; isMember: boolean; joinedAt: string | null; accountCreatedAt: string; roles: Id[]; timeoutUntil: string | null; banned: boolean;
   flags: SafetyFlag[];
