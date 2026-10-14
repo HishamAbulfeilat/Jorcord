@@ -207,7 +207,14 @@ export function channelRoutes(app: FastifyInstance, ctx: Ctx) {
   });
 
   // ---------- webhooks ----------
-  const hookDTO = (w: any, withToken: boolean) => ({ id: w.id, guildId: w.guild_id, channelId: w.channel_id, name: w.name, avatar: w.avatar ?? null, ...(withToken ? { token: w.token } : {}) });
+  const hookDTO = (w: any, withToken: boolean) => ({ id: w.id, guildId: w.guild_id, channelId: w.channel_id, name: w.name, avatar: w.avatar ?? null, ...(withToken ? { token: w.token, url: `/webhooks/${w.id}/${w.token}` } : {}) });
+  /** Guild-wide webhook list (MANAGE_WEBHOOKS). */
+  app.get('/guilds/:id/webhooks', async (req) => {
+    const { id } = parse(z.object({ id: idSchema }), req.params);
+    const gp = await guildAccess(ctx, req.userId, id);
+    need(guildPerms(gp), Perm.MANAGE_WEBHOOKS);
+    return (await ctx.db.query('SELECT * FROM webhooks WHERE guild_id = $1 ORDER BY channel_id, id', [id])).map((w) => hookDTO(w, true));
+  });
   app.get('/channels/:id/webhooks', async (req) => {
     const { id } = parse(z.object({ id: idSchema }), req.params);
     const a = await channelAccess(ctx, req.userId, id);
@@ -235,7 +242,69 @@ export function channelRoutes(app: FastifyInstance, ctx: Ctx) {
     need(a.perms, Perm.MANAGE_WEBHOOKS);
     const rows = await ctx.db.query('DELETE FROM webhooks WHERE id = $1 AND channel_id = $2 RETURNING bot_user_id', [p.webhookId, p.id]);
     if (!rows.length) throw notFound('Webhook');
+    await ctx.db.query('DELETE FROM users WHERE id = $1', [rows[0]!.bot_user_id]); // the webhook's identity user
     await audit(ctx, a.channel.guild_id, req.userId, 'WEBHOOK_DELETE', p.webhookId);
+    return reply.code(204).send();
+  });
+
+  /** Tokenless webhook management by webhook id (Discord-shape). Needs MANAGE_WEBHOOKS in the webhook's channel. */
+  const webhookById = async (webhookId: string) => {
+    const [w] = await ctx.db.query('SELECT * FROM webhooks WHERE id = $1', [webhookId]);
+    if (!w) throw notFound('Webhook');
+    return w;
+  };
+  const hookWriteBody = z.object({
+    name: z.string().trim().min(1).max(80).optional(),
+    avatar: assetUrl.nullable().optional(),
+    /** Move the webhook to another text/announcement channel of the same guild (MANAGE_WEBHOOKS there is not required; MANAGE_WEBHOOKS on the current channel is). */
+    channelId: idSchema.optional(),
+  }).strict();
+  const patchWebhook = async (w: any, b: z.infer<typeof hookWriteBody>) => {
+    if (b.channelId !== undefined && b.channelId !== w.channel_id) {
+      const [target] = await ctx.db.query('SELECT * FROM channels WHERE id = $1 AND guild_id = $2', [b.channelId, w.guild_id]);
+      if (!target || !['text', 'announcement'].includes(target.type)) throw badRequest('Webhooks need a text channel');
+      await ctx.db.query('UPDATE webhooks SET channel_id = $2 WHERE id = $1', [w.id, b.channelId]);
+    }
+    if (b.name !== undefined) {
+      await ctx.db.query('UPDATE webhooks SET name = $2 WHERE id = $1', [w.id, b.name]);
+      await ctx.db.query('UPDATE users SET display_name = $2 WHERE id = $1', [w.bot_user_id, b.name]);
+    }
+    if (b.avatar !== undefined) { // explicit null clears it
+      await ctx.db.query('UPDATE webhooks SET avatar = $2 WHERE id = $1', [w.id, b.avatar]);
+      await ctx.db.query('UPDATE users SET avatar = $2 WHERE id = $1', [w.bot_user_id, b.avatar]);
+    }
+    return (await ctx.db.query('SELECT * FROM webhooks WHERE id = $1', [w.id]))[0];
+  };
+  app.get('/webhooks/:webhookId', async (req) => {
+    const p = parse(z.object({ webhookId: idSchema }), req.params);
+    const w = await webhookById(p.webhookId);
+    const a = await channelAccess(ctx, req.userId, w.channel_id);
+    need(a.perms, Perm.MANAGE_WEBHOOKS);
+    return hookDTO(w, false);
+  });
+  app.patch('/webhooks/:webhookId', async (req) => {
+    const p = parse(z.object({ webhookId: idSchema }), req.params);
+    const b = parse(hookWriteBody, req.body);
+    const w = await webhookById(p.webhookId);
+    const a = await channelAccess(ctx, req.userId, w.channel_id);
+    need(a.perms, Perm.MANAGE_WEBHOOKS);
+    if (b.channelId !== undefined && b.channelId !== w.channel_id) { // MANAGE_WEBHOOKS on the destination channel too
+      const dest = await channelAccess(ctx, req.userId, b.channelId);
+      need(dest.perms, Perm.MANAGE_WEBHOOKS);
+    }
+    const w2 = await patchWebhook(w, b);
+    await audit(ctx, w.guild_id, req.userId, 'WEBHOOK_UPDATE', w.id, { name: w2.name, channelId: w2.channel_id });
+    return hookDTO(w2, true);
+  });
+
+  app.delete('/webhooks/:webhookId', async (req, reply) => {
+    const p = parse(z.object({ webhookId: idSchema }), req.params);
+    const w = await webhookById(p.webhookId);
+    const a = await channelAccess(ctx, req.userId, w.channel_id);
+    need(a.perms, Perm.MANAGE_WEBHOOKS);
+    await ctx.db.query('DELETE FROM webhooks WHERE id = $1', [w.id]);
+    await ctx.db.query('DELETE FROM users WHERE id = $1', [w.bot_user_id]);
+    await audit(ctx, w.guild_id, req.userId, 'WEBHOOK_DELETE', w.id);
     return reply.code(204).send();
   });
 
@@ -391,22 +460,124 @@ export function channelRoutes(app: FastifyInstance, ctx: Ctx) {
   });
 }
 
-/** Executes webhook messages (no user auth; the token is the credential). */
+/**
+ * Webhook routes with the token as the credential (no user auth; see CONTRACT.md).
+ * `wait=true` on execute returns the created message (otherwise 204), like Discord.
+ */
 export function webhookPublicRoutes(app: FastifyInstance, ctx: Ctx) {
-  app.post('/webhooks/:id/:token', async (req, reply) => {
+  const webhookParams = z.object({ id: idSchema, token: z.string().min(10).max(100) });
+  const messageParams = z.object({ id: idSchema, token: z.string().min(10).max(100), mid: idSchema });
+  const checkToken = (w: any, p: { id: string; token: string }) => { if (!w || !safeEqual(w.token, p.token)) throw notFound('Webhook'); };
+  /** Messages owned by this webhook, posted in the webhook's channel or one of its threads. */
+  const loadWebhookMessage = async (w: any, mid: string) => {
+    const [m] = await ctx.db.query('SELECT * FROM messages WHERE id = $1', [mid]);
+    if (!m || m.webhook_id !== w.id) throw notFound('Message');
+    const [ch] = await ctx.db.query('SELECT * FROM channels WHERE id = $1', [m.channel_id]);
+    if (!ch || (ch.id !== w.channel_id && ch.parent_id !== w.channel_id)) throw notFound('Message');
+    return m;
+  };
+  const parseMentionsRaw = async (channel: any, content: string) => {
+    const { parseMentions } = await import('../services/messages');
+    return parseMentions(ctx, channel, content, 0n);
+  };
+
+  app.get('/webhooks/:id/:token', async (req) => {
     const p = parse(z.object({ id: idSchema, token: z.string().min(10).max(100) }), req.params);
+    const w = (await ctx.db.query('SELECT * FROM webhooks WHERE id = $1', [p.id]))[0];
+    checkToken(w, p);
+    return { id: w.id, guildId: w.guild_id, channelId: w.channel_id, name: w.name, avatar: w.avatar ?? null, token: w.token, url: `/webhooks/${w.id}/${w.token}` };
+  });
+
+  app.patch('/webhooks/:id/:token', async (req) => {
+    const p = parse(z.object({ id: idSchema, token: z.string().min(10).max(100) }), req.params);
+    const b = parse(z.object({ name: z.string().trim().min(1).max(80).optional(), avatar: assetUrl.nullable().optional(), channelId: idSchema.optional() }).strict(), req.body);
+    const w = (await ctx.db.query('SELECT * FROM webhooks WHERE id = $1', [p.id]))[0];
+    checkToken(w, p);
+    if (b.channelId !== undefined && b.channelId !== w.channel_id) {
+      const [target] = await ctx.db.query('SELECT * FROM channels WHERE id = $1 AND guild_id = $2', [b.channelId, w.guild_id]);
+      if (!target || !['text', 'announcement'].includes(target.type)) throw badRequest('Webhooks need a text channel');
+      await ctx.db.query('UPDATE webhooks SET channel_id = $2 WHERE id = $1', [w.id, b.channelId]);
+    }
+    if (b.name !== undefined) {
+      await ctx.db.query('UPDATE webhooks SET name = $2 WHERE id = $1', [w.id, b.name]);
+      await ctx.db.query('UPDATE users SET display_name = $2 WHERE id = $1', [w.bot_user_id, b.name]);
+    }
+    if (b.avatar !== undefined) {
+      await ctx.db.query('UPDATE webhooks SET avatar = $2 WHERE id = $1', [w.id, b.avatar]);
+      await ctx.db.query('UPDATE users SET avatar = $2 WHERE id = $1', [w.bot_user_id, b.avatar]);
+    }
+    const w2 = (await ctx.db.query('SELECT * FROM webhooks WHERE id = $1', [w.id]))[0];
+    return { id: w2.id, guildId: w2.guild_id, channelId: w2.channel_id, name: w2.name, avatar: w2.avatar ?? null, token: w2.token, url: `/webhooks/${w2.id}/${w2.token}` };
+  });
+
+  app.delete('/webhooks/:id/:token', async (req, reply) => {
+    const p = parse(webhookParams, req.params);
+    const w = (await ctx.db.query('SELECT * FROM webhooks WHERE id = $1', [p.id]))[0];
+    checkToken(w, p);
+    await ctx.db.query('DELETE FROM webhooks WHERE id = $1', [w.id]);
+    await ctx.db.query('DELETE FROM users WHERE id = $1', [w.bot_user_id]);
+    return reply.code(204).send();
+  });
+
+  app.post('/webhooks/:id/:token', async (req, reply) => {
+    const p = parse(webhookParams, req.params);
+    const q = parse(z.object({ wait: z.enum(['true', 'false']).optional() }), req.query);
     const b = parse(z.object({
       content: z.string().min(1).max(4000),
       username: z.string().trim().min(1).max(80).regex(/^[^\u0000-\u001f\u007f]+$/, 'invalid characters').optional(),
       avatarUrl: assetUrl.optional(), avatar_url: assetUrl.optional(),
+      /** Post into a thread of the webhook's channel instead. */
+      threadId: idSchema.optional(),
     }).strict(), req.body);
     const [w] = await ctx.db.query('SELECT * FROM webhooks WHERE id = $1', [p.id]);
-    if (!w || !safeEqual(w.token, p.token)) throw notFound('Webhook');
+    checkToken(w, p);
     limitOrThrow(ctx.rl, `webhook:${w.id}`, 60, 60_000, ctx.config.rateLimit);
-    const [channel] = await ctx.db.query('SELECT * FROM channels WHERE id = $1', [w.channel_id]);
+    let channel = (await ctx.db.query('SELECT * FROM channels WHERE id = $1', [w.channel_id]))[0];
     if (!channel) throw notFound('Webhook');
+    if (b.threadId) {
+      const [thread] = await ctx.db.query('SELECT * FROM channels WHERE id = $1 AND guild_id = $2', [b.threadId, w.guild_id]);
+      if (!thread || (thread.type !== 'thread' && thread.type !== 'post') || thread.parent_id !== w.channel_id) throw badRequest('threadId must be a thread of the webhook channel');
+      channel = thread;
+    }
     const msg = await createMessage(ctx, { channel, authorId: w.bot_user_id, content: b.content, webhookId: w.id, senderPerms: 0n, skipChecks: true, webhookUsername: b.username ?? null, webhookAvatar: b.avatarUrl ?? b.avatar_url ?? null });
-    return reply.code(200).send(msg);
+    if (q.wait === 'true') return reply.code(200).send(msg); // Discord shape: wait=true returns the message
+    return reply.code(204).send();
+  });
+
+  app.get('/webhooks/:id/:token/messages/:mid', async (req) => {
+    const p = parse(messageParams, req.params);
+    const w = (await ctx.db.query('SELECT * FROM webhooks WHERE id = $1', [p.id]))[0];
+    checkToken(w, p);
+    const m = await loadWebhookMessage(w, p.mid);
+    return messageDTO(ctx, m, null);
+  });
+
+  app.patch('/webhooks/:id/:token/messages/:mid', async (req) => {
+    const p = parse(messageParams, req.params);
+    const b = parse(z.object({ content: z.string().min(1).max(4000) }).strict(), req.body);
+    const w = (await ctx.db.query('SELECT * FROM webhooks WHERE id = $1', [p.id]))[0];
+    checkToken(w, p);
+    limitOrThrow(ctx.rl, `webhook-edit:${w.id}`, 15, 10_000, ctx.config.rateLimit);
+    const m = await loadWebhookMessage(w, p.mid);
+    if (m.forward) throw badRequest('Forwarded messages cannot be edited');
+    const [ch] = await ctx.db.query('SELECT * FROM channels WHERE id = $1', [m.channel_id]);
+    const ment = await parseMentionsRaw(ch, b.content);
+    await ctx.db.query('UPDATE messages SET content = $2, edited_at = now(), mentions = $3::jsonb, mention_roles = $4::jsonb, mention_everyone = $5, has_link = $6 WHERE id = $1',
+      [p.mid, b.content, JSON.stringify(ment.mentions), JSON.stringify(ment.mentionRoles), ment.mentionEveryone, /https?:\/\//i.test(b.content)]);
+    const [row] = await ctx.db.query('SELECT * FROM messages WHERE id = $1', [p.mid]);
+    const dto = await messageDTO(ctx, row, null);
+    await ctx.hub.toChannel(ch.id, 'MESSAGE_UPDATE', { ...dto, reactions: dto.reactions.map((r) => ({ ...r, me: false })) });
+    return dto;
+  });
+
+  app.delete('/webhooks/:id/:token/messages/:mid', async (req, reply) => {
+    const p = parse(messageParams, req.params);
+    const w = (await ctx.db.query('SELECT * FROM webhooks WHERE id = $1', [p.id]))[0];
+    checkToken(w, p);
+    const m = await loadWebhookMessage(w, p.mid);
+    await ctx.db.query('DELETE FROM messages WHERE id = $1', [p.mid]);
+    await ctx.hub.toChannel(m.channel_id, 'MESSAGE_DELETE', { id: p.mid, channelId: m.channel_id, guildId: m.guild_id ?? null });
+    return reply.code(204).send();
   });
 }
 export { permsFor, loadOverwrites };

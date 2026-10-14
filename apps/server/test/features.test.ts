@@ -271,7 +271,7 @@ describe('messages', () => {
     expect((await api.req('POST', `/channels/${general.id}/webhooks`, bob!.token, { name: 'hook' })).status).toBe(403);
     const hook = (await api.req('POST', `/channels/${general.id}/webhooks`, owner.token, { name: 'CI Bot' })).body;
     expect((await api.req('POST', `/webhooks/${hook.id}/wrongtokenwrongtoken`, null, { content: 'x' })).status).toBe(404);
-    const ex = await api.req('POST', `/webhooks/${hook.id}/${hook.token}`, null, { content: 'build passed' });
+    const ex = await api.req('POST', `/webhooks/${hook.id}/${hook.token}?wait=true`, null, { content: 'build passed' });
     expect(ex.status).toBe(200); expect(ex.body.author.bot).toBe(true); expect(ex.body.webhookId).toBe(hook.id);
   });
 });
