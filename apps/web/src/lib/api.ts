@@ -1,6 +1,7 @@
 /** Typed REST client written against docs/CONTRACT.md. All calls go through the swappable transport. */
 import type {
   Activity, Attachment, AuditEntry, AutoModRule, Channel, Emoji, Guild, GuildFull, Invite, Member, Message, Relationship, ReadState, Role, SelfUser, Sticker, User, VoiceToken, Id, Presence, OverwriteDTO,
+  AllowedMentions,
   Reminder, ModView, ModWarning, ModNote, BulkModerationFilter, BulkModerationResult, PruneResult, BoostSummary, LinkedRoleView, LinkedCriterion, RoleMetadataApp, DirectoryApp, DirectoryCategory, SoundboardSound, Connection, PublicConnection, GifFavorite, GuildTemplate, GuildWidgetSettings, GuildInsights, ChannelFollow, Onboarding, OnboardingResponse, GuildSafety, SafetyPreset, Application, ApplicationCommand, CommandPermissionOverwrite, CommandOptionChoice, CreatePoll, ForumTag, InteractionOptionValue, ModalSubmitRow, OAuthAuthorizePreview, OAuthAuthorizeResult, ScheduledEvent, StageInstance,
 } from '@jorcord/shared';
 import { send } from './transport';
@@ -9,7 +10,7 @@ export interface AuthResult { user: SelfUser; accessToken: string; refreshToken:
 export interface UserProfile extends User { activities?: Activity[]; connections?: PublicConnection[]; note?: string | null; mutualGuilds?: { id: Id; name: string; icon: string | null; nick?: string | null }[]; mutualFriends?: User[] }
 export interface MessageQuery { limit?: number; before?: Id; after?: Id; around?: Id }
 export interface SearchQuery { q?: string; authorId?: Id; channelId?: Id; has?: string; before?: string }
-export interface SendMessageInput { content: string; replyTo?: Id | null; files?: File[]; nonce?: string; stickerIds?: Id[]; poll?: CreatePoll }
+export interface SendMessageInput { content: string; replyTo?: Id | null; files?: File[]; nonce?: string; stickerIds?: Id[]; poll?: CreatePoll; allowedMentions?: AllowedMentions | null }
 export interface CreateEventInput { name: string; description?: string | null; entityType: number; channelId?: Id | null; scheduledStartTime: string; scheduledEndTime?: string | null; location?: string | null; privacyLevel?: 2 }
 export interface CommandPermissionSet { commandId: Id; applicationId: Id; guildId: Id; permissions: CommandPermissionOverwrite[] }
 export interface CommandCatalog { commands: ApplicationCommand[]; applications: { id: Id; name: string; icon: string | null; botUserId: Id }[] }
@@ -257,7 +258,7 @@ export const api = {
         m.files.forEach((file) => f.append('files[]', file, file.name));
         return send<Message>({ method: 'POST', path: `/channels/${channelId}/messages`, form: f });
       }
-      return send<Message>({ method: 'POST', path: `/channels/${channelId}/messages`, body: { content: m.content, replyTo: m.replyTo ?? null, ...(m.stickerIds?.length ? { stickerIds: m.stickerIds } : {}), ...(m.poll ? { poll: m.poll } : {}) } });
+      return send<Message>({ method: 'POST', path: `/channels/${channelId}/messages`, body: { content: m.content, replyTo: m.replyTo ?? null, ...(m.stickerIds?.length ? { stickerIds: m.stickerIds } : {}), ...(m.poll ? { poll: m.poll } : {}), ...(m.allowedMentions ? { allowedMentions: m.allowedMentions } : {}) } });
     },
     /** Forward a message I can read into `channelId` (snapshot copy, no pings). */
     forward: (channelId: Id, src: { channelId: Id; messageId: Id }) => send<Message>({ method: 'POST', path: `/channels/${channelId}/messages`, body: { forward: src } }),

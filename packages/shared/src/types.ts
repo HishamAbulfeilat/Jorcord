@@ -66,6 +66,20 @@ export interface Message {
   forward?: ForwardSnapshot | null;
   /** Published from an announcement channel this channel follows (flags & IS_CROSSPOST). */
   crosspost?: CrosspostOrigin | null;
+  /** Controls which mentions trigger notifications. */
+  allowedMentions?: AllowedMentions | null;
+}
+/**
+ * Controls which mentions trigger notifications for a message (Discord-shape; Jorcord adds `everyone`).
+ * When present it overrides default pings: only parse entries ping, and the explicit id lists ping in addition.
+ */
+export interface AllowedMentions {
+  /** Mention types to parse: 'users' = user mentions, 'roles' = role mentions, 'everyone' = @everyone/@here, 'replied_user' = the user being replied to. */
+  parse?: Array<'users' | 'roles' | 'everyone' | 'replied_user'>;
+  /** Specific user IDs to allow pinging, in addition to parse. */
+  users?: string[];
+  /** Specific role IDs to allow pinging, in addition to parse. */
+  roles?: string[];
 }
 /** A message reminder (private). `firedAt` is set once it is due. */
 export interface Reminder { id: Id; remindAt: string; firedAt: string | null; message: Message }

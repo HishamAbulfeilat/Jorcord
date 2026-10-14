@@ -122,6 +122,7 @@ export async function messagesDTO(ctx: Ctx, rows: any[], viewerId: string | null
     components: (r.components ?? []) as Component[], flags: r.flags ?? 0, applicationId: r.application_id ?? null, interaction: r.interaction ?? null,
     poll: r.poll ? pollDTO(r, votes, voters) : null,
     forward: r.forward ?? null, crosspost: r.crosspost ?? null,
+    allowedMentions: r.allowed_mentions ?? null,
   }));
 }
 export async function messageDTO(ctx: Ctx, row: any, viewerId: string | null): Promise<Message> { return (await messagesDTO(ctx, [row], viewerId))[0]!; }

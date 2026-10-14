@@ -29,6 +29,12 @@ const sendBody = z.object({
   flags: z.number().int().optional(),
   /** Forward an existing message (instead of writing content). */
   forward: z.object({ channelId: idSchema, messageId: idSchema }).strict().optional(),
+  /** Control which mentions trigger notifications (overrides default pings; see CONTRACT.md). */
+  allowedMentions: z.object({
+    parse: z.array(z.enum(['users', 'roles', 'everyone', 'replied_user'])).max(4).optional(),
+    users: z.array(idSchema).max(100).optional(),
+    roles: z.array(idSchema).max(100).optional(),
+  }).strict().optional(),
 }).strict();
 const emojiParam = z.string().min(1).max(100);
 
@@ -146,7 +152,7 @@ export function messageRoutes(app: FastifyInstance, ctx: Ctx) {
     const attachments = await claimAttachments(ctx, req.userId, body.attachments ?? []);
     try {
       const msg = await createMessage(ctx, { channel: a.channel, authorId: req.userId, content: body.content ?? '', replyTo: body.replyTo, attachments, stickerIds: body.stickerIds, senderPerms: a.perms, memberRoleIds: a.gp?.memberRoleIds,
-        components, flags: body.flags, applicationId: req.applicationId, poll: pollInput?.poll, pollExpiry: pollInput?.expiry, forward });
+        components, flags: body.flags, applicationId: req.applicationId, poll: pollInput?.poll, pollExpiry: pollInput?.expiry, forward, allowedMentions: body.allowedMentions });
       if (a.channel.type === 'thread') await joinThread(ctx, a.channel, req.userId).catch(() => {}); // posting in a thread follows it
       return reply.code(201).send(msg);
     } catch (e) {

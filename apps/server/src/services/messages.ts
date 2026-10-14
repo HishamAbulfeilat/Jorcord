@@ -1,4 +1,4 @@
-import { LIMITS, Perm, has, snowflake, type Attachment, type Component, type Embed, type CrosspostOrigin, type ForwardSnapshot, type Message } from '@jorcord/shared';
+import { LIMITS, Perm, has, snowflake, type AllowedMentions, type Attachment, type Component, type Embed, type CrosspostOrigin, type ForwardSnapshot, type Message } from '@jorcord/shared';
 import type { Ctx } from '../ctx';
 import { ApiError, badRequest, forbidden } from '../errors';
 import { checkAutomod } from './automod';
@@ -45,6 +45,8 @@ export interface NewMessage {
   crosspost?: CrosspostOrigin | null;
   /** Server-generated embeds (AutoMod alerts, boost announcements). Never taken from user input. */
   embeds?: Embed[];
+  /** Controls which mentions trigger notifications (see CONTRACT.md). */
+  allowedMentions?: AllowedMentions | null;
 }
 
 export async function createMessage(ctx: Ctx, m: NewMessage): Promise<Message> {
@@ -68,12 +70,13 @@ export async function createMessage(ctx: Ctx, m: NewMessage): Promise<Message> {
   const id = snowflake();
   const type = m.type ?? (m.replyTo ? 'reply' : 'default');
   await ctx.db.query(
-    `INSERT INTO messages (id, channel_id, guild_id, author_id, content, type, reply_to, mention_everyone, mentions, mention_roles, attachments, sticker_ids, webhook_id, thread_id, has_link, has_image, has_file, webhook_username, webhook_avatar, components, flags, application_id, interaction, poll, poll_expiry)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10::jsonb,$11::jsonb,$12::jsonb,$13,$14,$15,$16,$17,$18,$19,$20::jsonb,$21,$22,$23::jsonb,$24::jsonb,$25)`,
+    `INSERT INTO messages (id, channel_id, guild_id, author_id, content, type, reply_to, mention_everyone, mentions, mention_roles, attachments, sticker_ids, webhook_id, thread_id, has_link, has_image, has_file, webhook_username, webhook_avatar, components, flags, application_id, interaction, poll, poll_expiry, allowed_mentions)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10::jsonb,$11::jsonb,$12::jsonb,$13,$14,$15,$16,$17,$18,$19,$20::jsonb,$21,$22,$23::jsonb,$24::jsonb,$25,$26::jsonb)`,
     [id, channel.id, channel.guild_id ?? null, m.authorId, content, type, m.replyTo ?? null, ment.mentionEveryone, JSON.stringify(ment.mentions),
       JSON.stringify(ment.mentionRoles), JSON.stringify(attachments), JSON.stringify(stickerIds), m.webhookId ?? null, m.threadId ?? null,
       /https?:\/\//i.test(content), attachments.some((a) => a.contentType.startsWith('image/')), attachments.length > 0, m.webhookUsername ?? null, m.webhookAvatar ?? null,
-      JSON.stringify(m.components ?? []), m.flags ?? 0, m.applicationId ?? null, m.interaction ? JSON.stringify(m.interaction) : null, m.poll ? JSON.stringify(m.poll) : null, m.pollExpiry ?? null]);
+      JSON.stringify(m.components ?? []), m.flags ?? 0, m.applicationId ?? null, m.interaction ? JSON.stringify(m.interaction) : null, m.poll ? JSON.stringify(m.poll) : null, m.pollExpiry ?? null,
+      m.allowedMentions ? JSON.stringify(m.allowedMentions) : null]);
   if (m.forward) await ctx.db.query('UPDATE messages SET forward = $2::jsonb WHERE id = $1', [id, JSON.stringify(m.forward)]);
   if (m.embeds?.length) await ctx.db.query('UPDATE messages SET embeds = $2::jsonb WHERE id = $1', [id, JSON.stringify(m.embeds.slice(0, LIMITS.maxEmbedsPerMessage))]);
   if (m.crosspost) await ctx.db.query('UPDATE messages SET crosspost = $2::jsonb WHERE id = $1', [id, JSON.stringify(m.crosspost)]);
@@ -86,7 +89,7 @@ export async function createMessage(ctx: Ctx, m: NewMessage): Promise<Message> {
   const dto = await messageDTO(ctx, row, null);
   if (channel.type === 'dm') await settleMessageRequest(ctx, channel, m.authorId, !channel.last_message_id);
   await ctx.hub.toChannel(channel.id, 'MESSAGE_CREATE', dto);
-  await bumpMentionCounts(ctx, channel, m.authorId, ment, !channel.guild_id).catch((e) => ctx.log.warn({ err: e }, 'mention count failed'));
+  await bumpMentionCounts(ctx, channel, m.authorId, ment, m.replyTo ?? null, !channel.guild_id, m.allowedMentions).catch((e) => ctx.log.warn({ err: e }, 'mention count failed'));
   if (channel.guild_id && !m.skipChecks && !m.webhookId) void noteMessage(ctx, channel.guild_id, m.authorId).catch((e) => ctx.log.warn({ err: e }, 'linked role check failed')); // message_count criteria
   ctx.push.notifyMessage(channel, dto); // async + best effort; honours presence, DND, mute and block rules
   if (ctx.config.unfurlOnSend && has(m.senderPerms, Perm.EMBED_LINKS)) void unfurlMessage(ctx, row, channel).catch(() => {});
@@ -112,13 +115,32 @@ async function settleMessageRequest(ctx: Ctx, channel: any, authorId: string, fi
   }
 }
 
-async function bumpMentionCounts(ctx: Ctx, channel: any, authorId: string, ment: MentionResult, isDm: boolean) {
-  let targets = new Set<string>(ment.mentions);
+/**
+ * Which mentions trigger the in-app mention badge for a message.
+ * When `allowedMentions` is omitted, every parsed mention pings (existing behaviour).
+ * When it is present it overrides: only parse entries ping (`users` | `roles` | `everyone` | `replied_user`),
+ * and the explicit `users` / `roles` id lists ping in addition to parse. DM participants are message
+ * recipients, not parsed mentions, so they always collect a badge.
+ */
+async function bumpMentionCounts(ctx: Ctx, channel: any, authorId: string, ment: MentionResult, replyTo: string | null, isDm: boolean, allowedMentions?: AllowedMentions | null) {
+  const am = allowedMentions ? { parse: new Set(allowedMentions.parse ?? []), users: new Set(allowedMentions.users ?? []), roles: new Set(allowedMentions.roles ?? []) } : null;
+  let targets = new Set<string>(am ? ment.mentions.filter((u) => am.parse.has('users') || am.users.has(u)) : ment.mentions);
   if (isDm) {
     for (const r of await ctx.db.query('SELECT user_id FROM dm_participants WHERE channel_id = $1 AND NOT request', [channel.id])) targets.add(r.user_id); // message requests collect no badges
   } else {
-    if (ment.mentionEveryone) for (const r of await ctx.db.query('SELECT user_id FROM members WHERE guild_id = $1', [channel.guild_id])) targets.add(r.user_id);
-    if (ment.mentionRoles.length) for (const r of await ctx.db.query('SELECT DISTINCT user_id FROM member_roles WHERE guild_id = $1 AND role_id = ANY($2::text[])', [channel.guild_id, ment.mentionRoles])) targets.add(r.user_id);
+    if (ment.mentionEveryone && (!am || am.parse.has('everyone'))) for (const r of await ctx.db.query('SELECT user_id FROM members WHERE guild_id = $1', [channel.guild_id])) targets.add(r.user_id);
+    if (ment.mentionRoles.length) {
+      if (!am || am.parse.has('roles')) {
+        for (const r of await ctx.db.query('SELECT DISTINCT user_id FROM member_roles WHERE guild_id = $1 AND role_id = ANY($2::text[])', [channel.guild_id, ment.mentionRoles])) targets.add(r.user_id);
+      } else if (am.roles.size) { // per-role allow-list: only members of explicitly listed roles ping
+        const rows = await ctx.db.query('SELECT DISTINCT mr.user_id AS uid, mr.role_id AS rid FROM member_roles mr WHERE mr.guild_id = $1 AND mr.role_id = ANY($2::text[])', [channel.guild_id, ment.mentionRoles]);
+        for (const r of rows) if (am.roles.has(r.rid!)) targets.add(r.uid!);
+      }
+    }
+    if (replyTo && am?.parse.has('replied_user')) { // a reply pings its author only when 'replied_user' is parsed
+      const [ref] = await ctx.db.query('SELECT author_id FROM messages WHERE id = $1 AND channel_id = $2', [replyTo, channel.id]);
+      if (ref) targets.add(ref.author_id);
+    }
   }
   targets.delete(authorId);
   if (!targets.size) return;

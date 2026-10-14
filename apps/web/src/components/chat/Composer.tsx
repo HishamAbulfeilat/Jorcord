@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { parseWarnCommand } from '@/lib/modtools';
 import { PlusCircle, Smile, SendHorizonal, X, Eye, EyeOff, Hash, Image as ImageIcon, Gift, Upload, BarChart3 } from 'lucide-react';
 import { LIMITS, Perm, snowflake } from '@jorcord/shared';
-import type { ApplicationCommand, Channel } from '@jorcord/shared';
+import type { AllowedMentions, ApplicationCommand, Channel } from '@jorcord/shared';
 import { api } from '@/lib/api';
 import { getGateway } from '@/lib/gateway';
 import { useData } from '@/stores/data';
@@ -40,7 +40,8 @@ export function Composer({ channel, stagedExternal }: { channel: Channel; staged
   const replyId = useUI((s) => s.replyTo[cid]); const setReply = useUI((s) => s.setReply); const openPopout = useUI((s) => s.openPopout);
   const me = useData((s) => s.me); const mobile = useIsMobile();
   const [text, setText] = useState(draft); const [files, setFiles] = useState<Staged[]>([]);
-  const [suggest, setSuggest] = useState<Suggest>(null); const [pingReply, setPingReply] = useState(true);
+  const [suggest, setSuggest] = useState<Suggest>(null); const [pingReply, setPingReply] = useState(true); // reply "@ ON/OFF": ping the replied user?
+  const allowedMentions = useMemo(() => (replyId && !pingReply ? { parse: ['users', 'roles', 'everyone'] as AllowedMentions['parse'] } : undefined), [replyId, pingReply]);
   const ta = useRef<HTMLTextAreaElement>(null); const fileInput = useRef<HTMLInputElement>(null);
   const tokens = useRef<Map<string, string>>(new Map());
   const replyMsg = useMessages((s) => (replyId ? s.ch[cid]?.list.find((m) => m.id === replyId) : undefined));
@@ -144,10 +145,10 @@ export function Composer({ channel, stagedExternal }: { channel: Channel; staged
     if (content.length > LIMITS.maxMessageLength) { toast(`Message is too long (${content.length}/${LIMITS.maxMessageLength}).`, 'error'); return; }
     const nonce = snowflake(); const toSend = files.map((f) => (f.spoiler && !f.file.name.startsWith('SPOILER_') ? new File([f.file], 'SPOILER_' + f.file.name, { type: f.file.type }) : f.file));
     const reply = replyId ?? null;
-    useMessages.getState().addPending({ nonce, channelId: cid, content, files: toSend.map((f) => ({ name: f.name, size: f.size })), replyTo: reply, status: 'sending', createdAt: Date.now() });
+    useMessages.getState().addPending({ nonce, channelId: cid, content, files: toSend.map((f) => ({ name: f.name, size: f.size })), replyTo: reply, allowedMentions, status: 'sending', createdAt: Date.now() });
     if (!gif) { setText(''); setFiles([]); setDraft(cid, ''); tokens.current.clear(); }
-    setReply(cid, null); setSuggest(null);
-    await deliver(nonce, cid, content, toSend, reply);
+    setPingReply(true); setReply(cid, null); setSuggest(null);
+    await deliver(nonce, cid, content, toSend, reply, allowedMentions);
     const last = useMessages.getState().ch[cid]?.list.at(-1); if (last) ackLater(cid, last.id);
   };
 
@@ -161,7 +162,7 @@ export function Composer({ channel, stagedExternal }: { channel: Channel; staged
       const nonce = (e as CustomEvent).detail as string; const p = useMessages.getState().pending.find((x) => x.nonce === nonce);
       if (!p || p.channelId !== cid) return;
       useMessages.getState().patchPending(nonce, { status: 'sending' });
-      await deliver(nonce, cid, p.content, [], p.replyTo);
+      await deliver(nonce, cid, p.content, [], p.replyTo, p.allowedMentions);
     };
     window.addEventListener('jorcord:retry', h); return () => window.removeEventListener('jorcord:retry', h);
   }, [cid]);
@@ -263,10 +264,10 @@ export function Composer({ channel, stagedExternal }: { channel: Channel; staged
 const lastTyping = new Map<string, number>();
 function throttledTyping(cid: string) { const n = Date.now(); if ((lastTyping.get(cid) ?? 0) + 8000 > n) return; lastTyping.set(cid, n); api.channels.typing(cid).catch(() => {}); }
 
-async function deliver(nonce: string, cid: string, content: string, files: File[], reply: string | null) {
+async function deliver(nonce: string, cid: string, content: string, files: File[], reply: string | null, allowedMentions?: AllowedMentions | null) {
   const st = useMessages.getState();
   try {
-    const msg = await api.messages.send(cid, { content, files, replyTo: reply, nonce });
+    const msg = await api.messages.send(cid, { content, files, replyTo: reply, nonce, allowedMentions });
     st.upsert(msg); st.dropPending(nonce);
     useData.getState().apply('MESSAGE_CREATE', msg);
   } catch (e) { st.patchPending(nonce, { status: 'failed' }); toastError(e); }

@@ -34,6 +34,7 @@ POST /guilds/:id/boosts (free, unlimited: grants boost; tiers by count) ; GET /d
 ## Messages
 GET /channels/:id/messages?limit&before&after&around ; POST /channels/:id/messages (JSON or multipart with files[])
 PATCH/DELETE /channels/:id/messages/:mid ; POST /channels/:id/messages/bulk-delete
+`POST /channels/:id/messages` accepts `allowedMentions {parse?:('users'|'roles'|'everyone'|'replied_user')[], users?:Id[], roles?:Id[]}` (max 100 ids each). Omitted = default behaviour: every parsed mention pings. When present it **overrides** default pings: only `parse` entries ping (users / roles / @everyone/@here / the reply's author), while the explicit `users`/`roles` id lists permit pings for ids actually mentioned in the content **in addition to** `parse`. Mentions still render/highlight as usual (the `Message.mentions` / `mentionRoles` / `mentionEveryone` arrays are unaffected); only notification badges are filtered. DM recipients always collect their badge (they are recipients, not parsed mentions). The field is echoed back as `Message.allowedMentions`.
 PUT/DELETE /channels/:id/messages/:mid/reactions/:emoji/@me ; GET .../reactions/:emoji
 PUT/DELETE /channels/:id/pins/:mid ; GET /channels/:id/pins
 POST /channels/:id/typing ; POST /channels/:id/messages/:mid/threads {name} ; PATCH /channels/:threadId (archive)

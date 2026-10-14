@@ -145,7 +145,7 @@ Source tags: **DD** public docs, **RE** seen in local client analysis, **JP** Jo
 | Message components v1 + modals | done | - | - | |
 | **Components V2** (container, section, text display, media gallery, file, separator, thumbnail) | missing | P1 | M | DD:components/reference |
 | Message flags (suppress embeds, ephemeral, silent, voice message, components v2) | partial | P1 | M | |
-| `allowed_mentions` | missing | P1 | S | |
+| `allowed_mentions` | done | P1 | S | routes/messages strict body, badge filtering in `services/messages.ts`, shared `AllowedMentions` type, composer reply-ping toggle; tests `parity-messages-mentions.test.ts` |
 | Voice messages (record, waveform, playback) | missing | P1 | M | flag + attachment waveform; perm SEND_VOICE_MESSAGES |
 | Message forwarding (snapshots) | missing | P2 | M | |
 | Message types (~40: thread starter, boost tiers, stage events, poll result, call...) | partial | P1 | M | system messages |
