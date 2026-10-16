@@ -332,7 +332,7 @@ export function memberRoutes(app: FastifyInstance, ctx: Ctx) {
       [code, id, channelId, req.userId, b.maxUses ?? null, age ? new Date(Date.now() + age * 1000) : null, b.temporary ?? false]);
     await audit(ctx, id, req.userId, 'INVITE_CREATE', code);
     const created = await inviteDTO((await ctx.db.query('SELECT * FROM invites WHERE code = $1', [code]))[0], true);
-    await ctx.hub.toGuild(id, 'INVITE_CREATE', created);
+    await ctx.hub.toGuild(id, 'INVITE_CREATE', created, { channelId }); // only members who can see the channel learn the code
     return reply.code(201).send(created);
   });
   app.patch('/guilds/:id/vanity-url', async (req) => {
@@ -396,7 +396,7 @@ export function memberRoutes(app: FastifyInstance, ctx: Ctx) {
     if (inv.inviter_id !== req.userId) need(guildPerms(gp), Perm.MANAGE_GUILD);
     await ctx.db.query('DELETE FROM invites WHERE code = $1', [code]);
     await audit(ctx, inv.guild_id, req.userId, 'INVITE_DELETE', code);
-    await ctx.hub.toGuild(inv.guild_id, 'INVITE_DELETE', await inviteDTO(inv));
+    await ctx.hub.toGuild(inv.guild_id, 'INVITE_DELETE', await inviteDTO(inv), { channelId: inv.channel_id });
     return reply.code(204).send();
   });
 }
