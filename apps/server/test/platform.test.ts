@@ -821,9 +821,15 @@ describe('audit log expansion', () => {
     await api.req('DELETE', `/channels/${general.id}/pins/${m.id}`, owner.token);
     await api.req('DELETE', `/channels/${general.id}/messages/${m.id}`, owner.token);
     await api.req('PATCH', `/guilds/${guild.id}/members/${s.id}`, owner.token, { nick: 'newnick' });
+    // webhook rename and sticker rename audit WEBHOOK_UPDATE and STICKER_UPDATE
+    const hook = (await api.req('POST', `/channels/${general.id}/webhooks`, owner.token, { name: 'Hooks' })).body;
+    expect((await api.req('PATCH', `/webhooks/${hook.id}`, owner.token, { name: 'Renamed' })).status).toBe(200);
+    expect((await api.req('PATCH', `/webhooks/${hook.id}`, owner.token, { name: 'Renamed' })).body).toMatchObject({ name: 'Renamed' });
+    const sticker = (await api.req('POST', `/guilds/${guild.id}/stickers`, owner.token, { name: 'wave', url: '/files/x/wave.png' })).body;
+    expect((await api.req('PATCH', `/guilds/${guild.id}/stickers/${sticker.id}`, owner.token, { name: 'waved' })).body).toMatchObject({ name: 'waved' });
     const log = (await api.req('GET', `/guilds/${guild.id}/audit-logs`, owner.token)).body;
     const by = Object.fromEntries(log.map((e: any) => [e.action, e.actionType]));
-    expect(by).toMatchObject({ MESSAGE_PIN: 74, MESSAGE_UNPIN: 75, MESSAGE_DELETE: 72, MEMBER_UPDATE: 24 });
+    expect(by).toMatchObject({ MESSAGE_PIN: 74, MESSAGE_UNPIN: 75, MESSAGE_DELETE: 72, MEMBER_UPDATE: 24, WEBHOOK_UPDATE: 51, STICKER_UPDATE: 91 });
     for (const e of log) if (AuditActionType[e.action as keyof typeof AuditActionType] !== undefined) expect(e.actionType).toBe(AuditActionType[e.action as keyof typeof AuditActionType]);
     // self-delete is not a moderation action
     const m2 = (await api.req('POST', `/channels/${general.id}/messages`, s.token, { content: 'mine' })).body;
