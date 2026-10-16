@@ -10,6 +10,7 @@ import { limitOrThrow } from '../lib/ratelimit';
 import { audit, insertChannel, visibleChannelRows } from '../services/guilds';
 import { createMessage } from '../services/messages';
 import { parseEmbeds } from '../lib/embeds';
+import { parseComponents } from '../lib/components';
 import { addGroupRecipient, removeGroupRecipient } from '../services/dms';
 import { trackVisibility } from '../services/visibility';
 import { joinThread, leaveThread } from '../services/threads';
@@ -235,6 +236,7 @@ export function channelRoutes(app: FastifyInstance, ctx: Ctx) {
       await q.query('INSERT INTO webhooks (id, guild_id, channel_id, name, avatar, token, bot_user_id, creator_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)', [wid, a.channel.guild_id, id, b.name, b.avatar ?? null, randomToken(36), botId, req.userId]);
     });
     await audit(ctx, a.channel.guild_id, req.userId, 'WEBHOOK_CREATE', wid, { name: b.name });
+    await ctx.hub.toGuild(a.channel.guild_id, 'WEBHOOKS_UPDATE', { guildId: a.channel.guild_id, channelId: id });
     return reply.code(201).send(hookDTO((await ctx.db.query('SELECT * FROM webhooks WHERE id = $1', [wid]))[0], true));
   });
   app.delete('/channels/:id/webhooks/:webhookId', async (req, reply) => {
@@ -245,6 +247,7 @@ export function channelRoutes(app: FastifyInstance, ctx: Ctx) {
     if (!rows.length) throw notFound('Webhook');
     await ctx.db.query('DELETE FROM users WHERE id = $1', [rows[0]!.bot_user_id]); // the webhook's identity user
     await audit(ctx, a.channel.guild_id, req.userId, 'WEBHOOK_DELETE', p.webhookId);
+    await ctx.hub.toGuild(a.channel.guild_id, 'WEBHOOKS_UPDATE', { guildId: a.channel.guild_id, channelId: p.id });
     return reply.code(204).send();
   });
 
@@ -295,6 +298,7 @@ export function channelRoutes(app: FastifyInstance, ctx: Ctx) {
     }
     const w2 = await patchWebhook(w, b);
     await audit(ctx, w.guild_id, req.userId, 'WEBHOOK_UPDATE', w.id, { name: w2.name, channelId: w2.channel_id });
+    await ctx.hub.toGuild(w.guild_id, 'WEBHOOKS_UPDATE', { guildId: w.guild_id, channelId: w2.channel_id });
     return hookDTO(w2, true);
   });
 
@@ -306,6 +310,7 @@ export function channelRoutes(app: FastifyInstance, ctx: Ctx) {
     await ctx.db.query('DELETE FROM webhooks WHERE id = $1', [w.id]);
     await ctx.db.query('DELETE FROM users WHERE id = $1', [w.bot_user_id]);
     await audit(ctx, w.guild_id, req.userId, 'WEBHOOK_DELETE', w.id);
+    await ctx.hub.toGuild(w.guild_id, 'WEBHOOKS_UPDATE', { guildId: w.guild_id, channelId: w.channel_id });
     return reply.code(204).send();
   });
 
@@ -508,6 +513,7 @@ export function webhookPublicRoutes(app: FastifyInstance, ctx: Ctx) {
       await ctx.db.query('UPDATE users SET avatar = $2 WHERE id = $1', [w.bot_user_id, b.avatar]);
     }
     const w2 = (await ctx.db.query('SELECT * FROM webhooks WHERE id = $1', [w.id]))[0];
+    await ctx.hub.toGuild(w2.guild_id, 'WEBHOOKS_UPDATE', { guildId: w2.guild_id, channelId: w2.channel_id });
     return { id: w2.id, guildId: w2.guild_id, channelId: w2.channel_id, name: w2.name, avatar: w2.avatar ?? null, token: w2.token, url: `/webhooks/${w2.id}/${w2.token}` };
   });
 
@@ -517,6 +523,7 @@ export function webhookPublicRoutes(app: FastifyInstance, ctx: Ctx) {
     checkToken(w, p);
     await ctx.db.query('DELETE FROM webhooks WHERE id = $1', [w.id]);
     await ctx.db.query('DELETE FROM users WHERE id = $1', [w.bot_user_id]);
+    await ctx.hub.toGuild(w.guild_id, 'WEBHOOKS_UPDATE', { guildId: w.guild_id, channelId: w.channel_id });
     return reply.code(204).send();
   });
 
@@ -526,13 +533,16 @@ export function webhookPublicRoutes(app: FastifyInstance, ctx: Ctx) {
     const b = parse(z.object({
       content: z.string().min(1).max(4000).optional(),
       embeds: z.unknown().optional(), // validated by lib/embeds
+      /** Buttons / select menus (validated by lib/components, same as a bot message). */
+      components: z.unknown().optional(),
       username: z.string().trim().min(1).max(80).regex(/^[^\u0000-\u001f\u007f]+$/, 'invalid characters').optional(),
       avatarUrl: assetUrl.optional(), avatar_url: assetUrl.optional(),
       /** Post into a thread of the webhook's channel instead. */
       threadId: idSchema.optional(),
     }).strict(), req.body);
-    if (!b.content && !b.embeds) throw badRequest('Provide content and/or embeds');
+    if (!b.content && !b.embeds && b.components === undefined) throw badRequest('Provide content, embeds and/or components');
     const embeds = parseEmbeds(b.embeds, true); // webhook = bot-classed sender
+    const components = b.components === undefined ? undefined : parseComponents(b.components);
     const [w] = await ctx.db.query('SELECT * FROM webhooks WHERE id = $1', [p.id]);
     checkToken(w, p);
     limitOrThrow(ctx.rl, `webhook:${w.id}`, 60, 60_000, ctx.config.rateLimit);
@@ -543,7 +553,7 @@ export function webhookPublicRoutes(app: FastifyInstance, ctx: Ctx) {
       if (!thread || (thread.type !== 'thread' && thread.type !== 'post') || thread.parent_id !== w.channel_id) throw badRequest('threadId must be a thread of the webhook channel');
       channel = thread;
     }
-    const msg = await createMessage(ctx, { channel, authorId: w.bot_user_id, content: b.content ?? '', webhookId: w.id, senderPerms: 0n, skipChecks: true, webhookUsername: b.username ?? null, webhookAvatar: b.avatarUrl ?? b.avatar_url ?? null, embeds });
+    const msg = await createMessage(ctx, { channel, authorId: w.bot_user_id, content: b.content ?? '', webhookId: w.id, senderPerms: 0n, skipChecks: true, webhookUsername: b.username ?? null, webhookAvatar: b.avatarUrl ?? b.avatar_url ?? null, embeds, components });
     if (q.wait === 'true') return reply.code(200).send(msg); // Discord shape: wait=true returns the message
     return reply.code(204).send();
   });
