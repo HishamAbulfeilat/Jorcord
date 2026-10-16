@@ -338,7 +338,7 @@ export function messageRoutes(app: FastifyInstance, ctx: Ctx) {
       channels = channels.filter((c) => !nsfw.has(c));
     }
     if (!channels.length) return [];
-    return searchMessages(ctx, { viewerId: req.userId, guildId: id, channelIds: channels, q: q.q, authorId: q.authorId, has: q.has, mentions: q.mentions, before: q.before, after: q.after, sortBy: q.sortBy, sortOrder: q.sortOrder, limit: limitParam(q.limit, 25) });
+    return searchMessages(ctx, { viewerId: req.userId, guildId: id, channelIds: channels, q: q.q, authorId: q.authorId, has: q.has, mentions: q.mentions, before: q.before, after: q.after, pinned: q.pinned, during: q.during, sortBy: q.sortBy, sortOrder: q.sortOrder, limit: limitParam(q.limit, 25) });
   });
 
   /** Search inside one channel the caller can read (this is how DMs and group DMs are searched). */
@@ -350,7 +350,7 @@ export function messageRoutes(app: FastifyInstance, ctx: Ctx) {
     const a = await channelAccess(ctx, req.userId, id);
     await ageGate(ctx, req.userId, req.isBot, a);
     if (!has(a.perms, Perm.READ_MESSAGE_HISTORY)) return [];
-    return searchMessages(ctx, { viewerId: req.userId, channelIds: [id], q: q.q, authorId: q.authorId, has: q.has, mentions: q.mentions, before: q.before, after: q.after, sortBy: q.sortBy, sortOrder: q.sortOrder, limit: limitParam(q.limit, 25) });
+    return searchMessages(ctx, { viewerId: req.userId, channelIds: [id], q: q.q, authorId: q.authorId, has: q.has, mentions: q.mentions, before: q.before, after: q.after, pinned: q.pinned, during: q.during, sortBy: q.sortBy, sortOrder: q.sortOrder, limit: limitParam(q.limit, 25) });
   });
   /** Search across all of the caller's DMs and group DMs. */
   app.get('/users/@me/messages/search', async (req) => {
@@ -358,6 +358,6 @@ export function messageRoutes(app: FastifyInstance, ctx: Ctx) {
     limitOrThrow(ctx.rl, `search:${req.userId}`, 30, 60_000, ctx.config.rateLimit); // full-scan queries are expensive
     if (!hasSearchCriteria(q)) throw badRequest('Provide q, author_id, mentions or has');
     const ids = (await ctx.db.query('SELECT channel_id FROM dm_participants WHERE user_id = $1', [req.userId])).map((r) => r.channel_id as string);
-    return searchMessages(ctx, { viewerId: req.userId, channelIds: ids, q: q.q, authorId: q.authorId, has: q.has, mentions: q.mentions, before: q.before, after: q.after, sortBy: q.sortBy, sortOrder: q.sortOrder, limit: limitParam(q.limit, 25) });
+    return searchMessages(ctx, { viewerId: req.userId, channelIds: ids, q: q.q, authorId: q.authorId, has: q.has, mentions: q.mentions, before: q.before, after: q.after, pinned: q.pinned, during: q.during, sortBy: q.sortBy, sortOrder: q.sortOrder, limit: limitParam(q.limit, 25) });
   });
 }

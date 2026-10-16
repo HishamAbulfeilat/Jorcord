@@ -21,10 +21,23 @@ describe('search query parsing', () => {
     expect(parseQ({ before: 'yesterday' }).success).toBe(false);
     expect(parseQ({ mentions: 'abc' }).success).toBe(false);
   });
+  it('parses pinned and during', () => {
+    expect(searchQuerySchema.parse({ pinned: 'true', during: '2026-03-01' })).toMatchObject({ pinned: true, during: '2026-03-01' });
+    expect(searchQuerySchema.parse({ pinned: 'false' }).pinned).toBe(false);
+    expect(searchQuerySchema.parse({ pinned: true }).pinned).toBe(true);
+    expect(searchQuerySchema.parse({ pinned: false }).pinned).toBe(false);
+    expect(parseQ({ pinned: 'maybe' }).success).toBe(false);
+    expect(parseQ({ during: 'soon' }).success).toBe(false);
+    expect(parseQ({ during: '2026-13-45' }).success).toBe(false);
+    expect(parseQ({ during: '2026-03-01T00:00:00Z' }).success).toBe(false);
+  });
   it('requires a narrowing filter', () => {
     expect(hasSearchCriteria(searchQuerySchema.parse({ sort_by: 'timestamp' }))).toBe(false);
     expect(hasSearchCriteria(searchQuerySchema.parse({ mentions: '5' }))).toBe(true);
     expect(hasSearchCriteria(searchQuerySchema.parse({ has: 'file' }))).toBe(true);
+    expect(hasSearchCriteria(searchQuerySchema.parse({ pinned: 'true' }))).toBe(true);
+    expect(hasSearchCriteria(searchQuerySchema.parse({ pinned: 'false' }))).toBe(true);
+    expect(hasSearchCriteria(searchQuerySchema.parse({ during: '2026-03-01' }))).toBe(true);
   });
 });
 
@@ -72,6 +85,17 @@ describe('buildSearchSql', () => {
   it('escapes LIKE wildcards in the fallback', () => {
     expect(buildSearchSql('ilike', { ...base, q: '50%_' }).params[1]).toBe('%50' + String.fromCharCode(92) + '%' + String.fromCharCode(92) + '_%');
   });
+  it('narrows by pinned and by the UTC day named in during', () => {
+    const { sql, params } = buildSearchSql('ilike', { ...base, pinned: true, during: '2026-03-01' });
+    expect(sql).toContain(' AND pinned');
+    expect(sql).toContain('id >= $2');
+    expect(sql).toContain('id < $3');
+    expect(params.slice(1, 3)).toEqual([boundaryId.parse('2026-03-01T00:00:00Z'), boundaryId.parse('2026-03-02T00:00:00Z')]);
+    expect(sql).not.toContain('2026-03-01');
+    expect(buildSearchSql('ilike', { ...base, pinned: false }).sql).toContain('NOT pinned');
+    expect(buildSearchSql('ilike', base).sql).not.toContain('pinned');
+    expect(buildSearchSql('ilike', base).sql).not.toContain('id >=');
+  });
 });
 
 describe('search filters end to end', () => {
@@ -102,5 +126,26 @@ describe('search filters end to end', () => {
     expect(await ids('q=a&sort_by=relevance')).toBeInstanceOf(Array);
     expect((await api.req('GET', `/guilds/${guild.id}/messages/search?has=bogus`, bob.token)).status).toBe(400);
     expect((await api.req('GET', `/guilds/${guild.id}/messages/search?sort_order=asc`, bob.token)).status).toBe(400);
+  });
+
+  it('filters by pinned and during', async () => {
+    const owner = await api.register('sp');
+    const guild = (await api.req('POST', '/guilds', owner.token, { name: 'Pins' })).body;
+    const ch = guild.channels.find((c: any) => c.name === 'general').id;
+    const post = async (content: string) => (await api.req('POST', `/channels/${ch}/messages`, owner.token, { content })).body;
+    const a = await post('pinned alpha');
+    const b = await post('plain beta');
+    expect((await api.req('PUT', `/channels/${ch}/pins/${a.id}`, owner.token)).status).toBe(204);
+    const ids = async (qs: string) => (await api.req('GET', `/guilds/${guild.id}/messages/search?${qs}`, owner.token)).body.map((m: any) => m.id);
+
+    expect(await ids('pinned=true')).toEqual([a.id]);
+    expect(await ids('pinned=false')).toEqual([b.id]);
+    const day = new Date(snowflakeTime(a.id)).toISOString().slice(0, 10);
+    const onDay = await ids(`during=${day}`);
+    expect(onDay).toContain(a.id);
+    expect(onDay).toContain(b.id);
+    expect(await ids('during=2000-01-01')).toEqual([]);
+    expect((await api.req('GET', `/guilds/${guild.id}/messages/search?pinned=maybe`, owner.token)).status).toBe(400);
+    expect((await api.req('GET', `/guilds/${guild.id}/messages/search?during=nope`, owner.token)).status).toBe(400);
   });
 });

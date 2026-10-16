@@ -53,7 +53,7 @@ export function SearchPanel({ guildId, channel, onClose }: { guildId: string | u
     const hasAll = [...new Set([...(r.req.has ? r.req.has.split(',') : []), ...(has ? [has] : [])])];
     return { req: { ...r.req, has: hasAll.length ? hasAll.join(',') : undefined }, unresolved: r.unresolved };
   }, [parsed, members, has]);
-  const filtered = !!(req.authorId || req.mentions || req.has);
+  const filtered = !!(req.authorId || req.mentions || req.has || req.pinned || req.during);
   const res = useQuery({
     queryKey: ['search', guildId ?? channel.id, scope, req], enabled: ((req.q?.trim().length ?? 0) > 1 || filtered) && unresolved.length === 0,
     queryFn: () => (guildId ? api.guilds.search(guildId, { ...req, channelId: scope === 'channel' ? channel.id : undefined }) : api.guilds.search('@me', { ...req, channelId: channel.id })),

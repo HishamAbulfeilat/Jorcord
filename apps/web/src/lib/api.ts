@@ -9,7 +9,7 @@ import { send } from './transport';
 export interface AuthResult { user: SelfUser; accessToken: string; refreshToken: string }
 export interface UserProfile extends User { activities?: Activity[]; connections?: PublicConnection[]; note?: string | null; mutualGuilds?: { id: Id; name: string; icon: string | null; nick?: string | null }[]; mutualFriends?: User[] }
 export interface MessageQuery { limit?: number; before?: Id; after?: Id; around?: Id }
-export interface SearchQuery { q?: string; authorId?: Id; mentions?: Id; channelId?: Id; /** comma-separated: link,embed,file,image,video,sticker */ has?: string; before?: string; after?: string; sort_by?: string; sort_order?: string }
+export interface SearchQuery { q?: string; authorId?: Id; mentions?: Id; channelId?: Id; /** comma-separated: link,embed,file,image,video,sticker */ has?: string; before?: string; after?: string; during?: string; pinned?: string; sort_by?: string; sort_order?: string }
 export interface SendMessageInput { content: string; replyTo?: Id | null; files?: File[]; nonce?: string; stickerIds?: Id[]; poll?: CreatePoll; allowedMentions?: AllowedMentions | null }
 export interface CreateEventInput { name: string; description?: string | null; entityType: number; channelId?: Id | null; scheduledStartTime: string; scheduledEndTime?: string | null; location?: string | null; privacyLevel?: 2 }
 export interface CommandPermissionSet { commandId: Id; applicationId: Id; guildId: Id; permissions: CommandPermissionOverwrite[] }
