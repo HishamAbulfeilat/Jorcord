@@ -49,3 +49,4 @@ Second pass (soundboard through multi-account), one commit each, prefix `parity:
 7. Templates, widget, insights, vanity UI (R14).
 8. GIF favorites (R15). 9. Connections (R17, self-declared + verify by code). 10. Multi-account (R16).
 Third pass (R7 AutoMod v3, R20 boost levels, R21 linked roles + App Directory, R22 mod tools): all done. Only R19 stays skipped on purpose (Discord has no edit history either).
+Fourth pass: message search filters (`has` incl. video, `mentions`, `author_id`, `before`/`after` by snowflake or ISO date, `sort_by`/`sort_order`; `services/search.ts`, `lib/searchTokens.ts`): done. No new migration: `mentions` reuses the GIN index from 009.
