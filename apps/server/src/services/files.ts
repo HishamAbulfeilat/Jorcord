@@ -1,9 +1,11 @@
 import { randomBytes } from 'node:crypto';
+import { Readable } from 'node:stream';
 import type { MultipartFile } from '@fastify/multipart';
 import { imageSize } from 'image-size';
 import { snowflake, type Attachment } from '@jorcord/shared';
 import type { Ctx } from '../ctx';
-import { ApiError, notFound } from '../errors';
+import { ApiError, badRequest, notFound } from '../errors';
+import { safeGet } from '../lib/ssrf';
 
 export const sanitizeFilename = (name: string) => {
   const base = (name.split(/[\\/]/).pop() ?? '').replace(/[\u0000-\u001f\u007f"<>|:*?]/g, '').replace(/^\.+/, '').trim().slice(0, 200);
@@ -41,6 +43,46 @@ export async function saveUpload(ctx: Ctx, userId: string, part: MultipartFile):
   await ctx.db.query('INSERT INTO files (id, key, uploader_id, filename, content_type, size, width, height, spoiler) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)',
     [id, key, userId, filename, contentType, size, width, height, filename.startsWith('SPOILER_')]);
   return { id, filename, contentType, size, url: fileUrl(key, filename), width, height, spoiler: filename.startsWith('SPOILER_') };
+}
+
+/** Max size of an avatar/banner fetched from a URL. */
+export const MAX_PROFILE_IMAGE_BYTES = 8 * 1024 * 1024;
+
+const IMAGE_TYPES = [
+  { type: 'image/png', ext: 'png', match: (b: Buffer) => b.length >= 8 && b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47 && b[4] === 0x0d && b[5] === 0x0a && b[6] === 0x1a && b[7] === 0x0a },
+  { type: 'image/jpeg', ext: 'jpg', match: (b: Buffer) => b.length >= 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff },
+  { type: 'image/gif', ext: 'gif', match: (b: Buffer) => b.length >= 6 && (b.toString('ascii', 0, 6) === 'GIF87a' || b.toString('ascii', 0, 6) === 'GIF89a') },
+  { type: 'image/webp', ext: 'webp', match: (b: Buffer) => b.length >= 12 && b.toString('ascii', 0, 4) === 'RIFF' && b.toString('ascii', 8, 12) === 'WEBP' },
+];
+
+/** Allowed profile image type by magic bytes, never by the server-supplied Content-Type. */
+export function sniffImageType(buf: Buffer): { type: string; ext: string } | null {
+  const hit = IMAGE_TYPES.find((t) => t.match(buf));
+  return hit ? { type: hit.type, ext: hit.ext } : null;
+}
+
+/**
+ * Downloads an image through the SSRF guard and stores it exactly like an upload (a `files` row + the public URL).
+ * Rejects non-http(s)/private/oversized/non-image responses; `basename` names the stored file (e.g. "avatar").
+ */
+export async function storeImageFromUrl(ctx: Ctx, userId: string, url: string, basename: string): Promise<string> {
+  let res: Awaited<ReturnType<typeof safeGet>>;
+  try { res = await safeGet(url, { maxBytes: MAX_PROFILE_IMAGE_BYTES, timeoutMs: 10_000, allowPrivate: ctx.config.allowPrivateUnfurl }); }
+  catch { throw badRequest('Could not fetch an image from that URL'); }
+  if (res.status < 200 || res.status >= 300) throw badRequest('That URL did not return an image');
+  const declared = Number(res.headers['content-length'] ?? 0);
+  if (res.truncated || declared > MAX_PROFILE_IMAGE_BYTES || res.body.length > MAX_PROFILE_IMAGE_BYTES) throw new ApiError(413, 'FILE_TOO_LARGE', 'Image exceeds 8 MB');
+  const kind = sniffImageType(res.body);
+  if (!kind) throw new ApiError(400, 'UNSUPPORTED_IMAGE_TYPE', 'Only PNG, JPEG, WEBP and GIF images are allowed');
+  const key = randomBytes(24).toString('hex');
+  const filename = `${basename}.${kind.ext}`;
+  let width: number | null = null, height: number | null = null;
+  try { const d = imageSize(res.body); width = d.width ?? null; height = d.height ?? null; } catch { /* dimensions are optional */ }
+  const size = await ctx.storage.put(key, Readable.from(res.body), MAX_PROFILE_IMAGE_BYTES);
+  if (size === 0) { await ctx.storage.delete(key); throw badRequest('The image is empty'); }
+  await ctx.db.query('INSERT INTO files (id, key, uploader_id, filename, content_type, size, width, height, spoiler) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,false)',
+    [snowflake(), key, userId, filename, kind.type, size, width, height]);
+  return fileUrl(key, filename);
 }
 
 const toAttachment = (f: any): Attachment => ({ id: f.id, filename: f.filename, contentType: f.content_type, size: Number(f.size), url: fileUrl(f.key, f.filename), width: f.width ?? null, height: f.height ?? null, spoiler: f.spoiler });

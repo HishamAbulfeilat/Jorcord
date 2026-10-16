@@ -36,7 +36,7 @@ export function safeLookup(allowPrivate = false): net.LookupFunction {
   };
 }
 
-export interface SafeFetchResult { status: number; headers: http.IncomingHttpHeaders; body: Buffer; url: string }
+export interface SafeFetchResult { status: number; headers: http.IncomingHttpHeaders; body: Buffer; url: string; /** true when the body was cut off at `maxBytes` */ truncated?: boolean }
 
 /** Minimal SSRF-safe GET: http(s) only, standard ports, validated redirects, size/time caps. */
 export async function safeGet(rawUrl: string, opts: { maxBytes?: number; timeoutMs?: number; maxRedirects?: number; allowPrivate?: boolean } = {}): Promise<SafeFetchResult> {
@@ -56,7 +56,7 @@ export async function safeGet(rawUrl: string, opts: { maxBytes?: number; timeout
       const mod = url.protocol === 'https:' ? https : http;
       const req = mod.request(url, { method: 'GET', lookup: safeLookup(opts.allowPrivate), timeout: timeoutMs, headers: { 'user-agent': 'JorcordBot/1.0 (+link preview)', accept: 'text/html,*/*;q=0.5' } }, (r) => {
         const chunks: Buffer[] = []; let n = 0;
-        r.on('data', (c: Buffer) => { n += c.length; if (n > maxBytes) { r.destroy(); resolve({ status: r.statusCode ?? 0, headers: r.headers, body: Buffer.concat(chunks), url: url.href }); } else chunks.push(c); });
+        r.on('data', (c: Buffer) => { n += c.length; if (n > maxBytes) { r.destroy(); resolve({ status: r.statusCode ?? 0, headers: r.headers, body: Buffer.concat(chunks), url: url.href, truncated: true }); } else chunks.push(c); });
         r.on('end', () => resolve({ status: r.statusCode ?? 0, headers: r.headers, body: Buffer.concat(chunks), url: url.href, location: r.headers.location }));
         r.on('error', reject);
       });
