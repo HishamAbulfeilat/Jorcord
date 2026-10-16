@@ -15,6 +15,7 @@ const InvitePage = lazyNamed(() => import('@/pages/InvitePage'), 'InvitePage');
 const TemplatePage = lazyNamed(() => import('@/pages/TemplatePage'), 'TemplatePage');
 const DemoPage = lazyNamed(() => import('@/pages/DemoPage'), 'DemoPage');
 const DeveloperPortal = lazyNamed(() => import('@/pages/DeveloperPortal'), 'DeveloperPortal');
+const AdminDashboard = lazyNamed(() => import('@/pages/AdminDashboard'), 'AdminDashboard');
 const OAuthAuthorize = lazyNamed(() => import('@/pages/OAuthAuthorize'), 'OAuthAuthorize');
 const ServerSetupPage = lazyNamed(() => import('@/pages/ServerSetup'), 'ServerSetupPage');
 const UserSettings = lazyNamed(() => import('@/components/settings/UserSettings'), 'UserSettings');
@@ -104,6 +105,7 @@ export default function App() {
         <Route path="/template/:code" element={<TemplatePage />} />
         <Route path="/demo/*" element={<DemoPage />} />
         <Route path="/developers/*" element={<DeveloperPortal />} />
+        <Route path="/admin" element={access ? <AdminDashboard /> : <Navigate to="/login" replace />} />
         <Route path="/oauth2/authorize" element={<OAuthAuthorize />} />
         <Route path="/discover" element={<Protected />} />
         <Route path="/channels/:guildId/:channelId?/:messageId?" element={<Protected />} />
