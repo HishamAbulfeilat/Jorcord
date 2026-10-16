@@ -60,12 +60,13 @@ export const callService = {
   stop() { try { void capPlugin('CallService')?.stop?.(); } catch { /* */ } },
 };
 
-/** Desktop-only helpers behind the settings page. */
+/** Desktop-only helpers behind the settings page. Every call is a no-op outside Tauri (plain web / PWA). */
 export const desktop = {
   available: () => isTauri(),
-  async autostart(): Promise<boolean | null> { try { return (await tauri().autostart?.isEnabled?.()) ?? null; } catch { return null; } },
-  async setAutostart(on: boolean) { const a = tauri().autostart; if (!a) throw new Error('Launch at login is unavailable'); await (on ? a.enable() : a.disable()); },
+  async autostart(): Promise<boolean | null> { if (!isTauri()) return null; try { return (await tauri().autostart?.isEnabled?.()) ?? null; } catch { return null; } },
+  async setAutostart(on: boolean) { if (!isTauri()) return; const a = tauri().autostart; if (!a) throw new Error('Launch at login is unavailable'); await (on ? a.enable() : a.disable()); },
   async checkUpdate(): Promise<{ version: string; install: () => Promise<void> } | null> {
+    if (!isTauri()) return null;
     const u = tauri().updater; if (!u?.check) throw new Error('Updater is unavailable');
     const up = await u.check(); if (!up) return null;
     return { version: up.version, install: async () => { await up.downloadAndInstall(); await tauri().process?.relaunch?.(); } };
