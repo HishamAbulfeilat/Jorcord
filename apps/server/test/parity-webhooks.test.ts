@@ -79,4 +79,48 @@ describe('webhook full API', () => {
     expect((await api.req('GET', `${path}/messages/${soon.id}`, null)).status).toBe(404);
     wsClient.close();
   });
+
+  it('executes with components like a bot message', async () => {
+    const { owner, general } = await guildWith();
+    const hook = (await api.req('POST', `/channels/${general.id}/webhooks`, owner.token, { name: 'Buttons' })).body;
+    const path = `/webhooks/${hook.id}/${hook.token}?wait=true`;
+    const rows = [
+      { type: 1, components: [{ type: 2, style: 1, label: 'Go', customId: 'go' }] },
+      { type: 1, components: [{ type: 3, customId: 'pick', options: [{ label: 'A', value: 'a' }] }] },
+    ];
+    const only = (await api.req('POST', path, null, { components: rows })).body; // components-only, like embeds-only
+    expect(only.content).toBe('');
+    expect(only.components).toHaveLength(2);
+    expect(only.components[0].components[0]).toMatchObject({ style: 1, label: 'Go', customId: 'go' });
+    expect((await api.req('POST', path, null, { content: 'hi', components: rows })).body.components).toHaveLength(2);
+    // the same validator as bots: a button needs a label/emoji
+    expect((await api.req('POST', path, null, { components: [{ type: 1, components: [{ type: 2, style: 1, customId: 'nope' }] }] })).status).toBe(400);
+    expect((await api.req('POST', path, null, {})).status).toBe(400); // neither content, embeds nor components
+  });
+
+  it('broadcasts WEBHOOKS_UPDATE on create, update and delete', async () => {
+    const { owner, guildId, general, other } = await guildWith();
+    const ws = await WsClient.connect(env.port);
+    await ws.identify(owner.token);
+    const patch = (seq: number) => ws.waitFor((f) => f.t === 'WEBHOOKS_UPDATE' && f.s > seq).then((f) => f.d);
+    // by-id management
+    let seq = ws.lastSeq;
+    const hook = (await api.req('POST', `/channels/${general.id}/webhooks`, owner.token, { name: 'Live' })).body;
+    expect(await patch(seq)).toMatchObject({ guildId, channelId: general.id });
+    seq = ws.lastSeq;
+    await api.req('PATCH', `/webhooks/${hook.id}`, owner.token, { channelId: other.id });
+    expect(await patch(seq)).toMatchObject({ guildId, channelId: other.id });
+    seq = ws.lastSeq;
+    await api.req('DELETE', `/webhooks/${hook.id}`, owner.token);
+    expect(await patch(seq)).toMatchObject({ guildId, channelId: other.id });
+    // token credential paths broadcast too
+    const t = (await api.req('POST', `/channels/${general.id}/webhooks`, owner.token, { name: 'Token' })).body;
+    seq = ws.lastSeq;
+    await api.req('PATCH', `/webhooks/${t.id}/${t.token}`, null, { name: 'Renamed' });
+    expect(await patch(seq)).toMatchObject({ guildId, channelId: general.id });
+    seq = ws.lastSeq;
+    await api.req('DELETE', `/webhooks/${t.id}/${t.token}`, null);
+    expect(await patch(seq)).toMatchObject({ guildId, channelId: general.id });
+    ws.close();
+  });
 });

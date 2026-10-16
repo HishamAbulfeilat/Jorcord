@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { ArrowDown, Hash, Users } from 'lucide-react';
-import type { Channel, Message } from '@jorcord/shared';
+import { ArrowDown, Hash, Users, X } from 'lucide-react';
+import type { Channel, Message, MessageEdit } from '@jorcord/shared';
 import { useMessages, useMessages as useMsgStore } from '@/stores/messages';
 import { useData } from '@/stores/data';
 import { useUI } from '@/stores/ui';
 import { api } from '@/lib/api';
-import { compareId, fmtDateDivider, msgTime, sameDay, dmName } from '@/lib/format';
+import { compareId, fmtDateDivider, fmtFull, msgTime, sameDay, dmName } from '@/lib/format';
 import { MessageItem, PendingItem } from './MessageItem';
 import { Spinner } from '@/components/ui/primitives';
 import { ackLater } from '@/lib/session';
@@ -47,6 +47,7 @@ export function MessageList({ channel, lastReadSnapshot }: { channel: Channel; l
   const scroller = useRef<HTMLDivElement>(null);
   const atBottom = useRef(true); const [showJump, setShowJump] = useState(false); const [newBelow, setNewBelow] = useState(0);
   const [flashId, setFlashId] = useState<string | null>(null);
+  const [editHistory, setEditHistory] = useState<{ m: Message; rect: DOMRect } | null>(null);
   const anchor = useRef<{ key: string; delta: number } | null>(null);
   const store = useMsgStore.getState;
 
@@ -182,11 +183,12 @@ export function MessageList({ channel, lastReadSnapshot }: { channel: Channel; l
             const r = rows[v.index]; if (!r) return null;
             return (
               <div key={v.key} data-index={v.index} ref={virt.measureElement} style={{ position: 'absolute', top: 0, left: 0, width: '100%', transform: `translateY(${v.start}px)` }}>
-                <RowView r={r} channel={channel} flashId={flashId} />
+                <RowView r={r} channel={channel} flashId={flashId} onEditHistory={(m, rect) => setEditHistory({ m, rect })} />
               </div>
             );
           })}
         </div>
+        {editHistory && <EditHistoryPopover target={editHistory} onClose={() => setEditHistory(null)} />}
         <div className="h-4" />
       </div>
       {(showJump || newBelow > 0) && (
@@ -198,15 +200,45 @@ export function MessageList({ channel, lastReadSnapshot }: { channel: Channel; l
   );
 }
 
-function RowView({ r, channel, flashId }: { r: Row; channel: Channel; flashId: string | null }) {
+function RowView({ r, channel, flashId, onEditHistory }: { r: Row; channel: Channel; flashId: string | null; onEditHistory: (m: Message, rect: DOMRect) => void }) {
   const pend = useMessages((s) => (r.kind === 'pending' ? s.pending.find((p) => p.nonce === r.nonce) : undefined));
   switch (r.kind) {
     case 'date': return <div role="separator" className="relative mx-4 mb-2 mt-6 flex items-center justify-center border-t border-divider text-xs font-semibold text-muted"><span className="-mt-px bg-chat px-2 leading-none" style={{ transform: 'translateY(-50%)' }}>{r.label}</span></div>;
     case 'new': return <div role="separator" className="relative mx-4 my-1 flex items-center border-t border-danger"><span className="absolute -top-2 end-0 rounded-sm bg-danger px-1 text-[10px] font-bold uppercase leading-4 text-white">{t('New')}</span></div>;
     case 'intro': return <Intro channel={channel} />;
     case 'pending': return pend ? <PendingItem p={pend} grouped={r.grouped} /> : null;
-    case 'msg': return <MessageItem m={r.m} grouped={r.grouped} highlighted={flashId === r.m.id} />;
+    case 'msg': return <MessageItem m={r.m} grouped={r.grouped} highlighted={flashId === r.m.id} onEditHistory={onEditHistory} />;
   }
+}
+
+/** R19: prior versions of an edited message, fetched when the author clicks "(edited)" in the message list. */
+export function EditHistoryPopover({ target, onClose }: { target: { m: Message; rect: DOMRect }; onClose: () => void }) {
+  const [items, setItems] = useState<MessageEdit[] | null>(null);
+  const { channelId, id } = target.m;
+  useEffect(() => {
+    let alive = true;
+    api.messages.editHistory(channelId, id).then((r) => { if (alive) setItems(r); }).catch(() => { if (alive) setItems([]); });
+    return () => { alive = false; };
+  }, [channelId, id]);
+  return (
+    <div role="dialog" aria-label={t('Edit history')} data-testid="edit-history-popover" style={{ position: 'fixed', top: Math.min(target.rect.bottom + 6, Math.max(8, window.innerHeight - 260)), right: Math.max(8, window.innerWidth - target.rect.right) }}
+      className="z-40 max-h-[260px] w-[360px] max-w-[90vw] overflow-y-auto rounded-lg border border-divider bg-[rgb(var(--float))] p-3 text-left shadow-high">
+      <div className="mb-2 flex items-center justify-between text-xs font-semibold text-header">
+        <span>{t('Edit history')}</span>
+        <button aria-label={t('Close')} onClick={onClose} className="text-muted hover:text-interactive"><X size={16} /></button>
+      </div>
+      {items === null ? <p className="text-xs text-muted" data-testid="edit-history-loading">{t('Loading')}</p> : items.length === 0 ? <p className="text-xs text-muted" data-testid="edit-history-empty">{t('No previous versions')}</p> : (
+        <ul className="space-y-2" data-testid="edit-history-items">
+          {items.map((v) => (
+            <li key={v.id} data-testid="edit-history-version" className="rounded bg-side/60 px-2 py-1.5">
+              <div className="text-[15px] break-words whitespace-pre-wrap text-normal">{toPlain(parseInline(v.content))}</div>
+              <time className="text-[11px] text-muted">{fmtFull(new Date(v.editedAt).getTime())}</time>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
 }
 
 function Intro({ channel }: { channel: Channel }) {

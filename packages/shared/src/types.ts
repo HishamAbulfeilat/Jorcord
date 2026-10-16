@@ -69,6 +69,8 @@ export interface Message {
   /** Controls which mentions trigger notifications. */
   allowedMentions?: AllowedMentions | null;
 }
+/** R19: a prior version of an edited message's content (`GET /channels/:id/messages/:mid/edits`). Newest first; the current content is not included. */
+export interface MessageEdit { id: Id; messageId: Id; content: string; editedAt: string }
 /**
  * Controls which mentions trigger notifications for a message (Discord-shape; Jorcord adds `everyone`).
  * When present it overrides default pings: only parse entries ping, and the explicit id lists ping in addition.

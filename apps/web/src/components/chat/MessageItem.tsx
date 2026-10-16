@@ -99,7 +99,7 @@ function Toolbar({ m, onMenu, startEdit }: { m: Message; onMenu: (e: React.Mouse
   );
 }
 
-export const MessageItem = memo(function MessageItem({ m, grouped, highlighted }: { m: Message; grouped: boolean; highlighted?: boolean }) {
+export const MessageItem = memo(function MessageItem({ m, grouped, highlighted, onEditHistory }: { m: Message; grouped: boolean; highlighted?: boolean; /** R19: clicking "(edited)" opens the prior-version popover owned by the message list. */ onEditHistory?: (m: Message, rect: DOMRect) => void }) {
   const me = useData((s) => s.me); const info = useAuthorInfo(m); const guildName = useData((s) => (m.guildId ? s.guilds[m.guildId]?.guild.name : undefined));
   const editing = useUI((s) => s.editing === m.id); const setEditing = useUI((s) => s.setEditing); const openPopout = useUI((s) => s.openPopout); const openMenu = useUI((s) => s.openMenu);
   const replyingTo = useUI((s) => s.replyTo[m.channelId] === m.id);
@@ -132,7 +132,9 @@ export const MessageItem = memo(function MessageItem({ m, grouped, highlighted }
       {isLoadingMsg(m) ? <ThinkingBody m={m} /> : m.type === 'poll_result' ? <PollResultBody m={m} /> : editing ? <Editor m={m} done={() => setEditing(null)} /> : m.content ? (
         <div className="relative pe-4 text-[16px] leading-[1.375rem] text-normal">
           <Markdown content={m.content} guildId={m.guildId} />
-          {m.editedAt && <time className="ms-1 select-none text-[10px] text-muted" title={fmtFull(new Date(m.editedAt).getTime())}>(edited)</time>}
+          {m.editedAt && (onEditHistory
+            ? <button data-testid="edit-history-trigger" className="ms-1 cursor-pointer select-none text-[10px] text-muted hover:text-interactive-hover" title={fmtFull(new Date(m.editedAt).getTime())} onClick={(e) => { e.stopPropagation(); onEditHistory(m, e.currentTarget.getBoundingClientRect()); }}>(edited)</button>
+            : <time className="ms-1 select-none text-[10px] text-muted" title={fmtFull(new Date(m.editedAt).getTime())}>(edited)</time>)}
         </div>
       ) : null}
       {m.forward && <ForwardedBody f={m.forward} guildId={m.guildId} />}

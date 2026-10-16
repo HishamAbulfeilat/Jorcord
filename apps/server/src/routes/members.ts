@@ -6,7 +6,7 @@ import type { Ctx } from '../ctx';
 import { clearServerTag } from '../services/cosmetics';
 import { bumpDaily } from './guildextras';
 import { assertInvitesOpen, detectRaid } from '../services/safety';
-import { ApiError, badRequest, forbidden, notFound } from '../errors';
+import { ApiError, badRequest, conflict, forbidden, notFound } from '../errors';
 import { idSchema, iso, limitParam, parse } from '../lib/ids';
 import { randomToken } from '../lib/crypto';
 import { limitOrThrow } from '../lib/ratelimit';
@@ -331,7 +331,21 @@ export function memberRoutes(app: FastifyInstance, ctx: Ctx) {
     await ctx.db.query('INSERT INTO invites (code, guild_id, channel_id, inviter_id, max_uses, expires_at, temporary) VALUES ($1,$2,$3,$4,$5,$6,$7)',
       [code, id, channelId, req.userId, b.maxUses ?? null, age ? new Date(Date.now() + age * 1000) : null, b.temporary ?? false]);
     await audit(ctx, id, req.userId, 'INVITE_CREATE', code);
-    return reply.code(201).send(await inviteDTO((await ctx.db.query('SELECT * FROM invites WHERE code = $1', [code]))[0], true));
+    const created = await inviteDTO((await ctx.db.query('SELECT * FROM invites WHERE code = $1', [code]))[0], true);
+    await ctx.hub.toGuild(id, 'INVITE_CREATE', created);
+    return reply.code(201).send(created);
+  });
+  app.patch('/guilds/:id/vanity-url', async (req) => {
+    const { id } = parse(gid, req.params);
+    const b = parse(z.object({ code: z.string().trim().regex(/^[a-z0-9-]{3,32}$/).nullable() }).strict(), req.body);
+    need(guildPerms(await guildAccess(ctx, req.userId, id)), Perm.MANAGE_GUILD);
+    try { await ctx.db.query('UPDATE guilds SET vanity_url = $2 WHERE id = $1', [id, b.code]); }
+    catch (e: any) { if (e?.code === '23505' || /unique|duplicate/i.test(String(e?.message))) throw conflict('Vanity URL taken'); throw e; }
+    await audit(ctx, id, req.userId, 'GUILD_UPDATE', id, { vanityUrl: b.code });
+    const [g] = await ctx.db.query(`${GUILD_SELECT} WHERE g.id = $1`, [id]);
+    const dto = guildDTO(g);
+    await ctx.hub.toGuild(id, 'GUILD_UPDATE', dto);
+    return dto;
   });
   app.post('/invites/:code', async (req, reply) => {
     const { code } = parse(z.object({ code: z.string().regex(/^[A-Za-z0-9_-]{3,32}$/) }), req.params);
@@ -382,6 +396,7 @@ export function memberRoutes(app: FastifyInstance, ctx: Ctx) {
     if (inv.inviter_id !== req.userId) need(guildPerms(gp), Perm.MANAGE_GUILD);
     await ctx.db.query('DELETE FROM invites WHERE code = $1', [code]);
     await audit(ctx, inv.guild_id, req.userId, 'INVITE_DELETE', code);
+    await ctx.hub.toGuild(inv.guild_id, 'INVITE_DELETE', await inviteDTO(inv));
     return reply.code(204).send();
   });
 }

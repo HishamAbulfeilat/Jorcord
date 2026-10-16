@@ -90,7 +90,7 @@ export async function buildApp(opts: BuildOptions = {}): Promise<{ app: FastifyI
   });
   await app.register(multipart, { limits: { fileSize: config.maxUploadBytes, files: 10, fields: 20, fieldSize: 64 * 1024 } });
   await app.register(websocket, { options: { maxPayload: 64 * 1024 } });
-  installRateLimit(app, rl, config.rateLimit);
+  installRateLimit(app, rl, config.rateLimit, config.jwtSecret);
 
   app.addHook('onSend', async (req, reply) => {
     reply.header('x-request-id', req.id);

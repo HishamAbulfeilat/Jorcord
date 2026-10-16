@@ -1,10 +1,10 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { LIMITS, Perm, has, snowflakeTime, type ForwardSnapshot } from '@jorcord/shared';
+import { LIMITS, Perm, has, snowflake, snowflakeTime, type ForwardSnapshot } from '@jorcord/shared';
 import type { Ctx } from '../ctx';
 import { checkVerification } from '../services/safety';
 import { ApiError, badRequest, forbidden, notFound } from '../errors';
-import { idSchema, limitParam, parse } from '../lib/ids';
+import { idSchema, iso, limitParam, parse } from '../lib/ids';
 import { limitOrThrow } from '../lib/ratelimit';
 import { parseComponents } from '../lib/components';
 import { parseEmbeds } from '../lib/embeds';
@@ -156,6 +156,8 @@ export function messageRoutes(app: FastifyInstance, ctx: Ctx) {
     }
     const attachments = await claimAttachments(ctx, req.userId, body.attachments ?? []);
     try {
+      // Voice messages are audio attachments: the sender needs SEND_VOICE_MESSAGES (like Discord does).
+      if (attachments.some((at) => at.contentType.startsWith('audio/'))) need(a.perms, Perm.SEND_VOICE_MESSAGES);
       const msg = await createMessage(ctx, { channel: a.channel, authorId: req.userId, content: body.content ?? '', replyTo: body.replyTo, attachments, stickerIds: body.stickerIds, senderPerms: a.perms, memberRoleIds: a.gp?.memberRoleIds,
         components, embeds, flags: body.flags, applicationId: req.applicationId, poll: pollInput?.poll, pollExpiry: pollInput?.expiry, forward, allowedMentions: body.allowedMentions });
       if (a.channel.type === 'thread') await joinThread(ctx, a.channel, req.userId).catch(() => {}); // posting in a thread follows it
@@ -181,6 +183,8 @@ export function messageRoutes(app: FastifyInstance, ctx: Ctx) {
       await ctx.db.query('UPDATE messages SET components = $2::jsonb, edited_at = now() WHERE id = $1', [p.mid, JSON.stringify(parseComponents(b.components))]);
     }
     if (b.content !== undefined) {
+      // R19: the content being replaced is kept as a prior version before the update runs.
+      await ctx.db.query('INSERT INTO message_edits (id, message_id, content) VALUES ($1, $2, $3)', [snowflake(), p.mid, m.content]);
       const ment = await parseMentions(ctx, a.channel, b.content, a.perms);
       await ctx.db.query('UPDATE messages SET content = $2, edited_at = now(), mentions = $3::jsonb, mention_roles = $4::jsonb, mention_everyone = $5, has_link = $6 WHERE id = $1',
         [p.mid, b.content, JSON.stringify(ment.mentions), JSON.stringify(ment.mentionRoles), ment.mentionEveryone, /https?:\/\//i.test(b.content)]);
@@ -189,6 +193,19 @@ export function messageRoutes(app: FastifyInstance, ctx: Ctx) {
     const dto = await messageDTO(ctx, row, req.userId);
     await ctx.hub.toChannel(p.id, 'MESSAGE_UPDATE', { ...dto, reactions: dto.reactions.map((r) => ({ ...r, me: false })) });
     return dto;
+  });
+
+  // R19: edit history — prior contents of an edited message, newest first.
+  app.get('/channels/:id/messages/:mid/edits', async (req) => {
+    const p = parse(mm, req.params);
+    const q = parse(z.object({ limit: z.coerce.number().optional() }), req.query);
+    const a = await channelAccess(ctx, req.userId, p.id);
+    await ageGate(ctx, req.userId, req.isBot, a);
+    need(a.perms, Perm.READ_MESSAGE_HISTORY);
+    const [m] = await ctx.db.query('SELECT id FROM messages WHERE id = $1 AND channel_id = $2', [p.mid, p.id]);
+    if (!m) throw notFound('Message');
+    return (await ctx.db.query('SELECT id, message_id, content, edited_at FROM message_edits WHERE message_id = $1 ORDER BY id DESC LIMIT $2', [p.mid, limitParam(q.limit, 25, 100)]))
+      .map((r) => ({ id: r.id as string, messageId: r.message_id as string, content: r.content as string, editedAt: iso(r.edited_at) ?? new Date().toISOString() }));
   });
 
   const removeMessages = async (channel: any, ids: string[]) => {
@@ -323,7 +340,7 @@ export function messageRoutes(app: FastifyInstance, ctx: Ctx) {
       channels = channels.filter((c) => !nsfw.has(c));
     }
     if (!channels.length) return [];
-    return searchMessages(ctx, { viewerId: req.userId, guildId: id, channelIds: channels, q: q.q, authorId: q.authorId, has: q.has, mentions: q.mentions, before: q.before, after: q.after, sortBy: q.sortBy, sortOrder: q.sortOrder, limit: limitParam(q.limit, 25) });
+    return searchMessages(ctx, { viewerId: req.userId, guildId: id, channelIds: channels, q: q.q, authorId: q.authorId, has: q.has, mentions: q.mentions, before: q.before, after: q.after, pinned: q.pinned, during: q.during, sortBy: q.sortBy, sortOrder: q.sortOrder, limit: limitParam(q.limit, 25) });
   });
 
   /** Search inside one channel the caller can read (this is how DMs and group DMs are searched). */
@@ -335,7 +352,7 @@ export function messageRoutes(app: FastifyInstance, ctx: Ctx) {
     const a = await channelAccess(ctx, req.userId, id);
     await ageGate(ctx, req.userId, req.isBot, a);
     if (!has(a.perms, Perm.READ_MESSAGE_HISTORY)) return [];
-    return searchMessages(ctx, { viewerId: req.userId, channelIds: [id], q: q.q, authorId: q.authorId, has: q.has, mentions: q.mentions, before: q.before, after: q.after, sortBy: q.sortBy, sortOrder: q.sortOrder, limit: limitParam(q.limit, 25) });
+    return searchMessages(ctx, { viewerId: req.userId, channelIds: [id], q: q.q, authorId: q.authorId, has: q.has, mentions: q.mentions, before: q.before, after: q.after, pinned: q.pinned, during: q.during, sortBy: q.sortBy, sortOrder: q.sortOrder, limit: limitParam(q.limit, 25) });
   });
   /** Search across all of the caller's DMs and group DMs. */
   app.get('/users/@me/messages/search', async (req) => {
@@ -343,6 +360,6 @@ export function messageRoutes(app: FastifyInstance, ctx: Ctx) {
     limitOrThrow(ctx.rl, `search:${req.userId}`, 30, 60_000, ctx.config.rateLimit); // full-scan queries are expensive
     if (!hasSearchCriteria(q)) throw badRequest('Provide q, author_id, mentions or has');
     const ids = (await ctx.db.query('SELECT channel_id FROM dm_participants WHERE user_id = $1', [req.userId])).map((r) => r.channel_id as string);
-    return searchMessages(ctx, { viewerId: req.userId, channelIds: ids, q: q.q, authorId: q.authorId, has: q.has, mentions: q.mentions, before: q.before, after: q.after, sortBy: q.sortBy, sortOrder: q.sortOrder, limit: limitParam(q.limit, 25) });
+    return searchMessages(ctx, { viewerId: req.userId, channelIds: ids, q: q.q, authorId: q.authorId, has: q.has, mentions: q.mentions, before: q.before, after: q.after, pinned: q.pinned, during: q.during, sortBy: q.sortBy, sortOrder: q.sortOrder, limit: limitParam(q.limit, 25) });
   });
 }

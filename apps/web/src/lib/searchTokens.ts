@@ -13,15 +13,21 @@ export interface ParsedSearch {
   /** Snowflake or ISO date string, exactly as the server accepts it. */
   before?: string;
   after?: string;
+  /** `during:YYYY-MM-DD` — one calendar day, sent verbatim. */
+  during?: string;
+  /** `pinned:true` / `pinned:false`. */
+  pinned?: boolean;
   sortBy?: 'timestamp' | 'relevance';
   sortOrder?: 'asc' | 'desc';
 }
 
 const ID = /^\d{1,20}$/;
 const DATE = /^\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)?$/;
+const DAY = /^\d{4}-\d{2}-\d{2}$/;
 /** `<@123>` / `<@!123>` / `@name` -> bare value. */
 const stripMention = (v: string) => v.replace(/^<@!?(\d+)>$/, '$1').replace(/^@/, '');
 const validBound = (v: string) => ID.test(v) || (DATE.test(v) && Number.isFinite(Date.parse(v.replace(' ', 'T'))));
+const validDay = (v: string) => DAY.test(v) && Number.isFinite(Date.parse(v));
 
 /** Splits on whitespace, keeping `key:"quoted value"` and `"quoted phrase"` together. */
 function tokenize(input: string): string[] {
@@ -29,14 +35,15 @@ function tokenize(input: string): string[] {
 }
 
 /**
- * Pulls Discord-style filter tokens (`from:`, `mentions:`, `has:`, `before:`, `after:`, `sort:`, `order:`) out of a search
- * box string. Unknown keys and invalid values (`has:banana`, `before:soon`) are kept as plain search text.
+ * Pulls Discord-style filter tokens (`from:`, `mentions:`, `has:`, `before:`, `after:`, `during:`, `pinned:`, `sort:`,
+ * `order:`) out of a search box string. Unknown keys and invalid values (`has:banana`, `before:soon`, `during:tomorrow`)
+ * are kept as plain search text.
  */
 export function parseSearchTokens(input: string): ParsedSearch {
   const out: ParsedSearch = { text: '', from: [], mentions: [], has: [] };
   const rest: string[] = [];
   for (const tok of tokenize(input)) {
-    const m = /^(from|mentions|has|before|after|sort|order):(.*)$/i.exec(tok);
+    const m = /^(from|mentions|has|before|after|during|pinned|sort|order):(.*)$/i.exec(tok);
     const value = m ? m[2]!.replace(/^"(.*)"$/, '$1').trim() : '';
     if (!m || !value) { rest.push(tok); continue; }
     const key = m[1]!.toLowerCase();
@@ -47,6 +54,11 @@ export function parseSearchTokens(input: string): ParsedSearch {
       if ((SEARCH_HAS as readonly string[]).includes(h)) { if (!out.has.includes(h as SearchHasValue)) out.has.push(h as SearchHasValue); } else rest.push(tok);
     } else if (key === 'before' || key === 'after') {
       if (validBound(value)) out[key] = value; else rest.push(tok);
+    } else if (key === 'during') {
+      if (validDay(value)) out.during = value; else rest.push(tok);
+    } else if (key === 'pinned') {
+      const v = value.toLowerCase();
+      if (v === 'true' || v === 'false') out.pinned = v === 'true'; else rest.push(tok);
     } else if (key === 'sort') {
       const v = value.toLowerCase();
       if (v === 'timestamp' || v === 'relevance') out.sortBy = v; else rest.push(tok);
@@ -70,7 +82,7 @@ export function resolveUser(value: string, members: Iterable<Pick<Member, 'user'
   return null;
 }
 
-export interface SearchRequest { q?: string; authorId?: Id; mentions?: Id; has?: string; before?: string; after?: string; sort_by?: string; sort_order?: string }
+export interface SearchRequest { q?: string; authorId?: Id; mentions?: Id; has?: string; before?: string; after?: string; during?: string; pinned?: string; sort_by?: string; sort_order?: string }
 
 /**
  * Turns parsed tokens into API query params. A `from:`/`mentions:` name that matches nobody sets `unresolved` so the UI can
@@ -81,7 +93,8 @@ export function toSearchRequest(p: ParsedSearch, members: Iterable<Pick<Member, 
   const one = (vals: string[]) => { for (const v of vals) { const id = resolveUser(v, list); if (id) return id; unresolved.push(v); } return undefined; };
   const req: SearchRequest = {
     q: p.text || undefined, authorId: one(p.from), mentions: one(p.mentions), has: p.has.length ? p.has.join(',') : undefined,
-    before: p.before, after: p.after, sort_by: p.sortBy, sort_order: p.sortOrder,
+    before: p.before, after: p.after, during: p.during, pinned: p.pinned === undefined ? undefined : String(p.pinned),
+    sort_by: p.sortBy, sort_order: p.sortOrder,
   };
   return { req, unresolved };
 }

@@ -139,6 +139,7 @@ export const PERMISSION_META: PermMeta[] = [
   P('USE_SLASH_COMMANDS', 'Use Application Commands', 'Use commands from applications.', 'Text'),
   P('USE_EXTERNAL_APPS', 'Use External Apps', 'Let people see the replies of apps they run here to everyone, not only themselves.', 'Text'),
   P('SEND_POLLS', 'Create Polls', 'Start polls in text channels.', 'Text'),
+  P('SEND_VOICE_MESSAGES', 'Send Voice Messages', 'Record and send voice messages in text channels.', 'Text'),
   P('CONNECT', 'Connect', 'Join voice channels.', 'Voice'),
   P('SPEAK', 'Speak', 'Talk in voice channels.', 'Voice'),
   P('STREAM', 'Video', 'Share video, screen share, or stream a game.', 'Voice'),
