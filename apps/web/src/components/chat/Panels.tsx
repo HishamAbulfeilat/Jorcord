@@ -16,6 +16,7 @@ import { Markdown } from './Markdown';
 import { displayName, fmtStamp, msgTime, cx } from '@/lib/format';
 import { useDebounced } from '@/lib/hooks';
 import { AttachmentView } from './Attachments';
+import { parseSearchTokens, toSearchRequest } from '@/lib/searchTokens';
 
 function PanelShell({ title, onClose, children, actions }: { title: string; onClose: () => void; children: React.ReactNode; actions?: React.ReactNode }) {
   return (
@@ -44,20 +45,30 @@ export function SearchPanel({ guildId, channel, onClose }: { guildId: string | u
   const [has, setHas] = useState(''); const [scope, setScope] = useState<'server' | 'channel'>('server');
   const dq = useDebounced(q, 350);
   const chans = useData((s) => (guildId ? s.guilds[guildId]?.channels : undefined));
+  const members = useData((s) => (guildId ? s.guilds[guildId]?.members : undefined));
+  const parsed = useMemo(() => parseSearchTokens(dq), [dq]);
+  // Typed tokens (`from:`, `has:`, ...) and the chip buttons combine; the chip adds to any `has:` tokens.
+  const { req, unresolved } = useMemo(() => {
+    const r = toSearchRequest(parsed, Object.values(members ?? {}));
+    const hasAll = [...new Set([...(r.req.has ? r.req.has.split(',') : []), ...(has ? [has] : [])])];
+    return { req: { ...r.req, has: hasAll.length ? hasAll.join(',') : undefined }, unresolved: r.unresolved };
+  }, [parsed, members, has]);
+  const filtered = !!(req.authorId || req.mentions || req.has);
   const res = useQuery({
-    queryKey: ['search', guildId ?? channel.id, scope, dq, has], enabled: dq.trim().length > 1 || !!has,
-    queryFn: () => (guildId ? api.guilds.search(guildId, { q: dq, has: has || undefined, channelId: scope === 'channel' ? channel.id : undefined }) : api.guilds.search('@me', { q: dq, channelId: channel.id })),
+    queryKey: ['search', guildId ?? channel.id, scope, req], enabled: ((req.q?.trim().length ?? 0) > 1 || filtered) && unresolved.length === 0,
+    queryFn: () => (guildId ? api.guilds.search(guildId, { ...req, channelId: scope === 'channel' ? channel.id : undefined }) : api.guilds.search('@me', { ...req, channelId: channel.id })),
   });
   return (
     <PanelShell title={t('Search Results')} onClose={onClose}>
-      <div className="mb-2 flex items-center rounded bg-rail px-2"><input autoFocus value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search messages" placeholder="Search" className="h-9 flex-1 bg-transparent text-sm outline-none placeholder:text-muted" /><Search size={16} className="text-muted" /></div>
+      <div className="mb-2 flex items-center rounded bg-rail px-2"><input autoFocus value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search messages" placeholder="Search  (from: mentions: has: before: after:)" className="h-9 flex-1 bg-transparent text-sm outline-none placeholder:text-muted" /><Search size={16} className="text-muted" /></div>
       <div className="mb-3 flex flex-wrap gap-1.5">
         {guildId && (['server', 'channel'] as const).map((s) => <button key={s} aria-pressed={scope === s} onClick={() => setScope(s)} className={cx('rounded-full px-3 py-1 text-xs font-semibold', scope === s ? 'bg-brand text-white' : 'bg-active text-interactive')}>{s === 'server' ? 'Everywhere' : 'This channel'}</button>)}
-        {['image', 'file', 'link', 'embed'].map((h) => <button key={h} aria-pressed={has === h} onClick={() => setHas(has === h ? '' : h)} className={cx('rounded-full px-3 py-1 text-xs font-semibold', has === h ? 'bg-brand text-white' : 'bg-active text-interactive')}>has: {h}</button>)}
+        {['image', 'video', 'file', 'link', 'embed'].map((h) => <button key={h} aria-pressed={has === h} onClick={() => setHas(has === h ? '' : h)} className={cx('rounded-full px-3 py-1 text-xs font-semibold', has === h ? 'bg-brand text-white' : 'bg-active text-interactive')}>has: {h}</button>)}
       </div>
+      {unresolved.length > 0 && <p role="status" className="mb-2 text-xs text-danger">No member matches {unresolved.map((u) => `"${u}"`).join(', ')}.</p>}
       {res.isFetching && <Spinner className="mx-auto my-6" />}
       {!res.isFetching && res.data?.length === 0 && <Empty icon={<Search size={40} />} title="No results found">Try different keywords or filters.</Empty>}
-      {!res.isFetching && !res.data && <Empty icon={<Search size={40} />} title="Search messages">Type at least two characters.</Empty>}
+      {!res.isFetching && !res.data && unresolved.length === 0 && <Empty icon={<Search size={40} />} title="Search messages">Type at least two characters.</Empty>}
       {res.data?.map((m) => <ResultCard key={m.id} m={m} channel={chans?.[m.channelId]} />)}
     </PanelShell>
   );
