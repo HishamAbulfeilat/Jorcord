@@ -50,7 +50,7 @@ turn:
 webhook:
   api_key: devkey
   urls:
-    - http://host.docker.internal:3000/voice/webhook   # docker; for the local binary use http://127.0.0.1:3000/voice/webhook
+    - http://host.docker.internal:3000/api/v1/voice/webhook   # docker; for the local binary use http://127.0.0.1:3000/api/v1/voice/webhook
 
 limit:
   num_tracks: 0
