@@ -304,6 +304,8 @@ export const api = {
     stageRequest: (channelId: Id, on: boolean) => send({ method: on ? 'PUT' : 'DELETE', path: `/channels/${channelId}/stage/request` }),
     /** Stage: invite a member to speak (on) or move them back to the audience (off). `@me` for self. */
     stageSpeaker: (channelId: Id, userId: Id | '@me', on: boolean) => send({ method: on ? 'PUT' : 'DELETE', path: `/channels/${channelId}/stage/speakers/${userId}` }),
+    /** Priority speaker: others are ducked while you talk (requires PRIORITY_SPEAKER). The client sets the LiveKit attribute after this succeeds. */
+    prioritySpeaker: (channelId: Id, on: boolean) => send<{ channelId: Id; prioritySpeaker: boolean }>({ method: on ? 'PUT' : 'DELETE', path: `/channels/${channelId}/voice/priority-speaker` }),
   },
   push: {
     vapidKey: () => send<{ publicKey: string | null }>({ method: 'GET', path: '/push/vapid-public-key', auth: false }),

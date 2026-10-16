@@ -1,13 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
-import { Camera, CameraOff, ChevronUp, Headphones, Mic, MicOff, MonitorUp, MonitorX, PhoneOff, Settings, Activity, VolumeX } from 'lucide-react';
+import { Camera, CameraOff, ChevronUp, Crown, Headphones, Mic, MicOff, MonitorUp, MonitorX, PhoneOff, Settings, Activity, VolumeX } from 'lucide-react';
 import { STREAM_PRESETS, type StreamPresetId } from '@jorcord/voice';
 import { useVoiceClient, useVoiceSnapshot } from '@jorcord/voice/react';
+import { Perm } from '@jorcord/shared';
 import { Toggle } from '@/components/ui/primitives';
 import { Tip } from '@/components/ui/Tooltip';
 import { useUI } from '@/stores/ui';
 import { useVoiceUI } from '@/stores/voiceui';
+import { myChannelPerms } from '@/lib/session';
 import { cx } from '@/lib/format';
-import { leaveVoice, startScreenShare } from './controller';
+import { isDmChannel, leaveVoice, setPrioritySpeaker, startScreenShare } from './controller';
 import { t } from '@/i18n';
 
 function RoundBtn({ label, active, danger, onClick, children, disabled, pressed, className }: { label: string; active?: boolean; danger?: boolean; onClick?: () => void; children: React.ReactNode; disabled?: boolean; pressed?: boolean; className?: string }) {
@@ -77,6 +79,9 @@ export function ControlBar({ onSettings, className }: { onSettings: () => void; 
   const canShare = snap.platform.canScreenShare;
   const canPublish = snap.participants.find((p) => p.isLocal)?.canPublish !== false;
   const muted = selfMute || selfDeaf;
+  const channelId = useVoiceUI((s) => s.connectedChannelId);
+  const priority = !!snap.participants.find((p) => p.isLocal)?.priority;
+  const canPriority = snap.status === 'connected' && !!channelId && !isDmChannel(channelId) && (myChannelPerms(channelId) & Perm.PRIORITY_SPEAKER) !== 0n;
   void stage;
   return (
     <div className={cx('relative flex flex-wrap items-center justify-center gap-3 px-3 py-3 max-md:gap-2 max-md:pb-5', className)} role="toolbar" aria-label={t('Voice controls')}>
@@ -92,6 +97,9 @@ export function ControlBar({ onSettings, className }: { onSettings: () => void; 
       )}
       <RoundBtn label={muted ? 'Unmute' : 'Mute'} pressed={muted} active={false} className={muted ? '!bg-danger/20 !text-danger' : ''} onClick={toggleMute} disabled={!canPublish && !muted}>{muted ? <MicOff size={22} /> : <Mic size={22} />}</RoundBtn>
       <RoundBtn label={selfDeaf ? 'Undeafen' : 'Deafen'} pressed={selfDeaf} className={selfDeaf ? '!bg-danger/20 !text-danger' : ''} onClick={toggleDeaf}>{selfDeaf ? <VolumeX size={22} /> : <Headphones size={22} />}</RoundBtn>
+      {canPriority && (
+        <RoundBtn label={priority ? 'Disable Priority Speaker' : 'Enable Priority Speaker'} active={priority} pressed={priority} onClick={() => setPrioritySpeaker(!priority)}><Crown size={22} /></RoundBtn>
+      )}
       <RoundBtn label={t('Voice Settings')} onClick={onSettings}><Settings size={22} /></RoundBtn>
       <RoundBtn label={showStats ? 'Hide Connection Stats' : 'Show Connection Stats'} pressed={showStats} active={showStats} onClick={() => setPref('showVoiceStats', !showStats)} className="max-sm:hidden"><Activity size={22} /></RoundBtn>
       <RoundBtn label={t('Disconnect')} danger onClick={() => void leaveVoice()}><PhoneOff size={22} /></RoundBtn>

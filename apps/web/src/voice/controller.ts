@@ -257,6 +257,19 @@ export function startScreenShare(o: { preset: StreamPresetId; hint: ContentHint;
   return c.startScreenShare(o).catch((e) => { if (e?.code !== 'screen-cancelled') useUI.getState().toast(e?.message ?? 'Could not start screen share', 'error'); });
 }
 
+/**
+ * Priority speaker: the server authorises it (PRIORITY_SPEAKER, only while connected to the channel); only then does the
+ * client set the LiveKit attribute that ducks everyone else. Off is always allowed.
+ */
+export function setPrioritySpeaker(on: boolean) {
+  const c = getVoiceClient();
+  const ch = wantChannel ?? useVoiceUI.getState().connectedChannelId;
+  if (!ch) return;
+  void api.voice.prioritySpeaker(ch, on)
+    .then(() => c.setPrioritySpeaker(on))
+    .catch((e) => useUI.getState().toast(e?.message || 'Could not change priority speaker', 'error'));
+}
+
 /** Test/debug surface (Playwright asserts on this). Not part of the public UI. */
 function debugApi(c: VoiceClient) {
   const room = c.room;

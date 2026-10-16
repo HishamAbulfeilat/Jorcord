@@ -6,7 +6,7 @@ import { badRequest, notFound } from '../errors';
 import { idSchema, parse } from '../lib/ids';
 import { audit, visibleChannelRows } from '../services/guilds';
 import { channelAccess, guildAccess, guildPerms, loadGuildPerm, need, needOutrankMember } from '../services/perms';
-import { disconnectMember, moveMember, requestToSpeak, setServerVoiceFlags, setSuppressed } from '../services/voice';
+import { VOICE_TYPES, disconnectMember, moveMember, requestToSpeak, setServerVoiceFlags, setSuppressed } from '../services/voice';
 
 const memberParams = z.object({ id: idSchema, userId: idSchema });
 
@@ -122,5 +122,31 @@ export function voiceRoutes(app: FastifyInstance, ctx: Ctx) {
     const next = await setSuppressed(ctx, target, p.id, true);
     if (target !== req.userId) await audit(ctx, a.channel.guild_id, req.userId, 'STAGE_SUPPRESS_SPEAKER', target, { channelId: p.id });
     return next;
+  });
+
+  // ---------- priority speaker ----------
+  /**
+   * Priority speaker: while the member talks, everyone else is ducked. The ducking itself is a LiveKit participant
+   * attribute set by the client (it needs the `canUpdateOwnMetadata` token grant); this endpoint is the authorization
+   * gate, so a member may only enable it where they hold PRIORITY_SPEAKER, and only while connected to the channel.
+   * Allowing it to be turned off never needs the permission.
+   */
+  const priorityAccess = async (userId: string, channelId: string) => {
+    const a = await channelAccess(ctx, userId, channelId);
+    if (!VOICE_TYPES.includes(a.channel.type) || !a.channel.guild_id) throw badRequest('Not a guild voice channel');
+    return a;
+  };
+  app.put('/channels/:id/voice/priority-speaker', async (req) => {
+    const { id } = parse(stageParams, req.params);
+    const a = await priorityAccess(req.userId, id);
+    need(a.perms, Perm.PRIORITY_SPEAKER);
+    const st = await ctx.voice.get(req.userId);
+    if (!st?.channelId || st.channelId !== id) throw badRequest('Join the channel before enabling priority speaker');
+    return { channelId: id, prioritySpeaker: true };
+  });
+  app.delete('/channels/:id/voice/priority-speaker', async (req) => {
+    const { id } = parse(stageParams, req.params);
+    await priorityAccess(req.userId, id);
+    return { channelId: id, prioritySpeaker: false };
   });
 }
