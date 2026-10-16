@@ -56,6 +56,9 @@ const here = fileURLToPath(new URL('.', import.meta.url));
 
 export function loadConfig(overrides: Partial<Config> = {}, env: NodeJS.ProcessEnv = process.env): Config {
   const isProd = (env.NODE_ENV ?? 'development') === 'production';
+  if (isProd && (!env.LIVEKIT_API_KEY || !env.LIVEKIT_API_SECRET || env.LIVEKIT_API_KEY === 'devkey' || env.LIVEKIT_API_SECRET === 'secret' || env.LIVEKIT_API_SECRET.length < 32)) {
+    throw new Error('LIVEKIT_API_KEY and LIVEKIT_API_SECRET (32+ chars, not the dev defaults) are required in production');
+  }
   const dataDir = resolve(overrides.dataDir ?? env.DATA_DIR ?? './data');
   let jwtSecret = overrides.jwtSecret ?? env.JWT_SECRET ?? '';
   if (!jwtSecret) {
