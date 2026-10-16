@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import { verifyAccess } from './crypto';
 import { ApiError } from '../errors';
 
 interface Bucket { count: number; reset: number }
@@ -64,13 +65,18 @@ const ROUTE_LIMITS: { re: RegExp; max: number; windowMs: number }[] = [
 ];
 const IP_GLOBAL = { max: 600, windowMs: 60_000 }, USER_GLOBAL = { max: 50, windowMs: 1000 }, INVALID_LIMIT = 10_000, INVALID_WINDOW = 10 * 60_000;
 
-function principalOf(req: FastifyRequest): string {
+/** Bucket principal: the authenticated user id when the bearer JWT verifies, else the client IP. */
+async function principalOf(req: FastifyRequest, jwtSecret: string): Promise<string> {
   const a = req.headers.authorization;
-  return a ? `t${createHash('sha256').update(a).digest('hex').slice(0, 20)}` : `i${req.ip}`;
+  if (a?.startsWith('Bearer ')) {
+    const claims = await verifyAccess(jwtSecret, a.slice(7).trim());
+    if (claims) return `u${claims.userId}`;
+  }
+  return `i${req.ip}`;
 }
 
-/** Global (per IP and per credential), per-route bucket limits with X-RateLimit-* headers, auth-specific limits and an invalid-request ban. */
-export function installRateLimit(app: FastifyInstance, rl: RateLimiter, enabled: boolean) {
+/** Global (per IP and per authenticated user), per-route bucket limits with X-RateLimit-* headers, auth-specific limits and an invalid-request ban. */
+export function installRateLimit(app: FastifyInstance, rl: RateLimiter, enabled: boolean, jwtSecret: string) {
   if (!enabled) return;
   app.addHook('onRequest', async (req: FastifyRequest, reply: FastifyReply) => {
     if (req.url.startsWith('/health') || req.url.startsWith('/api/v1/files/')) return;
@@ -80,7 +86,7 @@ export function installRateLimit(app: FastifyInstance, rl: RateLimiter, enabled:
     if (req.url.startsWith('/api/v1/auth/login') || req.url.startsWith('/api/v1/auth/register') || req.url.startsWith('/api/v1/auth/refresh'))
       limitOrThrow(rl, `a:${req.ip}`, 20, 60_000);
     if (!req.url.startsWith('/api/')) return;
-    const principal = principalOf(req);
+    const principal = await principalOf(req, jwtSecret);
     if (req.headers.authorization) {
       const u = rl.consume(`ug:${principal}`, USER_GLOBAL.max, USER_GLOBAL.windowMs);
       if (u.limited) throw rateLimitError(u, 'global', 'global');
