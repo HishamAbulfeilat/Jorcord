@@ -14,7 +14,7 @@ import { audit, visibleChannelRows } from '../services/guilds';
 import { createMessage, parseMentions, postSystemMessage } from '../services/messages';
 import { channelAccess, channelPermsLite, guildAccess, need } from '../services/perms';
 import { joinThread } from '../services/threads';
-import { searchMessages } from '../services/search';
+import { hasSearchCriteria, searchMessages, searchQuerySchema } from '../services/search';
 import { ageConfirmed, ageGate } from '../services/agegate';
 import { messageDTO, messagesDTO, usersByIds } from '../services/serializers';
 
@@ -312,12 +312,9 @@ export function messageRoutes(app: FastifyInstance, ctx: Ctx) {
   // ---------- search ----------
   app.get('/guilds/:id/messages/search', async (req) => {
     const { id } = parse(cm, req.params);
-    const q = parse(z.object({
-      q: z.string().max(200).optional(), authorId: idSchema.optional(), channelId: idSchema.optional(),
-      has: z.enum(['link', 'image', 'file', 'embed', 'sticker']).optional(), before: idSchema.optional(), limit: z.coerce.number().optional(),
-    }), req.query);
+    const q = parse(searchQuerySchema, req.query);
     limitOrThrow(ctx.rl, `search:${req.userId}`, 30, 60_000, ctx.config.rateLimit); // full-scan queries are expensive
-    if (!q.q && !q.authorId && !q.has) throw badRequest('Provide q, authorId or has');
+    if (!hasSearchCriteria(q)) throw badRequest('Provide q, author_id, mentions or has');
     await guildAccess(ctx, req.userId, id);
     let channels = (await visibleChannelRows(ctx, id, req.userId, Perm.READ_MESSAGE_HISTORY)).map((c) => c.id as string);
     if (q.channelId) channels = channels.filter((c) => c === q.channelId);
@@ -326,30 +323,26 @@ export function messageRoutes(app: FastifyInstance, ctx: Ctx) {
       channels = channels.filter((c) => !nsfw.has(c));
     }
     if (!channels.length) return [];
-    return searchMessages(ctx, { viewerId: req.userId, guildId: id, channelIds: channels, q: q.q, authorId: q.authorId, has: q.has, before: q.before, limit: limitParam(q.limit, 25) });
+    return searchMessages(ctx, { viewerId: req.userId, guildId: id, channelIds: channels, q: q.q, authorId: q.authorId, has: q.has, mentions: q.mentions, before: q.before, after: q.after, sortBy: q.sortBy, sortOrder: q.sortOrder, limit: limitParam(q.limit, 25) });
   });
 
-  const searchQuery = z.object({
-    q: z.string().max(200).optional(), authorId: idSchema.optional(),
-    has: z.enum(['link', 'image', 'file', 'embed', 'sticker']).optional(), before: idSchema.optional(), limit: z.coerce.number().optional(),
-  });
   /** Search inside one channel the caller can read (this is how DMs and group DMs are searched). */
   app.get('/channels/:id/messages/search', async (req) => {
     const { id } = parse(cm, req.params);
-    const q = parse(searchQuery, req.query);
+    const q = parse(searchQuerySchema, req.query);
     limitOrThrow(ctx.rl, `search:${req.userId}`, 30, 60_000, ctx.config.rateLimit); // full-scan queries are expensive
-    if (!q.q && !q.authorId && !q.has) throw badRequest('Provide q, authorId or has');
+    if (!hasSearchCriteria(q)) throw badRequest('Provide q, author_id, mentions or has');
     const a = await channelAccess(ctx, req.userId, id);
     await ageGate(ctx, req.userId, req.isBot, a);
     if (!has(a.perms, Perm.READ_MESSAGE_HISTORY)) return [];
-    return searchMessages(ctx, { viewerId: req.userId, channelIds: [id], q: q.q, authorId: q.authorId, has: q.has, before: q.before, limit: limitParam(q.limit, 25) });
+    return searchMessages(ctx, { viewerId: req.userId, channelIds: [id], q: q.q, authorId: q.authorId, has: q.has, mentions: q.mentions, before: q.before, after: q.after, sortBy: q.sortBy, sortOrder: q.sortOrder, limit: limitParam(q.limit, 25) });
   });
   /** Search across all of the caller's DMs and group DMs. */
   app.get('/users/@me/messages/search', async (req) => {
-    const q = parse(searchQuery, req.query);
+    const q = parse(searchQuerySchema, req.query);
     limitOrThrow(ctx.rl, `search:${req.userId}`, 30, 60_000, ctx.config.rateLimit); // full-scan queries are expensive
-    if (!q.q && !q.authorId && !q.has) throw badRequest('Provide q, authorId or has');
+    if (!hasSearchCriteria(q)) throw badRequest('Provide q, author_id, mentions or has');
     const ids = (await ctx.db.query('SELECT channel_id FROM dm_participants WHERE user_id = $1', [req.userId])).map((r) => r.channel_id as string);
-    return searchMessages(ctx, { viewerId: req.userId, channelIds: ids, q: q.q, authorId: q.authorId, has: q.has, before: q.before, limit: limitParam(q.limit, 25) });
+    return searchMessages(ctx, { viewerId: req.userId, channelIds: ids, q: q.q, authorId: q.authorId, has: q.has, mentions: q.mentions, before: q.before, after: q.after, sortBy: q.sortBy, sortOrder: q.sortOrder, limit: limitParam(q.limit, 25) });
   });
 }

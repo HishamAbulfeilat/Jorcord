@@ -1,10 +1,51 @@
+import { z } from 'zod';
+import { snowflakeTime } from '@jorcord/shared';
 import type { Ctx } from '../ctx';
+import { idSchema } from '../lib/ids';
 import { messagesDTO } from './serializers';
+
+export const HAS_VALUES = ['link', 'embed', 'file', 'image', 'video', 'sticker'] as const;
+export type SearchHas = (typeof HAS_VALUES)[number];
 
 export interface SearchParams {
   viewerId: string; channelIds: string[]; guildId?: string | null;
-  q?: string; authorId?: string; has?: 'link' | 'image' | 'file' | 'embed' | 'sticker'; before?: string; limit: number;
+  q?: string; authorId?: string; has?: SearchHas[]; mentions?: string; before?: string; after?: string;
+  sortBy?: 'timestamp' | 'relevance'; sortOrder?: 'asc' | 'desc'; limit: number;
 }
+
+/** Discord-style bound: a snowflake id or an ISO date/datetime. Dates become the smallest snowflake of that instant. */
+export const boundaryId = z.string().max(40).transform((v, ctx) => {
+  if (/^\d{1,20}$/.test(v)) return v;
+  const ms = Date.parse(v);
+  if (!Number.isFinite(ms)) { ctx.addIssue({ code: 'custom', message: 'must be a snowflake or ISO date' }); return z.NEVER; }
+  const rel = BigInt(ms) - BigInt(snowflakeTime('0'));
+  return (rel > 0n ? rel << 22n : 0n).toString();
+});
+
+/** Query-string schema shared by the three search routes. `has` may repeat or be comma-separated; snake_case aliases accepted. */
+export const searchQuerySchema = z.object({
+  q: z.string().max(200).optional(),
+  authorId: idSchema.optional(), author_id: idSchema.optional(),
+  channelId: idSchema.optional(),
+  has: z.union([z.string(), z.string().array()]).optional(),
+  mentions: idSchema.optional(),
+  before: boundaryId.optional(), after: boundaryId.optional(),
+  sort_by: z.enum(['timestamp', 'relevance']).optional(), sortBy: z.enum(['timestamp', 'relevance']).optional(),
+  sort_order: z.enum(['asc', 'desc']).optional(), sortOrder: z.enum(['asc', 'desc']).optional(),
+  limit: z.coerce.number().optional(),
+}).transform((v, ctx) => {
+  const raw = ([] as string[]).concat(v.has ?? []).flatMap((h) => h.split(',')).map((h) => h.trim().toLowerCase()).filter(Boolean);
+  const bad = raw.find((h) => !(HAS_VALUES as readonly string[]).includes(h));
+  if (bad) { ctx.addIssue({ code: 'custom', path: ['has'], message: `unknown has filter "${bad}"` }); return z.NEVER; }
+  return {
+    q: v.q, channelId: v.channelId, mentions: v.mentions, before: v.before, after: v.after, limit: v.limit,
+    authorId: v.authorId ?? v.author_id, has: [...new Set(raw)] as SearchHas[],
+    sortBy: v.sort_by ?? v.sortBy, sortOrder: v.sort_order ?? v.sortOrder,
+  };
+});
+export type SearchQueryInput = z.infer<typeof searchQuerySchema>;
+/** True when at least one narrowing filter is present (a bare date range or sort alone is too broad). */
+export const hasSearchCriteria = (q: Pick<SearchQueryInput, 'q' | 'authorId' | 'has' | 'mentions'>) => !!(q.q || q.authorId || q.has.length || q.mentions);
 
 /** Expression the Postgres GIN index is built on (migration 003). Must stay byte-identical to it. */
 // Punctuation is flattened to spaces first so "foo.com" or "a/b" index as separate words (the stock parser keeps hosts/paths whole).
@@ -15,7 +56,10 @@ export const searchTerms = (q: string): string[] => q.toLowerCase().split(/[^\p{
 /** Prefix-AND tsquery text ("hel:* & wor:*"), or null when the input has no searchable word. */
 export const toTsQuery = (q: string): string | null => { const t = searchTerms(q); return t.length ? t.map((w) => `${w}:*`).join(' & ') : null; };
 
-const HAS: Record<NonNullable<SearchParams['has']>, string> = { link: 'has_link', image: 'has_image', file: 'has_file', embed: "embeds <> '[]'::jsonb", sticker: "sticker_ids <> '[]'::jsonb" };
+const HAS: Record<SearchHas, string> = {
+  link: 'has_link', image: 'has_image', file: 'has_file', embed: "embeds <> '[]'::jsonb", sticker: "sticker_ids <> '[]'::jsonb",
+  video: "(EXISTS (SELECT 1 FROM jsonb_array_elements(attachments) a WHERE a->>'contentType' LIKE 'video/%') OR EXISTS (SELECT 1 FROM jsonb_array_elements(embeds) e WHERE e->>'type' = 'video'))",
+};
 
 /**
  * Message search. Postgres uses full-text search (GIN, word-prefix matching); embedded PGlite and queries with no
@@ -26,15 +70,21 @@ export function buildSearchSql(mode: Ctx['search'], p: Omit<SearchParams, 'viewe
   const where: string[] = ['channel_id = ANY($1::text[])'];
   const push = (v: unknown) => { params.push(v); return `$${params.length}`; };
   if (p.guildId) where.push(`guild_id = ${push(p.guildId)}`);
+  let rank = '';
   if (p.q) {
     const ts = mode === 'fts' ? toTsQuery(p.q) : null;
-    if (ts) where.push(`${FTS_VECTOR} @@ to_tsquery('simple', ${push(ts)})`);
+    if (ts) { const t = push(ts); where.push(`${FTS_VECTOR} @@ to_tsquery('simple', ${t})`); rank = `ts_rank(${FTS_VECTOR}, to_tsquery('simple', ${t}))`; }
     else where.push(`content ILIKE ${push(`%${p.q.replace(/[\\%_]/g, '\\$&')}%`)}`);
   }
   if (p.authorId) where.push(`author_id = ${push(p.authorId)}`);
+  if (p.mentions) where.push(`mentions @> ${push(JSON.stringify([p.mentions]))}::jsonb`);
   if (p.before) where.push(`id < ${push(p.before)}`);
-  if (p.has) where.push(HAS[p.has]);
-  return { sql: `SELECT * FROM messages WHERE ${where.join(' AND ')} ORDER BY id DESC LIMIT ${push(p.limit)}`, params };
+  if (p.after) where.push(`id > ${push(p.after)}`);
+  for (const h of p.has ?? []) where.push(HAS[h]);
+  const dir = p.sortOrder === 'asc' ? 'ASC' : 'DESC';
+  // Relevance only exists for full-text queries; otherwise (and as tie-break) order by id, which is time order.
+  const order = p.sortBy === 'relevance' && rank ? `${rank} ${dir}, id DESC` : `id ${dir}`;
+  return { sql: `SELECT * FROM messages WHERE ${where.join(' AND ')} ORDER BY ${order} LIMIT ${push(p.limit)}`, params };
 }
 
 export async function searchMessages(ctx: Ctx, p: SearchParams) {
