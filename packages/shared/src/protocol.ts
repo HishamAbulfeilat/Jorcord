@@ -1,7 +1,7 @@
 /** Gateway protocol: JSON over WebSocket at /gateway. Opcode model mirrors Discord's. */
 import type { Application, ApplicationCommand, Interaction, Modal, ScheduledEvent, StageInstance, CommandOptionChoice } from './platform';
 import type { Activity, GifFavorite, SoundboardSound } from './parity';
-import type { Channel, Guild, Id, Member, Message, Presence, ReadState, Relationship, Reminder, Role, SelfUser, User, VoiceState, Emoji, Sticker } from './types';
+import type { Channel, Guild, Id, Invite, Member, Message, Presence, ReadState, Relationship, Reminder, Role, SelfUser, User, VoiceState, Emoji, Sticker } from './types';
 
 export const Op = { DISPATCH: 0, HEARTBEAT: 1, IDENTIFY: 2, PRESENCE_UPDATE: 3, VOICE_STATE_UPDATE: 4, RESUME: 6, RECONNECT: 7, REQUEST_MEMBERS: 8, TYPING: 9, HELLO: 10, HEARTBEAT_ACK: 11 } as const;
 
@@ -22,6 +22,7 @@ export interface Events {
   GUILD_CREATE: GuildFull; GUILD_UPDATE: Guild; GUILD_DELETE: { id: Id };
   CHANNEL_CREATE: Channel; CHANNEL_UPDATE: Channel; CHANNEL_DELETE: { id: Id; guildId: Id | null };
   ROLE_CREATE: Role; ROLE_UPDATE: Role; ROLE_DELETE: { id: Id; guildId: Id };
+  INVITE_CREATE: Invite; INVITE_DELETE: Invite;
   MEMBER_ADD: Member; MEMBER_UPDATE: Member; MEMBER_REMOVE: { guildId: Id; userId: Id };
   MESSAGE_CREATE: Message; MESSAGE_UPDATE: Message; MESSAGE_DELETE: { id: Id; channelId: Id; guildId: Id | null };
   MESSAGE_REACTION_ADD: { messageId: Id; channelId: Id; userId: Id; emoji: string; emojiId: Id | null };
