@@ -59,6 +59,8 @@ export function guildMenu(gid: Id): MenuItem[] {
     ...(!parent && idx >= 0 && idx < keys.length - 1 ? [{ label: t('Move Down'), icon: ArrowDown, onClick: () => lay.reorder(gid, keys[idx + 1]!) }] : []),
     ...(!isOwner ? [{ separator: true }, { label: t('Leave Server'), icon: LogOut, danger: true, onClick: () => ui().openModal({ kind: 'leaveGuild', guildId: gid }) }] : []),
     { separator: true },
+    ...(p & (Perm.KICK_MEMBERS | Perm.BAN_MEMBERS | Perm.MODERATE_MEMBERS | Perm.MANAGE_GUILD) || (p & Perm.ADMINISTRATOR) ? [{ label: t('Reports'), icon: ShieldBan, onClick: () => ui().openReports(gid) }] : []),
+    { separator: true },
     { label: t('Copy Server ID'), icon: Copy, onClick: () => copyText(gid).then(() => toast(t('Copied ID'), 'success')) },
   ];
 }
@@ -150,8 +152,9 @@ export function messageMenu(m: Message, opts: { startEdit: () => void; pickEmoji
     ...(ch?.guildId && ch.type !== 'thread' && can(perms, Perm.CREATE_PUBLIC_THREADS) ? [{ label: t('Create Thread'), icon: Hash, onClick: () => ui().openModal({ kind: 'createThread', channelId: m.channelId, messageId: m.id, suggested: m.content.slice(0, 50) }) }] : []),
     ...(['default', 'reply'].includes(m.type) && (m.content || m.attachments.length || m.embeds.length || m.forward) ? [{ label: t('Forward'), icon: Forward, onClick: () => ui().openModal({ kind: 'forward', message: m }) }] : []),
     { label: useSocial.getState().saved[m.id] ? t('Remove from Saved') : t('Save for Later'), icon: Bookmark, onClick: () => { const on = !useSocial.getState().saved[m.id]; (on ? api.users.save(m.channelId, m.id) : api.users.unsave(m.channelId, m.id)).then(() => { useSocial.getState().setSaved(m.id, on); toast(on ? t('Saved for later') : t('Removed from saved'), 'success'); }).catch(toastError); } },
-    { label: t('Remind Me'), icon: AlarmClock, children: [[t('in 5 minutes'), 300], [t('in 1 hour'), 3600], [t('in 3 hours'), 10800], [t('in 24 hours'), 86400], [t('in 1 week'), 604800]].map(([label, secs]) => ({ label: label as string, onClick: () => { api.users.remind(m.channelId, m.id, { inSeconds: secs as number }).then(() => { toast(t('We will remind you {when}', { when: label as string }), 'success'); void queryClient.invalidateQueries({ queryKey: ['inbox', 'reminders'] }); }).catch(toastError); } })) },
+    { label: t('Remind Me'), icon: AlarmClock, onClick: () => { api.users.remind(m.channelId, m.id, { inSeconds: 3600 }).then(() => { toast(t('We will remind you in 1 hour'), 'success'); }).catch(toastError); } },
     ...(favoriteCandidate(m) ? [{ label: t('Add to GIF Favorites'), icon: Star, onClick: () => api.users.addGifFavorite(favoriteCandidate(m)!).then(() => { void queryClient.invalidateQueries({ queryKey: ['gif-favs'] }); toast(t('Saved to your favorites'), 'success'); }).catch(toastError) }] : []),
+    ...(ch?.guildId && ch.type !== 'thread' && can(perms, Perm.MODERATE_MEMBERS) ? [{ label: t('Report Message'), icon: ShieldBan, onClick: () => ui().openModal({ kind: 'report', messageId: m.id, guildId: ch.guildId!, channelId: m.channelId }) }] : []),
     { label: t('Mark Unread'), icon: Mail, onClick: () => { s.setRead(m.channelId, String(BigInt(m.id) - 1n), 0); api.channels.ack(m.channelId, String(BigInt(m.id) - 1n)).catch(() => {}); } },
     { label: t('Copy Message Link'), icon: Link2, onClick: () => copyText(`${publicOrigin()}/channels/${m.guildId ?? '@me'}/${m.channelId}/${m.id}`).then(() => toast(t('Link copied'), 'success')) },
     ...(canDeleteMessage(m, me.id, perms) ? [{ separator: true }, { label: t('Delete Message'), icon: Trash2, danger: true, onClick: () => ui().openModal({ kind: 'confirm', title: t('Delete Message'), body: 'Are you sure you want to delete this message?', confirmLabel: 'Delete', danger: true, onConfirm: () => api.messages.delete(m.channelId, m.id).then(() => useMessages.getState().remove(m.channelId, m.id)).catch(toastError) }) }] : []),

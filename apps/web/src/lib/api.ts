@@ -2,7 +2,7 @@
 import type {
   Activity, Attachment, AuditEntry, AutoModRule, Channel, Emoji, Guild, GuildFull, Invite, Member, Message, Relationship, ReadState, Role, SelfUser, Sticker, User, VoiceToken, Id, Presence, OverwriteDTO,
   AllowedMentions,
-  Reminder, ModView, ModWarning, ModNote, BulkModerationFilter, BulkModerationResult, PruneResult, BoostSummary, LinkedRoleView, LinkedCriterion, RoleMetadataApp, DirectoryApp, DirectoryCategory, SoundboardSound, Connection, PublicConnection, GifFavorite, GuildTemplate, GuildWidgetSettings, GuildInsights, ChannelFollow, Onboarding, OnboardingResponse, GuildSafety, SafetyPreset, Application, ApplicationCommand, CommandPermissionOverwrite, CommandOptionChoice, CreatePoll, ForumTag, InteractionOptionValue, ModalSubmitRow, OAuthAuthorizePreview, OAuthAuthorizeResult, ScheduledEvent, StageInstance,
+  Reminder, ModView, ModWarning, ModNote, BulkModerationFilter, BulkModerationResult, PruneResult, BoostSummary, LinkedRoleView, LinkedCriterion, RoleMetadataApp, DirectoryApp, DirectoryCategory, SoundboardSound, Connection, PublicConnection, GifFavorite, GuildTemplate, GuildWidgetSettings, GuildInsights, ChannelFollow, Onboarding, OnboardingResponse, GuildSafety, SafetyPreset, Application, ApplicationCommand, CommandPermissionOverwrite, CommandOptionChoice, CreatePoll, ForumTag, InteractionOptionValue, ModalSubmitRow, OAuthAuthorizePreview, OAuthAuthorizeResult, ScheduledEvent, StageInstance, Report,
 } from '@jorcord/shared';
 import { send } from './transport';
 
@@ -195,6 +195,10 @@ export const api = {
     /** Play a clip into the voice channel I am connected to. */
     playSound: (channelId: Id, soundId: Id) => send({ method: 'POST', path: `/channels/${channelId}/send-soundboard-sound`, body: { soundId } }),
     stageInstances: (id: Id) => send<StageInstance[]>({ method: 'GET', path: `/guilds/${id}/stage-instances` }).then((x) => arr<StageInstance>(x)),
+    /** Moderation report queue (Mod View gate): list reports, resolve or dismiss one. */
+    reports: (id: Id, q: { status?: 'open' | 'resolved' | 'dismissed' | 'all'; limit?: number; before?: Id } = {}) => send<Report[]>({ method: 'GET', path: `/guilds/${id}/reports`, query: { status: q.status ?? 'open', limit: q.limit ?? 50, ...(q.before ? { before: q.before } : {}) } }).then((x) => arr<Report>(x)),
+    resolveReport: (id: Id, rid: Id) => send<Report>({ method: 'PATCH', path: `/guilds/${id}/reports/${rid}`, body: { status: 'resolved' } }),
+    dismissReport: (id: Id, rid: Id) => send<Report>({ method: 'PATCH', path: `/guilds/${id}/reports/${rid}`, body: { status: 'dismissed' } }),
   },
   stages: {
     start: (channelId: Id, topic: string) => send<StageInstance>({ method: 'POST', path: '/stage-instances', body: { channelId, topic } }),
@@ -277,6 +281,8 @@ export const api = {
     removeVote: (channelId: Id, id: Id) => send<Message>({ method: 'DELETE', path: `/channels/${channelId}/polls/${id}/votes/@me` }),
     voters: (channelId: Id, id: Id, answerId: number) => send<{ users: User[] }>({ method: 'GET', path: `/channels/${channelId}/polls/${id}/answers/${answerId}`, query: { limit: 100 } }).then((x) => x?.users ?? []),
     endPoll: (channelId: Id, id: Id) => send<Message>({ method: 'POST', path: `/channels/${channelId}/polls/${id}/expire` }),
+    /** Report a message in a guild channel (the reporter must be able to read the channel). Returns the new report id. */
+    report: (channelId: Id, messageId: Id, body: { reason: string; description?: string }) => send<{ id: Id }>({ method: 'POST', path: `/channels/${channelId}/messages/${messageId}/report`, body }),
   },
   invites: {
     get: (code: string) => send<Invite>({ method: 'GET', path: `/invites/${code}`, auth: false }),

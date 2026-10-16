@@ -41,7 +41,7 @@ export const defaultPrefs: Prefs = {
   hideMutedChannels: {}, soundboardMuted: false, soundboardMutedUsers: {}, soundboardVolume: 100,
 };
 
-export type RightPanel = 'members' | 'search' | 'pins' | 'threads' | null;
+export type RightPanel = 'members' | 'search' | 'pins' | 'threads' | 'reports' | null;
 export type ModalSpec =
   | { kind: 'createServer' } | { kind: 'joinServer'; code?: string }
   | { kind: 'createChannel'; guildId: Id; parentId?: Id | null; type?: string } | { kind: 'createCategory'; guildId: Id }
@@ -57,8 +57,7 @@ export type ModalSpec =
   | { kind: 'interactionModal'; interactionId: Id; channelId: Id; modal: Modal }
   | { kind: 'createPoll'; channelId: Id } | { kind: 'pollVoters'; channelId: Id; messageId: Id; answerId?: number }
   | { kind: 'events'; guildId: Id } | { kind: 'eventEditor'; guildId: Id; eventId?: Id; channelId?: Id }
-  | { kind: 'customize'; guildId: Id } | { kind: 'followChannel'; channelId: Id }
-  | { kind: 'forward'; message: Message } | { kind: 'modView'; guildId: Id; userId: Id } | { kind: 'inbox'; tab?: 'mentions' | 'saved' | 'reminders' } | { kind: 'screening'; guildId: Id } | { kind: 'threadSettings'; channelId: Id } | { kind: 'stage'; channelId: Id; mode: 'start' | 'edit' };
+  | { kind: 'customize'; guildId: Id } | { kind: 'followChannel'; channelId: Id }| { kind: 'forward'; message: Message } | { kind: 'report'; messageId: Id; guildId: Id; channelId: Id } | { kind: 'modView'; guildId: Id; userId: Id } | { kind: 'inbox'; tab?: 'mentions' | 'saved' | 'reminders' } | { kind: 'screening'; guildId: Id } | { kind: 'threadSettings'; channelId: Id } | { kind: 'stage'; channelId: Id; mode: 'start' | 'edit' };
 export type SettingsSpec = { kind: 'user'; tab?: string } | { kind: 'guild'; guildId: Id; tab?: string } | null;
 export interface MenuItem { label?: string; icon?: any; onClick?: () => void; danger?: boolean; separator?: boolean; checked?: boolean; disabled?: boolean; hint?: string; children?: MenuItem[] }
 export interface Toast { id: number; kind: 'info' | 'success' | 'error'; text: string }
@@ -68,6 +67,7 @@ interface UIState {
   prefs: Prefs; setPref<K extends keyof Prefs>(k: K, v: Prefs[K]): void;
   leftDrawer: boolean; rightDrawer: boolean; setLeftDrawer(v: boolean): void; setRightDrawer(v: boolean): void;
   panel: RightPanel; setPanel(p: RightPanel): void; togglePanel(p: Exclude<RightPanel, null>): void;
+  reportGuildId: Id | null; openReports(guildId: Id): void; closeReports(): void;
   modal: ModalSpec | null; openModal(m: ModalSpec): void; closeModal(): void;
   settings: SettingsSpec; openSettings(s: SettingsSpec): void;
   menu: { x: number; y: number; items: MenuItem[]; t: number } | null; openMenu(x: number, y: number, items: MenuItem[]): void; closeMenu(): void;
@@ -93,6 +93,7 @@ export const useUI = create<UIState>((set, get) => ({
   setPref: (k, v) => set((s) => { const prefs = { ...s.prefs, [k]: v }; savePrefs(prefs); return { prefs }; }),
   leftDrawer: false, rightDrawer: false, setLeftDrawer: (leftDrawer) => set({ leftDrawer }), setRightDrawer: (rightDrawer) => set({ rightDrawer }),
   panel: 'members', setPanel: (panel) => set({ panel }), togglePanel: (p) => set((s) => ({ panel: s.panel === p ? null : p })),
+  reportGuildId: null, openReports: (guildId: Id) => set({ panel: 'reports', reportGuildId: guildId }), closeReports: () => set({ panel: null as any, reportGuildId: null }),
   modal: null, openModal: (modal) => set({ modal, menu: null, popout: null }), closeModal: () => set({ modal: null }),
   settings: null, openSettings: (settings) => set({ settings, menu: null, popout: null, leftDrawer: false }),
   menu: null, openMenu: (x, y, items) => set({ menu: { x, y, items, t: Date.now() }, popout: null }), closeMenu: () => set({ menu: null }),

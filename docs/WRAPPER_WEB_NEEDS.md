@@ -1,5 +1,7 @@
 # What the native wrappers need from `apps/web`
 
+Status (as of this pass): items 1 (configurable server URL), 2 (deep links), 4 (screen-share detection), and 7 (PWA service-worker skip) are implemented in `apps/web`. Item 3 (push) is implemented end-to-end on both sides: the web client (`lib/push.ts`) and the server (`routes/push.ts` `POST /users/@me/push-devices`) both exist, and the Capacitor path (`lib/push.ts` `enableNative`) already calls `api.push.register({ platform, token })` on the `registration` event — the remaining wrapper piece is the native-side `RequestPermissions` → `Register` UI in the app's notifications settings. Items 5 (layout/safe areas) and 6 (desktop settings: autostart/updater) are partially implemented (see notes below).
+
 The Tauri (desktop) and Capacitor (mobile) shells load the static web bundle (`apps/web/dist`) from a local origin
 (`tauri://localhost` / `http://tauri.localhost`, `https://localhost` on Android, `capacitor://localhost` on iOS). The web
 app must therefore not assume it is served from the same origin as the API.

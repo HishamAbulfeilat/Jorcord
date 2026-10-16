@@ -8,4 +8,5 @@ dump.rdb
 e2e/.data-prod/
 e2e/test-results-prod/
 
-# OpenCode state.omc/
+# OpenCode state
+.omc/

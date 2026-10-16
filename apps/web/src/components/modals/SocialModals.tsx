@@ -1,8 +1,8 @@
 /** Social-layer modals: Inbox (mentions), later saved items and reminders. */
 import { useMemo, useState } from 'react';
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlarmClock, AtSign, Bookmark, Hash, Trash2, Users } from 'lucide-react';
-import type { Message } from '@jorcord/shared';
+import { AlarmClock, AtSign, Bookmark, Hash, Trash2, Users, ShieldBan } from 'lucide-react';
+import type { Id, Message, Report, ReportReason, ReportStatus } from '@jorcord/shared';
 import { api } from '@/lib/api';
 import { useData } from '@/stores/data';
 import { useUI, toast, toastError } from '@/stores/ui';
@@ -103,6 +103,128 @@ interface Dest { id: string; label: string; sub: string; dm?: boolean; avatar?: 
 const MAX_FORWARD_TARGETS = 5;
 
 /** Pick up to five channels / DMs to forward a message to. */
+const REPORT_REASONS = ['spam', 'harassment', 'inappropriate_content', 'impersonation', 'security', 'other'];
+
+export function ReportModal({ messageId, guildId, channelId, close }: { messageId: string; guildId: string; channelId: string; close: () => void }) {
+  const [reason, setReason] = useState(REPORT_REASONS[0]);
+  const [description, setDescription] = useState('');
+  const [busy, setBusy] = useState(false);
+  const submit = () => {
+    setBusy(true);
+    api.messages.report(channelId, messageId, { reason, description: description.trim() || undefined }).then(() => { toast(t('Message reported'), 'success'); close(); }).catch(toastError).finally(() => setBusy(false));
+  };
+  return (
+    <Modal title={t('Report Message')} onClose={close} width={420}
+      footer={<><button className="btn btn-link" onClick={close}>{t('Cancel')}</button><button className="btn btn-danger" disabled={!reason || busy} onClick={() => void submit()}>{t('Report')}</button></>}>
+      <p className="mb-3 text-sm text-muted">{t('What best describes this message?')}</p>
+      <fieldset className="space-y-1">
+        {REPORT_REASONS.map((r) => (
+          <label key={r} className={`flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2.5 ${reason === r ? 'border-brand bg-brand/10' : 'border-transparent hover:bg-hover'}`}>
+            <input type="radio" name="report-reason" checked={reason === r} onChange={() => setReason(r)} className="h-4 w-4 accent-brand" />
+            <span className="text-sm">{t(r)}</span>
+          </label>))}
+      </fieldset>
+      <label className="mt-3 block">
+        <span className="text-sm text-muted">{t('Additional details (optional)')}</span>
+        <textarea
+          className="field mt-1"
+          rows={3}
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          placeholder={t('Anything else moderators should know?')}
+        />
+      </label>
+      <p className="mt-3 text-xs text-muted">{t('Your report will be reviewed by the server moderators.')}</p>
+    </Modal>
+  );
+}
+
+/** Maps a report reason enum to a short label + severity class. */
+const REASON_LABEL = { spam: 'Spam', harassment: 'Harassment', inappropriate_content: 'Inappropriate', impersonation: 'Impersonation', security: 'Security', other: 'Other' } as const;
+function reasonLabel(r: ReportReason) {
+  const label = REASON_LABEL[r];
+  const cls = (r === 'spam' || r === 'inappropriate_content') ? 'bg-warn/20 text-warn' : r === 'harassment' ? 'bg-danger/20 text-danger' : 'bg-side text-muted';
+  return (
+    <span className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-semibold ${cls}`}>{label}</span>
+  );
+}
+
+/** Moderator queue: list open/resolved/dismissed reports for a guild and triage them. */
+export function ReportQueueModal({ guildId, close }: { guildId: Id; close: () => void }) {
+  const qc = useQueryClient(); const users = useData((s) => s.users); const guilds = useData((s) => s.guilds); const me = useData((s) => s.me);
+  const [status, setStatus] = useState<'open' | 'resolved' | 'dismissed' | 'all'>('open');
+  const q = useQuery({ queryKey: ['reports', guildId, status], queryFn: () => api.guilds.reports(guildId, { status }), retry: false });
+  const triage = (rid: Id, to: 'resolved' | 'dismissed') => {
+    const fn = to === 'resolved' ? api.guilds.resolveReport : api.guilds.dismissReport;
+    return fn(guildId, rid).then((r) => { void qc.invalidateQueries({ queryKey: ['reports', guildId] }); toast(t(`Report ${to}`), 'success'); }).catch(toastError);
+  };
+  const g = guilds[guildId]?.guild;
+  const channelName = (cid: Id) => guilds[guildId]?.channels[cid]?.name ?? cid;
+  const reporter = (id: Id) => users[id] ?? { id, username: id, discriminator: '0', avatar: null };
+  const target = (id: Id) => users[id] ?? { id, username: id, discriminator: '0', avatar: null };
+  const timeAgo = (iso: string) => {
+    const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+    if (s < 60) return t('Just now');
+    if (s < 3600) return `${Math.floor(s / 60)}m`;
+    if (s < 86400) return `${Math.floor(s / 3600)}h`;
+    return `${Math.floor(s / 86400)}d`;
+  };
+  const tabs = [
+    { id: 'open' as const, label: t('Open') },
+    { id: 'resolved' as const, label: t('Resolved') },
+    { id: 'dismissed' as const, label: t('Dismissed') },
+    { id: 'all' as const, label: t('All') },
+  ];
+  const rows = q.data ?? [];
+  const row = (r: typeof rows[number]) => {
+    const snap = r.message;
+    const attachBlock = snap && snap.attachments.length > 0 ? (
+      <div className="mt-1 flex flex-wrap gap-1">{snap.attachments.map((a) => <span key={a.url} className="text-xs text-muted">{a.filename}</span>)}</div>
+    ) : null;
+    return (
+      <li key={r.id} className="rounded-lg border border-divider bg-rail mb-2 p-3 last:border-b last:border-b-0" data-report={r.id}>
+        <div className="mb-2 flex items-start justify-between gap-2">
+          <div className="min-w-0 flex items-center gap-2">
+            <Avatar user={target(r.targetUserId)} size={28} />
+            <div className="min-w-0">
+              <div className="truncate font-semibold text-header">{target(r.targetUserId).username}</div>
+              <div className="text-xs text-muted">{channelName(r.channelId)} • {t('by')} {reporter(r.reporterId).username}</div>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">{reasonLabel(r.reason)}{r.status !== 'open' ? <span className="text-xs text-muted">{timeAgo(r.createdAt)}</span> : null}</div> /* reason */
+        </div>
+        {r.description ? <p className="mb-2 text-sm text-muted">{r.description}</p> : null}
+        {snap && (snap.content || snap.attachments.length) ? (
+          <div className="mb-2 rounded bg-side/60 border border-divider/60 p-2 text-sm">
+            <div className="text-xs font-semibold text-muted">{t('Reported message')}</div>
+            <p className="mt-0.5 text-header break-words">{snap.content || t('(attachment)')}</p>
+            {attachBlock}
+          </div>
+        ) : null}
+        {r.status === 'open' ? (
+          <div className="flex items-center gap-2 mt-1">
+            <button className="btn btn-sm btn-primary" disabled={!me || r.handledBy === me?.id} onClick={() => void triage(r.id, 'resolved')} type="button">{t('Resolve')}</button>
+            <button className="btn btn-sm btn-secondary" disabled={!me || r.handledBy === me?.id} onClick={() => void triage(r.id, 'dismissed')} type="button">{t('Dismiss')}</button>
+            {r.handledBy && (<span className="ml-auto text-xs text-muted">{t('Handled by')} {users[r.handledBy]?.username ?? r.handledBy}</span>)}
+          </div>
+        ) : null}
+      </li>
+    );
+  };
+  return (
+    <Modal title={`${t('Reports')} ${g ? `• ${g.name}` : ''}`} onClose={close} width={680}>
+      <div className="mb-4 flex items-center gap-3">
+        <div className="flex rounded-lg border border-divider bg-rail p-0.5" role="tablist">{tabs.map((t) => (
+          <button key={t.id} role="tab" aria-selected={status === t.id} onClick={() => setStatus(t.id)} className={`rounded-lg px-3 py-1 text-sm font-medium ${status === t.id ? 'bg-active text-header shadow' : 'text-muted hover:text-header'}`}>{t.label}</button>))}
+        </div>
+        <span className="text-xs text-muted">{rows.length} {t('reports')}</span>
+      </div>
+      {q.isLoading ? <Spinner className="mx-auto my-8" /> : rows.length === 0 ? <p className="py-8 text-center text-sm text-muted">{t('No reports here.')}</p> : (
+        <ul aria-label={t('Reports')}>{rows.map(row)}</ul>)}
+      <div className="mt-3 flex justify-end"><button className="btn btn-secondary" onClick={close}>{t('Close')}</button></div>
+    </Modal>);
+}
+
 export function ForwardModal({ message, close }: { message: Message; close: () => void }) {
   const dms = useData((s) => s.dms); const guilds = useData((s) => s.guilds); const me = useData((s) => s.me);
   const [q, setQ] = useState(''); const [picked, setPicked] = useState<string[]>([]); const [busy, setBusy] = useState(false);

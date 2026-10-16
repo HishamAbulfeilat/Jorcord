@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { DiscoveryPage } from '@/components/home/DiscoveryPage';
 import { t } from '@/i18n';
@@ -22,11 +22,7 @@ import { useIsMobile } from '@/lib/hooks';
 import { useFirstTextChannel } from '@/lib/useGuild';
 import { cx } from '@/lib/format';
 import { getGateway, type GatewayStatus } from '@/lib/gateway';
-import { useState } from 'react';
-import { Badge } from '@/components/ui/primitives';
-import { comboFromEvent } from '@/lib/combo';
-import { useShallow } from 'zustand/react/shallow';
-import { useVoiceUI } from '@/stores/voiceui';
+import { ReportQueuePanel } from '@/components/chat/Panels';
 
 function Sidebar() {
   const { guildId } = useRouteIds();
@@ -68,7 +64,7 @@ function MainContent() {
   return <ChannelPage />;
 }
 
-export function MobileTabBar() {
+function MobileTabBar() {
   const tab = useUI((s) => s.mobileTab); const setTab = useUI((s) => s.setMobileTab); const nav = useNav(); const openSettings = useUI((s) => s.openSettings); const setLeft = useUI((s) => s.setLeftDrawer);
   const mentions = useData((s) => Object.values(s.readStates).reduce((a, r) => a + r.mentionCount, 0));
   const reqs = useData((s) => Object.values(s.relationships).filter((r) => r.type === 'incoming').length);
@@ -95,7 +91,7 @@ function ConnectionBanner() {
 }
 
 export function AppShell({ base = '' }: { base?: string }) {
-  const mobile = useIsMobile(); const left = useUI((s) => s.leftDrawer); const setLeft = useUI((s) => s.setLeftDrawer); const setRight = useUI((s) => s.setRightDrawer); const right = useUI((s) => s.rightDrawer);
+  const mobile = useIsMobile(); const left = useUI((s) => s.leftDrawer); const setLeft = useUI((s) => s.setLeftDrawer); const setRight = useUI((s) => s.setRightDrawer); const right = useUI((s) => s.setRightDrawer);
   const navigate = useNavigate(); const ref = useRef<HTMLDivElement>(null);
   const { guildId } = useRouteIds();
   // goto events from menus / notifications
@@ -139,11 +135,18 @@ export function AppShell({ base = '' }: { base?: string }) {
               <div role="dialog" aria-label={t('Navigation')} aria-hidden={!left} className={cx('drawer fixed inset-y-0 start-0 z-50 flex w-[calc(100%-40px)] max-w-[420px] flex-col bg-rail', left ? 'translate-x-0' : '-translate-x-full rtl:translate-x-full')} {...{ inert: left ? undefined : ('' as any) }}>
                 <div className="flex min-h-0 flex-1"><ServerRail onNavigate={undefined} /><div className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-ss-2xl bg-side"><Sidebar /></div></div>
                 <MobileTabBar />
+                {/* Reports panel for mobile */}
+                {useUI.getState().panel === 'reports' && useUI.getState().reportGuildId && (
+                  <ReportQueuePanel guildId={useUI.getState().reportGuildId!} onClose={useUI.getState().closeReports} />
+                )}
               </div>
             </>
           )}
         </div>
         {mobile && !left && !right && <HomeTabBarGate />}
+        {!mobile && useUI.getState().panel === 'reports' && useUI.getState().reportGuildId && (
+          <ReportQueuePanel guildId={useUI.getState().reportGuildId!} onClose={useUI.getState().closeReports} />
+        )}
         <QuickSwitcher />
       </div>
      </VoiceRoot>
@@ -186,4 +189,3 @@ function useGlobalKeys(base: string) {
     window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h);
   }, [navigate, base]);
 }
-void useMemo; void channelUnread; void useShallow;

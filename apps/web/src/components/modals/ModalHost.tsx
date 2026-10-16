@@ -24,7 +24,7 @@ import { CustomizeModal, FollowChannelModal } from './OnboardingModals';
 import { CustomStatusModal, FolderModal, NotifSettingsModal, OnboardingModal, ShortcutsModal, StreamerStartModal } from './ExtraModals';
 import { VoiceSettingsModal } from '@/voice/VoiceSettings';
 import { CreatePollModal, EventEditorModal, EventsModal, InteractionModal, PollVotersModal, ScreeningModal, StageModal, ThreadSettingsModal } from './PlatformModals';
-import { ForwardModal, InboxModal } from './SocialModals';
+import { ForwardModal, InboxModal, ReportModal } from './SocialModals';
 import { t } from '@/i18n';
 
 const TEMPLATES = [
@@ -226,6 +226,7 @@ export function ModalHost() {
     case 'folder': return <FolderModal folderId={m.folderId} close={close} />;
     case 'notifSettings': return <NotifSettingsModal scope={m.scope} id={m.id} close={close} />;
     case 'forward': return <ForwardModal message={m.message} close={close} />;
+    case 'report': return <ReportModal messageId={m.messageId} guildId={m.guildId} channelId={m.channelId} close={close} />;
     case 'modView': return <ModViewModal guildId={m.guildId} userId={m.userId} close={close} />;
     case 'inbox': return <InboxModal initialTab={m.tab} close={close} />;
     case 'followChannel': return <FollowChannelModal channelId={m.channelId} close={close} />;
