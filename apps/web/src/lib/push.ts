@@ -25,6 +25,18 @@ export function pushSupport(): PushSupport {
   return { kind: 'none', reason: 'This browser does not support push notifications.' };
 }
 
+export type NotificationPermissionState = 'unsupported' | 'default' | 'granted' | 'denied';
+
+/** Normalise a raw `Notification.permission` value; anything unrecognised means notifications are unavailable. */
+export function permissionState(permission: string | undefined): NotificationPermissionState {
+  return permission === 'granted' || permission === 'denied' || permission === 'default' ? permission : 'unsupported';
+}
+
+/** The current Notification permission on this device; 'unsupported' when the API is missing. */
+export function notificationPermission(): NotificationPermissionState {
+  return typeof Notification === 'undefined' ? 'unsupported' : permissionState(Notification.permission);
+}
+
 export function urlBase64ToUint8Array(b64: string): Uint8Array {
   const pad = '='.repeat((4 - (b64.length % 4)) % 4);
   const raw = atob((b64 + pad).replace(/-/g, '+').replace(/_/g, '/'));
@@ -77,6 +89,26 @@ export async function enablePush(): Promise<PushResult> {
     if (sup.kind === 'none') return { ok: false, reason: sup.reason };
     return sup.kind === 'native' ? await enableNative(sup.platform as 'android' | 'ios') : await enableWeb();
   } catch (e) { return { ok: false, reason: (e as Error).message || 'Could not enable push notifications.' }; }
+}
+
+/** Copy for the settings "test notification" so the button can prove notifications arrive. Pure, so it is unit-tested. */
+export function testNotification(): { title: string; body: string } {
+  return { title: 'Jorcord', body: 'Notifications are working.' };
+}
+
+/** Show a local test notification. Uses the service worker when present (so it behaves like real push), otherwise the page Notification API. */
+export async function sendTestNotification(): Promise<PushResult> {
+  const perm = notificationPermission();
+  if (perm === 'unsupported') return { ok: false, reason: 'This device cannot show notifications.' };
+  if (perm === 'denied') return { ok: false, reason: 'Notifications are blocked in your browser settings.' };
+  if (perm !== 'granted') { const r = await Notification.requestPermission(); if (r !== 'granted') return { ok: false, reason: 'Permission was not granted.' }; }
+  const { title, body } = testNotification();
+  try {
+    const reg = typeof navigator !== 'undefined' && navigator.serviceWorker ? await navigator.serviceWorker.getRegistration() : undefined;
+    if (reg) await reg.showNotification(title, { body, tag: 'jorcord-test' });
+    else new Notification(title, { body });
+    return { ok: true };
+  } catch (e) { return { ok: false, reason: (e as Error).message || 'Could not show a test notification.' }; }
 }
 
 /** Forget this device on the server and stop the local subscription. */

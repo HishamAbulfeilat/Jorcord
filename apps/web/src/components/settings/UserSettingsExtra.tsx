@@ -8,7 +8,7 @@ import { useNotif } from '@/stores/notif';
 import { H1, H3 } from './SettingsLayout';
 import { Row, Toggle, Spinner } from '@/components/ui/primitives';
 import { cx, fmtStamp } from '@/lib/format';
-import { disablePush, enablePush, loadPushState, pushSupport } from '@/lib/push';
+import { disablePush, enablePush, loadPushState, notificationPermission, pushSupport, sendTestNotification, type NotificationPermissionState } from '@/lib/push';
 import { desktop } from '@/lib/native';
 import { getServerUrl, isNative, nativePlatform } from '@/lib/server';
 import { switchServer } from '@/lib/serverSwitch';
@@ -18,6 +18,7 @@ import { t, T } from '@/i18n';
 
 /* ------------------------------------------------------------------ notifications */
 const DEVICE_ICON = { web: Globe, desktop: Monitor, android: Smartphone, ios: Smartphone } as const;
+const PERMISSION_LABEL: Record<NotificationPermissionState, string> = { granted: T('Granted'), denied: T('Blocked'), default: T('Not granted yet'), unsupported: T('Not supported') };
 export function NotificationsTab() {
   const p = useUI((s) => s.prefs); const set = useUI((s) => s.setPref);
   const notif = useNotif(); const support = pushSupport();
@@ -36,6 +37,9 @@ export function NotificationsTab() {
     else { await disablePush(); setThisDevice(false); }
     await devices.refetch(); setBusy(false);
   };
+  const perm = notificationPermission();
+  const permLabel = perm === 'unsupported' && support.kind === 'native' ? t('Managed by the app') : t(PERMISSION_LABEL[perm]);
+  const sendTest = async () => { setBusy(true); const r = await sendTestNotification(); if (!r.ok) toast(r.reason, 'error'); setBusy(false); };
   return (<>
     <H1>{t('Notifications')}</H1>
     <Row title={t('Enable Desktop Notifications')} desc={t('Get notified of new messages when Jorcord is in the background.')}><Toggle label={t('Desktop notifications')} checked={p.desktopNotifications} onChange={enableDesktop} /></Row>
@@ -47,6 +51,20 @@ export function NotificationsTab() {
     <Row title={t('Push on this device')} desc={support.kind === 'none' ? support.reason : isNative() ? t('Registers this app with your server so it can wake it for new messages.') : t('Uses your browser to show notifications even when Jorcord is closed.')}>
       <Toggle label={t('Push on this device')} checked={thisDevice} disabled={support.kind === 'none' || busy} onChange={togglePush} />
     </Row>
+
+    <H3>{t('Notification permission')}</H3>
+    <section data-testid="notification-permission" className="rounded-lg bg-side p-4">
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="label !mb-0.5">{t('Current permission')}</div>
+          <div className="text-header" data-permission={perm}>{permLabel}</div>
+        </div>
+        <button type="button" className="btn btn-primary" data-testid="enable-notifications" disabled={busy || support.kind === 'none' || thisDevice} onClick={() => void togglePush(true)}>{t('Enable notifications')}</button>
+        <button type="button" className="btn btn-secondary" data-testid="test-notification" disabled={busy || perm !== 'granted'} onClick={() => void sendTest()}>{t('Send test notification')}</button>
+      </div>
+      {support.kind === 'none' && <p className="mt-2 text-xs text-muted">{support.reason}</p>}
+    </section>
+
     <H3>{t('Registered devices')}</H3>
     {devices.isLoading && <Spinner />}
     {devices.isError && <p className="text-sm text-muted">{t('This server does not support push notifications.')}</p>}
