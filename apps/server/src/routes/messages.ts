@@ -156,6 +156,8 @@ export function messageRoutes(app: FastifyInstance, ctx: Ctx) {
     }
     const attachments = await claimAttachments(ctx, req.userId, body.attachments ?? []);
     try {
+      // Voice messages are audio attachments: the sender needs SEND_VOICE_MESSAGES (like Discord does).
+      if (attachments.some((at) => at.contentType.startsWith('audio/'))) need(a.perms, Perm.SEND_VOICE_MESSAGES);
       const msg = await createMessage(ctx, { channel: a.channel, authorId: req.userId, content: body.content ?? '', replyTo: body.replyTo, attachments, stickerIds: body.stickerIds, senderPerms: a.perms, memberRoleIds: a.gp?.memberRoleIds,
         components, embeds, flags: body.flags, applicationId: req.applicationId, poll: pollInput?.poll, pollExpiry: pollInput?.expiry, forward, allowedMentions: body.allowedMentions });
       if (a.channel.type === 'thread') await joinThread(ctx, a.channel, req.userId).catch(() => {}); // posting in a thread follows it

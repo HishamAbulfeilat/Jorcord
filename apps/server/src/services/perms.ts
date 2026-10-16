@@ -42,7 +42,7 @@ export function permsFor(gp: GuildPerm, overwrites: Overwrite[] = []): bigint {
 export const loadOverwrites = (ctx: Ctx, channelId: string): Promise<Overwrite[]> => ctx.pcache.channelOverwrites(ctx, channelId);
 
 export const DM_PERMS = Perm.VIEW_CHANNEL | Perm.SEND_MESSAGES | Perm.READ_MESSAGE_HISTORY | Perm.ADD_REACTIONS | Perm.ATTACH_FILES |
-  Perm.EMBED_LINKS | Perm.USE_EXTERNAL_EMOJIS | Perm.CONNECT | Perm.SPEAK | Perm.STREAM | Perm.USE_VAD;
+  Perm.EMBED_LINKS | Perm.USE_EXTERNAL_EMOJIS | Perm.SEND_VOICE_MESSAGES | Perm.CONNECT | Perm.SPEAK | Perm.STREAM | Perm.USE_VAD;
 
 export async function getChannelRow(ctx: Ctx, id: string) {
   return (await ctx.db.query('SELECT * FROM channels WHERE id = $1', [id]))[0] ?? null;
