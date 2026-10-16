@@ -23,6 +23,9 @@ import { useFirstTextChannel } from '@/lib/useGuild';
 import { cx } from '@/lib/format';
 import { getGateway, type GatewayStatus } from '@/lib/gateway';
 import { ReportQueuePanel } from '@/components/chat/Panels';
+import { Badge } from '@/components/ui/primitives';
+import { comboFromEvent } from '@/lib/combo';
+import { useVoiceUI } from '@/stores/voiceui';
 
 function Sidebar() {
   const { guildId } = useRouteIds();
