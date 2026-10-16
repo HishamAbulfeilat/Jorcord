@@ -1,6 +1,6 @@
 /** Typed REST client written against docs/CONTRACT.md. All calls go through the swappable transport. */
 import type {
-  Activity, Attachment, AuditEntry, AutoModRule, Channel, Emoji, Guild, GuildFull, Invite, Member, Message, Relationship, ReadState, Role, SelfUser, Sticker, User, VoiceToken, Id, Presence, OverwriteDTO,
+  Activity, Attachment, AuditEntry, AutoModRule, Channel, Emoji, Guild, GuildFull, Invite, Member, Message, MessageEdit, Relationship, ReadState, Role, SelfUser, Sticker, User, VoiceToken, Id, Presence, OverwriteDTO,
   AllowedMentions,
   Reminder, ModView, ModWarning, ModNote, BulkModerationFilter, BulkModerationResult, PruneResult, BoostSummary, LinkedRoleView, LinkedCriterion, RoleMetadataApp, DirectoryApp, DirectoryCategory, SoundboardSound, Connection, PublicConnection, GifFavorite, GuildTemplate, GuildWidgetSettings, GuildInsights, ChannelFollow, Onboarding, OnboardingResponse, GuildSafety, SafetyPreset, Application, ApplicationCommand, CommandPermissionOverwrite, CommandOptionChoice, CreatePoll, ForumTag, InteractionOptionValue, ModalSubmitRow, OAuthAuthorizePreview, OAuthAuthorizeResult, ScheduledEvent, StageInstance, Report,
 } from '@jorcord/shared';
@@ -267,6 +267,8 @@ export const api = {
     /** Forward a message I can read into `channelId` (snapshot copy, no pings). */
     forward: (channelId: Id, src: { channelId: Id; messageId: Id }) => send<Message>({ method: 'POST', path: `/channels/${channelId}/messages`, body: { forward: src } }),
     edit: (channelId: Id, id: Id, content: string) => send<Message>({ method: 'PATCH', path: `/channels/${channelId}/messages/${id}`, body: { content } }),
+    /** R19: prior versions of an edited message's content, newest first (the current content is not included). */
+    editHistory: (channelId: Id, id: Id) => send<MessageEdit[]>({ method: 'GET', path: `/channels/${channelId}/messages/${id}/edits` }).then((x) => arr<MessageEdit>(x)),
     delete: (channelId: Id, id: Id) => send({ method: 'DELETE', path: `/channels/${channelId}/messages/${id}` }),
     bulkDelete: (channelId: Id, ids: Id[]) => send({ method: 'POST', path: `/channels/${channelId}/messages/bulk-delete`, body: { messageIds: ids } }),
     react: (channelId: Id, id: Id, emoji: string, emojiId?: Id | null) => send({ method: 'PUT', path: `/channels/${channelId}/messages/${id}/reactions/${emojiKey(emoji, emojiId)}/@me` }),
