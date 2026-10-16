@@ -1,6 +1,6 @@
 {
   "name": "@jorcord/mobile",
-  "version": "0.1.1",
+  "version": "1.0.0",
   "private": true,
   "description": "Jorcord mobile shell (Capacitor 8, Android + iOS)",
   "scripts": {
