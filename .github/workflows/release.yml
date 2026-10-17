@@ -417,7 +417,7 @@ jobs:
           while read -r aid name; do gh api -H "Accept: application/octet-stream" "repos/$GITHUB_REPOSITORY/releases/assets/$aid" > "$name"; done < ../list.txt
           sha256sum * > ../SHA256SUMS.txt; cat ../SHA256SUMS.txt; cd ..
           # Tauri updater manifest (desktop apps poll releases/latest/download/latest.json); skipped when no signed bundles exist
-          .github/scripts/make-updater-manifest.sh "${{ needs.prepare.outputs.version }}" dl > latest.json
+          bash .github/scripts/make-updater-manifest.sh "${{ needs.prepare.outputs.version }}" dl > latest.json
           if [ -s latest.json ]; then cat latest.json; .github/scripts/upload-assets.sh "$ID" latest.json; else echo "No signed updater bundles: latest.json not published (set TAURI_SIGNING_PRIVATE_KEY)"; fi
           gh api --method POST -H "Content-Type: application/octet-stream" "https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/$ID/assets?name=SHA256SUMS.txt" --input SHA256SUMS.txt > /dev/null
           BODY=$(gh api "repos/$GITHUB_REPOSITORY/releases/$ID" --jq .body)
