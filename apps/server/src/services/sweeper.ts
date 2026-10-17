@@ -26,6 +26,7 @@ async function pruneInteractions(ctx: Ctx) {
   await ctx.db.query(`DELETE FROM interactions WHERE expires_at < now() - interval '1 hour'`);
   await ctx.db.query(`DELETE FROM oauth_codes WHERE expires_at < now() - interval '1 hour'`);
   await ctx.db.query(`DELETE FROM oauth_tokens WHERE expires_at < now()`);
+  await ctx.db.query(`DELETE FROM remote_auth WHERE expires_at < now() - interval '10 minutes'`);
 }
 
 /**
