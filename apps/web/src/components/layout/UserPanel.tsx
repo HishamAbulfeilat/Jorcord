@@ -5,7 +5,8 @@ import { useVoiceUI } from '@/stores/voiceui';
 import { Avatar, PRESENCE_LABEL } from '@/components/ui/Avatar';
 import { displayName } from '@/lib/format';
 import { Tip } from '@/components/ui/Tooltip';
-import { VoiceDock } from '@/components/VoiceChannelView';
+import { lazyNamed, Lazy } from '@/lib/lazy';
+const VoiceDock = lazyNamed(() => import('@/voice/views'), 'VoiceDock');
 import { statusMenu } from './statusMenu';
 import { useMenuTrigger } from '@/components/ui/ContextMenu';
 import { t } from '@/i18n';
@@ -20,7 +21,7 @@ export function UserPanel() {
   const eff = me.presence && !useData.getState().presences[me.id] ? me.presence : presence;
   return (
     <div className="relative">
-      <VoiceDock />
+      <Lazy><VoiceDock /></Lazy>
       <div className="flex h-[52px] items-center gap-1 bg-[rgb(var(--rail)/0.55)] px-2 safe-bottom box-content">
         {streamer.on && <span title={t('Streamer Mode is on')} data-testid="streamer-badge" className="absolute -top-5 start-2 rounded bg-brand px-1.5 py-0.5 text-[10px] font-bold uppercase text-white">{t('Streamer Mode')}</span>}
         <button className="group flex min-w-0 flex-1 items-center gap-2 rounded-md p-1 text-start hover:bg-hover" aria-label={t('Set status')} onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); openMenu(r.left, r.top - 8 - 330, statusMenu()); }} {...trig}>

@@ -22,7 +22,7 @@ describe('GifPickerModal', () => {
     const onPick = vi.fn(); const close = vi.fn();
     render(wrap(<GifPickerModal onPick={onPick} close={close} />));
     expect(screen.getByText('Choose a GIF')).toBeTruthy();
-    expect(screen.getByRole('dialog', { name: 'GIF picker' })).toBeTruthy();
+    expect(await screen.findByRole('dialog', { name: 'GIF picker' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Emoji' })).toBeNull(); // tab switcher hidden in gif-only mode
     expect((screen.getByLabelText('Search') as HTMLInputElement).placeholder).toBe('Search GIFs');
     const gif = await screen.findByRole('button', { name: 'Cat' });

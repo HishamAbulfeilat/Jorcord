@@ -1,8 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useUI } from '@/stores/ui';
-import { ProfileCard } from './Profile';
 import { lazyNamed, Lazy } from '@/lib/lazy';
+const ProfileCard = lazyNamed(() => import('./Profile'), 'ProfileCard');
 const EmojiPicker = lazyNamed(() => import('@/components/chat/EmojiPicker'), 'EmojiPicker');
 import { useIsMobile } from '@/lib/hooks';
 
@@ -29,7 +29,7 @@ export function PopoutHost() {
     return () => { window.removeEventListener('keydown', k); window.removeEventListener('mousedown', c); clearTimeout(t); };
   }, [p, close]);
   if (!p) return null;
-  const content = p.kind === 'user' ? <div className="w-[min(340px,100vw-16px)] shadow-elev"><ProfileCard userId={p.userId} guildId={p.guildId} compact /></div>
+  const content = p.kind === 'user' ? <div className="w-[min(340px,100vw-16px)] shadow-elev"><Lazy><ProfileCard userId={p.userId} guildId={p.guildId} compact /></Lazy></div>
     : <Lazy><EmojiPicker guildId={p.guildId} allowGif gifOnly={p.gifOnly} allowSticker={p.stickers} allowBurst={p.allowBurst} onPick={(e: any) => { p.onPick(e); close(); }} /></Lazy>;
   if (mobile) return createPortal(
     <div className="fixed inset-0 z-[70] flex items-end bg-black/50" onMouseDown={(e) => { if (e.target === e.currentTarget) close(); }}>

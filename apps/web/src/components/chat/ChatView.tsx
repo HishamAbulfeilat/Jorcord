@@ -18,7 +18,10 @@ import { setCurrentChannel } from '@/lib/session';
 import { useNav } from '@/lib/nav';
 import { Markdown } from './Markdown';
 import { markChannelRead } from '@/lib/menus';
-import { DmCallPanel, startCall } from '@/voice/DmCall';
+import { lazyNamed, Lazy } from '@/lib/lazy';
+const DmCallPanel = lazyNamed(() => import('@/voice/DmCall'), 'DmCallPanel');
+/** Load the call surface lazily; the header buttons only need it when a call starts. */
+const startDmCall = (channelId: string, video: boolean) => import('@/voice/DmCall').then((m) => m.startCall(channelId, video));
 import { Phone, Video, Settings as Cog, Lock, Archive } from 'lucide-react';
 import { Perm } from '@jorcord/shared';
 import { can } from '@/lib/perms';
@@ -51,8 +54,8 @@ export function ChannelHeader({ channel }: { channel: Channel }) {
       {isThread && channel.locked && <Lock size={16} className="shrink-0 text-muted" aria-label={t('Locked')} />}
       {channel.topic && !mobile && <><span className="mx-1 h-6 w-px bg-divider" aria-hidden /><div className="min-w-0 flex-1 truncate text-sm text-muted" title={channel.topic}><Markdown content={channel.topic} guildId={channel.guildId} inline /></div></>}
       <div className="ms-auto flex items-center gap-1 md:gap-2">
-        {isDm && <HeaderButton label={t('Start Voice Call')} onClick={() => void startCall(channel.id, false)}><Phone size={22} /></HeaderButton>}
-        {isDm && <HeaderButton label={t('Start Video Call')} onClick={() => void startCall(channel.id, true)}><Video size={24} /></HeaderButton>}
+        {isDm && <HeaderButton label={t('Start Voice Call')} onClick={() => void startDmCall(channel.id, false)}><Phone size={22} /></HeaderButton>}
+        {isDm && <HeaderButton label={t('Start Video Call')} onClick={() => void startDmCall(channel.id, true)}><Video size={24} /></HeaderButton>}
         {isThread && (can(myChannelPerms(channel.id), Perm.MANAGE_THREADS) || channel.ownerId === me?.id) && <HeaderButton label={t('Thread Settings')} onClick={() => openModal({ kind: 'threadSettings', channelId: channel.id })}><Cog size={22} /></HeaderButton>}
         {channel.type === 'announcement' && <HeaderButton label={t('Follow Channel')} onClick={() => openModal({ kind: 'followChannel', channelId: channel.id })}><Megaphone size={22} /></HeaderButton>}
         {!isDm && !isThread && <HeaderButton label={t('Threads')} active={panel === 'threads'} onClick={() => toggle('threads')}><MessagesSquare size={24} /></HeaderButton>}
@@ -103,7 +106,7 @@ export function ChatView({ channel }: { channel: Channel }) {
       <ChannelHeader channel={channel} />
       <div className="flex min-h-0 flex-1">
         <div className="relative flex min-w-0 flex-1 flex-col">
-          {isDm && <DmCallPanel channel={channel} />}
+          {isDm && <Lazy><DmCallPanel channel={channel} /></Lazy>}
           {gated ? <AgeGate channel={channel} /> : (<>
             <MessageList key={cid} channel={channel} lastReadSnapshot={snapshot.current.v} />
             <div className="relative"><TypingIndicator channelId={cid} guildId={gid} /></div>

@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react';
-import { ModViewModal } from './ModView';
 import { createPortal } from 'react-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Check, Copy, Gamepad2, GraduationCap, Hash, Heart, Image as ImageIcon, Megaphone, MessagesSquare, Mic, Plus, Radio, Users, X, Upload, Globe, Palette, Volume2 } from 'lucide-react';
@@ -7,26 +6,46 @@ import { Perm } from '@jorcord/shared';
 import { api } from '@/lib/api';
 import { useData } from '@/stores/data';
 import { useNavigate } from 'react-router-dom';
-import { useUI, toast, toastError } from '@/stores/ui';
+import { useUI, toast, toastError, type ModalSpec } from '@/stores/ui';
+import type { EmojiPick } from '@/components/chat/EmojiPicker';
 import { Modal, Field, Spinner } from '@/components/ui/primitives';
 import { Avatar } from '@/components/ui/Avatar';
 import { cx, copyText, displayName, fileUrl, inviteUrl, initials } from '@/lib/format';
 import { useNav } from '@/lib/nav';
-import { ProfileCard } from './Profile';
 import { lazyNamed, Lazy } from '@/lib/lazy';
-const ChannelSettings = lazyNamed(() => import('@/components/settings/ChannelSettings'), 'ChannelSettings');
 import { goto } from '@/lib/menus';
 import { joinDiscoverable } from '@/components/home/DiscoveryPage';
 import { myChannelPerms } from '@/lib/session';
 import { publicOrigin } from '@/lib/server';
 import { useStreamer } from '@/lib/streamer';
-import { CustomizeModal, FollowChannelModal } from './OnboardingModals';
-import { CustomStatusModal, FolderModal, NotifSettingsModal, OnboardingModal, ShortcutsModal, StreamerStartModal } from './ExtraModals';
-import { VoiceSettingsModal } from '@/voice/VoiceSettings';
-import { CreatePollModal, EventEditorModal, EventsModal, InteractionModal, PollVotersModal, ScreeningModal, StageModal, ThreadSettingsModal } from './PlatformModals';
-import { ForwardModal, InboxModal, ReportModal } from './SocialModals';
-import { EmojiPicker } from '@/components/chat/EmojiPicker';
 import { t } from '@/i18n';
+
+// Every modal module loads only when its kind is opened, so the chat shell does not ship
+// the settings, event, report, moderation and picker code up front.
+const ChannelSettings = lazyNamed(() => import('@/components/settings/ChannelSettings'), 'ChannelSettings');
+const ModViewModal = lazyNamed(() => import('./ModView'), 'ModViewModal');
+const ProfileCard = lazyNamed(() => import('./Profile'), 'ProfileCard');
+const CustomizeModal = lazyNamed(() => import('./OnboardingModals'), 'CustomizeModal');
+const FollowChannelModal = lazyNamed(() => import('./OnboardingModals'), 'FollowChannelModal');
+const CustomStatusModal = lazyNamed(() => import('./ExtraModals'), 'CustomStatusModal');
+const FolderModal = lazyNamed(() => import('./ExtraModals'), 'FolderModal');
+const NotifSettingsModal = lazyNamed(() => import('./ExtraModals'), 'NotifSettingsModal');
+const OnboardingModal = lazyNamed(() => import('./ExtraModals'), 'OnboardingModal');
+const ShortcutsModal = lazyNamed(() => import('./ExtraModals'), 'ShortcutsModal');
+const StreamerStartModal = lazyNamed(() => import('./ExtraModals'), 'StreamerStartModal');
+const VoiceSettingsModal = lazyNamed(() => import('@/voice/VoiceSettings'), 'VoiceSettingsModal');
+const CreatePollModal = lazyNamed(() => import('./PlatformModals'), 'CreatePollModal');
+const EventEditorModal = lazyNamed(() => import('./PlatformModals'), 'EventEditorModal');
+const EventsModal = lazyNamed(() => import('./PlatformModals'), 'EventsModal');
+const InteractionModal = lazyNamed(() => import('./PlatformModals'), 'InteractionModal');
+const PollVotersModal = lazyNamed(() => import('./PlatformModals'), 'PollVotersModal');
+const ScreeningModal = lazyNamed(() => import('./PlatformModals'), 'ScreeningModal');
+const StageModal = lazyNamed(() => import('./PlatformModals'), 'StageModal');
+const ThreadSettingsModal = lazyNamed(() => import('./PlatformModals'), 'ThreadSettingsModal');
+const ForwardModal = lazyNamed(() => import('./SocialModals'), 'ForwardModal');
+const InboxModal = lazyNamed(() => import('./SocialModals'), 'InboxModal');
+const ReportModal = lazyNamed(() => import('./SocialModals'), 'ReportModal');
+const EmojiPicker = lazyNamed(() => import('@/components/chat/EmojiPicker'), 'EmojiPicker');
 
 const TEMPLATES = [
   { id: 'own', label: 'Create My Own', icon: Palette }, { id: 'gaming', label: 'Gaming', icon: Gamepad2 }, { id: 'friends', label: 'Friends', icon: Heart },
@@ -41,7 +60,7 @@ export async function uploadImageFile(f: File): Promise<string> { return api.fil
 export function GifPickerModal({ title = 'Choose a GIF', onPick, close }: { title?: string; onPick: (url: string) => void; close: () => void }) {
   return (
     <Modal title={title} width={420} onClose={close} padded={false}>
-      <EmojiPicker allowGif gifOnly onPick={(e) => { if (e.gif) { onPick(e.gif); close(); } }} />
+      <Lazy><EmojiPicker allowGif gifOnly onPick={(e: EmojiPick) => { if (e.gif) { onPick(e.gif); close(); } }} /></Lazy>
     </Modal>
   );
 }
@@ -220,6 +239,10 @@ function LeaveGuild({ guildId, close }: { guildId: string; close: () => void }) 
 export function ModalHost() {
   const m = useUI((s) => s.modal); const close = useUI((s) => s.closeModal);
   if (!m) return null;
+  return <Lazy><ModalBody m={m} close={close} /></Lazy>;
+}
+
+function ModalBody({ m, close }: { m: ModalSpec; close: () => void }) {
   switch (m.kind) {
     case 'createServer': return <CreateServer close={close} />;
     case 'joinServer': return <JoinServer close={close} code={m.code} />;
@@ -248,7 +271,7 @@ export function ModalHost() {
     case 'voiceSettings': return <VoiceSettingsModal onClose={close} />;
     case 'reactors': return <Reactors spec={m} close={close} />;
     case 'leaveGuild': return <LeaveGuild guildId={m.guildId} close={close} />;
-    case 'channelSettings': return <Lazy><ChannelSettings channelId={m.channelId} close={close} /></Lazy>;
+    case 'channelSettings': return <ChannelSettings channelId={m.channelId} close={close} />;
     case 'interactionModal': return <InteractionModal key={m.interactionId} spec={m.modal} channelId={m.channelId} interactionId={m.interactionId} close={close} />;
     case 'createPoll': return <CreatePollModal channelId={m.channelId} close={close} />;
     case 'pollVoters': return <PollVotersModal channelId={m.channelId} messageId={m.messageId} answerId={m.answerId} close={close} />;

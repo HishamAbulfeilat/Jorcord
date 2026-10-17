@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { Megaphone, CornerUpLeft, Hash, LogIn, MoreHorizontal, Pencil, Pin, Reply, SmilePlus, Trash2, Rocket, Phone, MessagesSquare, AlertCircle, RotateCw } from 'lucide-react';
 import type { Message } from '@jorcord/shared';
 import { Perm } from '@jorcord/shared';
@@ -36,8 +36,11 @@ export function useAuthorInfo(m: Pick<Message, 'author' | 'guildId'>) {
   const member = useData((s) => (m.guildId ? s.guilds[m.guildId]?.members[m.author.id] : undefined));
   const roles = useData((s) => (m.guildId ? s.guilds[m.guildId]?.roles : undefined));
   const live = useData((s) => s.users[m.author.id]);
-  const user = { ...m.author, ...live };
-  return { user, member, name: displayName(user, member), color: member && roles ? roleColor(member, Object.values(roles)) : undefined, icon: member && roles ? roleIcon(member, Object.values(roles)) : undefined };
+  const user = useMemo(() => ({ ...m.author, ...live }), [m.author, live]);
+  return useMemo(() => {
+    const roleList = roles ? Object.values(roles) : undefined;
+    return { user, member, name: displayName(user, member), color: member && roleList ? roleColor(member, roleList) : undefined, icon: member && roleList ? roleIcon(member, roleList) : undefined };
+  }, [user, member, roles]);
 }
 
 function ReplyPreview({ m }: { m: Message }) {

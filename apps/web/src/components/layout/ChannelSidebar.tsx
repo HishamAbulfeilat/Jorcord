@@ -26,8 +26,7 @@ import { toastError } from '@/stores/ui';
 import { CAT, applyChannelDrop, layoutOf, orderDiff, plainAttrs } from '@/lib/channelOrder';
 import { t } from '@/i18n';
 import { useChannelHides } from '@/lib/channelHide';
-import { usePlatform } from '@/stores/platform';
-import { useLoadEvents } from '@/components/modals/PlatformModals';
+import { usePlatform, useLoadEvents } from '@/stores/platform';
 import { useGuildStages } from '@/voice/StageBar';
 import { isLive, isUpcoming } from '@/lib/events';
 

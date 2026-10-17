@@ -1,5 +1,5 @@
 /** Modals added by the platform pass: polls, app modals, events, stages, screening, thread settings. */
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { BookOpen, CalendarDays, Lock, MapPin, Plus, Radio, Trash2, Users, Volume2, X } from 'lucide-react';
 import { ComponentType as CT, Perm, ScheduledEventEntityType as ET, ScheduledEventStatus as ST, AUTO_ARCHIVE_DURATIONS } from '@jorcord/shared';
@@ -7,7 +7,7 @@ import type { Component, Modal as ModalSpec, ScheduledEvent } from '@jorcord/sha
 import { api } from '@/lib/api';
 import { useData, selfMember } from '@/stores/data';
 import { useUI, toast, toastError } from '@/stores/ui';
-import { usePlatform } from '@/stores/platform';
+import { usePlatform, useLoadEvents } from '@/stores/platform';
 import { useMessages } from '@/stores/messages';
 import { Field, Modal, Spinner, Toggle, Row, Empty } from '@/components/ui/primitives';
 import { Markdown } from '@/components/chat/Markdown';
@@ -106,15 +106,6 @@ export function InteractionModal({ spec, channelId, interactionId, close }: { sp
 function useEventPerms(guildId: string) {
   const perms = useGuildPerms(guildId); const meId = useData((s) => s.me?.id);
   return { create: can(perms, Perm.CREATE_EVENTS), manage: can(perms, Perm.MANAGE_EVENTS), meId, perms };
-}
-
-export function useLoadEvents(guildId: string | undefined) {
-  const loaded = usePlatform((s) => (guildId ? !!s.eventsLoaded[guildId] : true));
-  useEffect(() => {
-    if (!guildId || loaded) return;
-    usePlatform.setState((s) => ({ eventsLoaded: { ...s.eventsLoaded, [guildId]: true } })); // claim first so StrictMode / siblings do not double-fetch
-    api.guilds.events(guildId).then((l) => usePlatform.getState().setEvents(guildId, l)).catch(() => usePlatform.setState((s) => ({ eventsLoaded: { ...s.eventsLoaded, [guildId]: false } })));
-  }, [guildId, loaded]);
 }
 
 function EventCard({ e }: { e: ScheduledEvent }) {

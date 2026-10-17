@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { memo, useEffect, useMemo, useRef } from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import { useRovingTabindex } from '@/lib/hooks';
 import { useData } from '@/stores/data';
 import { useUI } from '@/stores/ui';
 import { api } from '@/lib/api';
-import { groupMembers, roleColor, roleIcon } from '@/lib/perms';
+import { groupMembers, roleColor, roleIcon, type MemberGroup } from '@/lib/perms';
 import { RoleIcon } from '@/components/ui/RoleIcon';
 import { PRESENCE_LABEL } from '@/components/ui/Avatar';
 import { t } from '@/i18n';
@@ -17,12 +18,24 @@ import { Crown, Rocket, X } from 'lucide-react';
 import { toastError } from '@/stores/ui';
 import type { Member, Role } from '@jorcord/shared';
 
-function MemberRow({ m, roles, guildId, ownerId }: { m: Member; roles: Role[]; guildId: string; ownerId: string }) {
+export type MemberListRow =
+  | { key: string; kind: 'group'; group: MemberGroup }
+  | { key: string; kind: 'member'; member: Member; groupId: string };
+
+/** Flatten the grouped member list into one virtualizable sequence of group headers + members. */
+export function memberRows(groups: MemberGroup[]): MemberListRow[] {
+  return groups.flatMap((group) => [
+    { key: `group:${group.id}`, kind: 'group' as const, group },
+    ...group.members.map((member) => ({ key: `member:${member.user.id}`, kind: 'member' as const, member, groupId: group.id })),
+  ]);
+}
+
+const MemberRow = memo(function MemberRow({ m, roles, guildId, ownerId }: { m: Member; roles: Role[]; guildId: string; ownerId: string }) {
   const open = useUI((s) => s.openPopout); const trig = useMenuTrigger(() => userMenu(m.user.id, guildId));
   const u = useData((s) => s.users[m.user.id]) ?? m.user; const p = useData((s) => s.presences[m.user.id]);
   const offline = !p || p === 'offline' || p === 'invisible';
   return (
-    <li {...trig}>
+    <div {...trig}>
       <button onClick={(e) => open({ kind: 'user', userId: m.user.id, guildId, rect: e.currentTarget.getBoundingClientRect() })} className={`touch mx-2 flex w-[calc(100%-16px)] items-center gap-3 rounded px-2 text-start hover:bg-hover md:min-h-[42px] ${plateClass(u.namePlate)}`} style={{ opacity: offline ? 0.45 : 1 }}>
         <Avatar user={u} memberAvatar={m.avatar} size={32} presence ring="rgb(var(--side))" />
         <span className="min-w-0 flex-1 leading-tight">
@@ -31,28 +44,39 @@ function MemberRow({ m, roles, guildId, ownerId }: { m: Member; roles: Role[]; g
           {(u.customStatus?.text || u.customStatus?.emoji) && <span className="block truncate text-xs text-muted">{u.customStatus.emoji} {u.customStatus.text}</span>}
         </span>
       </button>
-    </li>
+    </div>
   );
-}
+});
 
 export function MemberList({ guildId }: { guildId: string }) {
-  const asideRef = useRef<HTMLElement>(null); useRovingTabindex(asideRef, 'li > button');
+  const asideRef = useRef<HTMLElement>(null); useRovingTabindex(asideRef, 'li button');
   const g = useData((s) => s.guilds[guildId]); const presences = useData((s) => s.presences);
   useEffect(() => {
     if (!g || g.membersLoaded || Object.keys(g.members).length >= g.memberCount) return;
     api.guilds.members(guildId, { limit: 100 }).then((ms) => useData.getState().putMembers(guildId, ms)).catch(() => {});
   }, [guildId]); // eslint-disable-line
   const groups = useMemo(() => (g ? groupMembers(Object.values(g.members), Object.values(g.roles), (id) => presences[id], guildId) : []), [g?.members, g?.roles, presences, guildId]);
+  const rows = useMemo(() => memberRows(groups), [groups]);
+  // Members render at their measured height; only rows near the viewport are mounted.
+  const virt = useVirtualizer({
+    count: rows.length, getScrollElement: () => asideRef.current, overscan: 8,
+    estimateSize: (i) => (rows[i]?.kind === 'group' ? 34 : 56), getItemKey: (i) => rows[i]?.key ?? i,
+  });
+  const roles = useMemo(() => (g ? Object.values(g.roles) : []), [g?.roles]);
   if (!g) return null;
-  const roles = Object.values(g.roles);
   return (
     <aside ref={asideRef} aria-label={t('Members')} className="scroller h-full w-60 shrink-0 bg-side pb-4">
-      {groups.map((gr) => (
-        <section key={gr.id} aria-label={gr.name}>
-          <h3 className="px-4 pb-1 pt-6 text-xs font-bold uppercase tracking-wide text-muted">{gr.id === 'online' || gr.id === 'offline' ? t(PRESENCE_LABEL[gr.id] ?? gr.name) : gr.name} — {gr.members.length}</h3>
-          <ul>{gr.members.map((m) => <MemberRow key={m.user.id} m={m} roles={roles} guildId={guildId} ownerId={g.guild.ownerId} />)}</ul>
-        </section>
-      ))}
+      <ul role="list" aria-label={t('Members')} className="relative m-0 list-none p-0" style={{ height: virt.getTotalSize() }}>
+        {virt.getVirtualItems().map((v) => {
+          const r = rows[v.index]; if (!r) return null;
+          const style = { position: 'absolute', top: 0, left: 0, width: '100%', transform: `translateY(${v.start}px)` } as const;
+          if (r.kind === 'group') {
+            const label = r.group.id === 'online' || r.group.id === 'offline' ? t(PRESENCE_LABEL[r.group.id] ?? r.group.name) : r.group.name;
+            return <li key={v.key} role="presentation" ref={virt.measureElement} data-index={v.index} style={style}><h3 className="px-4 pb-1 pt-6 text-xs font-bold uppercase tracking-wide text-muted">{label} — {r.group.members.length}</h3></li>;
+          }
+          return <li key={v.key} ref={virt.measureElement} data-index={v.index} style={style}><MemberRow m={r.member} roles={roles} guildId={guildId} ownerId={g.guild.ownerId} /></li>;
+        })}
+      </ul>
     </aside>
   );
 }

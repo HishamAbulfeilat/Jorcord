@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { ArrowDown, Hash, Users, X } from 'lucide-react';
 import type { Channel, Message, MessageEdit } from '@jorcord/shared';
@@ -48,6 +48,7 @@ export function MessageList({ channel, lastReadSnapshot }: { channel: Channel; l
   const atBottom = useRef(true); const [showJump, setShowJump] = useState(false); const [newBelow, setNewBelow] = useState(0);
   const [flashId, setFlashId] = useState<string | null>(null);
   const [editHistory, setEditHistory] = useState<{ m: Message; rect: DOMRect } | null>(null);
+  const openEditHistory = useCallback((m: Message, rect: DOMRect) => setEditHistory({ m, rect }), []);
   const anchor = useRef<{ key: string; delta: number } | null>(null);
   const store = useMsgStore.getState;
 
@@ -183,7 +184,7 @@ export function MessageList({ channel, lastReadSnapshot }: { channel: Channel; l
             const r = rows[v.index]; if (!r) return null;
             return (
               <div key={v.key} data-index={v.index} ref={virt.measureElement} style={{ position: 'absolute', top: 0, left: 0, width: '100%', transform: `translateY(${v.start}px)` }}>
-                <RowView r={r} channel={channel} flashId={flashId} onEditHistory={(m, rect) => setEditHistory({ m, rect })} />
+                <RowView r={r} channel={channel} flashId={flashId} onEditHistory={openEditHistory} />
               </div>
             );
           })}
@@ -200,7 +201,7 @@ export function MessageList({ channel, lastReadSnapshot }: { channel: Channel; l
   );
 }
 
-function RowView({ r, channel, flashId, onEditHistory }: { r: Row; channel: Channel; flashId: string | null; onEditHistory: (m: Message, rect: DOMRect) => void }) {
+const RowView = memo(function RowView({ r, channel, flashId, onEditHistory }: { r: Row; channel: Channel; flashId: string | null; onEditHistory: (m: Message, rect: DOMRect) => void }) {
   const pend = useMessages((s) => (r.kind === 'pending' ? s.pending.find((p) => p.nonce === r.nonce) : undefined));
   switch (r.kind) {
     case 'date': return <div role="separator" className="relative mx-4 mb-2 mt-6 flex items-center justify-center border-t border-divider text-xs font-semibold text-muted"><span className="-mt-px bg-chat px-2 leading-none" style={{ transform: 'translateY(-50%)' }}>{r.label}</span></div>;
@@ -209,7 +210,7 @@ function RowView({ r, channel, flashId, onEditHistory }: { r: Row; channel: Chan
     case 'pending': return pend ? <PendingItem p={pend} grouped={r.grouped} /> : null;
     case 'msg': return <MessageItem m={r.m} grouped={r.grouped} highlighted={flashId === r.m.id} onEditHistory={onEditHistory} />;
   }
-}
+});
 
 /** R19: prior versions of an edited message, fetched when the author clicks "(edited)" in the message list. */
 export function EditHistoryPopover({ target, onClose }: { target: { m: Message; rect: DOMRect }; onClose: () => void }) {

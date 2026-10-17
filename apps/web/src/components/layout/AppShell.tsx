@@ -14,9 +14,9 @@ import { QuickSwitcher } from './QuickSwitcher';
 import { ChatView } from '@/components/chat/ChatView';
 import { ForumView } from '@/components/chat/ForumView';
 import { FriendsHome } from '@/components/home/FriendsHome';
-import { MobileVoiceBar } from '@/components/VoiceChannelView';
 import { lazyNamed, Lazy } from '@/lib/lazy';
 const VoiceChannelView = lazyNamed(() => import('@/components/VoiceChannelView'), 'VoiceChannelView');
+const LazyMobileVoiceBar = lazyNamed(() => import('@/voice/views'), 'MobileVoiceBar');
 import { VoiceRoot } from '@/voice/VoiceRoot';
 import { BaseCtx, useNav, useRouteIds } from '@/lib/nav';
 import { useIsMobile } from '@/lib/hooks';
@@ -136,7 +136,7 @@ export function AppShell({ base = '' }: { base?: string }) {
           className="fixed start-2 top-2 z-[200] -translate-y-24 rounded bg-brand px-3 py-2 text-sm font-semibold text-white focus:translate-y-0">{t('Skip to chat')}</a>
         <UpdateBanner />
         <ConnectionBanner />
-        <MobileVoiceBar />
+        <Lazy><LazyMobileVoiceBar /></Lazy>
         <div className="relative flex min-h-0 flex-1">
           {!mobile && <><ServerRail /><Sidebar /></>}
           <main id="main" tabIndex={-1} className="relative flex min-w-0 flex-1 flex-col bg-chat md:rounded-ss-lg" style={{ paddingInlineStart: 'var(--sal)', paddingInlineEnd: 'var(--sar)' }}>{main}</main>

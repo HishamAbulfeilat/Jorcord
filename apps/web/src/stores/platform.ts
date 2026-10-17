@@ -1,7 +1,9 @@
 /** Client state for the platform pass: scheduled events, stage instances, in-flight interactions and autocomplete answers. */
+import { useEffect } from 'react';
 import { create } from 'zustand';
 import type { CommandOptionChoice, Id, ScheduledEvent, StageInstance } from '@jorcord/shared';
 import { applyInterest, isUpcoming } from '@/lib/events';
+import { api } from '@/lib/api';
 
 export interface PendingInteraction { id: Id; channelId: Id; kind: 'command' | 'component' | 'modal' | 'autocomplete'; name?: string; applicationId?: Id; at: number; messageId?: Id; customId?: string }
 
@@ -74,5 +76,15 @@ export const usePlatform = create<PlatformState>((set, get) => ({
   setApps: (list) => set((s) => ({ apps: { ...s.apps, ...Object.fromEntries(list.map((a) => [a.id, { name: a.name, icon: a.icon, botUserId: a.botUserId }])) } })),
   setAutocomplete: (id, choices) => set((s) => ({ autocomplete: { ...s.autocomplete, [id]: choices } })),
 }));
+
+/** Fetch a guild's scheduled events once; shared by the sidebar, the events modal and the event editor. */
+export function useLoadEvents(guildId: string | undefined) {
+  const loaded = usePlatform((s) => (guildId ? !!s.eventsLoaded[guildId] : true));
+  useEffect(() => {
+    if (!guildId || loaded) return;
+    usePlatform.setState((s) => ({ eventsLoaded: { ...s.eventsLoaded, [guildId]: true } })); // claim first so StrictMode / siblings do not double-fetch
+    api.guilds.events(guildId).then((l) => usePlatform.getState().setEvents(guildId, l)).catch(() => usePlatform.setState((s) => ({ eventsLoaded: { ...s.eventsLoaded, [guildId]: false } })));
+  }, [guildId, loaded]);
+}
 
 export const guildEvents = (s: Pick<PlatformState, 'events'>, guildId: Id): ScheduledEvent[] => Object.values(s.events[guildId] ?? {});
