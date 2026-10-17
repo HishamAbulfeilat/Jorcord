@@ -75,6 +75,8 @@ export function loadConfig(overrides: Partial<Config> = {}, env: NodeJS.ProcessE
   const publicUrl = env.PUBLIC_URL ?? 'http://localhost:3000';
   let publicOrigin: string | null = null; try { publicOrigin = new URL(publicUrl).origin; } catch { /* invalid PUBLIC_URL is reported elsewhere */ }
   const corsEnv = env.CORS_ORIGINS?.trim();
+  // '*' disables the origin check entirely — acceptable for local dev, never for a public deployment.
+  if (isProd && corsEnv === '*') throw new Error("CORS_ORIGINS='*' is not allowed in production; list your web origin(s) explicitly");
   const corsOrigins: string[] | true = corsEnv === '*' ? true
     : [...new Set([...(corsEnv ? corsEnv.split(',').map((s) => s.trim()).filter(Boolean) : []), ...DEFAULT_CORS_ORIGINS, ...(publicOrigin ? [publicOrigin] : [])])];
   const apnsKey = readMaybeFile(env.APNS_KEY?.replace(/\\n/g, '\n'), env.APNS_KEY_FILE);
