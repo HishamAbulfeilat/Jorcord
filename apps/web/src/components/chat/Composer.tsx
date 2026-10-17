@@ -102,7 +102,7 @@ export function Composer({ channel, stagedExternal }: { channel: Channel; staged
     }
     if ((m = before.match(/(?:^|\s)#([\w\-]{0,32})$/)) && guild) {
       const q = m[1].toLowerCase(); const start = caret - m[1].length - 1;
-      const items = Object.values(guild.channels).filter((c) => (c.type === 'text' || c.type === 'announcement' || c.type === 'voice' || c.type === 'forum') && c.name?.toLowerCase().includes(q)).slice(0, 8).map((c) => ({ key: c.id, label: c.name!, insert: `#${c.name}`, token: [`#${c.name}`, `<#${c.id}>`] as [string, string], icon: '#' }));
+      const items = Object.values(guild.channels).filter((c) => (c.type === 'text' || c.type === 'announcement' || c.type === 'voice' || c.type === 'forum' || c.type === 'media') && c.name?.toLowerCase().includes(q)).slice(0, 8).map((c) => ({ key: c.id, label: c.name!, insert: `#${c.name}`, token: [`#${c.name}`, `<#${c.id}>`] as [string, string], icon: '#' }));
       if (items.length) return { kind: 'channel' as const, items, index: 0, start, end: caret };
     }
     if ((m = before.match(/(?:^|\s):([a-z0-9_+\-]{2,})$/i))) {

@@ -11,7 +11,7 @@ Checklist items are grouped by feature. Each row lists the files it would touch 
 
 ## Forum / media channels
 
-- [ ] **Media channel** (a forum whose posts are media-only, no text body). `ChannelType` has no `'media'` member and `services/messages` has no media-only guard.
+- [x] **Media channel** (a forum whose posts are media-only, no text body). `ChannelType` has a `'media'` member (`packages/shared/src/types.ts`) and `services/messages` enforces the media-only guard via `isMediaAttachment` / `requireMedia`; posts carry attachments through `POST /channels/:id/forum/posts`.
   Files: packages/shared/src/types.ts, packages/shared/src/limits.ts, apps/server/src/routes/channels.ts, apps/server/src/services/messages.ts, apps/web/src/components/settings/ChannelSettings.tsx. Size: M.
 - [ ] **Forum channel default sort order / default layout (gallery or list).** `Channel` carries `availableTags`, `requireTag`, `defaultAutoArchiveDuration` but no `defaultSortOrder` / `defaultForumLayout`; `ForumView.tsx` hard-codes newest-first and has no layout picker.
   Files: packages/shared/src/types.ts, apps/server/src/routes/channels.ts, apps/web/src/components/settings/ChannelSettings.tsx, apps/web/src/components/chat/ForumView.tsx. Size: S.

@@ -3,7 +3,7 @@ import type { Component, FieldErrors, ForumTag, Poll } from './platform';
 /** Wire types shared by server and clients. IDs are snowflake strings; bigints (permissions) travel as strings. */
 export type Id = string;
 export type Presence = 'online' | 'idle' | 'dnd' | 'invisible' | 'offline';
-export type ChannelType = 'text' | 'voice' | 'announcement' | 'stage' | 'forum' | 'category' | 'dm' | 'group_dm' | 'thread';
+export type ChannelType = 'text' | 'voice' | 'announcement' | 'stage' | 'forum' | 'media' | 'category' | 'dm' | 'group_dm' | 'thread';
 
 export interface User {
   id: Id; username: string; displayName: string | null; avatar: string | null; banner: string | null;

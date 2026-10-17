@@ -257,6 +257,31 @@ describe('messages', () => {
     ws.close();
   });
 
+  it('media channels only accept posts with an image or video', async () => {
+    const { owner, general, guild, members: [bob] } = await guildWith('med');
+    const media = (await api.req('POST', `/guilds/${guild.id}/channels`, owner.token, { name: 'clips', type: 'media' })).body;
+    expect(media.type).toBe('media');
+    // direct messages never post into a media channel (it behaves like a forum)
+    expect((await api.req('POST', `/channels/${media.id}/messages`, owner.token, { content: 'hi' })).status).toBe(400);
+    // a post without any media is rejected and leaves no thread behind
+    expect((await api.req('POST', `/channels/${media.id}/forum/posts`, owner.token, { name: 'text only', content: 'no picture' })).status).toBe(400);
+    expect((await api.req('GET', `/channels/${media.id}/threads`, owner.token)).body).toHaveLength(0);
+    // a non-image attachment is rejected, and the claim rolls back so the file is reusable
+    const up = multipart([{ name: 'file', value: Buffer.from('hello'), filename: 'notes.txt', type: 'text/plain' }]);
+    const txt = (await api.req('POST', '/uploads', owner.token, up.payload as any, up.headers)).body;
+    expect((await api.req('POST', `/channels/${media.id}/forum/posts`, owner.token, { name: 'not media', attachments: [txt.id] })).status).toBe(400);
+    expect((await api.req('GET', `/channels/${media.id}/threads`, owner.token)).body).toHaveLength(0);
+    expect((await api.req('POST', `/channels/${general.id}/messages`, owner.token, { attachments: [txt.id] })).status).toBe(201);
+    // an image post works even with no caption text
+    const img = multipart([{ name: 'file', value: PNG, filename: 'shot.png', type: 'image/png' }]);
+    const pic = (await api.req('POST', '/uploads', bob!.token, img.payload as any, img.headers)).body;
+    const post = await api.req('POST', `/channels/${media.id}/forum/posts`, bob!.token, { name: 'Sunset', attachments: [pic.id] });
+    expect(post.status).toBe(201); expect(post.body.message.content).toBe(''); expect(post.body.message.attachments).toHaveLength(1); expect(post.body.channel.parentId).toBe(media.id);
+    expect((await api.req('GET', `/channels/${media.id}/threads`, owner.token)).body.map((c: any) => c.id)).toContain(post.body.channel.id);
+    // the media post's own thread still accepts plain text replies
+    expect((await api.req('POST', `/channels/${post.body.channel.id}/messages`, owner.token, { content: 'nice shot' })).status).toBe(201);
+  });
+
   it('emojis, boosts, discovery, webhooks', async () => {
     const { owner, general, guild, members: [bob] } = await guildWith('w');
     expect((await api.req('POST', `/guilds/${guild.id}/emojis`, bob!.token, { name: 'wave', url: '/api/v1/files/x/y.png' })).status).toBe(403);

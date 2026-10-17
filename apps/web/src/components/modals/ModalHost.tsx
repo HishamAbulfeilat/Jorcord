@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ModViewModal } from './ModView';
 import { createPortal } from 'react-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Check, Copy, Gamepad2, GraduationCap, Hash, Heart, Megaphone, MessagesSquare, Mic, Plus, Radio, Users, X, Upload, Globe, Palette, Volume2 } from 'lucide-react';
+import { Check, Copy, Gamepad2, GraduationCap, Hash, Heart, Image as ImageIcon, Megaphone, MessagesSquare, Mic, Plus, Radio, Users, X, Upload, Globe, Palette, Volume2 } from 'lucide-react';
 import { Perm } from '@jorcord/shared';
 import { api } from '@/lib/api';
 import { useData } from '@/stores/data';
@@ -109,7 +109,7 @@ function JoinServer({ close, code: initial }: { close: () => void; code?: string
 
 function CreateChannel({ close, guildId, parentId, category }: { close: () => void; guildId: string; parentId?: string | null; category?: boolean }) {
   const [type, setType] = useState(category ? 'category' : 'text'); const [name, setName] = useState(''); const [priv, setPriv] = useState(false); const [busy, setBusy] = useState(false); const nav = useNav();
-  const types = [{ id: 'text', label: 'Text', desc: 'Send messages, images, GIFs, emoji, opinions, and puns', icon: Hash }, { id: 'voice', label: 'Voice', desc: 'Hang out together with voice, video, and screen share', icon: Volume2 }, { id: 'announcement', label: 'Announcement', desc: 'Important updates for people who follow your server', icon: Megaphone }, { id: 'forum', label: 'Forum', desc: 'Create a space for organized discussions', icon: MessagesSquare }, { id: 'stage', label: 'Stage', desc: 'Host events with speakers and an audience', icon: Radio }];
+  const types = [{ id: 'text', label: 'Text', desc: 'Send messages, images, GIFs, emoji, opinions, and puns', icon: Hash }, { id: 'voice', label: 'Voice', desc: 'Hang out together with voice, video, and screen share', icon: Volume2 }, { id: 'announcement', label: 'Announcement', desc: 'Important updates for people who follow your server', icon: Megaphone }, { id: 'forum', label: 'Forum', desc: 'Create a space for organized discussions', icon: MessagesSquare }, { id: 'media', label: 'Media', desc: 'Share images and videos in a gallery-style feed', icon: ImageIcon }, { id: 'stage', label: 'Stage', desc: 'Host events with speakers and an audience', icon: Radio }];
   const submit = async (e: React.FormEvent) => {
     e.preventDefault(); setBusy(true);
     try {
@@ -190,13 +190,15 @@ function CreateThread({ channelId, messageId, suggested, close }: { channelId: s
       <Field label={t('Hide After Inactivity')}><select className="field" value={auto} onChange={(e) => setAuto(Number(e.target.value))}>{[[60, '1 Hour'], [1440, '24 Hours'], [4320, '3 Days'], [10080, '1 Week']].map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></Field></form>{void g}</Modal>;
 }
 function ForumPost({ channelId, close }: { channelId: string; close: () => void }) {
-  const nav = useNav(); const [name, setName] = useState(''); const [content, setContent] = useState(''); const [busy, setBusy] = useState(false); const [picked, setPicked] = useState<string[]>([]);
+  const nav = useNav(); const [name, setName] = useState(''); const [content, setContent] = useState(''); const [busy, setBusy] = useState(false); const [picked, setPicked] = useState<string[]>([]); const [files, setFiles] = useState<File[]>([]);
   const forum = useData((s) => Object.values(s.guilds).map((g) => g.channels[channelId]).find(Boolean)); const manage = (myChannelPerms(channelId) & Perm.MANAGE_THREADS) !== 0n;
   const tags = forum?.availableTags ?? []; const needTag = !!forum?.requireTag && tags.length > 0;
-  return <Modal title={t('New Post')} onClose={close} footer={<><button className="btn btn-link" onClick={close}>{t('Cancel')}</button><button form="fp" type="submit" disabled={!name.trim() || !content.trim() || busy || (needTag && !picked.length)} className="btn btn-primary btn-lg sm:ms-auto">{t('Post')}</button></>}>
-    <form id="fp" onSubmit={async (e) => { e.preventDefault(); setBusy(true); try { const r = await api.channels.forumPost(channelId, { name: name.trim(), content: content.trim(), ...(picked.length ? { appliedTags: picked } : {}) }); const t = r.channel ?? (r as any); useData.getState().apply('THREAD_CREATE', t); close(); nav.go(t.guildId, t.id); } catch (err) { toastError(err); setBusy(false); } }}>
+  const isMedia = forum?.type === 'media'; const canPost = !!name.trim() && (isMedia ? files.length > 0 : !!content.trim()) && !(needTag && !picked.length);
+  return <Modal title={isMedia ? t('New Media Post') : t('New Post')} onClose={close} footer={<><button className="btn btn-link" onClick={close}>{t('Cancel')}</button><button form="fp" type="submit" disabled={!canPost || busy} className="btn btn-primary btn-lg sm:ms-auto">{t('Post')}</button></>}>
+    <form id="fp" onSubmit={async (e) => { e.preventDefault(); setBusy(true); try { const attachments = isMedia ? await Promise.all(files.map((f) => api.files.upload(f).then((a) => a.id))) : undefined; const r = await api.channels.forumPost(channelId, { name: name.trim(), ...(content.trim() ? { content: content.trim() } : {}), ...(picked.length ? { appliedTags: picked } : {}), ...(attachments?.length ? { attachments } : {}) }); const thread = r.channel ?? (r as any); useData.getState().apply('THREAD_CREATE', thread); close(); nav.go(thread.guildId, thread.id); } catch (err) { toastError(err); setBusy(false); } }}>
       <Field label={t('Post Title')}><input className="field" value={name} onChange={(e) => setName(e.target.value)} maxLength={100} autoFocus /></Field>
-      <Field label={t('Message')}><textarea className="field min-h-[120px]" value={content} onChange={(e) => setContent(e.target.value)} /></Field>
+      {isMedia && <Field label={t('Media')} hint={t('A media channel post needs at least one image or video.')}><input type="file" accept="image/*,video/*" multiple className="field" data-testid="media-files" onChange={(e) => setFiles([...(e.target.files ?? [])])} /></Field>}
+      <Field label={isMedia ? t('Caption (optional)') : t('Message')}><textarea className="field min-h-[120px]" value={content} onChange={(e) => setContent(e.target.value)} /></Field>
       {tags.length > 0 && (
         <div><span className="label">{t('Tags')}{needTag && <span className="text-danger"> *</span>}</span>
           <div className="flex flex-wrap gap-1.5" role="group" aria-label={t('Tags')}>{tags.map((tg) => { const on = picked.includes(tg.id); const blocked = tg.moderated && !manage; return (

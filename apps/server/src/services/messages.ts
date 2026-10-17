@@ -49,13 +49,19 @@ export interface NewMessage {
   embeds?: Embed[];
   /** Controls which mentions trigger notifications (see CONTRACT.md). */
   allowedMentions?: AllowedMentions | null;
+  /** Media channel posts must carry at least one image/video attachment (see isMediaAttachment). */
+  requireMedia?: boolean;
 }
+
+/** True when the attachment is an image or video: the kind a media channel post must carry. */
+export const isMediaAttachment = (a: Attachment): boolean => LIMITS.mediaPostTypes.some((p) => a.contentType.startsWith(p));
 
 export async function createMessage(ctx: Ctx, m: NewMessage): Promise<Message> {
   const { channel } = m;
   const content = m.content;
   if (content.length > LIMITS.maxMessageLength) throw badRequest(`Message exceeds ${LIMITS.maxMessageLength} characters`);
   const attachments = !m.skipChecks && !m.webhookId ? await applyMediaFilter(ctx, channel, m.authorId, m.attachments ?? []) : m.attachments ?? [];
+  if (m.requireMedia && !attachments.some(isMediaAttachment)) throw badRequest('Media channels only accept posts with an image or video');
   if (!content.trim() && !attachments.length && !(m.stickerIds?.length) && !m.components?.length && !m.poll && !m.allowEmpty && !m.embeds?.length && !m.forward && m.type !== 'join' && m.type !== 'boost' && m.type !== 'thread_created' && m.type !== 'poll_result') throw badRequest('Cannot send an empty message');
   if (channel.guild_id && !m.skipChecks && !m.webhookId) await checkVerification(ctx, channel.guild_id, m.authorId, m.senderPerms);
   const ment = await parseMentions(ctx, channel, content, m.senderPerms);

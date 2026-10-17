@@ -256,7 +256,7 @@ export function ThreadSettingsModal({ channelId, close }: { channelId: string; c
   const save = async () => {
     setBusy(true);
     try {
-      const u = await api.channels.patch(th.id, { ...(f.name !== th.name ? { name: f.name.trim() } : {}), autoArchiveDuration: f.auto, ...(manage ? { locked: f.locked } : {}), ...(parent?.type === 'forum' ? { appliedTags: f.tags } : {}) });
+      const u = await api.channels.patch(th.id, { ...(f.name !== th.name ? { name: f.name.trim() } : {}), autoArchiveDuration: f.auto, ...(manage ? { locked: f.locked } : {}), ...(parent?.type === 'forum' || parent?.type === 'media' ? { appliedTags: f.tags } : {}) });
       useData.getState().apply('THREAD_UPDATE', { ...th, ...u }); toast(t('Thread updated'), 'success'); close();
     } catch (e) { toastError(e); setBusy(false); }
   };
@@ -266,7 +266,7 @@ export function ThreadSettingsModal({ channelId, close }: { channelId: string; c
       <Field label={t('Thread Name')}><input className="field" value={f.name} maxLength={100} onChange={(e) => setF({ ...f, name: e.target.value })} /></Field>
       <Field label={t('Hide After Inactivity')} hint={t('The thread archives itself after this long without messages. Any new message keeps it open.')}><select className="field" value={f.auto} onChange={(e) => setF({ ...f, auto: Number(e.target.value) })}>{AUTO_ARCHIVE_DURATIONS.map((d) => <option key={d} value={d}>{ARCHIVE_LABEL[d]}</option>)}</select></Field>
       {manage && <Row title={t('Lock Thread')} desc={t('Only people with Manage Threads can send messages or unarchive a locked thread.')}><Toggle label={t('Lock thread')} checked={f.locked} onChange={(v) => setF({ ...f, locked: v })} /></Row>}
-      {parent?.type === 'forum' && tags.length > 0 && (
+      {(parent?.type === 'forum' || parent?.type === 'media') && tags.length > 0 && (
         <div className="mt-3"><span className="label">{t('Tags')}</span>
           <div className="flex flex-wrap gap-1.5" role="group" aria-label={t('Tags')}>{tags.map((tg) => {
             const on = f.tags.includes(tg.id); const blocked = tg.moderated && !manage;

@@ -134,7 +134,7 @@ export function guildExtrasRoutes(app: FastifyInstance, ctx: Ctx) {
     const b = parse(z.object({ enabled: z.boolean(), channelId: idSchema.nullable() }).partial().strict(), req.body); await manage(req.userId, id);
     const [g] = await ctx.db.query('SELECT owner_id, widget_channel_id, widget_invite_code FROM guilds WHERE id = $1', [id]);
     const channelId = b.channelId !== undefined ? b.channelId : g.widget_channel_id;
-    if (b.channelId) { const [c] = await ctx.db.query(`SELECT 1 AS x FROM channels WHERE id = $1 AND guild_id = $2 AND type IN ('text','announcement','voice','stage','forum')`, [b.channelId, id]); if (!c) throw badRequest('Invite channel must be a channel of this server'); }
+    if (b.channelId) { const [c] = await ctx.db.query(`SELECT 1 AS x FROM channels WHERE id = $1 AND guild_id = $2 AND type IN ('text','announcement','voice','stage','forum','media')`, [b.channelId, id]); if (!c) throw badRequest('Invite channel must be a channel of this server'); }
     let code: string | null = b.channelId !== undefined && b.channelId !== g.widget_channel_id ? null : g.widget_invite_code;
     if (channelId && (b.enabled ?? true) && !code) { // a permanent invite owned by the server owner backs the widget's "Join" link
       code = templateCode().slice(0, 8);

@@ -8,7 +8,8 @@ import { assetUrl, idSchema, limitParam, parse } from '../lib/ids';
 import { randomToken, safeEqual } from '../lib/crypto';
 import { limitOrThrow } from '../lib/ratelimit';
 import { audit, insertChannel, visibleChannelRows } from '../services/guilds';
-import { createMessage } from '../services/messages';
+import { createMessage, isMediaAttachment } from '../services/messages';
+import { claimAttachments } from '../services/files';
 import { parseEmbeds } from '../lib/embeds';
 import { parseComponents } from '../lib/components';
 import { addGroupRecipient, removeGroupRecipient } from '../services/dms';
@@ -17,7 +18,7 @@ import { joinThread, leaveThread } from '../services/threads';
 import { channelAccess, guildAccess, guildPerms, loadGuildPerm, need, needOutrank, permsFor, loadOverwrites, viewersAmong } from '../services/perms';
 import { channelDTO, channelsDTO, messageDTO } from '../services/serializers';
 
-const GUILD_TYPES = ['text', 'voice', 'announcement', 'stage', 'forum', 'category'] as const;
+const GUILD_TYPES = ['text', 'voice', 'announcement', 'stage', 'forum', 'media', 'category'] as const;
 const permStr = z.string().regex(/^\d{1,20}$/);
 const owSchema = z.object({ id: idSchema, type: z.enum(['role', 'member']), allow: permStr, deny: permStr }).strict();
 const chanFields = {
@@ -122,7 +123,7 @@ export function channelRoutes(app: FastifyInstance, ctx: Ctx) {
     } else if (ch.type === 'dm') throw forbidden('Cannot edit a DM');
     else {
       need(a.perms, Perm.MANAGE_CHANNELS);
-      allowed = ch.type === 'forum'
+      allowed = ch.type === 'forum' || ch.type === 'media'
         ? z.object({ ...chanFields, availableTags: z.array(tagSchema).max(20), requireTag: z.boolean(), defaultAutoArchiveDuration: archiveDuration }).partial().strict()
         : z.object(chanFields).partial().strict();
     }
@@ -382,16 +383,27 @@ export function channelRoutes(app: FastifyInstance, ctx: Ctx) {
 
   app.post('/channels/:id/forum/posts', async (req, reply) => {
     const { id } = parse(z.object({ id: idSchema }), req.params);
-    const b = parse(z.object({ name: z.string().trim().min(1).max(100), content: z.string().min(1), appliedTags: z.array(idSchema).max(5).optional(), autoArchiveDuration: archiveDuration.optional() }).strict(), req.body);
+    const b = parse(z.object({ name: z.string().trim().min(1).max(100), content: z.string().min(1).optional(), appliedTags: z.array(idSchema).max(5).optional(), autoArchiveDuration: archiveDuration.optional(), attachments: z.array(idSchema).max(10).optional() }).strict(), req.body);
     const a = await channelAccess(ctx, req.userId, id);
-    if (a.channel.type !== 'forum') throw badRequest('Not a forum channel');
+    const isMedia = a.channel.type === 'media';
+    if (a.channel.type !== 'forum' && !isMedia) throw badRequest('Not a forum channel');
+    if (!isMedia && !b.content) throw badRequest('A post needs content');
     need(a.perms, Perm.CREATE_PUBLIC_THREADS, Perm.SEND_MESSAGES);
     await checkVerification(ctx, a.channel.guild_id, req.userId, a.perms);
     const tags = await checkAppliedTags(id, b.appliedTags ?? [], has(a.perms, Perm.MANAGE_THREADS));
     if (a.channel.require_tag && !tags.length) throw badRequest('This forum requires at least one tag');
-    const { row, dto } = await createThread(a, req.userId, snowflake(), b.name, { autoArchive: b.autoArchiveDuration, appliedTags: tags });
-    const message = await createMessage(ctx, { channel: row, authorId: req.userId, content: b.content, senderPerms: a.perms, memberRoleIds: a.gp?.memberRoleIds });
-    return reply.code(201).send({ channel: dto, message });
+    if (b.attachments?.length) need(a.perms, Perm.ATTACH_FILES);
+    const attachments = await claimAttachments(ctx, req.userId, b.attachments ?? []);
+    try {
+      // A media post must carry an image or video: check before the thread exists, so a rejected post leaves nothing behind.
+      if (isMedia && !attachments.some(isMediaAttachment)) throw badRequest('Media channels only accept posts with an image or video');
+      const { row, dto } = await createThread(a, req.userId, snowflake(), b.name, { autoArchive: b.autoArchiveDuration, appliedTags: tags });
+      const message = await createMessage(ctx, { channel: row, authorId: req.userId, content: b.content ?? '', attachments, senderPerms: a.perms, memberRoleIds: a.gp?.memberRoleIds, requireMedia: isMedia });
+      return reply.code(201).send({ channel: dto, message });
+    } catch (e) {
+      if (attachments.length) await ctx.db.query('UPDATE files SET attached = false WHERE id = ANY($1::text[])', [attachments.map((x) => x.id)]);
+      throw e;
+    }
   });
 
   app.get('/channels/:id/threads', async (req) => {
@@ -408,7 +420,7 @@ export function channelRoutes(app: FastifyInstance, ctx: Ctx) {
     const p = parse(z.object({ id: idSchema, state: z.enum(['active', 'archived']) }), req.params);
     const q = parse(z.object({ before: idSchema.optional(), limit: z.coerce.number().optional() }), req.query);
     const a = await channelAccess(ctx, req.userId, p.id);
-    if (!['text', 'announcement', 'forum'].includes(a.channel.type)) throw badRequest('Channel cannot have threads');
+    if (!['text', 'announcement', 'forum', 'media'].includes(a.channel.type)) throw badRequest('Channel cannot have threads');
     need(a.perms, Perm.READ_MESSAGE_HISTORY);
     const limit = limitParam(q.limit, 25);
     const rows = await ctx.db.query(

@@ -32,6 +32,6 @@ export function useSidebarChannels(guildId: Id) {
 }
 export const useFirstTextChannel = (guildId: Id | undefined) => {
   const { uncategorized, categories } = useSidebarChannels(guildId ?? '');
-  return useMemo(() => [...uncategorized, ...categories.flatMap((c) => c.children)].find((c) => c.type === 'text' || c.type === 'announcement' || c.type === 'forum'), [uncategorized, categories]);
+  return useMemo(() => [...uncategorized, ...categories.flatMap((c) => c.children)].find((c) => c.type === 'text' || c.type === 'announcement' || c.type === 'forum' || c.type === 'media'), [uncategorized, categories]);
 };
 void useShallow;

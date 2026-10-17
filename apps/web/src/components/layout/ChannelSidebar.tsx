@@ -1,6 +1,6 @@
 import { useMemo, useRef } from 'react';
 import { useRovingTabindex } from '@/lib/hooks';
-import { ListChecks, CalendarDays, ChevronDown, ChevronRight, Hash, Megaphone, MessagesSquare, Plus, Radio, UserPlus, Volume2, Settings, X, Lock, Volume1, Video, VolumeX, MicOff } from 'lucide-react';
+import { ListChecks, CalendarDays, ChevronDown, ChevronRight, Hash, Image as ImageIcon, Megaphone, MessagesSquare, Plus, Radio, UserPlus, Volume2, Settings, X, Lock, Volume1, Video, VolumeX, MicOff } from 'lucide-react';
 import { useVoiceSnapshot } from '@jorcord/voice/react';
 import { joinVoice } from '@/voice/controller';
 import { voiceUserMenu } from '@/voice/menu';
@@ -37,6 +37,7 @@ export const ChannelIcon = ({ c, size = 20, className = '' }: { c: Pick<Channel,
   if (c.type === 'stage') return <Radio size={size} className={className} />;
   if (c.type === 'announcement') return <Megaphone size={size} className={className} />;
   if (c.type === 'forum') return <MessagesSquare size={size} className={className} />;
+  if (c.type === 'media') return <ImageIcon size={size} className={className} />;
   return priv ? <Lock size={size - 4} className={className} /> : <Hash size={size} className={className} />;
 };
 

@@ -56,7 +56,7 @@ function ChannelPage() {
   const ch = useData((s) => findChannel(s, channelId)); const known = useData((s) => (guildId ? !!s.guilds[guildId] : true));
   if (!ch) { if (ready && (!known || channelId)) return ready && !known ? <Navigate to={`${nav.base}/channels/@me`} replace /> : <GuildRedirect />; return null; }
   if (ch.type === 'voice' || ch.type === 'stage') return <Lazy><VoiceChannelView key={ch.id} channel={ch} /></Lazy>;
-  if (ch.type === 'forum') return <ForumView key={ch.id} channel={ch} />;
+  if (ch.type === 'forum' || ch.type === 'media') return <ForumView key={ch.id} channel={ch} />;
   return <ChatView key={ch.id} channel={ch} />;
 }
 
@@ -183,7 +183,7 @@ function useGlobalKeys(base: string) {
       if (c === 'Escape') { if (s.menu) s.closeMenu(); else if (s.popout) s.closePopout(); return; }
       if (c === kb.prevChannel || c === kb.nextChannel) {
         e.preventDefault(); const { guildId: g, channelId: ch } = ref.current; const dir = c === kb.nextChannel ? 1 : -1;
-        const list = g ? Object.values(d.guilds[g]?.channels ?? {}).filter((x) => x.type === 'text' || x.type === 'announcement' || x.type === 'forum').sort((a, b) => a.position - b.position) : Object.values(d.dms).sort((a, b) => (b.lastMessageId ?? '').localeCompare(a.lastMessageId ?? ''));
+        const list = g ? Object.values(d.guilds[g]?.channels ?? {}).filter((x) => x.type === 'text' || x.type === 'announcement' || x.type === 'forum' || x.type === 'media').sort((a, b) => a.position - b.position) : Object.values(d.dms).sort((a, b) => (b.lastMessageId ?? '').localeCompare(a.lastMessageId ?? ''));
         const i = list.findIndex((x) => x.id === ch); const n = list[(i + dir + list.length) % list.length]; if (n) go(g, n.id); return;
       }
       if (c === kb.prevServer || c === kb.nextServer) {
