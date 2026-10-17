@@ -22,6 +22,13 @@ function useStill(src: string | null, enabled: boolean): string | null {
   return enabled ? still : null;
 }
 
+/** Animated banners/avatars show their first frame until hovered (like Discord). Spread `bind` on the hover target. */
+export function useHoverStill(src: string | null) {
+  const [hover, setHover] = useState(false);
+  const animated = isAnimatedUrl(src); const still = useStill(src, animated && !hover);
+  return { src: still ?? src, animated, bind: animated ? { onMouseEnter: () => setHover(true), onMouseLeave: () => setHover(false) } : {} };
+}
+
 export const PRESENCE_COLOR: Record<string, string> = { online: '#23a559', idle: '#f0b232', dnd: '#f23f43', offline: '#80848e', invisible: '#80848e' };
 export const PRESENCE_LABEL: Record<string, string> = { online: T('Online'), idle: T('Idle'), dnd: T('Do Not Disturb'), offline: T('Offline'), invisible: T('Invisible') };
 
