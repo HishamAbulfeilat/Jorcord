@@ -5,9 +5,10 @@ use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System, UpdateKind};
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    AppHandle, Emitter, Manager, WindowEvent,
+    AppHandle, Emitter, Manager, PhysicalPosition, WebviewWindow, WindowEvent,
 };
 use tauri_plugin_autostart::MacosLauncher;
+use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
 /* ------------------------------------------------------------------ game detection */
 
@@ -105,6 +106,79 @@ fn forward_urls(app: &AppHandle, urls: Vec<String>) {
     }
 }
 
+/* ------------------------------------------------------------------ always-on-top overlay */
+
+/// Appearance + behaviour the web app pushes down for the mini voice window.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct OverlaySpec {
+    enabled: bool,
+    locked: bool,
+    corner: String,
+    shortcut: Option<String>,
+}
+
+/// Gap (physical pixels) kept between the overlay window and the screen edges.
+const OVERLAY_MARGIN: i32 = 16;
+
+/// Move the overlay to the requested corner of the monitor it currently sits on.
+fn position_overlay(win: &WebviewWindow, corner: &str) {
+    let monitor = win
+        .current_monitor()
+        .ok()
+        .flatten()
+        .or_else(|| win.primary_monitor().ok().flatten());
+    let Some(monitor) = monitor else { return };
+    let size = win.outer_size().unwrap_or_default();
+    let mpos = monitor.position();
+    let msize = monitor.size();
+    let right = mpos.x + msize.width as i32 - size.width as i32 - OVERLAY_MARGIN;
+    let bottom = mpos.y + msize.height as i32 - size.height as i32 - OVERLAY_MARGIN;
+    let (x, y) = match corner {
+        "top-left" => (mpos.x + OVERLAY_MARGIN, mpos.y + OVERLAY_MARGIN),
+        "bottom-left" => (mpos.x + OVERLAY_MARGIN, bottom),
+        "bottom-right" => (right, bottom),
+        _ => (right, mpos.y + OVERLAY_MARGIN), // default: top-right
+    };
+    let _ = win.set_position(PhysicalPosition::new(x, y));
+}
+
+/// Global shortcut: show the overlay if hidden, hide it if shown.
+fn toggle_overlay(app: &AppHandle) {
+    if let Some(win) = app.get_webview_window("overlay") {
+        if win.is_visible().unwrap_or(false) {
+            let _ = win.hide();
+        } else {
+            let _ = win.show();
+        }
+    }
+}
+
+/// Apply the web app's overlay preferences: register the global shortcut, position the window, show/hide it and
+/// set click-through. No game process is ever touched — this only manages our own always-on-top window.
+#[tauri::command]
+fn overlay_apply(app: AppHandle, spec: OverlaySpec) -> Result<(), String> {
+    let shortcuts = app.global_shortcut();
+    let _ = shortcuts.unregister_all();
+    if spec.enabled {
+        if let Some(accel) = spec.shortcut.as_deref() {
+            // An unsupported accelerator (e.g. Wayland without a portal) must not break the settings toggle.
+            if let Err(e) = shortcuts.register(accel) {
+                eprintln!("overlay: could not register {accel}: {e}");
+            }
+        }
+    }
+    let win = app.get_webview_window("overlay").ok_or("overlay window is missing")?;
+    if spec.enabled {
+        position_overlay(&win, &spec.corner);
+        win.show().map_err(|e| e.to_string())?;
+    } else {
+        win.hide().map_err(|e| e.to_string())?;
+    }
+    win.set_ignore_cursor_events(spec.locked).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 pub fn run() {
     let mut builder = tauri::Builder::default();
 
@@ -117,7 +191,16 @@ pub fn run() {
     }));
 
     builder
-        .plugin(tauri_plugin_window_state::Builder::default().build())
+        .plugin(
+            tauri_plugin_global_shortcut::Builder::new()
+                .with_handler(|app, _shortcut, event| {
+                    if event.state() == ShortcutState::Pressed {
+                        toggle_overlay(app);
+                    }
+                })
+                .build(),
+        )
+        .plugin(tauri_plugin_window_state::Builder::default().with_denylist(&["overlay"]).build())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_process::init())
@@ -186,7 +269,7 @@ pub fn run() {
                 }
             }
         })
-        .invoke_handler(tauri::generate_handler![list_running_games])
+        .invoke_handler(tauri::generate_handler![list_running_games, overlay_apply])
         .run(tauri::generate_context!())
         .expect("error while running Jorcord");
 }

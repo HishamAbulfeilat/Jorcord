@@ -116,6 +116,8 @@ a:hover { text-decoration: underline; }
 
 /* wrappers + soft keyboards: follow the visual viewport while a keyboard is open (set by lib/native.ts) */
 html[data-vv="kb"], html[data-vv="kb"] body, html[data-vv="kb"] #root { height: var(--vvh); }
+/* desktop overlay window (lib/overlay.ts sets data-overlay): transparent page, only the card shows over the game */
+html[data-overlay], html[data-overlay] body, html[data-overlay] #root { background: transparent; }
 /* RTL: mirror directional glyphs; text in messages picks its own direction */
 [dir="rtl"] .rtl-flip { transform: scaleX(-1); }
 .md, .msg-text { unicode-bidi: plaintext; }

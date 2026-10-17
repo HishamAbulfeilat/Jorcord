@@ -22,6 +22,7 @@ import { onVoiceEffect } from './soundboard';
 import { useSocial } from '@/stores/social';
 import { setRateLimitNotifier } from './transport';
 import { toast } from '@/stores/ui';
+import { emitOverlayToast } from './overlay';
 
 let unsubs: (() => void)[] = [];
 
@@ -126,12 +127,14 @@ function onMessageCreate(m: Message) {
   const wants = !muted && (isDm || (level !== 'none' && (mentioned || level === 'all')) || (gn?.level == null && mentioned));
   const streaming = streamerActive();
   if (wants) {
+    const ch = findChannel(data, m.channelId);
+    const gm = m.guildId ? data.guilds[m.guildId]?.members[m.author.id] : undefined;
+    const preview = toPlain(parseInline(m.content)).slice(0, 200);
+    if (prefs.overlayEnabled) void emitOverlayToast({ id: m.id, author: displayName(m.author, gm), channel: m.guildId ? ch?.name ?? null : null, text: preview });
     if (prefs.notificationSounds && !(streaming && prefs.streamerNoSounds)) playSound('message');
     if (prefs.desktopNotifications && !(streaming && prefs.streamerNoNotifications) && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
       try {
-        const ch = findChannel(data, m.channelId);
-        const gm = m.guildId ? data.guilds[m.guildId]?.members[m.author.id] : undefined;
-        const n = new Notification(`${displayName(m.author, gm)}${ch?.name && m.guildId ? ` (#${ch.name})` : ''}`, { body: toPlain(parseInline(m.content)).slice(0, 200) || 'Sent an attachment', tag: m.channelId, icon: getServerUrl() ? undefined : '/icon-192.png' });
+        const n = new Notification(`${displayName(m.author, gm)}${ch?.name && m.guildId ? ` (#${ch.name})` : ''}`, { body: preview || 'Sent an attachment', tag: m.channelId, icon: getServerUrl() ? undefined : '/icon-192.png' });
         n.onclick = () => { window.focus(); window.dispatchEvent(new CustomEvent('jorcord:goto', { detail: { guildId: m.guildId, channelId: m.channelId } })); };
       } catch { /* */ }
     }
