@@ -58,7 +58,8 @@ export interface Member {
 }
 export interface Attachment { id: Id; filename: string; contentType: string; size: number; url: string; width: number | null; height: number | null; spoiler: boolean }
 export interface Embed { type: 'link' | 'image' | 'video' | 'rich'; url?: string; title?: string; description?: string; color?: number; thumbnail?: string; image?: string; video?: string; siteName?: string; fields?: { name: string; value: string; inline?: boolean }[]; footer?: string; author?: string }
-export interface Reaction { emoji: string; emojiId: Id | null; count: number; me: boolean }
+/** `count`/`me` cover regular reactions; `burstCount`/`meBurst`/`burstColors` cover burst (super) reactions, which are metered separately. */
+export interface Reaction { emoji: string; emojiId: Id | null; count: number; me: boolean; burstCount?: number; meBurst?: boolean; burstColors?: string[] }
 /** Snapshot of a forwarded message. Author is deliberately not included; the origin ids let readers who can see it jump there. */
 export interface ForwardSnapshot { content: string; attachments: Attachment[]; embeds: Embed[]; createdAt: string; editedAt: string | null; sourceGuildId: Id | null; sourceChannelId: Id; sourceMessageId: Id }
 export interface Message {

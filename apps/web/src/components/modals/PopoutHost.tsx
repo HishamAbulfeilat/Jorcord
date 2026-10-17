@@ -30,7 +30,7 @@ export function PopoutHost() {
   }, [p, close]);
   if (!p) return null;
   const content = p.kind === 'user' ? <div className="w-[min(340px,100vw-16px)] shadow-elev"><ProfileCard userId={p.userId} guildId={p.guildId} compact /></div>
-    : <Lazy><EmojiPicker guildId={p.guildId} allowGif allowSticker={p.stickers} onPick={(e: any) => { p.onPick(e); close(); }} /></Lazy>;
+    : <Lazy><EmojiPicker guildId={p.guildId} allowGif allowSticker={p.stickers} allowBurst={p.allowBurst} onPick={(e: any) => { p.onPick(e); close(); }} /></Lazy>;
   if (mobile) return createPortal(
     <div className="fixed inset-0 z-[70] flex items-end bg-black/50" onMouseDown={(e) => { if (e.target === e.currentTarget) close(); }}>
       <div ref={ref} className="safe-bottom w-full animate-slideUp rounded-t-2xl bg-[rgb(var(--modal-alt))] p-2">{p.kind === 'user' ? <div className="mx-auto max-w-sm">{content}</div> : <div className="[&>div]:!w-full">{content}</div>}</div>

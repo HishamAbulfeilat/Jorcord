@@ -157,6 +157,37 @@ describe('stage channels', () => {
     expect((await api.req('DELETE', `/channels/${stage.id}/stage/speakers/${aud!.id}`, other!.token)).status).toBe(403);
     wA.close(); wO.close();
   });
+  it('queue is ordered by time raised: moderators see it, invite from it, audience can lower their hand', async () => {
+    const { owner, guild, members: [aud, other], stage, general } = await guildWith('aud', 'oth');
+    const wA = await ws(aud!), wO = await ws(other!);
+    for (const [w, c] of [[wA, aud] as const, [wO, other] as const]) w.send({ op: 4, d: { guildId: guild.id, channelId: stage.id } });
+    await wO.waitEvent('VOICE_STATE_UPDATE', (d) => d.userId === aud!.id && d.channelId === stage.id);
+    await wO.waitEvent('VOICE_STATE_UPDATE', (d) => d.userId === other!.id && d.channelId === stage.id);
+    // queue is empty before anyone raises a hand
+    expect((await api.req('GET', `/channels/${stage.id}/stage/queue`, owner.token)).body).toEqual([]);
+    // not a stage channel -> 400
+    expect((await api.req('GET', `/channels/${general.id}/stage/queue`, owner.token)).status).toBe(400);
+    // raise hands: `other` first, then `aud` -> the queue must come back in that order
+    const first = await api.req('PUT', `/channels/${stage.id}/stage/request`, other!.token);
+    expect(first.status).toBe(200);
+    await wO.waitEvent('VOICE_STATE_UPDATE', (d) => d.userId === other!.id && !!d.requestToSpeakAt);
+    const second = await api.req('PUT', `/channels/${stage.id}/stage/request`, aud!.token);
+    expect(second.status).toBe(200);
+    await wO.waitEvent('VOICE_STATE_UPDATE', (d) => d.userId === aud!.id && !!d.requestToSpeakAt);
+    const queue = await api.req('GET', `/channels/${stage.id}/stage/queue`, owner.token);
+    expect(queue.status).toBe(200);
+    expect(queue.body.map((e: any) => e.userId)).toEqual([other!.id, aud!.id]);
+    expect(queue.body.map((e: any) => e.requestToSpeakAt)).toEqual(queue.body.map((e: any) => e.requestToSpeakAt).slice().sort());
+    // sans hand, an audience member is not in the queue but can still lower their own hand (no-op)
+    await api.req('DELETE', `/channels/${stage.id}/stage/request`, other!.token);
+    await wO.waitEvent('VOICE_STATE_UPDATE', (d) => d.userId === other!.id && d.requestToSpeakAt === null);
+    expect((await api.req('GET', `/channels/${stage.id}/stage/queue`, owner.token)).body.map((e: any) => e.userId)).toEqual([aud!.id]);
+    // a moderator invites from the queue: the hand is cleared and the member becomes a speaker
+    const inv = await api.req('PUT', `/channels/${stage.id}/stage/speakers/${aud!.id}`, owner.token);
+    expect(inv.status).toBe(200); expect(inv.body).toMatchObject({ suppress: false, requestToSpeakAt: null });
+    expect((await api.req('GET', `/channels/${stage.id}/stage/queue`, owner.token)).body).toEqual([]);
+    wA.close(); wO.close();
+  });
 });
 
 describe('webhooks', () => {

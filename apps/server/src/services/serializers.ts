@@ -102,7 +102,11 @@ export async function messagesDTO(ctx: Ctx, rows: any[], viewerId: string | null
   const users = await usersByIds(ctx, rows.map((r) => r.author_id));
   const ids = rows.map((r) => r.id);
   const reacts = await ctx.db.query(
-    `SELECT message_id, emoji, emoji_id, count(*)::int AS count, bool_or(user_id = $2) AS me, min(created_at) AS first
+    `SELECT message_id, emoji, emoji_id,
+            count(*) FILTER (WHERE NOT burst)::int AS count, bool_or(user_id = $2 AND NOT burst) AS me,
+            count(*) FILTER (WHERE burst)::int AS burst_count, bool_or(user_id = $2 AND burst) AS me_burst,
+            array_agg(DISTINCT burst_color) FILTER (WHERE burst AND burst_color IS NOT NULL) AS burst_colors,
+            min(created_at) AS first
        FROM reactions WHERE message_id = ANY($1::text[]) GROUP BY message_id, emoji, emoji_id ORDER BY first`, [ids, viewerId ?? '']);
   const refIds = withRef ? [...new Set(rows.map((r) => r.reply_to).filter(Boolean))] : [];
   const refRows = refIds.length ? await ctx.db.query('SELECT * FROM messages WHERE id = ANY($1::text[])', [refIds]) : [];
@@ -118,7 +122,11 @@ export async function messagesDTO(ctx: Ctx, rows: any[], viewerId: string | null
     type: r.type, replyTo: r.reply_to ?? null, referenced: r.reply_to && withRef ? refs.get(r.reply_to) ?? null : undefined,
     mentions: r.mentions, mentionRoles: r.mention_roles, mentionEveryone: r.mention_everyone,
     attachments: r.attachments as Attachment[], embeds: r.embeds as Embed[],
-    reactions: reacts.filter((x) => x.message_id === r.id).map((x): Reaction => ({ emoji: x.emoji, emojiId: x.emoji_id ?? null, count: x.count, me: !!x.me })),
+    reactions: reacts.filter((x) => x.message_id === r.id).map((x): Reaction => ({
+      emoji: x.emoji, emojiId: x.emoji_id ?? null, count: x.count, me: !!x.me,
+      // Burst fields only travel when a burst actually exists: a regular reaction keeps its original shape.
+      ...(x.burst_count ? { burstCount: x.burst_count, meBurst: !!x.me_burst, burstColors: (x.burst_colors ?? []) as string[] } : {}),
+    })),
     pinned: r.pinned, stickerIds: r.sticker_ids, threadId: r.thread_id ?? null, webhookId: r.webhook_id ?? null,
     components: (r.components ?? []) as Component[], flags: r.flags ?? 0, applicationId: r.application_id ?? null, interaction: r.interaction ?? null,
     poll: r.poll ? pollDTO(r, votes, voters) : null,

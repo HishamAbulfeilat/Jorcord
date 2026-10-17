@@ -1,6 +1,6 @@
 import { memo, useCallback, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Search, Smile, Clock, Film, Star, Sticker as StickerIcon } from 'lucide-react';
+import { Search, Smile, Clock, Film, Star, Sticker as StickerIcon, Zap } from 'lucide-react';
 import { fileUrl } from '@/lib/format';
 import { t } from '@/i18n';
 import { EMOJI_CATEGORIES, searchEmoji } from '@/lib/emoji';
@@ -9,14 +9,16 @@ import { api } from '@/lib/api';
 import { cx } from '@/lib/format';
 import { useDebounced } from '@/lib/hooks';
 import { Spinner } from '@/components/ui/primitives';
+import { LIMITS } from '@jorcord/shared';
 
-export type EmojiPick = { char?: string; name: string; id?: string; animated?: boolean; gif?: string; sticker?: string };
+export type EmojiPick = { char?: string; name: string; id?: string; animated?: boolean; gif?: string; sticker?: string; burst?: boolean; burstColor?: string };
 const RKEY = 'jorcord.recent.emoji';
 const recent = (): string[] => { try { return JSON.parse(localStorage.getItem(RKEY) ?? '[]'); } catch { return []; } };
 const pushRecent = (c: string) => { try { localStorage.setItem(RKEY, JSON.stringify([c, ...recent().filter((x) => x !== c)].slice(0, 24))); } catch { /* */ } };
 
-export function EmojiPicker({ onPick, guildId, allowGif = false, allowSticker = false, initialTab = 'emoji', gifOnly = false }: { onPick: (e: EmojiPick) => void; guildId?: string; allowGif?: boolean; allowSticker?: boolean; initialTab?: 'emoji' | 'gif' | 'sticker'; gifOnly?: boolean }) {
+export function EmojiPicker({ onPick, guildId, allowGif = false, allowSticker = false, allowBurst = false, initialTab = 'emoji', gifOnly = false }: { onPick: (e: EmojiPick) => void; guildId?: string; allowGif?: boolean; allowSticker?: boolean; allowBurst?: boolean; initialTab?: 'emoji' | 'gif' | 'sticker'; gifOnly?: boolean }) {
   const [q, setQ] = useState(''); const [tab, setTab] = useState<'emoji' | 'gif' | 'sticker'>(gifOnly ? 'gif' : initialTab); const [hover, setHover] = useState<string>('');
+  const [burst, setBurst] = useState(false); const [burstColor, setBurstColor] = useState<string>(LIMITS.burstColors[0]);
   const guilds = useData((s) => s.guilds); const order = useData((s) => s.guildOrder);
   const dq = useDebounced(q, 250);
   const custom = useMemo(() => order.map((id) => guilds[id]).filter((g) => g && g.emojis.length), [guilds, order]);
@@ -33,18 +35,21 @@ export function EmojiPicker({ onPick, guildId, allowGif = false, allowSticker = 
   };
   // Stable callbacks + module-level memo cells: hovering must not remount ~1800 buttons (that swallowed clicks).
   const onPickRef = useRef(onPick); onPickRef.current = onPick;
-  const pick = useCallback((e: EmojiPick) => { if (e.char) pushRecent(e.char); onPickRef.current(e); }, []);
+  const pickRef = useRef({ burst, burstColor, tab }); pickRef.current = { burst, burstColor, tab };
+  const pick = useCallback((e: EmojiPick) => { if (e.char) pushRecent(e.char); const b = pickRef.current; onPickRef.current(b.burst && b.tab === 'emoji' ? { ...e, burst: true, burstColor: b.burstColor } : e); }, []);
   const setHoverStable = useCallback((v: string) => setHover(v), []);
   return (
     <div className="flex h-[min(420px,70dvh)] w-full flex-col overflow-hidden rounded-lg bg-float text-normal shadow-elev sm:w-[360px]" role="dialog" aria-label={gifOnly ? t('GIF picker') : 'Emoji picker'}>
       <div className="flex items-center gap-2 p-2">
         <div className="flex flex-1 items-center rounded bg-rail px-2"><input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder={tab === 'gif' ? 'Search GIFs' : 'Find the perfect emoji'} aria-label="Search" className="h-8 min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted" /><Search size={16} className="text-muted" /></div>
+        {allowBurst && tab === 'emoji' && <button type="button" aria-pressed={burst} aria-label={t('Super reaction')} title={t('Super reaction')} onClick={() => setBurst((v) => !v)} className={cx('rounded p-1.5', burst ? 'bg-brand/30 text-header' : 'text-interactive hover:text-interactive-hover')}><Zap size={18} /></button>}
         {allowGif && !gifOnly && <div className="flex gap-1" role="tablist" aria-label={t('Picker type')}>
           <button aria-pressed={tab === 'emoji'} aria-label="Emoji" onClick={() => setTab('emoji')} className={cx('rounded p-1.5', tab === 'emoji' ? 'bg-active text-header' : 'text-interactive')}><Smile size={18} /></button>
           <button aria-pressed={tab === 'gif'} aria-label="GIFs" onClick={() => setTab('gif')} className={cx('rounded p-1.5', tab === 'gif' ? 'bg-active text-header' : 'text-interactive')}><Film size={18} /></button>
           {allowSticker && <button aria-pressed={tab === 'sticker'} aria-label={t('Stickers')} onClick={() => setTab('sticker')} className={cx('rounded p-1.5', tab === 'sticker' ? 'bg-active text-header' : 'text-interactive')}><StickerIcon size={18} /></button>}
         </div>}
       </div>
+      {allowBurst && tab === 'emoji' && burst && <div className="flex items-center gap-1.5 px-2 pb-1" role="group" aria-label={t('Super reaction color')}>{LIMITS.burstColors.map((c) => <button key={c} type="button" aria-pressed={burstColor === c} aria-label={c} title={c} onClick={() => setBurstColor(c)} className={cx('h-5 w-5 rounded-full border-2', burstColor === c ? 'border-header' : 'border-transparent')} style={{ backgroundColor: c }} />)}</div>}
       {tab === 'sticker' ? (
         <StickerGrid guildId={guildId} q={q} onPick={(st) => pick({ name: st.name, sticker: st.id })} />
       ) : tab === 'gif' ? (

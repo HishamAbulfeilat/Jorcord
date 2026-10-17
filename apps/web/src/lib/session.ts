@@ -39,8 +39,8 @@ export function startSession(token: string) {
   unsubs.push(gw.on('MESSAGE_CREATE', onMessageCreate));
   unsubs.push(gw.on('MESSAGE_UPDATE', (m) => { useMessages.getState().update(m); settleForMessage(m); }));
   unsubs.push(gw.on('MESSAGE_DELETE', (d) => useMessages.getState().remove(d.channelId, d.id)));
-  unsubs.push(gw.on('MESSAGE_REACTION_ADD', (d) => useMessages.getState().reaction(d.channelId, d.messageId, d.emoji, d.emojiId, 1, d.userId === useData.getState().me?.id)));
-  unsubs.push(gw.on('MESSAGE_REACTION_REMOVE', (d) => useMessages.getState().reaction(d.channelId, d.messageId, d.emoji, d.emojiId, -1, d.userId === useData.getState().me?.id)));
+  unsubs.push(gw.on('MESSAGE_REACTION_ADD', (d) => useMessages.getState().reaction(d.channelId, d.messageId, d.emoji, d.emojiId, 1, d.userId === useData.getState().me?.id, !!d.burst, d.burstColor ?? null)));
+  unsubs.push(gw.on('MESSAGE_REACTION_REMOVE', (d) => useMessages.getState().reaction(d.channelId, d.messageId, d.emoji, d.emojiId, -1, d.userId === useData.getState().me?.id, !!d.burst)));
   // ---- platform pass ----
   const meId = () => useData.getState().me?.id;
   unsubs.push(gw.on('MESSAGE_POLL_VOTE_ADD', (d) => { useMessages.getState().pollVote(d.channelId, d.messageId, d.answerId, 1, d.userId === meId()); refreshPoll(d.channelId, d.messageId); }));

@@ -25,8 +25,8 @@ export interface Events {
   INVITE_CREATE: Invite; INVITE_DELETE: Invite;
   MEMBER_ADD: Member; MEMBER_UPDATE: Member; MEMBER_REMOVE: { guildId: Id; userId: Id };
   MESSAGE_CREATE: Message; MESSAGE_UPDATE: Message; MESSAGE_DELETE: { id: Id; channelId: Id; guildId: Id | null };
-  MESSAGE_REACTION_ADD: { messageId: Id; channelId: Id; userId: Id; emoji: string; emojiId: Id | null };
-  MESSAGE_REACTION_REMOVE: { messageId: Id; channelId: Id; userId: Id; emoji: string; emojiId: Id | null };
+  MESSAGE_REACTION_ADD: { messageId: Id; channelId: Id; userId: Id; emoji: string; emojiId: Id | null; /** burst (super) reaction; `burstColor` is set when `burst` is true. */ burst?: boolean; burstColor?: string | null };
+  MESSAGE_REACTION_REMOVE: { messageId: Id; channelId: Id; userId: Id; emoji: string; emojiId: Id | null; burst?: boolean; burstColor?: string | null };
   CHANNEL_PINS_UPDATE: { channelId: Id };
   TYPING_START: { channelId: Id; userId: Id; timestamp: number };
   PRESENCE_UPDATE: { userId: Id; presence: Presence; customStatus?: User['customStatus']; /** what they are doing (empty when offline or sharing is off) */ activities?: Activity[] };

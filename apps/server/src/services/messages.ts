@@ -56,6 +56,25 @@ export interface NewMessage {
 /** True when the attachment is an image or video: the kind a media channel post must carry. */
 export const isMediaAttachment = (a: Attachment): boolean => LIMITS.mediaPostTypes.some((p) => a.contentType.startsWith(p));
 
+/** Palette entry for a burst reaction: the requested colour when it is one of ours, the default otherwise. */
+export function resolveBurstColor(color?: string | null): string {
+  if (color == null || color === '') return LIMITS.burstColors[0];
+  if (!(LIMITS.burstColors as readonly string[]).includes(color)) throw badRequest('Invalid burst color');
+  return color;
+}
+
+/**
+ * Meters burst reactions per user per day: one ledger row per accepted burst, counted over the trailing 24 hours.
+ * Rows are never deleted, so taking a burst back does not refund the allowance. Throws 429 when exhausted.
+ */
+export async function consumeBurstQuota(ctx: Ctx, userId: string): Promise<void> {
+  const [c] = await ctx.db.query("SELECT count(*)::int AS n FROM burst_reaction_usage WHERE user_id = $1 AND created_at > now() - interval '1 day'", [userId]);
+  if (c.n >= LIMITS.burstReactionsPerDay) {
+    throw new ApiError(429, 'BURST_LIMIT', `You can send ${LIMITS.burstReactionsPerDay} burst reactions per day`, { limit: LIMITS.burstReactionsPerDay });
+  }
+  await ctx.db.query('INSERT INTO burst_reaction_usage (id, user_id) VALUES ($1, $2)', [snowflake(), userId]);
+}
+
 export async function createMessage(ctx: Ctx, m: NewMessage): Promise<Message> {
   const { channel } = m;
   const content = m.content;

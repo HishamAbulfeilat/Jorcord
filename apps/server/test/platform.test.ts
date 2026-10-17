@@ -810,6 +810,22 @@ describe('forum tags and thread lifecycle', () => {
     expect((await api.req('GET', `/guilds/${guild.id}/audit-logs?actionType=112`, owner.token)).body.length).toBe(1);
     ws.close();
   });
+
+  it('deleting a thread\'s parent channel broadcasts THREAD_DELETE for every child thread', async () => {
+    const { owner, guild, general } = await guildWith();
+    const m1 = (await api.req('POST', `/channels/${general.id}/messages`, owner.token, { content: 'one' })).body;
+    const t1 = (await api.req('POST', `/channels/${general.id}/messages/${m1.id}/threads`, owner.token, { name: 'one' })).body;
+    const m2 = (await api.req('POST', `/channels/${general.id}/messages`, owner.token, { content: 'two' })).body;
+    const t2 = (await api.req('POST', `/channels/${general.id}/messages/${m2.id}/threads`, owner.token, { name: 'two' })).body;
+    const w = await WsClient.connect(env.port); await w.identify(owner.token);
+    expect((await api.req('DELETE', `/channels/${general.id}`, owner.token)).status).toBe(204);
+    for (const th of [t1, t2]) {
+      const ev = await w.waitEvent('THREAD_DELETE', (d) => d.id === th.id);
+      expect(ev.d).toMatchObject({ id: th.id, guildId: guild.id, parentId: general.id });
+    }
+    await w.waitEvent('CHANNEL_DELETE', (d) => d.id === general.id);
+    w.close();
+  });
 });
 
 describe('audit log expansion', () => {

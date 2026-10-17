@@ -207,9 +207,9 @@ function ForumPost({ channelId, close }: { channelId: string; close: () => void 
     </form></Modal>;
 }
 
-function Reactors({ spec, close }: { spec: { channelId: string; messageId: string; emoji: string; emojiId: string | null }; close: () => void }) {
-  const q = useQuery({ queryKey: ['reactors', spec], queryFn: () => api.messages.reactors(spec.channelId, spec.messageId, spec.emoji, spec.emojiId) });
-  return <Modal title={`${spec.emoji} Reactions`} onClose={close} width={380}>{q.isLoading ? <Spinner className="mx-auto" /> : <ul>{q.data?.map((u) => <li key={u.id} className="flex items-center gap-3 py-1.5"><Avatar user={u} size={28} /><span className="font-medium text-header">{displayName(u)}</span></li>)}</ul>}</Modal>;
+function Reactors({ spec, close }: { spec: { channelId: string; messageId: string; emoji: string; emojiId: string | null; burst?: boolean }; close: () => void }) {
+  const q = useQuery({ queryKey: ['reactors', spec], queryFn: () => api.messages.reactors(spec.channelId, spec.messageId, spec.emoji, spec.emojiId, spec.burst) });
+  return <Modal title={`${spec.emoji}${spec.burst ? ' ⚡' : ''} Reactions`} onClose={close} width={380}>{q.isLoading ? <Spinner className="mx-auto" /> : <ul>{q.data?.map((u) => <li key={u.id} className="flex items-center gap-3 py-1.5"><Avatar user={u} size={28} /><span className="font-medium text-header">{displayName(u)}</span></li>)}</ul>}</Modal>;
 }
 
 function LeaveGuild({ guildId, close }: { guildId: string; close: () => void }) {

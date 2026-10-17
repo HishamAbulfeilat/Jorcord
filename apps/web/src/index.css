@@ -112,6 +112,9 @@ a:hover { text-decoration: underline; }
 .skeleton { animation: skeleton 1.4s ease-in-out infinite; background: rgb(var(--active)); border-radius: 4px; }
 @keyframes flash { from { background: rgb(var(--warn) / .25) } to { background: transparent } }
 .flash { animation: flash 2s ease-out; }
+/* burst (super) reaction: a one-shot pop as a chip appears */
+@keyframes burst { 0% { transform: scale(.7) } 45% { transform: scale(1.18) } 100% { transform: scale(1) } }
+.burst-react { animation: burst .5s cubic-bezier(.3,1.4,.5,1); }
 .drawer { transition: transform .22s cubic-bezier(.2,.8,.2,1); will-change: transform; }
 
 /* wrappers + soft keyboards: follow the visual viewport while a keyboard is open (set by lib/native.ts) */
