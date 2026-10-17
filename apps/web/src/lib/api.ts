@@ -247,7 +247,7 @@ export const api = {
     webhooks: (id: Id) => send<any[]>({ method: 'GET', path: `/channels/${id}/webhooks` }).then((x) => arr<any>(x)),
     createWebhook: (id: Id, name: string, avatar?: string | null) => send<any>({ method: 'POST', path: `/channels/${id}/webhooks`, body: { name, ...(avatar ? { avatar } : {}) } }),
     deleteWebhook: (id: Id, wid: Id) => send({ method: 'DELETE', path: `/channels/${id}/webhooks/${wid}` }),
-    forumPost: (id: Id, b: { name: string; content: string; appliedTags?: Id[]; autoArchiveDuration?: number }) => send<{ channel: Channel; message?: Message }>({ method: 'POST', path: `/channels/${id}/forum/posts`, body: b }),
+    forumPost: (id: Id, b: { name: string; content?: string; appliedTags?: Id[]; autoArchiveDuration?: number; attachments?: Id[] }) => send<{ channel: Channel; message?: Message }>({ method: 'POST', path: `/channels/${id}/forum/posts`, body: b }),
     /** Active or archived threads of a channel: `{threads,members,hasMore}`. */
     threads: (id: Id, archived = false) => send<any>({ method: 'GET', path: `/channels/${id}/threads/${archived ? 'archived' : 'active'}` }).then((x) => (Array.isArray(x) ? x : (x?.threads ?? [])) as Channel[]),
     addRecipient: (channelId: Id, userId: Id) => send({ method: 'PUT', path: `/channels/${channelId}/recipients/${userId}` }),

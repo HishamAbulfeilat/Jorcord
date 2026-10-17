@@ -67,7 +67,7 @@ async function snapshotForForward(ctx: Ctx, userId: string, channelId: string, m
 export function messageRoutes(app: FastifyInstance, ctx: Ctx) {
   async function assertCanPostIn(a: Awaited<ReturnType<typeof channelAccess>>, userId: string) {
     const t = a.channel.type;
-    if (t === 'category' || t === 'forum') throw badRequest('Cannot send messages in this channel type');
+    if (t === 'category' || t === 'forum' || t === 'media') throw badRequest('Cannot send messages in this channel type');
     // Voice and stage channels carry a text chat: they take messages under the same SEND_MESSAGES rules (overwrites included).
     need(a.perms, t === 'thread' ? Perm.SEND_IN_THREADS : Perm.SEND_MESSAGES);
     if (t === 'thread' && a.channel.locked && !has(a.perms, Perm.MANAGE_THREADS)) throw new ApiError(403, 'THREAD_LOCKED', 'This thread is locked').num(50083);

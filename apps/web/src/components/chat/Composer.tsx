@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { parseWarnCommand } from '@/lib/modtools';
-import { PlusCircle, Smile, SendHorizonal, X, Eye, EyeOff, Hash, Image as ImageIcon, Gift, Upload, BarChart3 } from 'lucide-react';
+import { Mic, PlusCircle, Smile, SendHorizonal, X, Eye, EyeOff, Hash, Image as ImageIcon, Gift, Upload, BarChart3 } from 'lucide-react';
 import { LIMITS, Perm, snowflake } from '@jorcord/shared';
 import type { AllowedMentions, ApplicationCommand, Channel } from '@jorcord/shared';
 import { api } from '@/lib/api';
@@ -11,6 +11,9 @@ import { useMessages } from '@/stores/messages';
 import { composerState } from '@/lib/perms';
 import { cx, displayName, dmName, fmtBytes, isImage, fileUrl } from '@/lib/format';
 import { toPlain, parseInline } from '@/lib/markdown';
+import { VoiceRecorder } from '@/lib/voiceRecord';
+import { fmtVoiceDuration, waveformPeaks } from '@/lib/voiceMsg';
+import { VoicePlayer, WaveformBars } from './Attachments';
 import { searchEmoji, replaceShortcodes } from '@/lib/emoji';
 import { useGuildPerms } from '@/lib/useGuild';
 import { useIsMobile } from '@/lib/hooks';
@@ -43,6 +46,10 @@ export function Composer({ channel, stagedExternal }: { channel: Channel; staged
   const [suggest, setSuggest] = useState<Suggest>(null); const [pingReply, setPingReply] = useState(true); // reply "@ ON/OFF": ping the replied user?
   const allowedMentions = useMemo(() => (replyId && !pingReply ? { parse: ['users', 'roles', 'everyone'] as AllowedMentions['parse'] } : undefined), [replyId, pingReply]);
   const ta = useRef<HTMLTextAreaElement>(null); const fileInput = useRef<HTMLInputElement>(null);
+  const recRef = useRef<VoiceRecorder | null>(null);
+  const [recording, setRecording] = useState(false);
+  const [live, setLive] = useState<{ peaks: number[]; at: number } | null>(null);
+  const [preview, setPreview] = useState<{ file: File; peaks: number[]; duration: number; url: string } | null>(null);
   const tokens = useRef<Map<string, string>>(new Map());
   const replyMsg = useMessages((s) => (replyId ? s.ch[cid]?.list.find((m) => m.id === replyId) : undefined));
   const replyUser = useData((s) => (replyMsg ? s.users[replyMsg.author.id] ?? replyMsg.author : undefined));
@@ -95,7 +102,7 @@ export function Composer({ channel, stagedExternal }: { channel: Channel; staged
     }
     if ((m = before.match(/(?:^|\s)#([\w\-]{0,32})$/)) && guild) {
       const q = m[1].toLowerCase(); const start = caret - m[1].length - 1;
-      const items = Object.values(guild.channels).filter((c) => (c.type === 'text' || c.type === 'announcement' || c.type === 'voice' || c.type === 'forum') && c.name?.toLowerCase().includes(q)).slice(0, 8).map((c) => ({ key: c.id, label: c.name!, insert: `#${c.name}`, token: [`#${c.name}`, `<#${c.id}>`] as [string, string], icon: '#' }));
+      const items = Object.values(guild.channels).filter((c) => (c.type === 'text' || c.type === 'announcement' || c.type === 'voice' || c.type === 'forum' || c.type === 'media') && c.name?.toLowerCase().includes(q)).slice(0, 8).map((c) => ({ key: c.id, label: c.name!, insert: `#${c.name}`, token: [`#${c.name}`, `<#${c.id}>`] as [string, string], icon: '#' }));
       if (items.length) return { kind: 'channel' as const, items, index: 0, start, end: caret };
     }
     if ((m = before.match(/(?:^|\s):([a-z0-9_+\-]{2,})$/i))) {
@@ -156,6 +163,35 @@ export function Composer({ channel, stagedExternal }: { channel: Channel; staged
     if (!cs.canSend) return;
     try { const msg = await api.messages.send(cid, { content: '', stickerIds: [stickerId] }); useMessages.getState().upsert(msg); useData.getState().apply('MESSAGE_CREATE', msg); ackLater(cid, msg.id); } catch (err) { toastError(err); }
   };
+
+  // voice messages: hold the mic to record, release to preview, then send or discard
+  const canVoice = cs.canSend && cs.canAttach && (!gid || can(perms, Perm.SEND_VOICE_MESSAGES));
+  const clearVoiceState = () => { setRecording(false); setLive(null); };
+  const startVoice = async () => {
+    if (!canVoice || preview || recRef.current) return;
+    const rec = new VoiceRecorder((peaks, at) => setLive({ peaks, at }));
+    recRef.current = rec;
+    try { await rec.start(); } catch { recRef.current = null; toast(t('Microphone access was blocked.'), 'error'); return; }
+    setLive({ peaks: [], at: 0 }); setRecording(true);
+  };
+  const stopVoice = async () => {
+    const rec = recRef.current; if (!rec) return;
+    recRef.current = null; clearVoiceState();
+    const take = await rec.stop(); if (!take) return;
+    setPreview({ file: take.file, peaks: take.peaks, duration: take.durationSec, url: URL.createObjectURL(take.file) });
+  };
+  const cancelVoice = () => { recRef.current?.cancel(); recRef.current = null; clearVoiceState(); };
+  const discardVoice = () => { if (preview) URL.revokeObjectURL(preview.url); setPreview(null); };
+  const sendVoice = async () => {
+    const p = preview; if (!p || !cs.canSend) { discardVoice(); return; }
+    const nonce = snowflake(); const reply = replyId ?? null;
+    useMessages.getState().addPending({ nonce, channelId: cid, content: '', files: [{ name: p.file.name, size: p.file.size }], replyTo: reply, allowedMentions, status: 'sending', createdAt: Date.now() });
+    URL.revokeObjectURL(p.url); setPreview(null); // the text draft stays: a voice message should not eat typed words
+    setPingReply(true); setReply(cid, null); setSuggest(null);
+    await deliver(nonce, cid, '', [p.file], reply, allowedMentions);
+    const last = useMessages.getState().ch[cid]?.list.at(-1); if (last) ackLater(cid, last.id);
+  };
+  useEffect(() => () => { recRef.current?.cancel(); }, [cid]); // leaving the channel stops a live mic
 
   useEffect(() => {
     const h = async (e: Event) => {
@@ -239,6 +275,20 @@ export function Composer({ channel, stagedExternal }: { channel: Channel; staged
             ))}
           </ul>
         )}
+        {recording && (
+          <div className="flex items-center justify-between rounded-t-lg bg-[rgb(var(--active)/0.6)] px-3 py-1.5 text-sm text-interactive" data-testid="voice-recording">
+            <span className="flex shrink-0 items-center gap-2"><span className="h-2 w-2 animate-pulse rounded-full bg-danger" data-testid="voice-recording-dot" /><b className="tabular-nums">{fmtVoiceDuration((live?.at ?? 0) / 1000)}</b></span>
+            <span className="min-w-0 flex-1 px-3"><WaveformBars peaks={waveformPeaks(live?.peaks ?? [], 24)} progress={1} /></span>
+            <button aria-label={t('Cancel recording')} data-testid="voice-cancel" onClick={cancelVoice} className="shrink-0 text-interactive hover:text-header"><X size={18} /></button>
+          </div>
+        )}
+        {preview && !recording && (
+          <div className="flex items-center gap-2 rounded-t-lg bg-[rgb(var(--active)/0.6)] p-2 pe-3 text-sm text-interactive" data-testid="voice-preview">
+            <VoicePlayer src={preview.url} durationHint={preview.duration} />
+            <button aria-label={t('Discard voice message')} data-testid="voice-discard" onClick={discardVoice} className="ml-0.5 shrink-0 text-interactive hover:text-header"><X size={18} /></button>
+            <button aria-label={t('Send voice message')} data-testid="voice-send" onClick={() => void sendVoice()} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand text-white"><SendHorizonal size={18} /></button>
+          </div>
+        )}
         {slash && <SlashForm key={slash.id} channel={channel} command={slash} appName={catalog.data?.applications.find((a) => a.id === slash.applicationId)?.name} onDone={() => { setSlash(null); requestAnimationFrame(() => ta.current?.focus()); }} />}
         <div className={cx('flex items-end', slash && 'hidden')}>
           <button aria-label={t('Attach')} aria-haspopup="menu" disabled={!cs.canSend} onClick={(e) => {
@@ -249,6 +299,12 @@ export function Composer({ channel, stagedExternal }: { channel: Channel; staged
             ]);
           }} className="flex h-11 w-11 shrink-0 items-center justify-center text-interactive hover:text-interactive-hover disabled:cursor-not-allowed disabled:opacity-40"><PlusCircle size={24} /></button>
           <input ref={fileInput} type="file" multiple hidden onChange={(e) => { addFiles([...(e.target.files ?? [])]); e.target.value = ''; }} />
+          {canVoice && (
+            <button aria-label={t('Hold to record a voice message')} data-testid="voice-mic" disabled={!!preview}
+              onPointerDown={(e) => { e.preventDefault(); try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch { /* pointer already gone */ } void startVoice(); }}
+              onPointerUp={() => { void stopVoice(); }} onPointerCancel={cancelVoice}
+              className={cx('flex h-11 w-11 shrink-0 items-center justify-center', recording ? 'text-danger' : 'text-interactive hover:text-interactive-hover', preview && 'opacity-40')}><Mic size={24} /></button>
+          )}
           <textarea ref={ta} value={text} rows={1} disabled={!cs.canSend} placeholder={placeholder} aria-label={placeholder} enterKeyHint={mobile ? 'enter' : 'send'} onChange={onChange} onKeyDown={onKey} onPaste={onPaste} onFocus={() => { if (canSlash && Date.now() - catalog.dataUpdatedAt > 10_000) void catalog.refetch(); }} onBlur={() => setTimeout(() => setSuggest(null), 100)}
             className="max-h-[45vh] min-h-[44px] flex-1 resize-none bg-transparent py-[11px] text-[16px] leading-[22px] text-normal outline-none placeholder:text-muted disabled:cursor-not-allowed" />
           {over && <span className={cx('self-center pe-2 text-xs font-semibold', text.length > LIMITS.maxMessageLength ? 'text-danger' : 'text-muted')}>{LIMITS.maxMessageLength - text.length}</span>}

@@ -115,7 +115,7 @@ export function OnboardingModal({ guildId, step: initial, close }: { guildId: st
   const rulesId = g?.guild.rulesChannelId ?? null;
   const [step, setStep] = useState<'welcome' | 'rules'>(initial ?? 'welcome'); const [agree, setAgree] = useState(done);
   const rules = useQuery({ queryKey: ['rules', rulesId], enabled: !!rulesId && step === 'rules', queryFn: () => api.messages.list(rulesId!, { limit: 30 }), retry: false });
-  const picks = useMemo(() => Object.values(g?.channels ?? {}).filter((c) => (c.type === 'text' || c.type === 'announcement' || c.type === 'forum') && c.id !== rulesId).sort((a, b) => a.position - b.position).slice(0, 5), [g?.channels, rulesId]);
+  const picks = useMemo(() => Object.values(g?.channels ?? {}).filter((c) => (c.type === 'text' || c.type === 'announcement' || c.type === 'forum' || c.type === 'media') && c.id !== rulesId).sort((a, b) => a.position - b.position).slice(0, 5), [g?.channels, rulesId]);
   if (!g) return null;
   const gd = g.guild; const icon = fileUrl(gd.icon); const banner = fileUrl(gd.banner);
   const finish = () => { mark(guildId); try { sessionStorage.removeItem('jorcord.onb.' + guildId); } catch { /* */ } close(); if (picks[0]) nav.go(guildId, picks[0].id); };

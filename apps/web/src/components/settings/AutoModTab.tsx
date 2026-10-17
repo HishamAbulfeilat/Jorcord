@@ -17,7 +17,7 @@ export function AutoModTab({ guildId }: { guildId: string }) {
   const q = useQuery({ queryKey: ['automod', guildId], queryFn: () => api.guilds.automod(guildId) }); const qc = useQueryClient();
   const chans = useData((s) => s.guilds[guildId]?.channels);
   const textChans = Object.values(chans ?? {}).filter((c) => c.type === 'text' || c.type === 'announcement');
-  const exemptable = Object.values(chans ?? {}).filter((c) => c.type === 'text' || c.type === 'announcement' || c.type === 'forum');
+  const exemptable = Object.values(chans ?? {}).filter((c) => c.type === 'text' || c.type === 'announcement' || c.type === 'forum' || c.type === 'media');
   const [f, setF] = useState<RuleForm>(BLANK_FORM); const set = (p: Partial<RuleForm>) => setF((x) => ({ ...x, ...p }));
   const [sample, setSample] = useState(''); const [result, setResult] = useState<AutoModTestResult[] | null>(null);
   const refetch = () => qc.invalidateQueries({ queryKey: ['automod', guildId] });

@@ -98,7 +98,7 @@ export async function invoke(ctx: Ctx, userId: string, raw: unknown, access: (ch
   const b = invokeSchema.parse(raw);
   const a = await access(b.channelId);
   const channel = a.channel;
-  if (['category', 'forum'].includes(channel.type)) throw badRequest('Interactions cannot be used in this channel');
+  if (['category', 'forum', 'media'].includes(channel.type)) throw badRequest('Interactions cannot be used in this channel');
   if (a.gp?.timedOut) throw forbidden('You cannot use apps while timed out or before accepting the server rules').num(50013); // read-only members must not trigger bot actions (role pickers, ticket buttons...)
   const [userRow] = await ctx.db.query('SELECT * FROM users WHERE id = $1', [userId]);
   const mustReach = async (app: any) => { // bot must be able to act where the interaction happens
