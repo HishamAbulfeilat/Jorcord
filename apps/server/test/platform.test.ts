@@ -723,6 +723,50 @@ describe('scheduled events', () => {
     await api.req('PATCH', `/guilds/${guild.id}/scheduled-events/${e.id}`, owner.token, { status: 3 });
     expect((await api.req('GET', `/stage-instances/${stage.id}`, owner.token)).status).toBe(404);
   });
+
+  it('recurrence: creates events with nextOccurrences, rejects until before start', async () => {
+    const { owner, guild } = await guildWith();
+    const start = inHours(2);
+    const until = inHours(24 * 7);
+    const e = (await api.req('POST', `/guilds/${guild.id}/scheduled-events`, owner.token, { name: 'Standup', entityType: 3, scheduledStartTime: start, scheduledEndTime: inHours(3), location: 'Town', recurrenceRule: { frequency: 'daily', interval: 1, until } })).body;
+    expect(e.recurrenceRule).toMatchObject({ frequency: 'daily', interval: 1, until });
+    expect(e.nextOccurrences).toHaveLength(5);
+    expect(Date.parse(e.nextOccurrences[0])).toBeGreaterThan(Date.parse(start));
+    // until before start is rejected
+    expect((await api.req('POST', `/guilds/${guild.id}/scheduled-events`, owner.token, { name: 'Bad', entityType: 3, scheduledStartTime: start, scheduledEndTime: inHours(3), location: 'x', recurrenceRule: { frequency: 'daily', interval: 1, until: inHours(1) } })).status).toBe(400);
+    // update recurrence
+    const upd = await api.req('PATCH', `/guilds/${guild.id}/scheduled-events/${e.id}`, owner.token, { recurrenceRule: { frequency: 'weekly', interval: 2, until: inHours(24 * 70) } });
+    expect(upd.body.recurrenceRule).toMatchObject({ frequency: 'weekly', interval: 2 });
+    expect(upd.body.nextOccurrences!.length).toBeGreaterThan(0);
+    // clear recurrence
+    const cleared = await api.req('PATCH', `/guilds/${guild.id}/scheduled-events/${e.id}`, owner.token, { recurrenceRule: null });
+    expect(cleared.body.recurrenceRule).toBeNull();
+    expect(cleared.body.nextOccurrences).toBeUndefined();
+  });
+
+  it('recurrence: a user without VIEW_CHANNEL cannot see or act on channel-bound events', async () => {
+    const { owner, guild, voice, members } = await guildWith('intruder');
+    const [intruder] = members as any[];
+    // give the intruder CREATE_EVENTS so the guild-level check passes and the channel check is what fails
+    const role = (await api.req('POST', `/guilds/${guild.id}/roles`, owner.token, { name: 'ev', permissions: Perm.CREATE_EVENTS.toString() })).body;
+    await api.req('PATCH', `/guilds/${guild.id}/members/${intruder.id}`, owner.token, { roles: [role.id] });
+    const e = (await api.req('POST', `/guilds/${guild.id}/scheduled-events`, owner.token, { name: 'Secret', entityType: 2, channelId: voice.id, scheduledStartTime: inHours(1), recurrenceRule: { frequency: 'daily', interval: 1, until: inHours(48) } })).body;
+    // hide the voice channel from the intruder
+    await api.req('PUT', `/channels/${voice.id}/permissions/${intruder.id}`, owner.token, { type: 'member', allow: '0', deny: Perm.VIEW_CHANNEL.toString() });
+    // cannot see in list
+    const list = (await api.req('GET', `/guilds/${guild.id}/scheduled-events`, intruder.token)).body;
+    expect(list.find((x: any) => x.id === e.id)).toBeUndefined();
+    // cannot get directly
+    expect((await api.req('GET', `/guilds/${guild.id}/scheduled-events/${e.id}`, intruder.token)).status).toBe(404);
+    // cannot mark interest
+    expect((await api.req('PUT', `/guilds/${guild.id}/scheduled-events/${e.id}/users/@me`, intruder.token)).status).toBe(404);
+    // cannot modify
+    expect((await api.req('PATCH', `/guilds/${guild.id}/scheduled-events/${e.id}`, intruder.token, { name: 'hijack' })).status).toBe(403);
+    // cannot delete
+    expect((await api.req('DELETE', `/guilds/${guild.id}/scheduled-events/${e.id}`, intruder.token)).status).toBe(403);
+    // cannot create a new event in the hidden channel
+    expect((await api.req('POST', `/guilds/${guild.id}/scheduled-events`, intruder.token, { name: 'sneak', entityType: 2, channelId: voice.id, scheduledStartTime: inHours(1) })).status).toBe(404);
+  });
 });
 
 describe('stage instances', () => {

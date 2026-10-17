@@ -133,6 +133,9 @@ function EventCard({ e }: { e: ScheduledEvent }) {
       <h3 className="break-words text-base font-bold text-header">{e.name}</h3>
       <p className="mt-0.5 flex items-center gap-1.5 text-sm text-muted">{e.entityType === ET.EXTERNAL ? <><MapPin size={14} aria-hidden />{e.location}</> : e.entityType === ET.STAGE_INSTANCE ? <><Radio size={14} aria-hidden />{ch?.name ?? entityLabel(e.entityType)}</> : <><Volume2 size={14} aria-hidden />{ch?.name ?? entityLabel(e.entityType)}</>}</p>
       {e.description && <p className="mt-1 whitespace-pre-wrap break-words text-sm text-normal">{e.description}</p>}
+      {e.nextOccurrences && e.nextOccurrences.length > 0 && (
+        <p className="mt-1 text-xs text-muted" data-testid="event-occurrences"><span className="font-medium">{t('Upcoming:')}</span>{' '}{e.nextOccurrences.map((iso, i) => <span key={iso}>{i > 0 && ', '}{whenText(iso)}</span>)}</p>
+      )}
       <p className="mt-1 text-xs text-muted">{creator ? `${t('Created by')} ${displayName(creator)}` : ''}</p>
       <div className="mt-2 flex flex-wrap items-center gap-2">
         <button className={cx('btn', e.interested ? 'btn-secondary' : 'btn-primary')} aria-pressed={!!e.interested} disabled={busy} onClick={toggle}>{e.interested ? t('Interested ✓') : t('Interested')}</button>
@@ -169,6 +172,7 @@ export function EventEditorModal({ guildId, eventId, channelId, close }: { guild
   const [d, setD] = useState({
     name: existing?.name ?? '', description: existing?.description ?? '', entityType: initialType, channelId: existing?.channelId ?? channelId ?? (initialType === ET.STAGE_INSTANCE ? stage[0]?.id : voice[0]?.id) ?? '',
     location: existing?.location ?? '', start: existing ? isoToLocalInput(existing.scheduledStartTime) : tomorrow, end: existing ? isoToLocalInput(existing.scheduledEndTime) : '',
+    recurrenceRule: existing?.recurrenceRule ? { frequency: existing.recurrenceRule.frequency, interval: existing.recurrenceRule.interval, until: existing.recurrenceRule.until ? isoToLocalInput(existing.recurrenceRule.until) : '' } : null,
   });
   const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
   /** Back to the events list (the editor is opened from it). */
@@ -202,6 +206,20 @@ export function EventEditorModal({ guildId, eventId, channelId, close }: { guild
           <Field label={t('Start Date')}><input className="field" type="datetime-local" value={d.start} disabled={locked} onChange={(e) => setD({ ...d, start: e.target.value })} /></Field>
           <Field label={d.entityType === ET.EXTERNAL ? t('End Date') : t('End Date (optional)')}><input className="field" type="datetime-local" aria-label={t('End Date')} value={d.end} onChange={(e) => setD({ ...d, end: e.target.value })} /></Field>
         </div>
+        <Field label={t('Repeat')}>
+          <select className="field" aria-label={t('Repeat')} value={d.recurrenceRule?.frequency ?? 'none'} onChange={(e) => { const v = e.target.value; setD({ ...d, recurrenceRule: v === 'none' ? null : { frequency: v as 'daily' | 'weekly' | 'monthly', interval: d.recurrenceRule?.interval ?? 1, until: d.recurrenceRule?.until ?? '' } }); }}>
+            <option value="none">{t('Does not repeat')}</option>
+            <option value="daily">{t('Daily')}</option>
+            <option value="weekly">{t('Weekly')}</option>
+            <option value="monthly">{t('Monthly')}</option>
+          </select>
+        </Field>
+        {d.recurrenceRule && (
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label={t('Repeat every')}><input className="field" type="number" min={1} max={12} aria-label={t('Repeat every')} value={d.recurrenceRule.interval} onChange={(e) => setD({ ...d, recurrenceRule: { ...d.recurrenceRule!, interval: Number(e.target.value) } })} /></Field>
+            <Field label={t('End repeat (optional)')}><input className="field" type="datetime-local" aria-label={t('End repeat')} value={d.recurrenceRule.until} onChange={(e) => setD({ ...d, recurrenceRule: { ...d.recurrenceRule!, until: e.target.value } })} /></Field>
+          </div>
+        )}
         <Field label={t('Description')}><textarea className="field min-h-[80px]" value={d.description} maxLength={1000} onChange={(e) => setD({ ...d, description: e.target.value })} placeholder={t('Tell people more about your event')} /></Field>
         {err && <p role="alert" className="text-sm text-danger">{err}</p>}
       </form>
