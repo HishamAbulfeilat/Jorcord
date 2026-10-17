@@ -46,7 +46,7 @@
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Jorcord uses the microphone for voice and video calls.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>Jorcord uses the camera for video calls and to take photos to share.</string>
+	<string>Jorcord uses the camera for video calls, to take photos to share and to scan QR codes that log in another device.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Jorcord lets you choose photos and videos to share in chats.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>

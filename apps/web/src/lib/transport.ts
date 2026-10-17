@@ -38,6 +38,8 @@ export interface TokenStore {
   get(): { access: string | null; refresh: string | null };
   set(a: string | null, r: string | null): void;
   onLogout(): void;
+  /** Re-read tokens another tab may have rotated; true when they changed. */
+  reload?(): boolean;
 }
 let tokens: TokenStore = {
   get: () => ({ access: null, refresh: null }), set() {}, onLogout() {},
@@ -56,17 +58,26 @@ export function buildUrl(path: string, query?: Record<string, unknown>) {
   return s ? `${u}?${s}` : u;
 }
 
-let refreshing: Promise<boolean> | null = null;
-async function doRefresh(): Promise<boolean> {
+/** 'rejected': the server said this refresh token is dead (log out). 'unreachable': offline / server error, so the session may well still be valid. */
+type RefreshResult = 'ok' | 'rejected' | 'unreachable';
+let refreshing: Promise<RefreshResult> | null = null;
+async function refreshOnce(): Promise<RefreshResult> {
+  // another tab may have rotated the token while we waited for the lock: its copy is newer than ours, and replaying ours would kill the session
+  if (tokens.reload?.()) return 'ok';
   const { refresh } = tokens.get();
-  if (!refresh) return false;
+  if (!refresh) return 'rejected';
   try {
     const res = await fetch(apiBase() + '/auth/refresh', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ refreshToken: refresh }) });
-    if (!res.ok) return false;
+    if (res.status === 400 || res.status === 401 || res.status === 403 || res.status === 404) return 'rejected';
+    if (!res.ok) return 'unreachable';
     const j = await res.json();
     tokens.set(j.accessToken, j.refreshToken ?? refresh);
-    return true;
-  } catch { return false; }
+    return 'ok';
+  } catch { return 'unreachable'; }
+}
+function doRefresh(): Promise<RefreshResult> {
+  const locks = typeof navigator !== 'undefined' ? (navigator as any).locks : undefined;
+  return locks?.request ? locks.request('jorcord-token-refresh', refreshOnce) : refreshOnce();
 }
 
 async function parse(res: Response) {
@@ -108,8 +119,10 @@ export const fetchTransport: Transport = async (req) => {
   }
   if (res.status === 401 && req.auth !== false && !req.path.startsWith('/auth/')) {
     refreshing ??= doRefresh().finally(() => { refreshing = null; });
-    if (await refreshing) { ({ res, data: early } = await runLimited()); }
-    else { tokens.onLogout(); }
+    const outcome = await refreshing;
+    if (outcome === 'ok') { ({ res, data: early } = await runLimited()); }
+    else if (outcome === 'rejected') { tokens.onLogout(); }
+    else throw new ApiException(0, { code: 'NETWORK', message: 'Cannot reach the server. Check your connection.' }); // keep the session: it is not proven dead
   }
   const data = early !== undefined ? early : await parse(res);
   if (!res.ok) throw new ApiException(res.status, (typeof data === 'object' && data) || { message: String(data ?? '') }, res.status === 429 ? retryAfterMs(data, res.headers) : undefined);

@@ -3,6 +3,7 @@
  * Switching swaps the stored tokens and reloads the app, so no data of one account can leak into another's stores or caches.
  */
 import { getServerUrl } from './server';
+import { getRemember } from './authStorage';
 
 export interface SavedAccount { id: string; username: string; displayName: string | null; avatar: string | null; access: string; refresh: string | null; server: string; addedAt: number }
 const KEY = 'jorcord.accounts.v1'; const ACTIVE = 'jorcord.accounts.active';
@@ -19,7 +20,7 @@ export const accountsHere = () => loadAccounts().filter((a) => a.server === serv
 
 /** Record the signed-in user (called whenever `GET /users/@me` succeeds) and mark it active. */
 export function rememberAccount(u: { id: string; username: string; displayName: string | null; avatar: string | null }, tokens: { access: string | null; refresh: string | null }) {
-  if (!tokens.access) return;
+  if (!tokens.access || !getRemember()) return; // "remember me" off: refresh tokens must not be written to localStorage
   const rest = loadAccounts().filter((a) => !(a.id === u.id && a.server === server()));
   const prev = loadAccounts().find((a) => a.id === u.id && a.server === server());
   save([...rest, { id: u.id, username: u.username, displayName: u.displayName, avatar: u.avatar, access: tokens.access, refresh: tokens.refresh, server: server(), addedAt: prev?.addedAt ?? Date.now() }]);
@@ -27,7 +28,7 @@ export function rememberAccount(u: { id: string; username: string; displayName: 
 }
 /** Refresh tokens rotate: keep the stored copy of the active account current. */
 export function syncActiveTokens(access: string | null, refresh: string | null) {
-  const id = activeAccountId(); if (!id || !access) return;
+  const id = activeAccountId(); if (!id || !access || !getRemember()) return;
   save(loadAccounts().map((a) => (a.id === id && a.server === server() ? { ...a, access, refresh } : a)));
 }
 export function forgetAccount(id: string) { save(loadAccounts().filter((a) => !(a.id === id && a.server === server()))); if (activeAccountId() === id) setActive(null); }

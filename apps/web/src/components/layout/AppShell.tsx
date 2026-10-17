@@ -1,3 +1,4 @@
+import { UpdateBanner } from './UpdateBanner';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { DiscoveryPage } from '@/components/home/DiscoveryPage';
@@ -129,6 +130,7 @@ export function AppShell({ base = '' }: { base?: string }) {
       <div ref={ref} className="relative flex h-full flex-col bg-rail">
         <a href="#main" onClick={(e) => { e.preventDefault(); const m = document.getElementById('main'); (m?.querySelector<HTMLElement>('[role=textbox], textarea') ?? m)?.focus(); }}
           className="fixed start-2 top-2 z-[200] -translate-y-24 rounded bg-brand px-3 py-2 text-sm font-semibold text-white focus:translate-y-0">{t('Skip to chat')}</a>
+        <UpdateBanner />
         <ConnectionBanner />
         <MobileVoiceBar />
         <div className="relative flex min-h-0 flex-1">

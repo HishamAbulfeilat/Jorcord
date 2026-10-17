@@ -6,7 +6,9 @@ import { useAuth } from '@/stores/auth';
 import { useData } from '@/stores/data';
 import { Logo } from '@/components/ui/Logo';
 import { Spinner } from '@/components/ui/primitives';
-import { FIXED_SERVER, getServerUrl, isNative } from '@/lib/server';
+import { FIXED_SERVER, getServerUrl, isCapacitor, isNative } from '@/lib/server';
+import { setRemember } from '@/lib/authStorage';
+import { QrLogin } from '@/components/auth/QrLogin';
 import { t } from '@/i18n';
 
 export function Shell({ title, sub, children, footer }: { title: string; sub: string; children: React.ReactNode; footer: React.ReactNode }) {
@@ -25,16 +27,18 @@ export function Shell({ title, sub, children, footer }: { title: string; sub: st
 export const inputCls = 'w-full rounded-[3px] bg-[#1e1f22] px-3 py-2.5 text-[#dbdee1] outline-none ring-0 focus:outline focus:outline-2 focus:outline-[#00a8fc]';
 export const labelCls = 'mb-2 block text-xs font-bold uppercase tracking-wide text-[#b5bac1]';
 
-export async function finishAuth(r: Awaited<ReturnType<typeof api.auth.login>>) {
+/** `remember`: keep the session after the tab / app is closed (localStorage) instead of for this tab only (sessionStorage). */
+export async function finishAuth(r: Awaited<ReturnType<typeof api.auth.login>>, remember = true) {
+  setRemember(remember);
   useAuth.getState().set(r.accessToken, r.refreshToken); useData.getState().setMe(r.user);
 }
 
 export function LoginPage() {
   const nav = useNavigate(); const [sp] = useSearchParams(); const next = sp.get('next') || '/channels/@me';
-  const [email, setEmail] = useState(''); const [password, setPassword] = useState(''); const [totp, setTotp] = useState(''); const [mfa, setMfa] = useState(false); const [err, setErr] = useState(''); const [busy, setBusy] = useState(false);
+  const [email, setEmail] = useState(''); const [password, setPassword] = useState(''); const [totp, setTotp] = useState(''); const [mfa, setMfa] = useState(false); const [err, setErr] = useState(''); const [busy, setBusy] = useState(false); const [remember, setRem] = useState(true);
   const submit = async (e: React.FormEvent) => {
     e.preventDefault(); setBusy(true); setErr('');
-    try { const r = await api.auth.login({ email, password, totp: mfa ? totp : undefined }); await finishAuth(r); nav(next, { replace: true }); }
+    try { const r = await api.auth.login({ email, password, totp: mfa ? totp : undefined }); await finishAuth(r, remember); nav(next, { replace: true }); }
     catch (ex) {
       const x = ex as ApiException;
       if (x.code === 'MFA_REQUIRED' || (x.status === 401 && /mfa|totp|two/i.test(x.code + x.message))) { setMfa(true); setErr(totp ? 'Invalid authentication code.' : ''); }
@@ -51,11 +55,13 @@ export function LoginPage() {
         </>) : (
           <label className="mb-2 block"><span className={labelCls}>{t('Authentication code')}</span><input className={inputCls} inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]*" maxLength={8} value={totp} onChange={(e) => setTotp(e.target.value.replace(/\s/g, ''))} autoFocus /></label>
         )}
+        {!mfa && <label className="mt-3 flex items-center gap-2 text-sm text-[#b5bac1]"><input type="checkbox" className="h-4 w-4 accent-[#5865f2]" checked={remember} onChange={(e) => setRem(e.target.checked)} />{t('Remember me')}</label>}
         {!mfa && <Link to="/forgot-password" className="mb-1 mt-2 inline-block text-sm text-[#00a8fc] underline">{t('Forgot your password?')}</Link>}
         {err && <p role="alert" className="mb-2 text-sm text-[#f23f43]">{err}</p>}
         <button disabled={busy || !email || !password || (mfa && totp.length < 6)} className="mt-4 flex h-11 w-full items-center justify-center rounded-[3px] bg-[#5865f2] font-medium text-white hover:bg-[#4752c4] disabled:opacity-60">{busy ? <Spinner className="text-white" /> : mfa ? t('Verify') : t('Log In')}</button>
         {mfa && <button type="button" className="mt-3 text-sm text-[#00a8fc] underline" onClick={() => { setMfa(false); setTotp(''); }}>{t('Back')}</button>}
       </form>
+      {!mfa && !isCapacitor() && <QrLogin onLogin={async (r) => { await finishAuth(r, remember); nav(next, { replace: true }); }} />}
     </Shell>
   );
 }
