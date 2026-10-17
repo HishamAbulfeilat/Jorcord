@@ -88,7 +88,7 @@ function Toolbar({ m, onMenu, startEdit }: { m: Message; onMenu: (e: React.Mouse
   );
   return (
     <div role="toolbar" aria-label="Message actions" className="absolute -top-4 end-4 z-10 hidden items-center rounded-md border border-divider/50 bg-chat shadow-high group-focus-within/msg:flex group-hover/msg:flex">
-      {react && <B label="Add Reaction" onClick={(e) => openPopout({ kind: 'emoji', rect: e.currentTarget.getBoundingClientRect(), guildId: m.guildId ?? undefined, onPick: (p) => addReaction(m, p) })}><SmilePlus size={20} /></B>}
+      {react && <B label="Add Reaction" onClick={(e) => openPopout({ kind: 'emoji', rect: e.currentTarget.getBoundingClientRect(), guildId: m.guildId ?? undefined, allowBurst: true, onPick: (p) => addReaction(m, p) })}><SmilePlus size={20} /></B>}
       {mine ? <B label="Edit" onClick={startEdit}><Pencil size={18} /></B> : send ? <B label="Reply" onClick={() => setReply(m.channelId, m.id)}><Reply size={20} /></B> : null}
       {mine && send && <B label="Reply" onClick={() => setReply(m.channelId, m.id)}><Reply size={20} /></B>}
       {m.guildId && !(m.flags && (m.flags & 1)) && !(m.flags && (m.flags & 2)) && (m.type === 'default' || m.type === 'reply') && useData.getState().guilds[m.guildId]?.channels[m.channelId]?.type === 'announcement' && (mine || can(perms, Perm.MANAGE_MESSAGES)) && <B label="Publish" onClick={() => api.channels.crosspost(m.channelId, m.id).then((u) => { useMessages.getState().update(u); toast('Published to followers', 'success'); }).catch(toastError)}><Megaphone size={18} /></B>}
@@ -111,7 +111,7 @@ export const MessageItem = memo(function MessageItem({ m, grouped, highlighted, 
   const mentioned = !!me && (m.mentions.includes(me.id) || m.mentionEveryone) && m.author.id !== me.id;
   const startEdit = () => setEditing(m.id);
   const ephemeral = isEphemeral(m);
-  const menuItems = () => ephemeral ? [{ label: t('Dismiss message'), onClick: () => useMessages.getState().remove(m.channelId, m.id) }] : messageMenu(m, { startEdit, pickEmoji: () => openPopout({ kind: 'emoji', rect: new DOMRect(window.innerWidth / 2, window.innerHeight / 2, 0, 0), guildId: m.guildId ?? undefined, onPick: (p) => addReaction(m, p) }) });
+  const menuItems = () => ephemeral ? [{ label: t('Dismiss message'), onClick: () => useMessages.getState().remove(m.channelId, m.id) }] : messageMenu(m, { startEdit, pickEmoji: () => openPopout({ kind: 'emoji', rect: new DOMRect(window.innerWidth / 2, window.innerHeight / 2, 0, 0), guildId: m.guildId ?? undefined, allowBurst: true, onPick: (p) => addReaction(m, p) }) });
   const trig = useMenuTrigger(menuItems);
   const userTrig = useMenuTrigger(() => userMenu(m.author.id, m.guildId));
   const openUser = (e: React.MouseEvent) => { e.stopPropagation(); openPopout({ kind: 'user', userId: m.author.id, guildId: m.guildId ?? undefined, rect: (e.currentTarget as HTMLElement).getBoundingClientRect() }); };

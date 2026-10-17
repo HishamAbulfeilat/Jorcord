@@ -24,7 +24,7 @@ interface MsgState {
   replace(m: Message): void;
   pollVote(channelId: Id, mid: Id, answerId: number, delta: 1 | -1, mine: boolean): void;
   remove(channelId: Id, id: Id): void;
-  reaction(channelId: Id, mid: Id, emoji: string, emojiId: Id | null, delta: 1 | -1, mine: boolean): void;
+  reaction(channelId: Id, mid: Id, emoji: string, emojiId: Id | null, delta: 1 | -1, mine: boolean, burst?: boolean, burstColor?: string | null): void;
   addPending(p: Pending): void; patchPending(nonce: string, p: Partial<Pending>): void; dropPending(nonce: string): void;
   clearChannel(channelId: Id): void;
 }
@@ -50,13 +50,24 @@ export const useMessages = create<MsgState>((set) => {
     replace: (m) => patch(m.channelId, (c) => ({ list: c.list.map((x) => (x.id === m.id ? { ...x, ...m } : x)) })),
     pollVote: (cid, mid, answerId, delta, mine) => patch(cid, (c) => ({ list: c.list.map((x) => (x.id === mid && x.poll ? { ...x, poll: applyPollVote(x.poll, answerId, delta, mine) } : x)) })),
     remove: (cid, id) => patch(cid, (c) => ({ list: c.list.filter((x) => x.id !== id) })),
-    reaction: (cid, mid, emoji, emojiId, delta, mine) => patch(cid, (c) => ({
+    reaction: (cid, mid, emoji, emojiId, delta, mine, burst = false, burstColor: string | null = null) => patch(cid, (c) => ({
       list: c.list.map((m) => {
         if (m.id !== mid) return m;
-        let rs: Reaction[] = m.reactions.slice();
+        const rs: Reaction[] = m.reactions.slice();
         const i = rs.findIndex((r) => r.emoji === emoji && r.emojiId === emojiId);
-        if (i < 0) { if (delta > 0) rs.push({ emoji, emojiId, count: 1, me: mine }); }
-        else { const r = rs[i]; const count = r.count + delta; if (count <= 0) rs.splice(i, 1); else rs[i] = { ...r, count, me: mine ? delta > 0 : r.me }; }
+        if (i < 0) {
+          if (delta > 0) rs.push(burst
+            ? { emoji, emojiId, count: 0, me: false, burstCount: 1, meBurst: mine, burstColors: burstColor ? [burstColor] : [] }
+            : { emoji, emojiId, count: 1, me: mine });
+        } else if (burst) {
+          const r = rs[i]!; const burstCount = Math.max(0, (r.burstCount ?? 0) + delta);
+          if (burstCount === 0 && r.count === 0) rs.splice(i, 1);
+          else rs[i] = { ...r, burstCount, meBurst: mine ? delta > 0 : !!r.meBurst, burstColors: r.burstColors?.length ? r.burstColors : (burstColor ? [burstColor] : []) };
+        } else {
+          const r = rs[i]!; const count = Math.max(0, r.count + delta);
+          if (count === 0 && !r.burstCount) rs.splice(i, 1);
+          else rs[i] = { ...r, count, me: mine ? delta > 0 : r.me };
+        }
         return { ...m, reactions: rs };
       }),
     })),

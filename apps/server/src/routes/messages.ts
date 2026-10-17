@@ -11,7 +11,7 @@ import { parseEmbeds } from '../lib/embeds';
 import { buildPoll } from '../services/polls';
 import { claimAttachments, saveUpload } from '../services/files';
 import { audit, visibleChannelRows } from '../services/guilds';
-import { createMessage, parseMentions, postSystemMessage } from '../services/messages';
+import { createMessage, parseMentions, postSystemMessage, consumeBurstQuota, resolveBurstColor } from '../services/messages';
 import { channelAccess, channelPermsLite, guildAccess, need } from '../services/perms';
 import { joinThread } from '../services/threads';
 import { hasSearchCriteria, searchMessages, searchQuerySchema } from '../services/search';
@@ -40,6 +40,9 @@ const sendBody = z.object({
   }).strict().optional(),
 }).strict();
 const emojiParam = z.string().min(1).max(100);
+/** Optional body for PUT …/reactions: `burst` sends a super reaction in `burstColor` (palette-checked). */
+const reactBody = z.object({ burst: z.boolean().optional(), burstColor: z.string().max(9).nullable().optional() }).strict();
+const burstQuery = z.object({ burst: z.enum(['true', 'false']).optional() });
 
 function parseEmoji(raw: string): { emoji: string; emojiId: string | null } {
   let e: string; try { e = decodeURIComponent(raw); } catch { throw badRequest('Invalid emoji'); } // malformed %-escapes must be a 400, not a 500
@@ -236,10 +239,12 @@ export function messageRoutes(app: FastifyInstance, ctx: Ctx) {
   });
 
   // ---------- reactions ----------
-  const reactionEvent = async (name: 'MESSAGE_REACTION_ADD' | 'MESSAGE_REACTION_REMOVE', channelId: string, messageId: string, userId: string, e: { emoji: string; emojiId: string | null }) =>
-    ctx.hub.toChannel(channelId, name, { messageId, channelId, userId, emoji: e.emoji, emojiId: e.emojiId });
+  const reactionEvent = async (name: 'MESSAGE_REACTION_ADD' | 'MESSAGE_REACTION_REMOVE', channelId: string, messageId: string, userId: string, e: { emoji: string; emojiId: string | null }, burst: boolean, burstColor: string | null) =>
+    ctx.hub.toChannel(channelId, name, { messageId, channelId, userId, emoji: e.emoji, emojiId: e.emojiId, burst, ...(burst && burstColor ? { burstColor } : {}) });
   app.put('/channels/:id/messages/:mid/reactions/:emoji/@me', async (req, reply) => {
     const p = parse(mm.extend({ emoji: emojiParam }), req.params);
+    const b = parse(reactBody, req.body);
+    const burst = b.burst ?? false;
     limitOrThrow(ctx.rl, `react:${req.userId}`, 30, 10_000, ctx.config.rateLimit);
     const a = await channelAccess(ctx, req.userId, p.id);
     need(a.perms, Perm.ADD_REACTIONS, Perm.READ_MESSAGE_HISTORY);
@@ -254,29 +259,35 @@ export function messageRoutes(app: FastifyInstance, ctx: Ctx) {
     }
     const [c] = await ctx.db.query('SELECT count(DISTINCT emoji)::int AS n, bool_or(emoji = $2) AS has FROM reactions WHERE message_id = $1', [p.mid, e.emoji]);
     if (!c.has && c.n >= 20) throw new ApiError(400, 'MAX_REACTIONS', 'Too many different reactions');
-    const ins = await ctx.db.query('INSERT INTO reactions (message_id, user_id, emoji, emoji_id) VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING RETURNING user_id', [p.mid, req.userId, e.emoji, e.emojiId]);
-    if (ins.length) await reactionEvent('MESSAGE_REACTION_ADD', p.id, p.mid, req.userId, e);
+    const burstColor = burst ? resolveBurstColor(b.burstColor) : null;
+    // Only a genuinely new burst charges the daily allowance; re-sending the same one is a no-op.
+    const [exists] = await ctx.db.query('SELECT 1 AS x FROM reactions WHERE message_id = $1 AND user_id = $2 AND emoji = $3 AND burst = $4', [p.mid, req.userId, e.emoji, burst]);
+    if (!exists && burst) await consumeBurstQuota(ctx, req.userId);
+    const ins = await ctx.db.query('INSERT INTO reactions (message_id, user_id, emoji, emoji_id, burst, burst_color) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING RETURNING user_id', [p.mid, req.userId, e.emoji, e.emojiId, burst, burstColor]);
+    if (ins.length) await reactionEvent('MESSAGE_REACTION_ADD', p.id, p.mid, req.userId, e, burst, burstColor);
     return reply.code(204).send();
   });
   app.delete('/channels/:id/messages/:mid/reactions/:emoji/:target', async (req, reply) => {
     const p = parse(mm.extend({ emoji: emojiParam, target: z.union([z.literal('@me'), idSchema]) }), req.params);
+    const q = parse(burstQuery, req.query);
+    const burst = q.burst === 'true';
     const a = await channelAccess(ctx, req.userId, p.id);
     const userId = p.target === '@me' ? req.userId : p.target;
     if (userId !== req.userId) need(a.perms, Perm.MANAGE_MESSAGES);
     const e = parseEmoji(p.emoji);
-    const del = await ctx.db.query('DELETE FROM reactions USING messages m WHERE reactions.message_id = $1 AND m.id = reactions.message_id AND m.channel_id = $2 AND reactions.user_id = $3 AND reactions.emoji = $4 RETURNING reactions.user_id', [p.mid, p.id, userId, e.emoji]);
-    if (del.length) await reactionEvent('MESSAGE_REACTION_REMOVE', p.id, p.mid, userId, e);
+    const del = await ctx.db.query('DELETE FROM reactions USING messages m WHERE reactions.message_id = $1 AND m.id = reactions.message_id AND m.channel_id = $2 AND reactions.user_id = $3 AND reactions.emoji = $4 AND reactions.burst = $5 RETURNING reactions.user_id, reactions.burst_color', [p.mid, p.id, userId, e.emoji, burst]);
+    if (del.length) await reactionEvent('MESSAGE_REACTION_REMOVE', p.id, p.mid, userId, e, burst, burst ? (del[0]!.burst_color as string | null) : null);
     return reply.code(204).send();
   });
   app.get('/channels/:id/messages/:mid/reactions/:emoji', async (req) => {
     const p = parse(mm.extend({ emoji: emojiParam }), req.params);
-    const q = parse(z.object({ limit: z.coerce.number().optional(), after: idSchema.optional() }), req.query);
+    const q = parse(z.object({ limit: z.coerce.number().optional(), after: idSchema.optional(), burst: z.enum(['true', 'false']).optional() }), req.query);
     const a = await channelAccess(ctx, req.userId, p.id);
     need(a.perms, Perm.READ_MESSAGE_HISTORY);
     const e = parseEmoji(p.emoji);
     const rows = await ctx.db.query(
-      `SELECT r.user_id FROM reactions r JOIN messages m ON m.id = r.message_id WHERE r.message_id = $1 AND m.channel_id = $2 AND r.emoji = $3 AND ($4::text IS NULL OR r.user_id > $4) ORDER BY r.user_id LIMIT $5`,
-      [p.mid, p.id, e.emoji, q.after ?? null, limitParam(q.limit)]);
+      `SELECT r.user_id FROM reactions r JOIN messages m ON m.id = r.message_id WHERE r.message_id = $1 AND m.channel_id = $2 AND r.emoji = $3 AND r.burst = $4 AND ($5::text IS NULL OR r.user_id > $5) ORDER BY r.user_id LIMIT $6`,
+      [p.mid, p.id, e.emoji, q.burst === 'true', q.after ?? null, limitParam(q.limit)]);
     const users = await usersByIds(ctx, rows.map((r) => r.user_id));
     return rows.map((r) => users.get(r.user_id)).filter(Boolean);
   });

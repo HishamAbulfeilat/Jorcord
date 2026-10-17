@@ -7,6 +7,10 @@ export const LIMITS = {
   maxEmojiPerServer: 250,
   maxStickersPerServer: 60,
   maxPins: 50,
+  /** Burst (super) reactions a user may send per day (rolling 24h). */
+  burstReactionsPerDay: 5,
+  /** Colours a burst reaction may use; the first is the default. */
+  burstColors: ['#5865F2', '#EB459E', '#FEE75C', '#57F287', '#ED4245'],
   maxStageSeats: 300,
   maxSoundsPerServer: 48,
   maxSoundBytes: 1024 * 1024,
