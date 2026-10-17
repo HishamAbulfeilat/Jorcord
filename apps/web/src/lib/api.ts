@@ -324,6 +324,22 @@ export const api = {
     putChannel: (channelId: Id, b: Partial<ChannelNotify>) => send<ChannelNotify & { channelId: Id }>({ method: 'PUT', path: `/users/@me/notification-settings/channels/${channelId}`, body: b }),
     reset: (scope: 'guilds' | 'channels', targetId: Id) => send({ method: 'DELETE', path: `/users/@me/notification-settings/${scope}/${targetId}` }),
   },
+  /** Instance super admin (404 for everyone else). */
+  admin: {
+    me: () => send<{ admin: true; userId: string; mfaEnabled: boolean; godModeUntil: string | null }>({ method: 'GET', path: '/admin/me' }),
+    godMode: (b: { enabled: boolean; password?: string; totp?: string }) => send<{ godModeUntil: string | null }>({ method: 'POST', path: '/admin/god-mode', body: b }),
+    joinGuild: (id: string) => send<{ ok: true; joined: boolean }>({ method: 'POST', path: `/admin/guilds/${id}/join` }),
+    audit: () => send<any[]>({ method: 'GET', path: '/admin/audit' }),
+    stats: () => send<Record<string, number>>({ method: 'GET', path: '/admin/stats' }),
+    users: (q = '', offset = 0) => send<any[]>({ method: 'GET', path: '/admin/users', query: { ...(q ? { q } : {}), offset: String(offset) } }),
+    user: (id: string) => send<any>({ method: 'GET', path: `/admin/users/${id}` }),
+    disable: (id: string) => send({ method: 'POST', path: `/admin/users/${id}/disable` }),
+    enable: (id: string) => send({ method: 'POST', path: `/admin/users/${id}/enable` }),
+    guilds: (q = '', offset = 0) => send<any[]>({ method: 'GET', path: '/admin/guilds', query: { ...(q ? { q } : {}), offset: String(offset) } }),
+    guild: (id: string) => send<any>({ method: 'GET', path: `/admin/guilds/${id}` }),
+    messages: (channelId: string, before?: string) => send<any[]>({ method: 'GET', path: `/admin/channels/${channelId}/messages`, query: before ? { before } : undefined }),
+    reports: () => send<any[]>({ method: 'GET', path: '/admin/reports' }),
+  },
   misc: {
     gifs: (q?: string) => send<any>({ method: 'GET', path: q ? '/gifs/search' : '/gifs/trending', query: q ? { q } : undefined }).then((x) => arr<GifResult>(x)),
     unfurl: (url: string) => send<any>({ method: 'GET', path: '/unfurl', query: { url } }),

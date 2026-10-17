@@ -71,7 +71,14 @@ describe('config', () => {
   });
   it('refuses weak JWT secrets in production', () => {
     expect(() => loadConfig({}, { NODE_ENV: 'production', JWT_SECRET: 'short-but-16-chars!' })).toThrow(/32/);
-    expect(() => loadConfig({}, { NODE_ENV: 'production', JWT_SECRET: 'x'.repeat(40), DATA_DIR: env.dir })).not.toThrow();
+    const lk = { LIVEKIT_API_KEY: 'prodkey', LIVEKIT_API_SECRET: 'y'.repeat(40) };
+    expect(() => loadConfig({}, { NODE_ENV: 'production', JWT_SECRET: 'x'.repeat(40), DATA_DIR: env.dir, ...lk })).not.toThrow();
+  });
+
+  it('refuses missing or default LiveKit credentials in production', () => {
+    const base = { NODE_ENV: 'production', JWT_SECRET: 'x'.repeat(40), DATA_DIR: env.dir };
+    expect(() => loadConfig({}, base)).toThrow(/LIVEKIT/);
+    expect(() => loadConfig({}, { ...base, LIVEKIT_API_KEY: 'devkey', LIVEKIT_API_SECRET: 'y'.repeat(40) })).toThrow(/LIVEKIT/);
   });
 });
 

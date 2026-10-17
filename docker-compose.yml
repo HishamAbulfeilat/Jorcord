@@ -41,6 +41,7 @@ services:
       S3_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-unused-without-s3}
       S3_FORCE_PATH_STYLE: "true"
       SMTP_URL: ${SMTP_URL:-}
+      SUPER_ADMIN_USER_ID: ${SUPER_ADMIN_USER_ID:-}
       MAIL_FROM: ${MAIL_FROM:-Jorcord <no-reply@localhost>}
       TENOR_API_KEY: ${TENOR_API_KEY:-}
       GIPHY_API_KEY: ${GIPHY_API_KEY:-}

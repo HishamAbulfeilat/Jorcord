@@ -47,6 +47,8 @@ export async function verifyGatewayToken(ctx: Ctx, token: string): Promise<{ use
 }
 
 export async function issueTokens(ctx: Ctx, userRow: any, req: FastifyRequest, existingSessionId?: string) {
+  // every login/register/refresh/MFA path ends here, so a disabled account can never get new tokens
+  if (userRow.disabled_at) throw forbidden('This account has been disabled', 'ACCOUNT_DISABLED');
   const sid = existingSessionId ?? snowflake();
   const refresh = `${sid}.${randomToken(32)}`;
   const exp = new Date(Date.now() + ctx.config.refreshTtlSec * 1000);

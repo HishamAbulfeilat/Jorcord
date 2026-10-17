@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { VoiceSettingsForm } from '@/voice/VoiceSettings';
 import { useQuery } from '@tanstack/react-query';
-import { Link2, Accessibility, Bell, Globe, Keyboard, LogOut, Mic, Palette, Shield, User as UserIcon, UserCircle, Monitor, Radio, Laptop, Smile, Code2, Lock } from 'lucide-react';
+import { Link2, Accessibility, Bell, Globe, Keyboard, LogOut, Mic, Palette, Shield, User as UserIcon, UserCircle, Monitor, Radio, Laptop, Smile, Code2, Lock, ShieldAlert } from 'lucide-react';
 import { PrivacyTab } from './PrivacyTab';
 import { ConnectionsTab } from './ConnectionsTab';
 import { AccountsSection } from './AccountsSection';
@@ -29,14 +29,17 @@ let lastTab = 'account';
 export function UserSettings({ initialTab }: { initialTab?: string }) {
   const navigate = useNavigate();
   const [tab, setTabRaw] = useState(initialTab ?? lastTab); const setTab = (x: string) => { lastTab = x; setTabRaw(x); }; const close = () => { lastTab = 'account'; useUI.getState().openSettings(null); };
+  // only the configured super admin gets a 200 here; everyone else gets 404 and never sees the entry
+  const isAdmin = !!useQuery({ queryKey: ['admin', 'me'], queryFn: api.admin.me, retry: false, staleTime: Infinity }).data?.admin;
   const groups = [
     { title: t('User Settings'), items: [{ id: 'account', label: t('My Account'), icon: UserIcon }, { id: 'profile', label: t('Profile'), icon: UserCircle }, { id: 'privacy', label: t('Privacy & Safety'), icon: Lock }, { id: 'connections', label: t('Connections'), icon: Link2 }, { id: 'security', label: t('Security & Devices'), icon: Shield }] },
     { title: t('App Settings'), items: [{ id: 'appearance', label: t('Appearance'), icon: Palette }, { id: 'accessibility', label: t('Accessibility'), icon: Accessibility }, { id: 'voice', label: t('Voice & Video'), icon: Mic }, { id: 'notifications', label: t('Notifications'), icon: Bell }, { id: 'keybinds', label: t('Keybinds'), icon: Keyboard }, { id: 'streamer', label: t('Streamer Mode'), icon: Radio }, { id: 'language', label: t('Language'), icon: Globe }, ...(isTauri() ? [{ id: 'desktop', label: t('Desktop App'), icon: Laptop }] : [])] },
     { title: t('Developers'), items: [{ id: 'developer', label: t('Developer Portal'), icon: Code2 }] },
+    ...(isAdmin ? [{ title: t('Instance'), items: [{ id: 'admin', label: t('Admin Dashboard'), icon: ShieldAlert }] }] : []),
     { items: [{ id: 'logout', label: t('Log Out'), icon: LogOut, danger: true }] },
   ];
   return (
-    <SettingsLayout title={t('User Settings')} groups={groups} tab={tab} onTab={(t) => { if (t === 'logout') { logout(); close(); } else if (t === 'developer') { close(); navigate('/developers'); } else setTab(t); }} onClose={close}>
+    <SettingsLayout title={t('User Settings')} groups={groups} tab={tab} onTab={(t) => { if (t === 'logout') { logout(); close(); } else if (t === 'developer') { close(); navigate('/developers'); } else if (t === 'admin') { close(); navigate('/admin'); } else setTab(t); }} onClose={close}>
       {tab === 'account' && <Account go={setTab} />}
       {tab === 'profile' && <Profile />}
       {tab === 'privacy' && <PrivacyTab />}
