@@ -25,6 +25,7 @@ import { ProfileCard } from '@/components/modals/Profile';
 import { Markdown } from '@/components/chat/Markdown';
 import { CosmeticsPicker } from './CosmeticsPicker';
 import { ServerProfiles } from './ServerProfiles';
+import { pickProfileGif } from '@/lib/profileGif';
 import { RegisteredGamesTab } from './RegisteredGamesTab';
 import { ProfileEffect, ServerTagBadge, plateClass } from '@/components/ui/Cosmetics';
 
@@ -86,11 +87,7 @@ function Profile() {
   const [f, setF] = useState(init); const [busy, setBusy] = useState(false);
   const dirty = JSON.stringify(f) !== JSON.stringify(init);
   const save = async () => { setBusy(true); try { const u = await api.users.patchMe({ displayName: f.displayName || null, pronouns: f.pronouns || null, bio: f.bio || null, avatar: f.avatar, banner: f.banner, accentColor: f.accentColor, themeColors: f.themeColors, avatarDecoration: f.avatarDecoration, profileEffect: f.profileEffect, namePlate: f.namePlate, serverTagGuildId: f.serverTagGuildId }); useData.getState().apply('USER_UPDATE', { ...me, ...u }); toast(t('Profile saved'), 'success'); } catch (e) { toastError(e); } setBusy(false); };
-  /** Open the GIF search; the picked GIF is fetched and re-hosted by the server, then staged in the form until Save. */
-  const pickGif = (kind: 'avatar' | 'banner') => useUI.getState().openModal({
-    kind: 'gifPicker', title: kind === 'avatar' ? t('Choose an avatar GIF') : t('Choose a banner GIF'),
-    onPick: (url) => { api.files.uploadImageFromUrl(kind, url).then((u) => setF((s) => ({ ...s, [kind]: u }))).catch(toastError); },
-  });
+  const pickGif = (kind: 'avatar' | 'banner') => pickProfileGif(kind, (u) => setF((x) => ({ ...x, [kind]: u })));
   return (<>
     <H1>{t('Profile')}</H1>
     <div className="flex flex-col gap-8 lg:flex-row"><div className="min-w-0 flex-1">
@@ -112,7 +109,7 @@ function PreviewCard({ me, f }: { me: any; f: any }) {
   const tg = useData((s) => (f.serverTagGuildId ? s.guilds[f.serverTagGuildId]?.guild : undefined));
   return <div className="overflow-hidden rounded-lg bg-[rgb(var(--modal-alt))]"><div className="relative h-[60px]" data-testid="preview-banner" style={{ background: headerBackground({ banner: f.banner, themeColors: f.themeColors, accentColor: f.accentColor }, f.banner ? fileUrl(f.banner) : null, f.accentColor) }}><ProfileEffect id={f.profileEffect} /></div>
     <div className="px-4 pb-4"><div className="-mt-10 mb-2 w-fit rounded-full border-[6px] border-[rgb(var(--modal-alt))]"><Avatar user={{ ...me, avatar: f.avatar }} size={80} decoration={f.avatarDecoration} /></div>
-      <div className="rounded-lg bg-[rgb(var(--rail)/0.5)] p-3"><div className={`text-xl font-bold text-header ${plateClass(f.namePlate)} ${f.namePlate ? 'px-2 py-1 -mx-1' : ''}`} data-testid="preview-name">{f.displayName || me.username}{tg?.tag && <> <ServerTagBadge tag={{ guildId: tg.id, tag: tg.tag, badge: tg.tagBadge ?? null }} /></>}</div><div className="text-sm">{me.username}{f.pronouns && <span className="text-muted"> • {f.pronouns}</span>}</div>{f.bio && <><hr className="my-3 border-divider" /><div className="text-xs font-bold uppercase text-header">{t('About Me')}</div><div className="text-sm"><Markdown content={f.bio} /></div></>}</div></div></div>;
+      <div className="rounded-lg bg-[rgb(var(--rail)/0.5)] p-3"><div className={`text-xl font-bold text-header ${plateClass(f.namePlate)} ${f.namePlate ? 'px-2 py-1 -mx-1' : ''}`} data-testid="preview-name">{f.displayName || me.username}{tg?.tag && <> <ServerTagBadge tag={{ guildId: tg.id, tag: tg.tag, badge: tg.tagBadge ?? null }} /></>}</div><div className="text-sm">{me.username}{f.pronouns && <span className="text-muted"> • {f.pronouns}</span>}</div>{(me.customStatus?.text || me.customStatus?.emoji) && <div className="mt-1 text-sm" data-testid="preview-status">{me.customStatus.emoji} {me.customStatus.text}</div>}{f.bio && <><hr className="my-3 border-divider" /><div className="text-xs font-bold uppercase text-header">{t('About Me')}</div><div className="text-sm"><Markdown content={f.bio} /></div></>}</div></div></div>;
 }
 
 function Security() {

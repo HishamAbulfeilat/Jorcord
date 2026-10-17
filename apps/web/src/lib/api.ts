@@ -344,7 +344,7 @@ export const api = {
     reports: () => send<any[]>({ method: 'GET', path: '/admin/reports' }),
   },
   misc: {
-    gifs: (q?: string) => send<any>({ method: 'GET', path: q ? '/gifs/search' : '/gifs/trending', query: q ? { q } : undefined }).then((x) => arr<GifResult>(x)),
+    gifs: (q?: string, offset = 0) => send<any>({ method: 'GET', path: q ? '/gifs/search' : '/gifs/trending', query: { ...(q ? { q } : {}), ...(offset ? { offset } : {}) } }).then((x) => arr<GifResult>(x)),
     unfurl: (url: string) => send<any>({ method: 'GET', path: '/unfurl', query: { url } }),
   },
 };

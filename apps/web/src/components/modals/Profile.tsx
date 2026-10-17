@@ -5,7 +5,7 @@ import { api } from '@/lib/api';
 import { useData, selfMember } from '@/stores/data';
 import { Perm } from '@jorcord/shared';
 import { useUI, toast, toastError } from '@/stores/ui';
-import { Avatar, PRESENCE_LABEL } from '@/components/ui/Avatar';
+import { Avatar, PRESENCE_LABEL, useHoverStill } from '@/components/ui/Avatar';
 import { cx, displayName, fileUrl, idColor, fmtStamp } from '@/lib/format';
 import { intToHex, effectivePerms } from '@/lib/perms';
 import { openDmWith, userMenu } from '@/lib/menus';
@@ -49,13 +49,14 @@ export function ProfileCard({ userId, guildId, compact }: { userId: string; guil
   const u = { ...cached, ...q.data } as NonNullable<typeof cached>;
   const prof = memberProfile(u, member);
   const trig = useMenuTrigger(() => userMenu(userId, guildId));
+  const bannerUrl = fileUrl(prof.banner); const hs = useHoverStill(bannerUrl);
   if (!u?.id) return <div className="p-6 text-center text-muted">{t('Loading…')}</div>;
   const isMe = me?.id === userId;
   const canModView = !!guildId && !isMe && !!member && modPerms(guildId);
-  const banner = fileUrl(prof.banner); const accent = u.accentColor ?? idColor(u.id);
+  const banner = hs.src; const accent = u.accentColor ?? idColor(u.id);
   const myRoles = member && roles ? member.roles.map((r) => roles[r]).filter((r) => r && r.id !== guildId).sort((a, b) => b.position - a.position) : [];
   return (
-    <div className="overflow-hidden rounded-lg bg-[rgb(var(--modal-alt))]" style={{ background: bodyBackground(u) }} data-theme-pair={isHexPair(u.themeColors) ? 'on' : 'off'} data-testid="profile-card" {...trig}>
+    <div className="overflow-hidden rounded-lg bg-[rgb(var(--modal-alt))]" style={{ background: bodyBackground(u) }} data-theme-pair={isHexPair(u.themeColors) ? 'on' : 'off'} data-testid="profile-card" {...trig} {...hs.bind}>
       <div className={cx("relative", compact ? 'h-[60px]' : 'h-[100px]')} data-banner={banner ? 'image' : isHexPair(u.themeColors) ? 'theme' : 'gradient'} style={{ background: headerBackground(u, banner, accent) }}><ProfileEffect id={u.profileEffect} /></div>
       <div className="relative px-4 pb-4">
         <div className="-mt-10 mb-1 flex items-end justify-between"><div className="rounded-full border-[6px] border-[rgb(var(--modal-alt))]"><Avatar user={u} memberAvatar={prof.avatar} size={80} presence ring="rgb(var(--modal-alt))" online={presence} /></div>
