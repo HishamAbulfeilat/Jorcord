@@ -295,6 +295,8 @@ export const api = {
     upload: (file: File) => { const f = new FormData(); f.append('file', file, file.name); return send<Attachment>({ method: 'POST', path: '/uploads', form: f }); },
     /** Upload an image and return the URL to store in avatar/icon/banner fields (the server rejects data: URIs). */
     uploadImage: (file: File) => { const f = new FormData(); f.append('file', file, file.name); return send<Attachment>({ method: 'POST', path: '/uploads', form: f }).then((a) => a.url); },
+    /** Stage an avatar/banner from a URL (the GIF picker); the server re-hosts it and returns the stored URL. */
+    uploadImageFromUrl: (kind: 'avatar' | 'banner', url: string) => send<{ url: string }>({ method: 'POST', path: `/users/@me/${kind}/from-url`, body: { url } }).then((r) => r.url),
   },
   voice: {
     token: (channelId: Id) => send<VoiceToken>({ method: 'POST', path: '/voice/token', body: { channelId } }),

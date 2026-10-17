@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { VoiceSettingsForm } from '@/voice/VoiceSettings';
 import { useQuery } from '@tanstack/react-query';
-import { Link2, Accessibility, Bell, Globe, Keyboard, LogOut, Mic, Palette, Shield, User as UserIcon, UserCircle, Monitor, Radio, Laptop, Smile, Code2, Lock, ShieldAlert } from 'lucide-react';
+import { Link2, Accessibility, Bell, Globe, Keyboard, LogOut, Mic, Palette, Shield, User as UserIcon, UserCircle, Monitor, Radio, Laptop, Smile, Code2, Lock, ShieldAlert, Film } from 'lucide-react';
 import { PrivacyTab } from './PrivacyTab';
 import { ConnectionsTab } from './ConnectionsTab';
 import { AccountsSection } from './AccountsSection';
@@ -81,13 +81,18 @@ function Profile() {
   const [f, setF] = useState(init); const [busy, setBusy] = useState(false);
   const dirty = JSON.stringify(f) !== JSON.stringify(init);
   const save = async () => { setBusy(true); try { const u = await api.users.patchMe({ displayName: f.displayName || null, pronouns: f.pronouns || null, bio: f.bio || null, avatar: f.avatar, banner: f.banner, accentColor: f.accentColor, themeColors: f.themeColors, avatarDecoration: f.avatarDecoration, profileEffect: f.profileEffect, namePlate: f.namePlate, serverTagGuildId: f.serverTagGuildId }); useData.getState().apply('USER_UPDATE', { ...me, ...u }); toast(t('Profile saved'), 'success'); } catch (e) { toastError(e); } setBusy(false); };
+  /** Open the GIF search; the picked GIF is fetched and re-hosted by the server, then staged in the form until Save. */
+  const pickGif = (kind: 'avatar' | 'banner') => useUI.getState().openModal({
+    kind: 'gifPicker', title: kind === 'avatar' ? t('Choose an avatar GIF') : t('Choose a banner GIF'),
+    onPick: (url) => { api.files.uploadImageFromUrl(kind, url).then((u) => setF((s) => ({ ...s, [kind]: u }))).catch(toastError); },
+  });
   return (<>
     <H1>{t('Profile')}</H1>
     <div className="flex flex-col gap-8 lg:flex-row"><div className="min-w-0 flex-1">
       <Field label={t('Display Name')}><input className="field" value={f.displayName} maxLength={32} onChange={(e) => setF({ ...f, displayName: e.target.value })} placeholder={me.username} /></Field>
       <Field label={t('Pronouns')}><input className="field" value={f.pronouns} maxLength={40} onChange={(e) => setF({ ...f, pronouns: e.target.value })} placeholder={t('Add your pronouns')} /></Field>
-      <div className="mb-4"><span className="label">{t('Avatar')}</span><IconPicker value={f.avatar} onChange={(v) => setF({ ...f, avatar: v })} size={72} label={t('Avatar')} /><span className="mt-1 block text-xs text-muted">{t('GIF and animated WebP avatars and banners are supported.')}</span></div>
-      <div className="mb-4"><span className="label">{t('Banner')}</span><div className="relative h-24 overflow-hidden rounded-lg" style={{ background: f.banner ? `center/cover url(${fileUrl(f.banner)})` : f.accentColor }}><label className="absolute inset-0 flex cursor-pointer items-center justify-center bg-black/40 text-sm font-semibold text-white opacity-0 hover:opacity-100 focus-within:opacity-100">{t('Change banner')}<input type="file" accept="image/*" className="sr-only" onChange={async (e) => { const file = e.target.files?.[0]; e.target.value = ''; if (!file) return; try { const url = await api.files.uploadImage(file); setF((s) => ({ ...s, banner: url })); } catch (err) { toastError(err); } }} /></label></div>{f.banner && <button className="mt-1 text-sm text-link" onClick={() => setF({ ...f, banner: null })}>{t('Remove banner')}</button>}</div>
+      <div className="mb-4"><span className="label">{t('Avatar')}</span><div className="flex flex-wrap items-center gap-2"><IconPicker value={f.avatar} onChange={(v) => setF({ ...f, avatar: v })} size={72} label={t('Avatar')} /><button type="button" className="btn btn-secondary" onClick={() => pickGif('avatar')}><Film size={16} />{t('Choose GIF')}</button></div><span className="mt-1 block text-xs text-muted">{t('GIF and animated WebP avatars and banners are supported.')}</span></div>
+      <div className="mb-4"><span className="label">{t('Banner')}</span><div className="relative h-24 overflow-hidden rounded-lg" style={{ background: f.banner ? `center/cover url(${fileUrl(f.banner)})` : f.accentColor }}><label className="absolute inset-0 flex cursor-pointer items-center justify-center bg-black/40 text-sm font-semibold text-white opacity-0 hover:opacity-100 focus-within:opacity-100">{t('Change banner')}<input type="file" accept="image/*" className="sr-only" onChange={async (e) => { const file = e.target.files?.[0]; e.target.value = ''; if (!file) return; try { const url = await api.files.uploadImage(file); setF((s) => ({ ...s, banner: url })); } catch (err) { toastError(err); } }} /></label></div><div className="mt-1 flex items-center gap-3"><button type="button" className="btn btn-secondary" onClick={() => pickGif('banner')}><Film size={16} />{t('Choose GIF')}</button>{f.banner && <button className="text-sm text-link" onClick={() => setF({ ...f, banner: null })}>{t('Remove banner')}</button>}</div></div>
       <ThemePicker value={f.accentColor} onChange={(c) => setF({ ...f, accentColor: c })} />
       <ThemeColorsPicker value={f.themeColors} onChange={(c) => setF({ ...f, themeColors: c })} />
       <CosmeticsPicker me={me} value={f} onChange={(v) => setF({ ...f, ...v })} />

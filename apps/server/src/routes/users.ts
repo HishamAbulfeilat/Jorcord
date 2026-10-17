@@ -9,6 +9,7 @@ import type { Ctx } from '../ctx';
 import { ApiError, badRequest, forbidden, notFound } from '../errors';
 import { assetUrl, idSchema, iso, parse } from '../lib/ids';
 import { limitOrThrow } from '../lib/ratelimit';
+import { storeImageFromUrl } from '../services/files';
 import { verifyPassword } from '../lib/crypto';
 import { verifyTotp } from '../lib/totp';
 import { clearVoiceState } from '../services/voice';
@@ -69,6 +70,19 @@ export function userRoutes(app: FastifyInstance, ctx: Ctx) {
     if (b.privacy && 'showActivity' in (b.privacy as object)) await ctx.hub.broadcastPresence(req.userId); // the activity switch takes effect at once
     return selfUserDTO(ctx, row);
   });
+
+  /**
+   * Stage an avatar/banner fetched from a URL (the "Choose GIF" picker): downloaded through the SSRF guard and stored
+   * like an upload, but not written to the profile — the returned URL is what the Save flow sends to PATCH /users/@me.
+   */
+  const profileImageFromUrl = z.object({ url: z.string().url().max(2048) }).strict();
+  const stageProfileImage = async (userId: string, kind: 'avatar' | 'banner', body: unknown) => {
+    const { url } = parse(profileImageFromUrl, body);
+    limitOrThrow(ctx.rl, `profile-image:${userId}`, 20, 60_000, ctx.config.rateLimit);
+    return { url: await storeImageFromUrl(ctx, userId, url, kind) };
+  };
+  app.post('/users/@me/avatar/from-url', async (req) => stageProfileImage(req.userId, 'avatar', req.body));
+  app.post('/users/@me/banner/from-url', async (req) => stageProfileImage(req.userId, 'banner', req.body));
 
   /**
    * Exact (case-insensitive) username lookup for "Add Friend". Accepts `name`, `@name` and the legacy `name#0`/`name#0000`.

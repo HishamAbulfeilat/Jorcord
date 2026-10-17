@@ -25,6 +25,7 @@ import { CustomStatusModal, FolderModal, NotifSettingsModal, OnboardingModal, Sh
 import { VoiceSettingsModal } from '@/voice/VoiceSettings';
 import { CreatePollModal, EventEditorModal, EventsModal, InteractionModal, PollVotersModal, ScreeningModal, StageModal, ThreadSettingsModal } from './PlatformModals';
 import { ForwardModal, InboxModal, ReportModal } from './SocialModals';
+import { EmojiPicker } from '@/components/chat/EmojiPicker';
 import { t } from '@/i18n';
 
 const TEMPLATES = [
@@ -35,6 +36,15 @@ const TEMPLATES = [
 export const fileToDataUrl = (f: File): Promise<string> => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result)); r.onerror = rej; r.readAsDataURL(f); });
 
 export async function uploadImageFile(f: File): Promise<string> { return api.files.uploadImage(f); }
+
+/** GIF search (Tenor/Giphy) in a modal; `onPick` receives the chosen GIF URL (re-hosted by the caller). */
+export function GifPickerModal({ title = 'Choose a GIF', onPick, close }: { title?: string; onPick: (url: string) => void; close: () => void }) {
+  return (
+    <Modal title={title} width={420} onClose={close} padded={false}>
+      <EmojiPicker allowGif gifOnly onPick={(e) => { if (e.gif) { onPick(e.gif); close(); } }} />
+    </Modal>
+  );
+}
 
 export function IconPicker({ value, onChange, label = 'Upload', size = 80 }: { value: string | null; onChange: (v: string | null) => void; label?: string; size?: number }) {
   const ref = useRef<HTMLInputElement>(null); const [busy, setBusy] = useState(false);
@@ -245,6 +255,7 @@ export function ModalHost() {
     case 'screening': return <ScreeningModal guildId={m.guildId} close={close} />;
     case 'threadSettings': return <ThreadSettingsModal channelId={m.channelId} close={close} />;
     case 'stage': return <StageModal channelId={m.channelId} mode={m.mode} close={close} />;
+    case 'gifPicker': return <GifPickerModal title={m.title} onPick={m.onPick} close={close} />;
   }
 }
 void Plus; void Copy; void Mic;

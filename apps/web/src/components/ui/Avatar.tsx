@@ -3,7 +3,6 @@ import { cx, fileUrl, idColor, initials, displayName } from '@/lib/format';
 import { useData } from '@/stores/data';
 import { Moon, Minus } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { useUI } from '@/stores/ui';
 import { t, T } from '@/i18n';
 import { AvatarDecoration } from './Cosmetics';
 
@@ -45,8 +44,8 @@ export function Avatar({ user, size = 40, presence, ring, className = '', member
   const liveDeco = useData((s) => (user ? s.users[user.id]?.avatarDecoration : undefined));
   const live = useData((s) => (presence && user ? s.presences[user.id] : undefined));
   const url = fileUrl(memberAvatar ?? user?.avatar);
-  const autoplay = useUI((s) => s.prefs.autoplayGifs); const [hover, setHover] = useState(false);
-  const animated = isAnimatedUrl(url); const still = useStill(url, animated && !autoplay && !hover);
+  const [hover, setHover] = useState(false); // animated avatars are a static first frame until hovered (Discord-style)
+  const animated = isAnimatedUrl(url); const still = useStill(url, animated && !hover);
   const name = user ? displayName(user) : '?';
   return (
     <span className={cx('relative inline-flex shrink-0 select-none', className)} style={{ width: size, height: size }} onMouseEnter={animated ? () => setHover(true) : undefined} onMouseLeave={animated ? () => setHover(false) : undefined} data-animated={animated || undefined}>

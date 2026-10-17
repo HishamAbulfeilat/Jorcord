@@ -15,8 +15,8 @@ const RKEY = 'jorcord.recent.emoji';
 const recent = (): string[] => { try { return JSON.parse(localStorage.getItem(RKEY) ?? '[]'); } catch { return []; } };
 const pushRecent = (c: string) => { try { localStorage.setItem(RKEY, JSON.stringify([c, ...recent().filter((x) => x !== c)].slice(0, 24))); } catch { /* */ } };
 
-export function EmojiPicker({ onPick, guildId, allowGif = false, allowSticker = false }: { onPick: (e: EmojiPick) => void; guildId?: string; allowGif?: boolean; allowSticker?: boolean }) {
-  const [q, setQ] = useState(''); const [tab, setTab] = useState<'emoji' | 'gif' | 'sticker'>('emoji'); const [hover, setHover] = useState<string>('');
+export function EmojiPicker({ onPick, guildId, allowGif = false, allowSticker = false, initialTab = 'emoji', gifOnly = false }: { onPick: (e: EmojiPick) => void; guildId?: string; allowGif?: boolean; allowSticker?: boolean; initialTab?: 'emoji' | 'gif' | 'sticker'; gifOnly?: boolean }) {
+  const [q, setQ] = useState(''); const [tab, setTab] = useState<'emoji' | 'gif' | 'sticker'>(gifOnly ? 'gif' : initialTab); const [hover, setHover] = useState<string>('');
   const guilds = useData((s) => s.guilds); const order = useData((s) => s.guildOrder);
   const dq = useDebounced(q, 250);
   const custom = useMemo(() => order.map((id) => guilds[id]).filter((g) => g && g.emojis.length), [guilds, order]);
@@ -36,10 +36,10 @@ export function EmojiPicker({ onPick, guildId, allowGif = false, allowSticker = 
   const pick = useCallback((e: EmojiPick) => { if (e.char) pushRecent(e.char); onPickRef.current(e); }, []);
   const setHoverStable = useCallback((v: string) => setHover(v), []);
   return (
-    <div className="flex h-[min(420px,70dvh)] w-full flex-col overflow-hidden rounded-lg bg-float text-normal shadow-elev sm:w-[360px]" role="dialog" aria-label="Emoji picker">
+    <div className="flex h-[min(420px,70dvh)] w-full flex-col overflow-hidden rounded-lg bg-float text-normal shadow-elev sm:w-[360px]" role="dialog" aria-label={gifOnly ? t('GIF picker') : 'Emoji picker'}>
       <div className="flex items-center gap-2 p-2">
         <div className="flex flex-1 items-center rounded bg-rail px-2"><input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder={tab === 'gif' ? 'Search GIFs' : 'Find the perfect emoji'} aria-label="Search" className="h-8 min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted" /><Search size={16} className="text-muted" /></div>
-        {allowGif && <div className="flex gap-1" role="tablist" aria-label={t('Picker type')}>
+        {allowGif && !gifOnly && <div className="flex gap-1" role="tablist" aria-label={t('Picker type')}>
           <button aria-pressed={tab === 'emoji'} aria-label="Emoji" onClick={() => setTab('emoji')} className={cx('rounded p-1.5', tab === 'emoji' ? 'bg-active text-header' : 'text-interactive')}><Smile size={18} /></button>
           <button aria-pressed={tab === 'gif'} aria-label="GIFs" onClick={() => setTab('gif')} className={cx('rounded p-1.5', tab === 'gif' ? 'bg-active text-header' : 'text-interactive')}><Film size={18} /></button>
           {allowSticker && <button aria-pressed={tab === 'sticker'} aria-label={t('Stickers')} onClick={() => setTab('sticker')} className={cx('rounded p-1.5', tab === 'sticker' ? 'bg-active text-header' : 'text-interactive')}><StickerIcon size={18} /></button>}

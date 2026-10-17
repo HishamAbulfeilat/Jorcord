@@ -57,7 +57,8 @@ export type ModalSpec =
   | { kind: 'interactionModal'; interactionId: Id; channelId: Id; modal: Modal }
   | { kind: 'createPoll'; channelId: Id } | { kind: 'pollVoters'; channelId: Id; messageId: Id; answerId?: number }
   | { kind: 'events'; guildId: Id } | { kind: 'eventEditor'; guildId: Id; eventId?: Id; channelId?: Id }
-  | { kind: 'customize'; guildId: Id } | { kind: 'followChannel'; channelId: Id }| { kind: 'forward'; message: Message } | { kind: 'report'; messageId: Id; guildId: Id; channelId: Id } | { kind: 'modView'; guildId: Id; userId: Id } | { kind: 'inbox'; tab?: 'mentions' | 'saved' | 'reminders' } | { kind: 'screening'; guildId: Id } | { kind: 'threadSettings'; channelId: Id } | { kind: 'stage'; channelId: Id; mode: 'start' | 'edit' };
+  | { kind: 'customize'; guildId: Id } | { kind: 'followChannel'; channelId: Id }| { kind: 'forward'; message: Message } | { kind: 'report'; messageId: Id; guildId: Id; channelId: Id } | { kind: 'modView'; guildId: Id; userId: Id } | { kind: 'inbox'; tab?: 'mentions' | 'saved' | 'reminders' } | { kind: 'screening'; guildId: Id } | { kind: 'threadSettings'; channelId: Id } | { kind: 'stage'; channelId: Id; mode: 'start' | 'edit' }
+  | { kind: 'gifPicker'; title?: string; onPick: (url: string) => void };
 export type SettingsSpec = { kind: 'user'; tab?: string } | { kind: 'guild'; guildId: Id; tab?: string } | null;
 export interface MenuItem { label?: string; icon?: any; onClick?: () => void; danger?: boolean; separator?: boolean; checked?: boolean; disabled?: boolean; hint?: string; children?: MenuItem[] }
 export interface Toast { id: number; kind: 'info' | 'success' | 'error'; text: string }
