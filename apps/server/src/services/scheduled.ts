@@ -1,14 +1,50 @@
-import { ScheduledEventEntityType as ET, ScheduledEventStatus as ST, snowflake, type ScheduledEvent } from '@jorcord/shared';
+import { ScheduledEventEntityType as ET, ScheduledEventStatus as ST, snowflake, type ScheduledEvent, type RecurrenceRule } from '@jorcord/shared';
 import type { Ctx } from '../ctx';
 import { iso } from '../lib/ids';
 import { audit } from './guilds';
 import { endStage, startStage } from './stage';
 
+/** Pure function: compute the next `n` occurrences from a recurrence rule and start time. */
+export function nextOccurrences(rule: RecurrenceRule, start: Date, n: number): Date[] {
+  const out: Date[] = [];
+  let current = new Date(start.getTime());
+  let generated = 0;
+
+  const maxCount = rule.count ?? 52;
+  const untilDate = rule.until ? new Date(rule.until) : null;
+  const interval = Math.max(1, Math.min(12, rule.interval ?? 1));
+
+  while (generated < n && generated < maxCount) {
+    // advance to next occurrence based on frequency
+    switch (rule.frequency) {
+      case 'daily':
+        current = new Date(current.getTime() + interval * 24 * 60 * 60 * 1000);
+        break;
+      case 'weekly':
+        current = new Date(current.getTime() + interval * 7 * 24 * 60 * 60 * 1000);
+        break;
+      case 'monthly':
+        // Add months preserving day of month (handles month-end correctly)
+        current = new Date(current.getFullYear(), current.getMonth() + interval, current.getDate(), current.getHours(), current.getMinutes(), current.getSeconds());
+        break;
+    }
+
+    if (untilDate && current > untilDate) break;
+    out.push(new Date(current.getTime()));
+    generated++;
+  }
+
+  return out;
+}
+
 export function eventDTO(r: any, userCount: number, interested?: boolean): ScheduledEvent {
+  const rule = r.recurrence_rule as RecurrenceRule | null;
+  const nextOccs = rule ? nextOccurrences(rule, new Date(r.scheduled_start), 5).map((d) => d.toISOString()) : undefined;
   return {
     id: r.id, guildId: r.guild_id, channelId: r.channel_id ?? null, creatorId: r.creator_id, name: r.name, description: r.description ?? null,
     scheduledStartTime: iso(r.scheduled_start)!, scheduledEndTime: iso(r.scheduled_end), privacyLevel: 2, status: r.status, entityType: r.entity_type,
-    location: r.location ?? null, image: r.image ?? null, userCount, ...(interested !== undefined ? { interested } : {}),
+    location: r.location ?? null, image: r.image ?? null, userCount, recurrenceRule: rule ?? null, nextOccurrences: nextOccs,
+    ...(interested !== undefined ? { interested } : {}),
   };
 }
 export async function loadEventDTO(ctx: Ctx, row: any, viewerId?: string): Promise<ScheduledEvent> {

@@ -29,7 +29,7 @@ describe('datetime-local conversion', () => {
 });
 
 describe('validateEvent (mirrors the server rules)', () => {
-  const base = { name: ' Game night ', description: ' fun ', entityType: 2, channelId: 'c1', location: '', start: '2026-10-12T18:00', end: '' };
+  const base = { name: ' Game night ', description: ' fun ', entityType: 2, channelId: 'c1', location: '', start: '2026-10-12T18:00', end: '', recurrenceRule: null };
   it('voice/stage events need a channel and a future start', () => {
     const r = validateEvent(base, now); expect(r).toMatchObject({ ok: true, body: { name: 'Game night', description: 'fun', channelId: 'c1', location: null, scheduledEndTime: null, privacyLevel: 2, entityType: 2 } });
     expect(validateEvent({ ...base, channelId: '' }, now)).toEqual({ ok: false, error: 'Choose a channel' });
@@ -44,4 +44,14 @@ describe('validateEvent (mirrors the server rules)', () => {
     expect(validateEvent({ ...ext, end: '' }, now)).toEqual({ ok: false, error: 'External events need an end time' });
   });
   it('the end must follow the start', () => { expect(validateEvent({ ...base, end: '2026-10-12T17:00' }, now)).toEqual({ ok: false, error: 'The end time must be after the start time' }); });
+  it('recurrence: null when not set, included when set', () => {
+    const r = validateEvent({ ...base, recurrenceRule: null }, now);
+    expect(r).toMatchObject({ ok: true, body: { recurrenceRule: null } });
+    const withRec = validateEvent({ ...base, recurrenceRule: { frequency: 'weekly', interval: 2, until: '' } }, now);
+    expect(withRec).toMatchObject({ ok: true, body: { recurrenceRule: { frequency: 'weekly', interval: 2 } } });
+  });
+  it('recurrence: until must be after start', () => {
+    const r = validateEvent({ ...base, recurrenceRule: { frequency: 'daily', interval: 1, until: '2026-10-12T17:00' } }, now);
+    expect(r).toEqual({ ok: false, error: 'The repeat end date must be after the start time' });
+  });
 });

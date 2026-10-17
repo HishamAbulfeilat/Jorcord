@@ -34,11 +34,21 @@ export function normalizeServerUrl(input: string): string | null {
   } catch { return null; }
 }
 
+/**
+ * The one Jorcord server every packaged build talks to (desktop, Android/iOS, GitHub Pages), set at build time with
+ * VITE_SERVER_URL. When set, those builds never show the "enter a server" screen and cannot be pointed elsewhere.
+ * A web bundle served by the server itself still uses its own origin (same server).
+ */
+export const FIXED_SERVER: string | null = normalizeServerUrl(String(import.meta.env.VITE_SERVER_URL ?? ''));
+const usesFixedServer = () => !!FIXED_SERVER && (isNative() || isStaticHost());
+
 export function getServerUrl(): string {
+  if (usesFixedServer()) return FIXED_SERVER!;
   if (cached === undefined) { try { cached = localStorage.getItem(KEY) || null; } catch { cached = null; } }
   return cached ?? '';
 }
 export function setServerUrl(url: string | null) {
+  if (usesFixedServer()) return; // single-server builds: the address is not user-changeable
   cached = url || null;
   try { url ? localStorage.setItem(KEY, url) : localStorage.removeItem(KEY); } catch { /* private mode */ }
   listeners.forEach((f) => f());

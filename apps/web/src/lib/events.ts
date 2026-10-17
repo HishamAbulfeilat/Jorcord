@@ -25,9 +25,9 @@ export function isoToLocalInput(iso: string | null | undefined): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
-export interface EventDraft { name: string; description: string; entityType: number; channelId: string; location: string; start: string; end: string }
+export interface EventDraft { name: string; description: string; entityType: number; channelId: string; location: string; start: string; end: string; recurrenceRule: { frequency: 'daily' | 'weekly' | 'monthly'; interval: number; until: string } | null }
 /** Validates a draft against the server rules (contract: external events need a location + end time; channel events need a channel; start in the future). */
-export function validateEvent(d: EventDraft, now = Date.now()): { ok: true; body: { name: string; description: string | null; entityType: number; channelId: string | null; location: string | null; scheduledStartTime: string; scheduledEndTime: string | null; privacyLevel: 2 } } | { ok: false; error: string } {
+export function validateEvent(d: EventDraft, now = Date.now()): { ok: true; body: { name: string; description: string | null; entityType: number; channelId: string | null; location: string | null; scheduledStartTime: string; scheduledEndTime: string | null; privacyLevel: 2; recurrenceRule: { frequency: 'daily' | 'weekly' | 'monthly'; interval: number; until?: string } | null } } | { ok: false; error: string } {
   const name = d.name.trim(); const start = localInputToIso(d.start); const end = localInputToIso(d.end);
   if (!name) return { ok: false, error: 'Give your event a name' };
   if (!start) return { ok: false, error: 'Pick a start time' };
@@ -37,7 +37,14 @@ export function validateEvent(d: EventDraft, now = Date.now()): { ok: true; body
     if (!d.location.trim()) return { ok: false, error: 'Add a location' };
     if (!end) return { ok: false, error: 'External events need an end time' };
   } else if (!d.channelId) return { ok: false, error: 'Choose a channel' };
-  return { ok: true, body: { name, description: d.description.trim() || null, entityType: d.entityType, channelId: d.entityType === ET.EXTERNAL ? null : d.channelId, location: d.entityType === ET.EXTERNAL ? d.location.trim() : null, scheduledStartTime: start, scheduledEndTime: end, privacyLevel: 2 } };
+  let recurrenceRule: { frequency: 'daily' | 'weekly' | 'monthly'; interval: number; until?: string } | null = null;
+  if (d.recurrenceRule) {
+    const r = d.recurrenceRule;
+    const untilIso = localInputToIso(r.until);
+    if (untilIso && Date.parse(untilIso) <= Date.parse(start)) return { ok: false, error: 'The repeat end date must be after the start time' };
+    recurrenceRule = { frequency: r.frequency, interval: r.interval, ...(untilIso ? { until: untilIso } : {}) };
+  }
+  return { ok: true, body: { name, description: d.description.trim() || null, entityType: d.entityType, channelId: d.entityType === ET.EXTERNAL ? null : d.channelId, location: d.entityType === ET.EXTERNAL ? d.location.trim() : null, scheduledStartTime: start, scheduledEndTime: end, privacyLevel: 2, recurrenceRule } };
 }
 
 /** "Today at 6:30 PM", "Tomorrow", else a short date. `fmtTime` is injected so tests do not depend on the locale. */

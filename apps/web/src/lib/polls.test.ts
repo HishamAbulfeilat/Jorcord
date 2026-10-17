@@ -10,7 +10,7 @@ describe('poll votes', () => {
     const b = applyPollVote(a, 2, -1, true); expect(b.answers[1]).toMatchObject({ count: 0, meVoted: false }); expect(b.totalVotes).toBe(3);
     expect(applyPollVote(poll({ totalVotes: 2 }), 1, 1, false).totalVotes).toBe(3); // never below the biggest answer
     const c = applyPollVote(poll(), 1, 1, false); expect(c.answers[0]!.meVoted).toBe(false); expect(c.answers[0]!.count).toBe(3);
-    expect(applyPollVote(poll(), 99, 1, true)).toEqual(poll()); // unknown answer: untouched
+    const same = poll(); expect(applyPollVote(same, 99, 1, true)).toEqual(same); // unknown answer: untouched (one fixture: poll() stamps expiry from Date.now())
     expect(applyPollVote(poll({ answers: [{ id: 1, text: 'a', count: 0, meVoted: false }], totalVotes: 0 }), 1, -1, false).answers[0]!.count).toBe(0); // never negative
   });
   it('a broadcast update keeps what we know about my votes', () => {

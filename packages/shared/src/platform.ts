@@ -120,9 +120,17 @@ export interface CreatePoll { question: string; answers: { text: string; emoji?:
 // ---------- scheduled events ----------
 export const ScheduledEventStatus = { SCHEDULED: 1, ACTIVE: 2, COMPLETED: 3, CANCELED: 4 } as const;
 export const ScheduledEventEntityType = { STAGE_INSTANCE: 1, VOICE: 2, EXTERNAL: 3 } as const;
+export type RecurrenceFrequency = 'daily' | 'weekly' | 'monthly';
+export interface RecurrenceRule {
+  frequency: RecurrenceFrequency;
+  interval: number; // 1-12
+  until?: string; // ISO datetime
+  count?: number; // 1-52
+}
 export interface ScheduledEvent {
   id: Id; guildId: Id; channelId: Id | null; creatorId: Id; name: string; description: string | null; scheduledStartTime: string; scheduledEndTime: string | null;
   privacyLevel: 2; status: number; entityType: number; location: string | null; image: string | null; userCount: number; interested?: boolean;
+  recurrenceRule?: RecurrenceRule | null; nextOccurrences?: string[];
 }
 
 // ---------- stage instances ----------
