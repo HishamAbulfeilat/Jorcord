@@ -130,7 +130,7 @@ function onMessageCreate(m: Message) {
     const ch = findChannel(data, m.channelId);
     const gm = m.guildId ? data.guilds[m.guildId]?.members[m.author.id] : undefined;
     const preview = toPlain(parseInline(m.content)).slice(0, 200);
-    if (prefs.overlayEnabled) void emitOverlayToast({ id: m.id, author: displayName(m.author, gm), channel: m.guildId ? ch?.name ?? null : null, text: preview });
+    if (prefs.overlayEnabled && !(streaming && prefs.streamerNoNotifications)) void emitOverlayToast({ id: m.id, author: displayName(m.author, gm), channel: m.guildId ? ch?.name ?? null : null, text: preview });
     if (prefs.notificationSounds && !(streaming && prefs.streamerNoSounds)) playSound('message');
     if (prefs.desktopNotifications && !(streaming && prefs.streamerNoNotifications) && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
       try {
