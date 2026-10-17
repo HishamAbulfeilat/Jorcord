@@ -5,18 +5,29 @@ import { channelAccess } from './perms';
 
 export const VOICE_TYPES = ['voice', 'stage', 'dm', 'group_dm'];
 
-export const emptyState = (userId: string): VoiceState => ({ userId, guildId: null, channelId: null, selfMute: false, selfDeaf: false, serverMute: false, serverDeaf: false, video: false, streaming: false, suppress: false, requestToSpeakAt: null });
+export const emptyState = (userId: string): VoiceState => ({ userId, guildId: null, channelId: null, selfMute: false, selfDeaf: false, serverMute: false, serverDeaf: false, video: false, streaming: false, suppress: false, requestToSpeakAt: null, watching: null, streamViewerLimit: null });
 
-const leaveState = (prev: VoiceState): VoiceState => ({ ...prev, channelId: null, video: false, streaming: false, requestToSpeakAt: null });
+const leaveState = (prev: VoiceState): VoiceState => ({ ...prev, channelId: null, video: false, streaming: false, requestToSpeakAt: null, watching: null, streamViewerLimit: null });
 
 /** Push a voice state to everyone who can see the channel. */
 export const publishVoice = (ctx: Ctx, channelId: string, state: VoiceState) => ctx.hub.toChannel(channelId, 'VOICE_STATE_UPDATE', state);
+
+/** Drop everyone watching `streamerId` in `channelId` (their stream ended or they left). Publishes each change. */
+async function clearWatchers(ctx: Ctx, channelId: string, streamerId: string) {
+  for (const s of await ctx.voice.inChannel(channelId)) {
+    if (s.watching !== streamerId) continue;
+    const next = { ...s, watching: null };
+    await ctx.voice.set(next);
+    await publishVoice(ctx, channelId, next);
+  }
+}
 
 export async function clearVoiceState(ctx: Ctx, userId: string) {
   const prev = await ctx.voice.get(userId);
   if (!prev?.channelId) return;
   await ctx.voice.delete(userId);
   await publishVoice(ctx, prev.channelId, leaveState(prev));
+  if (prev.streaming) await clearWatchers(ctx, prev.channelId, userId);
 }
 
 /**
@@ -83,10 +94,14 @@ export async function updateVoiceState(ctx: Ctx, userId: string, p: VoiceStateUp
     // a stage speaker invited by a moderator stays unsuppressed while they toggle mute etc.
     suppress: stage && (inChannel ? prev!.suppress : !has(a.perms, Perm.MUTE_MEMBERS)),
     requestToSpeakAt: inChannel ? prev!.requestToSpeakAt ?? null : null,
+    watching: inChannel ? prev!.watching ?? null : null,
+    streamViewerLimit: inChannel ? prev!.streamViewerLimit ?? null : null,
   };
+  const streamEnded = !!prev?.streaming && (!state.streaming || prev.channelId !== p.channelId) && !!prev.channelId;
   await ctx.voice.set(state);
   if (prev?.channelId && prev.channelId !== p.channelId) await publishVoice(ctx, prev.channelId, leaveState(prev));
   await publishVoice(ctx, p.channelId, state);
+  if (streamEnded) await clearWatchers(ctx, prev!.channelId!, userId);
   if (alone && (a.channel.type === 'dm' || a.channel.type === 'group_dm')) ctx.push.notifyCall(a.channel, userId);
 }
 
@@ -111,6 +126,7 @@ export async function disconnectMember(ctx: Ctx, targetId: string) {
   await ctx.voice.delete(targetId);
   await ctx.livekit.remove(st.channelId, targetId);
   await publishVoice(ctx, st.channelId, leaveState(st));
+  if (st.streaming) await clearWatchers(ctx, st.channelId, targetId);
   return st;
 }
 
