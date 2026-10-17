@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { ALL_PERMS, LIMITS, Perm, has, snowflake, type Invite } from '@jorcord/shared';
 import type { Ctx } from '../ctx';
+import { isSuperAdminId } from '../services/godmode';
 import { clearServerTag } from '../services/cosmetics';
 import { bumpDaily } from './guildextras';
 import { assertInvitesOpen, detectRaid } from '../services/safety';
@@ -274,6 +275,7 @@ export function memberRoutes(app: FastifyInstance, ctx: Ctx) {
     const actor = await guildAccess(ctx, req.userId, p.id);
     need(guildPerms(actor), Perm.BAN_MEMBERS);
     if (p.userId === req.userId) throw badRequest('Cannot ban yourself');
+    if (isSuperAdminId(ctx, p.userId)) throw forbidden('Cannot ban the instance administrator', 'HIERARCHY');
     const [u] = await ctx.db.query('SELECT id FROM users WHERE id = $1', [p.userId]);
     if (!u) throw notFound('User');
     const [g] = await ctx.db.query('SELECT owner_id FROM guilds WHERE id = $1', [p.id]);

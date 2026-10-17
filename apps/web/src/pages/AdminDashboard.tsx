@@ -1,12 +1,12 @@
 /** Instance super admin dashboard at /admin: stats, every user and server, read-only message viewer, reports, account disable. */
-import { useState } from 'react';
-import { Link, Navigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Ban, CheckCircle2, Flag, Hash, LayoutDashboard, Server, ShieldAlert, Users } from 'lucide-react';
+import { ArrowLeft, Ban, CheckCircle2, Flag, Hash, LayoutDashboard, LogIn, ScrollText, Server, ShieldAlert, Users, Zap } from 'lucide-react';
 import { api } from '@/lib/api';
 import { toast, toastError } from '@/stores/ui';
 
-type Tab = 'overview' | 'users' | 'servers' | 'reports';
+type Tab = 'overview' | 'users' | 'servers' | 'reports' | 'audit';
 const fmt = (d?: string | null) => (d ? new Date(d).toLocaleString() : '—');
 const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(' ');
 
@@ -17,7 +17,7 @@ export function AdminDashboard() {
   if (!me.data?.admin) return <Navigate to="/channels/@me" replace />;
   const tabs: { id: Tab; label: string; icon: typeof Users }[] = [
     { id: 'overview', label: 'Overview', icon: LayoutDashboard }, { id: 'users', label: 'Users', icon: Users },
-    { id: 'servers', label: 'Servers', icon: Server }, { id: 'reports', label: 'Reports', icon: Flag },
+    { id: 'servers', label: 'Servers', icon: Server }, { id: 'reports', label: 'Reports', icon: Flag }, { id: 'audit', label: 'Admin log', icon: ScrollText },
   ];
   return (
     <div className="flex h-full min-h-0 bg-chat text-normal" data-testid="admin-dashboard">
@@ -37,10 +37,12 @@ export function AdminDashboard() {
             This account can see everything. Turn on two-factor authentication in User Settings → My Account to protect it.
           </div>
         )}
+        <GodMode until={me.data.godModeUntil} mfa={me.data.mfaEnabled} />
         {tab === 'overview' && <Overview />}
         {tab === 'users' && <UsersTab />}
         {tab === 'servers' && <ServersTab />}
         {tab === 'reports' && <ReportsTab />}
+        {tab === 'audit' && <AuditTab />}
       </main>
     </div>
   );
@@ -154,6 +156,7 @@ function ServerDetail({ id, onBack }: { id: string; onBack: () => void }) {
       <button type="button" onClick={onBack} className="mb-4 flex items-center gap-1 text-sm text-muted hover:text-normal"><ArrowLeft size={14} /> All servers</button>
       <h1 className="text-xl font-semibold">{g.name}</h1>
       <p className="mb-4 text-sm text-muted">ID {g.id} · owner @{g.ownerName} · created {fmt(g.createdAt)} · {g.members.length} members</p>
+      <JoinButton guildId={g.id} firstChannel={text[0]?.id} />
       <div className="flex min-h-0 gap-4">
         <div className="w-56 shrink-0">
           <h2 className="mb-2 font-semibold">Channels</h2>
@@ -201,6 +204,88 @@ function ReportsTab() {
       <h1 className="mb-4 text-xl font-semibold">Reports</h1>
       {data.length === 0 && <p className="text-muted">No reports.</p>}
       <ul className="space-y-2 text-sm">{data.map((r: any) => <li key={r.id} className="rounded bg-side p-3"><pre className="whitespace-pre-wrap break-words text-xs">{JSON.stringify(r, null, 2)}</pre></li>)}</ul>
+    </section>
+  );
+}
+
+function useGodActive() {
+  const { data } = useQuery({ queryKey: ['admin', 'me'], queryFn: api.admin.me, retry: false });
+  const until = data?.godModeUntil ? Date.parse(data.godModeUntil) : 0;
+  return until > Date.now() ? until : 0;
+}
+
+/** God mode banner: off → re-authenticate to turn on (60 min); on → countdown and turn off. */
+function GodMode({ until, mfa }: { until: string | null; mfa: boolean }) {
+  const qc = useQueryClient();
+  const [open, setOpen] = useState(false); const [password, setPassword] = useState(''); const [totp, setTotp] = useState('');
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => { const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t); }, []);
+  const left = Math.max(0, (until ? Date.parse(until) : 0) - now); const on = left > 0;
+  useEffect(() => { if (until && !on) void qc.invalidateQueries({ queryKey: ['admin', 'me'] }); }, [on, until, qc]);
+  const toggle = async (enabled: boolean) => {
+    try {
+      await api.admin.godMode(enabled ? { enabled, password, ...(mfa ? { totp } : {}) } : { enabled });
+      setOpen(false); setPassword(''); setTotp('');
+      toast(enabled ? 'God mode on for 60 minutes. Every change you make is logged.' : 'God mode off');
+      await qc.invalidateQueries({ queryKey: ['admin'] });
+    } catch (e) { toastError(e); }
+  };
+  if (on) {
+    const m = Math.floor(left / 60_000), sec = Math.floor((left % 60_000) / 1000);
+    return (
+      <div role="status" className="mb-5 flex items-center gap-3 rounded-lg border border-danger/60 bg-danger/10 p-4 text-sm" data-testid="god-mode-on">
+        <Zap size={18} className="text-danger" />
+        <div className="flex-1"><b>God mode is ON</b>: you have owner-level control in every server. Every change is logged. Turns off in {m}:{String(sec).padStart(2, '0')}.</div>
+        <button type="button" className="btn btn-danger" onClick={() => void toggle(false)}>Turn off</button>
+      </div>
+    );
+  }
+  return (
+    <div className="mb-5 rounded-lg bg-side p-4 text-sm">
+      <div className="flex items-center gap-3">
+        <Zap size={18} className="text-muted" />
+        <div className="flex-1"><b>God mode is off.</b> Turn it on to act as owner in every server: bypass permissions, read any channel, delete messages, remove members, join any server. Lasts 60 minutes.</div>
+        {!open && <button type="button" className="btn btn-primary" onClick={() => setOpen(true)}>Turn on…</button>}
+      </div>
+      {open && (
+        <form className="mt-3 flex flex-wrap items-end gap-2" onSubmit={(e) => { e.preventDefault(); void toggle(true); }}>
+          <label className="flex flex-col gap-1"><span className="label">Confirm password</span>
+            <input type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} className="rounded bg-input px-3 py-2" /></label>
+          {mfa && <label className="flex flex-col gap-1"><span className="label">2FA code</span>
+            <input inputMode="numeric" autoComplete="one-time-code" required value={totp} onChange={(e) => setTotp(e.target.value)} className="w-32 rounded bg-input px-3 py-2" /></label>}
+          <button type="submit" className="btn btn-danger">Turn on god mode</button>
+          <button type="button" className="btn" onClick={() => setOpen(false)}>Cancel</button>
+        </form>
+      )}
+    </div>
+  );
+}
+
+function JoinButton({ guildId, firstChannel }: { guildId: string; firstChannel?: string }) {
+  const god = useGodActive(); const navigate = useNavigate();
+  const join = async () => {
+    try { await api.admin.joinGuild(guildId); navigate(`/channels/${guildId}${firstChannel ? `/${firstChannel}` : ''}`); } catch (e) { toastError(e); }
+  };
+  return (
+    <button type="button" disabled={!god} title={god ? undefined : 'Turn on god mode first'} onClick={() => void join()} className="btn btn-primary mb-5 flex items-center gap-2">
+      <LogIn size={16} /> Join and open in Jorcord
+    </button>
+  );
+}
+
+function AuditTab() {
+  const { data = [] } = useQuery({ queryKey: ['admin', 'audit'], queryFn: api.admin.audit, refetchInterval: 15_000 });
+  return (
+    <section>
+      <h1 className="mb-1 text-xl font-semibold">Admin log</h1>
+      <p className="mb-4 text-sm text-muted">Every change made while god mode was on, plus each time it was turned on or off.</p>
+      {data.length === 0 && <p className="text-muted">Nothing logged yet.</p>}
+      <table className="w-full text-left text-sm">
+        <thead className="text-xs uppercase text-muted"><tr><th className="py-2">When</th><th>Action</th><th>Path</th><th>Result</th></tr></thead>
+        <tbody>{data.map((e: any) => (
+          <tr key={e.id} className="border-t border-divider"><td className="py-1.5">{fmt(e.createdAt)}</td><td>{e.action}</td><td className="font-mono text-xs">{e.path}</td><td>{e.status ?? '—'}</td></tr>
+        ))}</tbody>
+      </table>
     </section>
   );
 }

@@ -2,7 +2,12 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { snowflakeTime } from '@jorcord/shared';
 import type { Ctx } from '../ctx';
-import { badRequest, notFound } from '../errors';
+import { badRequest, notFound, unauthorized } from '../errors';
+import { verifyPassword } from '../lib/crypto';
+import { verifyTotp } from '../lib/totp';
+import { adminAudit, godModeUntil, setGodMode, GOD_MODE_MS } from '../services/godmode';
+import { buildGuildFull } from '../services/guilds';
+import { memberDTO } from '../services/serializers';
 import { idSchema, parse } from '../lib/ids';
 
 /**
@@ -25,7 +30,8 @@ export function adminRoutes(app: FastifyInstance, ctx: Ctx) {
   app.get('/admin/me', async (req) => {
     if (!isSuperAdmin(ctx, req)) throw notFound();
     const [u] = await ctx.db.query('SELECT mfa_enabled FROM users WHERE id = $1', [req.userId]);
-    return { admin: true, userId: req.userId, mfaEnabled: !!u?.mfa_enabled };
+    const g = godModeUntil(ctx, req.userId);
+    return { admin: true, userId: req.userId, mfaEnabled: !!u?.mfa_enabled, godModeUntil: g ? new Date(g).toISOString() : null };
   });
 
   app.get('/admin/stats', async (req) => {
@@ -125,5 +131,46 @@ export function adminRoutes(app: FastifyInstance, ctx: Ctx) {
     gate(req);
     const { limit, offset } = parse(page, req.query);
     return ctx.db.query('SELECT * FROM reports ORDER BY created_at DESC LIMIT $1 OFFSET $2', [limit, offset]);
+  });
+
+  /**
+   * God mode on/off. Turning it on re-checks the password (and the 2FA code when 2FA is on) so a stolen access token alone
+   * cannot escalate. It expires after GOD_MODE_MS. Both transitions are audited.
+   */
+  app.post('/admin/god-mode', async (req) => {
+    gate(req);
+    const b = parse(z.object({ enabled: z.boolean(), password: z.string().max(128).optional(), totp: z.string().max(16).optional() }).strict(), req.body);
+    if (b.enabled) {
+      const key = `godmode:${req.userId}`;
+      if (ctx.config.rateLimit && ctx.rl.isLimited(key, 5)) throw unauthorized('Too many attempts, try again later', 'RATE_LIMITED');
+      const [row] = await ctx.db.query('SELECT * FROM users WHERE id = $1', [req.userId]);
+      const ok = !!row?.password_hash && !!b.password && (await verifyPassword(row.password_hash, b.password))
+        && (!row.mfa_enabled || (!!b.totp && (await verifyTotp(ctx, row, b.totp))));
+      if (!ok) { ctx.rl.hit(key, 5, 15 * 60_000); throw unauthorized(row?.mfa_enabled ? 'Password and 2FA code required' : 'Password required', 'REAUTH_FAILED'); }
+    }
+    const until = setGodMode(ctx, req.userId, b.enabled);
+    await adminAudit(ctx, req.userId, b.enabled ? 'GOD_MODE_ON' : 'GOD_MODE_OFF', '/admin/god-mode', 200);
+    return { godModeUntil: until ? new Date(until).toISOString() : null, durationMs: GOD_MODE_MS };
+  });
+
+  /** Join any server as the admin: skips invites, bans, screening and the server limit. Requires god mode. */
+  app.post('/admin/guilds/:id/join', async (req) => {
+    gate(req);
+    const { id: gid } = parse(id, req.params);
+    if (!godModeUntil(ctx, req.userId)) throw badRequest('Turn on god mode first');
+    const [g] = await ctx.db.query('SELECT id FROM guilds WHERE id = $1', [gid]);
+    if (!g) throw notFound('Guild');
+    const added = await ctx.db.query('INSERT INTO members (guild_id, user_id, pending) VALUES ($1,$2,false) ON CONFLICT DO NOTHING RETURNING user_id', [gid, req.userId]);
+    await ctx.pcache.invalidate({ k: 'member', guildId: gid, userId: req.userId });
+    const full = await buildGuildFull(ctx, gid, req.userId);
+    await ctx.hub.toUser(req.userId, 'GUILD_CREATE', full);
+    if (added.length) { const m = await memberDTO(ctx, gid, req.userId); if (m) await ctx.hub.toGuild(gid, 'MEMBER_ADD', m, { exclude: req.userId }); }
+    return { ok: true, joined: added.length > 0 };
+  });
+
+  app.get('/admin/audit', async (req) => {
+    gate(req);
+    const { limit, offset } = parse(page, req.query);
+    return ctx.db.query('SELECT id, action, path, status, created_at AS "createdAt" FROM admin_audit ORDER BY created_at DESC LIMIT $1 OFFSET $2', [limit, offset]);
   });
 }

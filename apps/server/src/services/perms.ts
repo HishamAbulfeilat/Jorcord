@@ -2,11 +2,14 @@ import { ALL_PERMS, DEFAULT_EVERYONE, Perm, computePermissions, has, type Overwr
 import type { Ctx } from '../ctx';
 import { forbidden, notFound } from '../errors';
 import type { ChannelLite } from './permcache';
+import { godModeActive } from './godmode';
 
 export interface GuildPerm {
   guildId: string; userId: string; ownerId: string; isOwner: boolean; everyoneId: string;
   everyonePerms: bigint; rolePerms: Record<string, bigint>; rolePos: Record<string, number>;
   memberRoleIds: string[]; timedOut: boolean; topPosition: number;
+  /** The instance super admin: nobody can kick, ban, time out or change the roles of this member. */
+  protected?: boolean;
 }
 
 /** Loads permission inputs for many users of one guild (absent entry = not a member). Served from the in-process PermCache. */
@@ -26,6 +29,19 @@ export async function loadGuildPerms(ctx: Ctx, guildId: string, userIds: string[
       rolePerms: guild.rolePerms, rolePos: guild.rolePos, memberRoleIds: ids, timedOut: (m.timeoutMs !== null && m.timeoutMs > now) || !!m.pending, // pending members are read-only until they accept the rules
       topPosition: ids.reduce((a, id) => Math.max(a, guild.rolePos[id] ?? 0), 0),
     });
+  }
+  const admin = ctx.config.superAdminId;
+  if (admin && userIds.includes(admin)) {
+    const cur = out.get(admin);
+    if (cur) cur.protected = true;
+    // god mode: the super admin acts as owner of every guild (member or not), so every permission and hierarchy check passes
+    if (godModeActive(ctx, admin)) {
+      out.set(admin, {
+        guildId, userId: admin, ownerId: guild.ownerId, isOwner: true, everyoneId: guildId, everyonePerms,
+        rolePerms: guild.rolePerms, rolePos: guild.rolePos, memberRoleIds: cur?.memberRoleIds ?? [], timedOut: false,
+        topPosition: Number.MAX_SAFE_INTEGER, protected: true,
+      });
+    }
   }
   return out;
 }
@@ -99,6 +115,7 @@ export function needOutrank(actor: GuildPerm, position: number) {
 }
 export function needOutrankMember(actor: GuildPerm, target: GuildPerm | null) {
   if (!target) return;
+  if (target.protected && actor.userId !== target.userId) throw forbidden('Cannot act on the instance administrator', 'HIERARCHY');
   if (target.isOwner) throw forbidden('Cannot act on the guild owner', 'HIERARCHY');
   if (actor.userId === target.userId) return;
   needOutrank(actor, target.topPosition);

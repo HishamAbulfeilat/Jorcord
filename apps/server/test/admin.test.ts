@@ -60,3 +60,56 @@ describe('super admin', () => {
     expect((await api.req('GET', '/admin/me', admin.token)).status).toBe(200);
   });
 });
+
+describe('god mode', () => {
+  const PW = 'correct horse battery';
+  let guild: any, general: any, msgId: string;
+  beforeAll(async () => {
+    guild = (await api.req('POST', '/guilds', bob.token, { name: 'Bob Locked' })).body;
+    general = guild.channels.find((c: any) => c.name === 'general');
+    msgId = (await api.req('POST', `/channels/${general.id}/messages`, bob.token, { content: 'mine' })).body.id;
+  });
+
+  it('is off by default: the admin has no access to servers they are not in', async () => {
+    expect((await api.req('GET', `/channels/${general.id}/messages`, admin.token)).status).toBe(404);
+    expect((await api.req('POST', `/admin/guilds/${guild.id}/join`, admin.token)).status).toBe(400);
+  });
+
+  it('requires the password to turn on, and only the admin can turn it on', async () => {
+    expect((await api.req('POST', '/admin/god-mode', admin.token, { enabled: true })).status).toBe(401);
+    expect((await api.req('POST', '/admin/god-mode', admin.token, { enabled: true, password: 'wrong password!!' })).status).toBe(401);
+    expect((await api.req('POST', '/admin/god-mode', alice.token, { enabled: true, password: PW })).status).toBe(404);
+    const on = await api.req('POST', '/admin/god-mode', admin.token, { enabled: true, password: PW });
+    expect(on.status).toBe(200); expect(Date.parse(on.body.godModeUntil)).toBeGreaterThan(Date.now());
+    expect((await api.req('GET', '/admin/me', admin.token)).body.godModeUntil).toBeTruthy();
+  });
+
+  it('bypasses every permission check, even without membership', async () => {
+    const r = await api.req('GET', `/channels/${general.id}/messages`, admin.token);
+    expect(r.status).toBe(200); expect(r.body.map((m: any) => m.id)).toContain(msgId);
+    expect((await api.req('DELETE', `/channels/${general.id}/messages/${msgId}`, admin.token)).status).toBe(204);
+    expect((await api.req('PATCH', `/guilds/${guild.id}`, admin.token, { name: 'Renamed by admin' })).status).toBe(200);
+  });
+
+  it('can join any server, then owners cannot kick, ban or re-role the admin', async () => {
+    expect((await api.req('POST', `/admin/guilds/${guild.id}/join`, admin.token)).body).toMatchObject({ ok: true, joined: true });
+    expect((await api.req('POST', '/admin/god-mode', admin.token, { enabled: false })).status).toBe(200);
+    expect((await api.req('DELETE', `/guilds/${guild.id}/members/${admin.id}`, bob.token)).status).toBe(403);
+    expect((await api.req('PUT', `/guilds/${guild.id}/bans/${admin.id}`, bob.token, {})).status).toBe(403);
+    expect((await api.req('PATCH', `/guilds/${guild.id}/members/${admin.id}`, bob.token, { roles: [] })).status).toBe(403);
+    // bans are refused even where the admin is not a member
+    const other = (await api.req('POST', '/guilds', alice.token, { name: 'Alice Two' })).body;
+    expect((await api.req('PUT', `/guilds/${other.id}/bans/${admin.id}`, alice.token, {})).status).toBe(403);
+  });
+
+  it('turning it off removes the extra access, and every god-mode action is in the audit log', async () => {
+    const other = (await api.req('POST', '/guilds', alice.token, { name: 'Alice Three' })).body;
+    const ch = other.channels.find((c: any) => c.name === 'general');
+    expect((await api.req('GET', `/channels/${ch.id}/messages`, admin.token)).status).toBe(404);
+    const log = (await api.req('GET', '/admin/audit', admin.token)).body.map((e: any) => `${e.action} ${e.path}`);
+    expect(log).toContain('GOD_MODE_ON /admin/god-mode');
+    expect(log).toContain('GOD_MODE_OFF /admin/god-mode');
+    expect(log).toContain(`DELETE /api/v1/channels/${general.id}/messages/${msgId}`);
+    expect(log).toContain(`PATCH /api/v1/guilds/${guild.id}`);
+  });
+});
