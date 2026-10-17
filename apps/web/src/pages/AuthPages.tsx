@@ -6,7 +6,7 @@ import { useAuth } from '@/stores/auth';
 import { useData } from '@/stores/data';
 import { Logo } from '@/components/ui/Logo';
 import { Spinner } from '@/components/ui/primitives';
-import { getServerUrl, isNative } from '@/lib/server';
+import { FIXED_SERVER, getServerUrl, isNative } from '@/lib/server';
 import { t } from '@/i18n';
 
 export function Shell({ title, sub, children, footer }: { title: string; sub: string; children: React.ReactNode; footer: React.ReactNode }) {
@@ -16,7 +16,7 @@ export function Shell({ title, sub, children, footer }: { title: string; sub: st
         <div className="mb-5 flex flex-col items-center text-center"><Logo size={48} className="mb-3" /><h1 className="text-2xl font-semibold text-[#f2f3f5]">{title}</h1><p className="mt-1 text-[#b5bac1]">{sub}</p></div>
         {children}
         <div className="mt-3 text-sm text-[#949ba4]">{footer}</div>
-        {(isNative() || getServerUrl()) && getServerUrl() && <div data-testid="server-line" className="mt-4 border-t border-[#3f4147] pt-3 text-xs text-[#949ba4]">{t('Server')}: <span className="text-[#dbdee1]">{getServerUrl().replace(/^https?:\/\//, '')}</span> · <Link to="/connect" className="text-[#00a8fc] underline">{t('Change server')}</Link></div>}
+        {(isNative() || getServerUrl()) && getServerUrl() && <div data-testid="server-line" className="mt-4 border-t border-[#3f4147] pt-3 text-xs text-[#949ba4]">{t('Server')}: <span className="text-[#dbdee1]">{getServerUrl().replace(/^https?:\/\//, '')}</span>{!FIXED_SERVER && <> · <Link to="/connect" className="text-[#00a8fc] underline">{t('Change server')}</Link></>}</div>}
       </main>
     </div>
   );

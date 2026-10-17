@@ -1,6 +1,6 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
-// Production: bundle the web build (../web/dist) inside the app; the user enters their server URL on first launch.
+// Production: bundle the web build (../web/dist) inside the app; it connects to the one server baked in via VITE_SERVER_URL (apps/web/.env.production).
 // To load a live server instead (no rebuild needed for web updates), set CAP_SERVER_URL at sync time, e.g.
 //   CAP_SERVER_URL=https://chat.example.com pnpm exec cap sync
 const serverUrl = process.env.CAP_SERVER_URL;

@@ -28,7 +28,7 @@ import { Logo } from '@/components/ui/Logo';
 import { Spinner } from '@/components/ui/primitives';
 import { ApiException } from '@/lib/transport';
 import { AppEffects } from '@/components/layout/AppEffects';
-import { getServerUrl, needsServerSetup, onServerChange } from '@/lib/server';
+import { FIXED_SERVER, getServerUrl, isNative, isStaticHost, needsServerSetup, onServerChange } from '@/lib/server';
 import { initNative, syncStatusBar } from '@/lib/native';
 import { setLocale, t } from '@/i18n';
 
@@ -95,7 +95,7 @@ export default function App() {
     <div key={lang} className="contents">
       <NativeBridge />
       <Lazy fallback={<Splash />}><Routes>
-        <Route path="/connect" element={<ServerSetupPage />} />
+        <Route path="/connect" element={FIXED_SERVER && (isNative() || isStaticHost()) ? <Navigate to="/login" replace /> : <ServerSetupPage />} />
         <Route path="/login" element={access && !new URLSearchParams(loc.search).has('add') ? <Navigate to="/channels/@me" replace /> : <LoginPage />} />
         <Route path="/register" element={access ? <Navigate to="/channels/@me" replace /> : <RegisterPage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
