@@ -25,8 +25,10 @@ import { ProfileCard } from '@/components/modals/Profile';
 import { Markdown } from '@/components/chat/Markdown';
 import { CosmeticsPicker } from './CosmeticsPicker';
 import { ServerProfiles } from './ServerProfiles';
+import { pickProfileGif } from '@/lib/profileGif';
 import { RegisteredGamesTab } from './RegisteredGamesTab';
 import { ProfileEffect, ServerTagBadge, plateClass } from '@/components/ui/Cosmetics';
+import { ScanQrDialog } from './ScanQrDialog';
 
 let lastTab = 'account';
 export function UserSettings({ initialTab }: { initialTab?: string }) {
@@ -86,11 +88,7 @@ function Profile() {
   const [f, setF] = useState(init); const [busy, setBusy] = useState(false);
   const dirty = JSON.stringify(f) !== JSON.stringify(init);
   const save = async () => { setBusy(true); try { const u = await api.users.patchMe({ displayName: f.displayName || null, pronouns: f.pronouns || null, bio: f.bio || null, avatar: f.avatar, banner: f.banner, accentColor: f.accentColor, themeColors: f.themeColors, avatarDecoration: f.avatarDecoration, profileEffect: f.profileEffect, namePlate: f.namePlate, serverTagGuildId: f.serverTagGuildId }); useData.getState().apply('USER_UPDATE', { ...me, ...u }); toast(t('Profile saved'), 'success'); } catch (e) { toastError(e); } setBusy(false); };
-  /** Open the GIF search; the picked GIF is fetched and re-hosted by the server, then staged in the form until Save. */
-  const pickGif = (kind: 'avatar' | 'banner') => useUI.getState().openModal({
-    kind: 'gifPicker', title: kind === 'avatar' ? t('Choose an avatar GIF') : t('Choose a banner GIF'),
-    onPick: (url) => { api.files.uploadImageFromUrl(kind, url).then((u) => setF((s) => ({ ...s, [kind]: u }))).catch(toastError); },
-  });
+  const pickGif = (kind: 'avatar' | 'banner') => pickProfileGif(kind, (u) => setF((x) => ({ ...x, [kind]: u })));
   return (<>
     <H1>{t('Profile')}</H1>
     <div className="flex flex-col gap-8 lg:flex-row"><div className="min-w-0 flex-1">
@@ -112,11 +110,11 @@ function PreviewCard({ me, f }: { me: any; f: any }) {
   const tg = useData((s) => (f.serverTagGuildId ? s.guilds[f.serverTagGuildId]?.guild : undefined));
   return <div className="overflow-hidden rounded-lg bg-[rgb(var(--modal-alt))]"><div className="relative h-[60px]" data-testid="preview-banner" style={{ background: headerBackground({ banner: f.banner, themeColors: f.themeColors, accentColor: f.accentColor }, f.banner ? fileUrl(f.banner) : null, f.accentColor) }}><ProfileEffect id={f.profileEffect} /></div>
     <div className="px-4 pb-4"><div className="-mt-10 mb-2 w-fit rounded-full border-[6px] border-[rgb(var(--modal-alt))]"><Avatar user={{ ...me, avatar: f.avatar }} size={80} decoration={f.avatarDecoration} /></div>
-      <div className="rounded-lg bg-[rgb(var(--rail)/0.5)] p-3"><div className={`text-xl font-bold text-header ${plateClass(f.namePlate)} ${f.namePlate ? 'px-2 py-1 -mx-1' : ''}`} data-testid="preview-name">{f.displayName || me.username}{tg?.tag && <> <ServerTagBadge tag={{ guildId: tg.id, tag: tg.tag, badge: tg.tagBadge ?? null }} /></>}</div><div className="text-sm">{me.username}{f.pronouns && <span className="text-muted"> • {f.pronouns}</span>}</div>{f.bio && <><hr className="my-3 border-divider" /><div className="text-xs font-bold uppercase text-header">{t('About Me')}</div><div className="text-sm"><Markdown content={f.bio} /></div></>}</div></div></div>;
+      <div className="rounded-lg bg-[rgb(var(--rail)/0.5)] p-3"><div className={`text-xl font-bold text-header ${plateClass(f.namePlate)} ${f.namePlate ? 'px-2 py-1 -mx-1' : ''}`} data-testid="preview-name">{f.displayName || me.username}{tg?.tag && <> <ServerTagBadge tag={{ guildId: tg.id, tag: tg.tag, badge: tg.tagBadge ?? null }} /></>}</div><div className="text-sm">{me.username}{f.pronouns && <span className="text-muted"> • {f.pronouns}</span>}</div>{(me.customStatus?.text || me.customStatus?.emoji) && <div className="mt-1 text-sm" data-testid="preview-status">{me.customStatus.emoji} {me.customStatus.text}</div>}{f.bio && <><hr className="my-3 border-divider" /><div className="text-xs font-bold uppercase text-header">{t('About Me')}</div><div className="text-sm"><Markdown content={f.bio} /></div></>}</div></div></div>;
 }
 
 function Security() {
-  const me = useData((s) => s.me)!; const [setup, setSetup] = useState<{ secret: string; uri?: string; qr?: string } | null>(null); const [code, setCode] = useState(''); const [rec, setRec] = useState<string[] | null>(null);
+  const me = useData((s) => s.me)!; const [setup, setSetup] = useState<{ secret: string; uri?: string; qr?: string } | null>(null); const [code, setCode] = useState(''); const [rec, setRec] = useState<string[] | null>(null); const [scanning, setScanning] = useState(false);
   const sessions = useQuery({ queryKey: ['sessions'], queryFn: api.auth.sessions, retry: false });
   const refresh = () => api.users.me().then((u) => useData.getState().setMe(u)).catch(() => {});
   return (<>
@@ -130,6 +128,10 @@ function Security() {
       <div className="flex gap-2"><input className="field !w-40" placeholder="6-digit code" inputMode="numeric" value={code} onChange={(e) => setCode(e.target.value)} aria-label={t('Authentication code')} /><button className="btn btn-primary" disabled={code.length < 6} onClick={() => api.auth.mfaEnable(code).then((r) => { setRec(r.recoveryCodes ?? null); setSetup(null); setCode(''); toast('2FA enabled', 'success'); refresh(); }).catch(toastError)}>{t('Enable')}</button></div></div>
     ) : <button className="btn btn-primary btn-lg" onClick={() => api.auth.mfaSetup().then((r) => setSetup({ secret: r.secret, uri: r.uri ?? r.otpauthUrl, qr: r.qr })).catch(toastError)}>{t('Enable Authenticator App')}</button>}
     {rec && <div className="mt-3 rounded-lg bg-side p-4"><p className="mb-2 font-semibold text-header">{t('Recovery codes — save these now')}</p><pre className="font-mono text-sm">{rec.join('\n')}</pre></div>}
+    <H3>{t('Log in on another device')}</H3>
+    <p className="mb-2 text-sm text-muted">{t('Open Jorcord on a computer or browser, then scan the QR code on its login page to sign it in without typing a password.')}</p>
+    <button className="btn btn-secondary" onClick={() => setScanning(true)}>{t('Scan QR code')}</button>
+    {scanning && <ScanQrDialog onClose={() => { setScanning(false); void sessions.refetch(); }} />}
     <H3>{t('Devices')}</H3>
     {sessions.isLoading && <Spinner />}
     <ul>{sessions.data?.map((s: any, i: number) => <li key={s.id ?? i} className="flex items-center gap-3 border-b border-divider/50 py-3"><Monitor size={22} className="text-muted" /><div className="min-w-0 flex-1"><div className="truncate text-header">{s.userAgent ?? s.device ?? 'Unknown device'}{s.current && <span className="ms-2 rounded bg-success px-1 text-[10px] font-bold text-white">{t('THIS DEVICE')}</span>}</div><div className="text-xs text-muted">{s.ip} {s.lastUsedAt && `• ${new Date(s.lastUsedAt).toLocaleString()}`}</div></div>{!s.current && <button className="btn btn-secondary" onClick={() => api.auth.revokeSession(s.id).then(() => sessions.refetch()).catch(toastError)}>{t('Log out')}</button>}</li>)}</ul>

@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { Avatar } from './Avatar';
+import { Avatar, useHoverStill } from './Avatar';
 
 const STILL = 'data:image/png;base64,STILL';
 let n = 0;
@@ -43,5 +43,18 @@ describe('Avatar animated handling', () => {
     const { container } = render(<Avatar user={user(url)} />);
     expect(container.querySelector('[data-animated]')).toBeNull();
     await waitFor(() => expect((container.querySelector('img') as HTMLImageElement).getAttribute('src')).toBe(url));
+  });
+});
+
+function Banner({ src }: { src: string }) { const h = useHoverStill(src); return <div data-testid="b" data-src={h.src} {...h.bind} />; }
+describe('animated banners', () => {
+  it('show the first frame until hovered, like avatars', async () => {
+    const url = gifUrl();
+    const { getByTestId } = render(<Banner src={url} />);
+    await waitFor(() => expect(getByTestId('b').getAttribute('data-src')).toBe(STILL));
+    fireEvent.mouseEnter(getByTestId('b'));
+    await waitFor(() => expect(getByTestId('b').getAttribute('data-src')).toBe(url));
+    fireEvent.mouseLeave(getByTestId('b'));
+    await waitFor(() => expect(getByTestId('b').getAttribute('data-src')).toBe(STILL));
   });
 });

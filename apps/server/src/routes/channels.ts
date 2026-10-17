@@ -201,6 +201,10 @@ export function channelRoutes(app: FastifyInstance, ctx: Ctx) {
     const a = await channelAccess(ctx, req.userId, p.id);
     if (!a.channel.guild_id) throw badRequest('Overwrites apply to guild channels only');
     need(a.perms, Perm.MANAGE_ROLES);
+    if (p.overwriteId !== a.channel.guild_id && a.gp) { // same hierarchy rule as PUT: no editing the overwrite of a role at or above your own
+      const [r] = await ctx.db.query('SELECT position FROM roles WHERE id = $1 AND guild_id = $2', [p.overwriteId, a.channel.guild_id]);
+      if (r) needOutrank(a.gp, r.position);
+    }
     const settled = await trackVisibility(ctx, a.channel.guild_id, { channelIds: [p.id] });
     const rows = await ctx.db.query('DELETE FROM overwrites WHERE channel_id = $1 AND target_id = $2 RETURNING type', [p.id, p.overwriteId]);
     if (!rows.length) throw notFound('Overwrite');

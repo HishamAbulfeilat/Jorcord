@@ -892,7 +892,7 @@ describe('audit log expansion', () => {
     const hook = (await api.req('POST', `/channels/${general.id}/webhooks`, owner.token, { name: 'Hooks' })).body;
     expect((await api.req('PATCH', `/webhooks/${hook.id}`, owner.token, { name: 'Renamed' })).status).toBe(200);
     expect((await api.req('PATCH', `/webhooks/${hook.id}`, owner.token, { name: 'Renamed' })).body).toMatchObject({ name: 'Renamed' });
-    const sticker = (await api.req('POST', `/guilds/${guild.id}/stickers`, owner.token, { name: 'wave', url: '/files/x/wave.png' })).body;
+    const sticker = (await api.req('POST', `/guilds/${guild.id}/stickers`, owner.token, { name: 'wave', url: '/api/v1/files/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/x.png' })).body;
     expect((await api.req('PATCH', `/guilds/${guild.id}/stickers/${sticker.id}`, owner.token, { name: 'waved' })).body).toMatchObject({ name: 'waved' });
     const log = (await api.req('GET', `/guilds/${guild.id}/audit-logs`, owner.token)).body;
     const by = Object.fromEntries(log.map((e: any) => [e.action, e.actionType]));
@@ -985,7 +985,7 @@ describe('discovery join, screening, stickers event, themes, status expiry', () 
   it('emits STICKERS_UPDATE on create, rename and delete', async () => {
     const { owner, guild } = await guildWith();
     const ws = await WsClient.connect(env.port); await ws.identify(owner.token);
-    const s = (await api.req('POST', `/guilds/${guild.id}/stickers`, owner.token, { name: 'wave', url: '/files/x/wave.png' })).body;
+    const s = (await api.req('POST', `/guilds/${guild.id}/stickers`, owner.token, { name: 'wave', url: '/api/v1/files/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/x.png' })).body;
     expect((await ws.waitEvent('STICKERS_UPDATE', (d) => d.stickers.length === 1)).d.guildId).toBe(guild.id);
     await api.req('PATCH', `/guilds/${guild.id}/stickers/${s.id}`, owner.token, { name: 'waved' });
     await ws.waitEvent('STICKERS_UPDATE', (d) => d.stickers[0]?.name === 'waved');

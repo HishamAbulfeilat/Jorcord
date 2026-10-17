@@ -6,6 +6,7 @@ import { channelsDTO } from './serializers';
 import { fireDueReminders } from './reminders';
 import { syncGuild } from './linkedroles';
 import { fireDueBotReminders } from './sysbots';
+import { sweepUnattachedUploads } from './files';
 
 /** Thread auto-archive: no activity for `auto_archive_minutes` -> archived (THREAD_UPDATE). Atomic, so multi-node safe. */
 export async function archiveIdleThreads(ctx: Ctx) {
@@ -27,6 +28,7 @@ async function pruneInteractions(ctx: Ctx) {
   await ctx.db.query(`DELETE FROM interactions WHERE expires_at < now() - interval '1 hour'`);
   await ctx.db.query(`DELETE FROM oauth_codes WHERE expires_at < now() - interval '1 hour'`);
   await ctx.db.query(`DELETE FROM oauth_tokens WHERE expires_at < now()`);
+  await ctx.db.query(`DELETE FROM remote_auth WHERE expires_at < now() - interval '10 minutes'`);
 }
 
 /**
@@ -59,4 +61,5 @@ export async function runSweeps(ctx: Ctx) {
   await step('bot-reminders', () => fireDueBotReminders(ctx));
   await step('linked-roles', () => sweepLinkedRoles(ctx));
   await step('interactions', () => pruneInteractions(ctx));
+  await step('uploads', () => sweepUnattachedUploads(ctx));
 }

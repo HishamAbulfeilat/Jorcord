@@ -50,6 +50,7 @@ export function guildMenu(gid: Id): MenuItem[] {
     ...(g.features.includes('ONBOARDING') ? [{ label: t('Channels & Roles'), icon: ListChecks, onClick: () => ui().openModal({ kind: 'customize', guildId: gid }) }] : []),
     ...(g.rulesChannelId || g.description ? [{ label: t('View Server Welcome'), icon: BookOpen, onClick: () => ui().openModal({ kind: 'onboarding', guildId: gid }) }] : []),
     ...(can(p, Perm.MANAGE_GUILD) ? [{ label: t('Add App'), icon: Bot, onClick: () => navigateTo(addAppPath(gid)) }] : []),
+    { label: t('Edit Server Profile'), icon: Pencil, onClick: () => ui().openSettings({ kind: 'guild', guildId: gid, tab: 'profile' }) },
     { label: t('Linked Roles'), icon: Link2, onClick: () => ui().openSettings({ kind: 'guild', guildId: gid, tab: 'linkedroles' }) },
     { label: t('Server Boost'), icon: Rocket, onClick: () => ui().openSettings({ kind: 'guild', guildId: gid, tab: 'boosts' }) },
     ...(canOpenGuildSettings(p) ? [{ label: t('Server Settings'), icon: Settings, onClick: () => ui().openSettings({ kind: 'guild', guildId: gid }) }] : []),

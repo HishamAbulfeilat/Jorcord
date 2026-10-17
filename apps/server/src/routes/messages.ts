@@ -9,7 +9,7 @@ import { limitOrThrow } from '../lib/ratelimit';
 import { parseComponents } from '../lib/components';
 import { parseEmbeds } from '../lib/embeds';
 import { buildPoll } from '../services/polls';
-import { claimAttachments, saveUpload } from '../services/files';
+import { claimAttachments, deleteAttachmentFiles, saveUpload } from '../services/files';
 import { audit, visibleChannelRows } from '../services/guilds';
 import { createMessage, parseMentions, postSystemMessage, consumeBurstQuota, resolveBurstColor } from '../services/messages';
 import { checkAutomod } from '../services/automod';
@@ -216,7 +216,8 @@ export function messageRoutes(app: FastifyInstance, ctx: Ctx) {
   });
 
   const removeMessages = async (channel: any, ids: string[]) => {
-    const rows = await ctx.db.query('DELETE FROM messages WHERE channel_id = $1 AND id = ANY($2::text[]) RETURNING id', [channel.id, ids]);
+    const rows = await ctx.db.query('DELETE FROM messages WHERE channel_id = $1 AND id = ANY($2::text[]) RETURNING id, attachments', [channel.id, ids]);
+    await deleteAttachmentFiles(ctx, rows.map((r) => r.attachments)).catch((e) => ctx.log.warn({ err: e }, 'attachment cleanup failed'));
     for (const r of rows) await ctx.hub.toChannel(channel.id, 'MESSAGE_DELETE', { id: r.id, channelId: channel.id, guildId: channel.guild_id ?? null });
     return rows.length;
   };

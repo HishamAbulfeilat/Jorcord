@@ -6,6 +6,8 @@ import { toast, toastError } from '@/stores/ui';
 import { H1, SaveBar } from './SettingsLayout';
 import { Field } from '@/components/ui/primitives';
 import { IconPicker } from '@/components/modals/ModalHost';
+import { Film } from 'lucide-react';
+import { pickProfileGif } from '@/lib/profileGif';
 import { Avatar } from '@/components/ui/Avatar';
 import { Markdown } from '@/components/chat/Markdown';
 import { displayName, fileUrl, idColor } from '@/lib/format';
@@ -32,7 +34,7 @@ export function ServerProfiles() {
   </>);
 }
 
-function ServerProfileEditor({ guildId }: { guildId: string }) {
+export function ServerProfileEditor({ guildId }: { guildId: string }) {
   const me = useData((s) => s.me)!;
   const member = useData((s) => s.guilds[guildId]?.members[me.id]);
   const guild = useData((s) => s.guilds[guildId]?.guild);
@@ -58,8 +60,8 @@ function ServerProfileEditor({ guildId }: { guildId: string }) {
     <div className="flex flex-col gap-8 lg:flex-row"><div className="min-w-0 flex-1">
       <Field label={t('Server Nickname')} hint={guild ? t('Only shown in {server}.', { server: guild.name }) : undefined}><input className="field" value={f.nick} maxLength={32} onChange={(e) => setF({ ...f, nick: e.target.value })} placeholder={me.displayName || me.username} /></Field>
       <Field label={t('Pronouns')}><input className="field" value={f.pronouns} maxLength={40} onChange={(e) => setF({ ...f, pronouns: e.target.value })} placeholder={t('Add your pronouns')} /></Field>
-      <div className="mb-4"><span className="label">{t('Avatar')}</span><IconPicker value={f.avatar} onChange={(v) => setF({ ...f, avatar: v })} size={72} label={t('Avatar')} /></div>
-      <BannerField value={f.banner} onChange={(v) => setF({ ...f, banner: v })} />
+      <div className="mb-4"><span className="label">{t('Avatar')}</span><div className="flex flex-wrap items-center gap-2"><IconPicker value={f.avatar} onChange={(v) => setF({ ...f, avatar: v })} size={72} label={t('Avatar')} /><button type="button" className="btn btn-secondary" onClick={() => pickProfileGif('avatar', (u) => setF((x) => ({ ...x, avatar: u })))}><Film size={16} />{t('Choose GIF')}</button></div></div>
+      <BannerField value={f.banner} onChange={(v) => setF((x) => ({ ...x, banner: v }))} />
       <Field label={t('About Me')} hint={t('You can use markdown and links.')}><textarea className="field min-h-[110px]" value={f.bio} maxLength={190} onChange={(e) => setF({ ...f, bio: e.target.value })} /></Field>
     </div>
     <div className="lg:w-[300px]"><span className="label">{t('Preview')}</span><div className="pointer-events-none"><ServerProfilePreview me={me} name={displayName(me, { nick: f.nick || null })} prof={prof} /></div></div></div>
@@ -77,7 +79,7 @@ function BannerField({ value, onChange }: { value: string | null; onChange: (v: 
           <input type="file" accept="image/*" className="sr-only" onChange={async (e) => { const file = e.target.files?.[0]; e.target.value = ''; if (!file) return; try { onChange(await api.files.uploadImage(file)); } catch (err) { toastError(err); } }} />
         </label>
       </div>
-      <div className="mt-1 h-5">{value && <button type="button" className="text-sm text-link hover:underline" onClick={() => onChange(null)}>{t('Remove banner')}</button>}</div>
+      <div className="mt-1 flex min-h-5 items-center gap-3"><button type="button" className="btn btn-secondary" onClick={() => pickProfileGif('banner', onChange)}><Film size={16} />{t('Choose GIF')}</button>{value && <button type="button" className="text-sm text-link hover:underline" onClick={() => onChange(null)}>{t('Remove banner')}</button>}</div>
     </div>
   );
 }

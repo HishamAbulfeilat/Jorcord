@@ -1,16 +1,16 @@
 import { z } from 'zod';
 import { MAX_ACTIVITIES, type Activity } from '@jorcord/shared';
-import { assetUrl, idSchema } from '../lib/ids';
+import { externalUrl, idSchema } from '../lib/ids';
 
 const text = (n: number) => z.string().trim().max(n);
 export const activitySchema = z.object({
   type: z.enum(['playing', 'streaming', 'listening', 'watching', 'competing']),
   name: z.string().trim().min(1).max(128),
   details: text(128).nullable().optional(), state: text(128).nullable().optional(),
-  url: assetUrl.nullable().optional().refine((v) => !v || /^https?:\/\//.test(v), 'url must be http(s)'),
+  url: externalUrl.nullable().optional().refine((v) => !v || /^https?:\/\//.test(v), 'url must be http(s)'),
   startedAt: z.string().datetime({ offset: true }).optional(),
   applicationId: idSchema.nullable().optional(),
-  largeImage: assetUrl.nullable().optional(), smallImage: assetUrl.nullable().optional(),
+  largeImage: externalUrl.nullable().optional(), smallImage: externalUrl.nullable().optional(),
 }).strict();
 export const activitiesSchema = z.array(activitySchema).max(MAX_ACTIVITIES);
 

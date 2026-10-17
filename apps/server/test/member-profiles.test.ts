@@ -18,9 +18,9 @@ describe('per-server member profiles', () => {
   it('lets a member set and clear their own banner, bio, pronouns and avatar', async () => {
     const { guild, members } = await guildWith('self');
     const me = members[0]!;
-    const r = await api.req('PATCH', `/guilds/${guild.id}/members/@me`, me.token, { avatar: '/files/avatars/a.png', banner: 'https://cdn.example/b.png', bio: 'Hello **world**', pronouns: 'she/her' });
+    const r = await api.req('PATCH', `/guilds/${guild.id}/members/@me`, me.token, { avatar: '/api/v1/files/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/x.png', banner: '/api/v1/files/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/x.png', bio: 'Hello **world**', pronouns: 'she/her' });
     expect(r.status).toBe(200);
-    expect(r.body).toMatchObject({ avatar: '/files/avatars/a.png', banner: 'https://cdn.example/b.png', bio: 'Hello **world**', pronouns: 'she/her' });
+    expect(r.body).toMatchObject({ avatar: '/api/v1/files/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/x.png', banner: '/api/v1/files/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/x.png', bio: 'Hello **world**', pronouns: 'she/her' });
     // persisted and visible to other members
     const list = (await api.req('GET', `/guilds/${guild.id}/members`, me.token)).body;
     expect(list.find((m: any) => m.user.id === me.id)).toMatchObject({ bio: 'Hello **world**', pronouns: 'she/her' });
