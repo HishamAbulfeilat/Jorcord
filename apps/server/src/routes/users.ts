@@ -78,7 +78,7 @@ export function userRoutes(app: FastifyInstance, ctx: Ctx) {
   const profileImageFromUrl = z.object({ url: z.string().url().max(2048) }).strict();
   const stageProfileImage = async (userId: string, kind: 'avatar' | 'banner', body: unknown) => {
     const { url } = parse(profileImageFromUrl, body);
-    limitOrThrow(ctx.rl, `profile-image:${userId}`, 20, 60_000, ctx.config.rateLimit);
+    limitOrThrow(ctx.rl, `profile-image:${userId}`, 10, 10 * 60_000, ctx.config.rateLimit);
     return { url: await storeImageFromUrl(ctx, userId, url, kind) };
   };
   app.post('/users/@me/avatar/from-url', async (req) => stageProfileImage(req.userId, 'avatar', req.body));
