@@ -5,6 +5,7 @@ import { endEmptyStages } from './stage';
 import { channelsDTO } from './serializers';
 import { fireDueReminders } from './reminders';
 import { syncGuild } from './linkedroles';
+import { sweepUnattachedUploads } from './files';
 
 /** Thread auto-archive: no activity for `auto_archive_minutes` -> archived (THREAD_UPDATE). Atomic, so multi-node safe. */
 export async function archiveIdleThreads(ctx: Ctx) {
@@ -57,4 +58,5 @@ export async function runSweeps(ctx: Ctx) {
   await step('reminders', () => fireDueReminders(ctx));
   await step('linked-roles', () => sweepLinkedRoles(ctx));
   await step('interactions', () => pruneInteractions(ctx));
+  await step('uploads', () => sweepUnattachedUploads(ctx));
 }

@@ -99,3 +99,45 @@ export async function claimAttachments(ctx: Ctx, userId: string, ids: string[]):
   }
   return uniq.map((id) => toAttachment(rows.find((r) => r.id === id)));
 }
+
+/**
+ * Deletes the `files` rows and stored objects behind the attachments of messages that were just deleted (`attachments` = the messages' attachment JSON).
+ * A file that a surviving forwarded message still snapshots is kept. Best effort: storage errors are logged, never thrown.
+ */
+export async function deleteAttachmentFiles(ctx: Ctx, attachmentLists: unknown[]): Promise<void> {
+  const ids = [...new Set(attachmentLists.flatMap((l) => (Array.isArray(l) ? l : [])).map((a: any) => a?.id).filter((x): x is string => typeof x === 'string'))];
+  if (!ids.length) return;
+  const rows = await ctx.db.query(
+    `DELETE FROM files f WHERE f.id = ANY($1::text[]) AND f.attached AND NOT EXISTS (SELECT 1 FROM messages m WHERE m.forward IS NOT NULL AND m.forward::text LIKE '%' || f.key || '%') RETURNING f.key`, [ids]);
+  for (const r of rows) await ctx.storage.delete(r.key).catch((e) => ctx.log.warn({ err: e }, 'attachment file delete failed'));
+}
+
+/** Columns that can hold a URL of one of our own uploads (profile images, icons, emoji...). An unattached upload still referenced here must survive the sweep. */
+const FILE_REFERENCE_COLUMNS: [string, string][] = [
+  ['users', 'avatar'], ['users', 'banner'], ['guilds', 'icon'], ['guilds', 'banner'], ['roles', 'icon'], ['members', 'avatar'], ['members', 'banner'], ['emojis', 'url'], ['stickers', 'url'],
+  ['webhooks', 'avatar'], ['messages', 'webhook_avatar'], ['applications', 'icon'], ['guild_scheduled_events', 'image'], ['soundboard_sounds', 'url'],
+];
+const UNATTACHED_MAX_AGE = '24 hours';
+let lastUploadSweep = 0;
+
+/**
+ * Hourly: uploads that were never attached to a message and are older than 24 h are removed (row + stored object), unless a profile/server
+ * image field still points at them (those uploads are never "attached" to a message). On any doubt (a lookup fails) nothing is deleted.
+ */
+export async function sweepUnattachedUploads(ctx: Ctx, force = false): Promise<number> {
+  if (!force && Date.now() - lastUploadSweep < 3_600_000) return 0;
+  lastUploadSweep = Date.now();
+  const cands = await ctx.db.query(`SELECT id, key FROM files WHERE NOT attached AND created_at < now() - interval '${UNATTACHED_MAX_AGE}' ORDER BY created_at LIMIT 200`);
+  if (!cands.length) return 0;
+  const keys = cands.map((c) => c.key as string);
+  const used = new Set<string>();
+  for (const [t, c] of FILE_REFERENCE_COLUMNS) {
+    const hit = await ctx.db.query(`SELECT k FROM unnest($1::text[]) AS k WHERE EXISTS (SELECT 1 FROM ${t} WHERE ${c} LIKE '%' || k || '%')`, [keys]);
+    for (const h of hit) used.add(h.k as string);
+  }
+  const doomed = cands.filter((c) => !used.has(c.key)).map((c) => c.id as string);
+  if (!doomed.length) return 0;
+  const rows = await ctx.db.query('DELETE FROM files WHERE id = ANY($1::text[]) AND NOT attached RETURNING key', [doomed]);
+  for (const r of rows) await ctx.storage.delete(r.key).catch((e) => ctx.log.warn({ err: e }, 'orphan upload delete failed'));
+  return rows.length;
+}

@@ -8,6 +8,7 @@ import { assetUrl, idSchema, iso, limitParam, parse } from '../lib/ids';
 import { limitOrThrow } from '../lib/ratelimit';
 import { addBoosts, boostSummary, MAX_BOOSTS_PER_REQUEST, removeBoost, slotLimits, syncBoosterRole } from '../services/boosts';
 import { MAX_REGEX_RULES_PER_GUILD, rowActions, testRules, validateRegexPatterns } from '../services/automod';
+import { deleteAttachmentFiles } from '../services/files';
 import { audit, buildGuildFull, createGuild, GUILD_TEMPLATES } from '../services/guilds';
 import { postSystemMessage } from '../services/messages';
 import { guildAccess, guildPerms, need } from '../services/perms';
@@ -91,10 +92,12 @@ export function guildRoutes(app: FastifyInstance, ctx: Ctx) {
     if (!gp.isOwner) throw forbidden('Only the owner can delete a guild');
     const members = (await ctx.db.query('SELECT user_id FROM members WHERE guild_id = $1', [id])).map((r) => r.user_id as string);
     await ctx.db.query(`UPDATE users SET server_tag = NULL WHERE server_tag->>'guildId' = $1`, [id]);
+    const attachmentLists = (await ctx.db.query(`SELECT attachments FROM messages WHERE guild_id = $1 AND attachments <> '[]'::jsonb`, [id])).map((r) => r.attachments);
     await ctx.db.tx(async (q) => {
       await q.query('DELETE FROM messages WHERE guild_id = $1', [id]);
       await q.query('DELETE FROM guilds WHERE id = $1', [id]);
     });
+    await deleteAttachmentFiles(ctx, attachmentLists).catch((e) => ctx.log.warn({ err: e }, 'attachment cleanup failed'));
     await ctx.pcache.invalidate({ k: 'guild', guildId: id });
     await ctx.hub.toUsers(members, 'GUILD_DELETE', { id });
     return reply.code(204).send();
