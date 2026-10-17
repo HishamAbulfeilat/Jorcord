@@ -14,6 +14,7 @@ import { getServerUrl, isNative, nativePlatform } from '@/lib/server';
 import { switchServer } from '@/lib/serverSwitch';
 import { PROFILE_THEMES, THEME_PAIRS, themeGradient, type ThemePair } from '@/lib/profileTheme';
 import { useStreamer } from '@/lib/streamer';
+import { DEFAULT_OVERLAY_SHORTCUT, OVERLAY_CORNERS, type OverlayCorner } from '@/lib/overlay';
 import { t, T } from '@/i18n';
 
 /* ------------------------------------------------------------------ notifications */
@@ -109,6 +110,7 @@ export function StreamerTab() {
 /* ------------------------------------------------------------------ desktop app (Tauri) */
 export function DesktopTab() {
   const [auto, setAuto] = useState<boolean | null>(null); const [upd, setUpd] = useState<'idle' | 'checking' | 'none' | { version: string; install: () => Promise<void> }>('idle');
+  const p = useUI((s) => s.prefs); const set = useUI((s) => s.setPref);
   useEffect(() => { void desktop.autostart().then(setAuto); }, []);
   return (<>
     <H1>{t('Desktop App')}</H1>
@@ -120,6 +122,19 @@ export function DesktopTab() {
         ? <button className="btn btn-primary" onClick={() => void upd.install().catch(toastError)}>{t('Install and restart')}</button>
         : <button className="btn btn-secondary" disabled={upd === 'checking'} onClick={() => { setUpd('checking'); desktop.checkUpdate().then((u) => setUpd(u ?? 'none')).catch((e) => { setUpd('idle'); toastError(e); }); }}>{upd === 'checking' ? <Spinner size={14} /> : t('Check for updates')}</button>}
     </Row>
+    <H3>{t('In-game overlay')}</H3>
+    <Row title={t('Enable in-game overlay')} desc={t('A small always-on-top window with the people in your voice channel. It never injects into games.')}>
+      <Toggle label={t('Enable in-game overlay')} checked={p.overlayEnabled} onChange={(v) => set('overlayEnabled', v)} />
+    </Row>
+    <Row title={t('Overlay position')} desc={t('Which corner of the screen the overlay sits in.')}>
+      <select className="field max-w-[180px]" aria-label={t('Overlay position')} value={p.overlayCorner} disabled={!p.overlayEnabled} onChange={(e) => set('overlayCorner', e.target.value as OverlayCorner)}>
+        {OVERLAY_CORNERS.map((c) => <option key={c.id} value={c.id}>{t(c.label)}</option>)}
+      </select>
+    </Row>
+    <Row title={t('Lock overlay')} desc={t('Click-through so mouse clicks reach your game. The overlay itself stays visible.')}>
+      <Toggle label={t('Lock overlay')} checked={p.overlayLocked} disabled={!p.overlayEnabled} onChange={(v) => set('overlayLocked', v)} />
+    </Row>
+    <p className="mt-2 text-xs text-muted">{t('Press {key} to show or hide the overlay.', { key: DEFAULT_OVERLAY_SHORTCUT })}</p>
     <p className="mt-4 text-xs text-muted">{t('Closing the window hides Jorcord to the tray. Use the tray menu to quit.')}</p>
   </>);
 }

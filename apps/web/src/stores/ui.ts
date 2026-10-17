@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { Id, Message, Modal } from '@jorcord/shared';
+import type { OverlayCorner } from '@/lib/overlay';
 
 export type Theme = 'dark' | 'light' | 'amoled';
 export interface Prefs {
@@ -18,6 +19,8 @@ export interface Prefs {
   soundboardMuted: boolean; soundboardMutedUsers: Record<Id, boolean>; soundboardVolume: number;
   /** Desktop game detection: report "Playing <game>" and the games the user has registered. */
   gameActivity: boolean; registeredGames: RegisteredGame[];
+  /** Desktop in-game overlay: a second always-on-top window mirroring the current voice call. */
+  overlayEnabled: boolean; overlayLocked: boolean; overlayCorner: OverlayCorner;
 }
 /** A game the user registered from the Running Games settings tab. */
 export interface RegisteredGame { name: string; executables: string[] }
@@ -44,6 +47,7 @@ export const defaultPrefs: Prefs = {
   mutedChannels: {}, mutedGuilds: {}, collapsedCategories: {},
   hideMutedChannels: {}, soundboardMuted: false, soundboardMutedUsers: {}, soundboardVolume: 100,
   gameActivity: true, registeredGames: [],
+  overlayEnabled: false, overlayLocked: false, overlayCorner: 'top-right',
 };
 
 export type RightPanel = 'members' | 'search' | 'pins' | 'threads' | 'reports' | null;

@@ -26,6 +26,7 @@ import { ReportQueuePanel } from '@/components/chat/Panels';
 import { Badge } from '@/components/ui/primitives';
 import { comboFromEvent } from '@/lib/combo';
 import { useVoiceUI } from '@/stores/voiceui';
+import { OverlayBridge } from '@/overlay/OverlayBridge';
 
 function Sidebar() {
   const { guildId } = useRouteIds();
@@ -124,6 +125,7 @@ export function AppShell({ base = '' }: { base?: string }) {
   return (
     <BaseCtx.Provider value={base}>
      <VoiceRoot>
+      <OverlayBridge />
       <div ref={ref} className="relative flex h-full flex-col bg-rail">
         <a href="#main" onClick={(e) => { e.preventDefault(); const m = document.getElementById('main'); (m?.querySelector<HTMLElement>('[role=textbox], textarea') ?? m)?.focus(); }}
           className="fixed start-2 top-2 z-[200] -translate-y-24 rounded bg-brand px-3 py-2 text-sm font-semibold text-white focus:translate-y-0">{t('Skip to chat')}</a>
