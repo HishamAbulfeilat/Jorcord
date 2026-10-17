@@ -124,7 +124,7 @@ export function channelRoutes(app: FastifyInstance, ctx: Ctx) {
     else {
       need(a.perms, Perm.MANAGE_CHANNELS);
       allowed = ch.type === 'forum' || ch.type === 'media'
-        ? z.object({ ...chanFields, availableTags: z.array(tagSchema).max(20), requireTag: z.boolean(), defaultAutoArchiveDuration: archiveDuration }).partial().strict()
+        ? z.object({ ...chanFields, availableTags: z.array(tagSchema).max(20), requireTag: z.boolean(), defaultAutoArchiveDuration: archiveDuration, defaultSortOrder: z.enum(['latest_activity', 'creation_date']), defaultForumLayout: z.enum(['list', 'gallery']), defaultReactionEmoji: z.string().min(1).max(64).regex(/^(\w{2,32}:\d{1,20}|\S{1,16})$/u, 'must be a unicode emoji or `name:id`').nullable() }).partial().strict()
         : z.object(chanFields).partial().strict();
     }
     const b = parse(allowed, req.body) as Record<string, any>;
@@ -136,7 +136,7 @@ export function channelRoutes(app: FastifyInstance, ctx: Ctx) {
     if (b.availableTags !== undefined) b.availableTags = await normaliseTags(id, ch.available_tags ?? [], b.availableTags);
     if (b.parentId !== undefined) await validateParent(ch.guild_id, b.parentId, ch.type);
     const col: Record<string, string> = { name: 'name', topic: 'topic', nsfw: 'nsfw', slowmode: 'slowmode', bitrate: 'bitrate', userLimit: 'user_limit', parentId: 'parent_id', position: 'position', archived: 'archived',
-      requireTag: 'require_tag', defaultAutoArchiveDuration: 'default_auto_archive', autoArchiveDuration: 'auto_archive_minutes', locked: 'locked', availableTags: 'available_tags', appliedTags: 'applied_tags' };
+      requireTag: 'require_tag', defaultAutoArchiveDuration: 'default_auto_archive', autoArchiveDuration: 'auto_archive_minutes', locked: 'locked', availableTags: 'available_tags', appliedTags: 'applied_tags', defaultSortOrder: 'default_sort_order', defaultForumLayout: 'default_forum_layout', defaultReactionEmoji: 'default_reaction_emoji' };
     const sets: string[] = [], vals: unknown[] = [id];
     for (const [k, v] of Object.entries(b)) { if (!col[k]) continue; vals.push(k === 'availableTags' || k === 'appliedTags' ? JSON.stringify(v) : v); sets.push(`${col[k]} = $${vals.length}${k === 'availableTags' || k === 'appliedTags' ? '::jsonb' : ''}`); }
     if (ch.type === 'thread' && (b.archived === false || b.autoArchiveDuration !== undefined)) sets.push('activity_at = now()'); // unarchiving / changing the timer restarts the idle clock
@@ -398,7 +398,17 @@ export function channelRoutes(app: FastifyInstance, ctx: Ctx) {
       // A media post must carry an image or video: check before the thread exists, so a rejected post leaves nothing behind.
       if (isMedia && !attachments.some(isMediaAttachment)) throw badRequest('Media channels only accept posts with an image or video');
       const { row, dto } = await createThread(a, req.userId, snowflake(), b.name, { autoArchive: b.autoArchiveDuration, appliedTags: tags });
-      const message = await createMessage(ctx, { channel: row, authorId: req.userId, content: b.content ?? '', attachments, senderPerms: a.perms, memberRoleIds: a.gp?.memberRoleIds, requireMedia: isMedia });
+      let message = await createMessage(ctx, { channel: row, authorId: req.userId, content: b.content ?? '', attachments, senderPerms: a.perms, memberRoleIds: a.gp?.memberRoleIds, requireMedia: isMedia });
+      // A forum's default reaction emoji is added by the author to every newly created post.
+      const dre: string | null | undefined = a.channel.default_reaction_emoji;
+      if (dre) {
+        const custom = dre.match(/^(\w{2,32}):(\d{1,20})$/);
+        const e = { emoji: custom?.[1] ?? dre, emojiId: custom?.[2] ?? null };
+        await ctx.db.query('INSERT INTO reactions (message_id, user_id, emoji, emoji_id) VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING', [message.id, req.userId, e.emoji, e.emojiId]);
+        await ctx.hub.toChannel(message.channelId, 'MESSAGE_REACTION_ADD', { messageId: message.id, channelId: message.channelId, userId: req.userId, emoji: e.emoji, emojiId: e.emojiId });
+        const [fresh] = await ctx.db.query('SELECT * FROM messages WHERE id = $1', [message.id]);
+        message = await messageDTO(ctx, fresh, req.userId);
+      }
       return reply.code(201).send({ channel: dto, message });
     } catch (e) {
       if (attachments.length) await ctx.db.query('UPDATE files SET attached = false WHERE id = ANY($1::text[])', [attachments.map((x) => x.id)]);

@@ -46,6 +46,8 @@ export interface Channel {
   archived?: boolean; createdAt: string;
   /** Additive (platform pass). Forum parents: tag catalogue; threads: tags applied + lifecycle. */
   availableTags?: ForumTag[]; requireTag?: boolean; defaultAutoArchiveDuration?: number;
+  /** Forum/media defaults: post sort order, default layout, and the reaction auto-added to every new post. */
+  defaultSortOrder?: 'latest_activity' | 'creation_date'; defaultForumLayout?: 'list' | 'gallery'; defaultReactionEmoji?: string | null;
   appliedTags?: Id[]; autoArchiveDuration?: number; locked?: boolean; archiveAt?: string | null;
 }
 export interface Member {

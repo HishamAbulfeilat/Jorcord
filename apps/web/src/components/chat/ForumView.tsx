@@ -19,7 +19,9 @@ export function ForumView({ channel }: { channel: Channel }) {
   const nav = useNav(); const open = useUI((s) => s.openModal);
   const perms = useGuildPerms(channel.guildId ?? undefined, channel);
   const chans = useData((s) => s.guilds[channel.guildId!]?.channels);
-  const posts = useMemo(() => Object.values(chans ?? {}).filter((c) => c.type === 'thread' && c.parentId === channel.id).sort((a, b) => compareId(b.lastMessageId ?? b.id, a.lastMessageId ?? a.id)), [chans, channel.id]);
+  const sortOrder = channel.defaultSortOrder ?? 'latest_activity';
+  const layout = channel.defaultForumLayout ?? 'list';
+  const posts = useMemo(() => Object.values(chans ?? {}).filter((c) => c.type === 'thread' && c.parentId === channel.id).sort((a, b) => sortOrder === 'creation_date' ? compareId(b.id, a.id) : compareId(b.lastMessageId ?? b.id, a.lastMessageId ?? a.id)), [chans, channel.id, sortOrder]);
   const users = useData((s) => s.users);
   const tags = channel.availableTags ?? []; const [filter, setFilter] = useState<string | null>(null);
   const shown = filter ? posts.filter((p) => p.appliedTags?.includes(filter)) : posts;
@@ -39,7 +41,7 @@ export function ForumView({ channel }: { channel: Channel }) {
               {tags.map((tg) => <button key={tg.id} aria-pressed={filter === tg.id} onClick={() => setFilter(filter === tg.id ? null : tg.id)} className={cx('rounded-full border px-2.5 py-0.5 text-sm font-medium', filter === tg.id ? 'border-brand bg-brand/20 text-header' : 'border-divider text-interactive hover:bg-hover')}>{tg.emoji} {tg.name}</button>)}
             </div>)}
           {!shown.length && <Empty icon={isMedia ? <ImageIcon size={44} /> : <MessagesSquare size={44} />} title={filter ? t('No posts with this tag') : (isMedia ? t('No media yet') : t('No posts yet'))}>{isMedia ? t('Be the first to share an image or video.') : t('Be the first to start a discussion.')}</Empty>}
-          <ul className="grid gap-3 sm:grid-cols-2">
+          <ul className={cx('grid gap-3', layout === 'gallery' ? 'grid-cols-2 sm:grid-cols-3' : 'sm:grid-cols-2')} data-layout={layout}>
             {shown.map((p) => {
               const owner = p.ownerId ? users[p.ownerId] : undefined;
               return (

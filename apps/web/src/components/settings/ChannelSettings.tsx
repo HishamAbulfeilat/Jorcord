@@ -83,19 +83,21 @@ export function ChannelSettings({ channelId, close }: { channelId: string; close
 const AUTO_LABEL: Record<number, string> = { 60: '1 Hour', 1440: '24 Hours', 4320: '3 Days', 10080: '1 Week' };
 type TagDraft = Omit<ForumTag, 'id'> & { id?: string; key: string };
 let tagKey = 0;
-/** Forum tag catalogue + defaults (PATCH availableTags / requireTag / defaultAutoArchiveDuration). Existing ids are sent back so tags keep their posts. */
+/** Forum tag catalogue + defaults (PATCH availableTags / requireTag / defaultAutoArchiveDuration / defaultSortOrder / defaultForumLayout / defaultReactionEmoji). Existing ids are sent back so tags keep their posts. */
 function ForumTagsTab({ ch }: { ch: Channel }) {
   const init = (): TagDraft[] => (ch.availableTags ?? []).map((tg) => ({ ...tg, key: tg.id }));
   const [tags, setTags] = useState<TagDraft[]>(init); const [require, setRequire] = useState(!!ch.requireTag); const [auto, setAuto] = useState(ch.defaultAutoArchiveDuration ?? 1440); const [busy, setBusy] = useState(false);
-  const dirty = JSON.stringify(tags.map(({ key, ...r }) => r)) !== JSON.stringify(init().map(({ key, ...r }) => r)) || require !== !!ch.requireTag || auto !== (ch.defaultAutoArchiveDuration ?? 1440);
+  const [sortOrder, setSortOrder] = useState(ch.defaultSortOrder ?? 'latest_activity'); const [forumLayout, setForumLayout] = useState(ch.defaultForumLayout ?? 'list'); const [defaultEmoji, setDefaultEmoji] = useState(ch.defaultReactionEmoji ?? '');
+  const dirty = JSON.stringify(tags.map(({ key, ...r }) => r)) !== JSON.stringify(init().map(({ key, ...r }) => r)) || require !== !!ch.requireTag || auto !== (ch.defaultAutoArchiveDuration ?? 1440) || sortOrder !== (ch.defaultSortOrder ?? 'latest_activity') || forumLayout !== (ch.defaultForumLayout ?? 'list') || defaultEmoji !== (ch.defaultReactionEmoji ?? '');
   const set = (key: string, p: Partial<TagDraft>) => setTags((l) => l.map((x) => (x.key === key ? { ...x, ...p } : x)));
   const save = async () => {
     setBusy(true);
     try {
-      const u = await api.channels.patch(ch.id, { availableTags: tags.filter((x) => x.name.trim()).map(({ key, id, name, emoji, moderated }) => ({ ...(id ? { id } : {}), name: name.trim(), emoji: emoji || null, moderated })) as ForumTag[], requireTag: require, defaultAutoArchiveDuration: auto });
+      const u = await api.channels.patch(ch.id, { availableTags: tags.filter((x) => x.name.trim()).map(({ key, id, name, emoji, moderated }) => ({ ...(id ? { id } : {}), name: name.trim(), emoji: emoji || null, moderated })) as ForumTag[], requireTag: require, defaultAutoArchiveDuration: auto, defaultSortOrder: sortOrder, defaultForumLayout: forumLayout, defaultReactionEmoji: defaultEmoji.trim() || null });
       useData.getState().apply('CHANNEL_UPDATE', { ...ch, ...u }); setTags((u.availableTags ?? []).map((tg) => ({ ...tg, key: tg.id }))); toast(t('Tags saved'), 'success');
     } catch (e) { toastError(e); } setBusy(false);
   };
+  const reset = () => { setTags(init()); setRequire(!!ch.requireTag); setAuto(ch.defaultAutoArchiveDuration ?? 1440); setSortOrder(ch.defaultSortOrder ?? 'latest_activity'); setForumLayout(ch.defaultForumLayout ?? 'list'); setDefaultEmoji(ch.defaultReactionEmoji ?? ''); };
   return (<>
     <H1>{t('Tags')}</H1>
     <p className="mb-4 text-sm text-muted">{t('Tags help people find the right posts. Moderated tags can only be applied by members who manage threads.')}</p>
@@ -109,6 +111,9 @@ function ForumTagsTab({ ch }: { ch: Channel }) {
     <button className="btn btn-secondary mb-5" disabled={tags.length >= 20} onClick={() => setTags((l) => [...l, { key: 'n' + ++tagKey, name: '', emoji: null, moderated: false }])}><Plus size={14} />{t('Add Tag')}</button>
     <div className="flex items-center justify-between border-t border-divider py-4"><div><div className="font-medium text-header">{t('Require tag on new posts')}</div><div className="text-sm text-muted">{t('Members must pick at least one tag when they create a post.')}</div></div><Toggle label={t('Require tag')} checked={require} onChange={setRequire} /></div>
     <Field label={t('Hide After Inactivity')} hint={t('Default for new posts.')}><select className="field" value={auto} onChange={(e) => setAuto(Number(e.target.value))}>{AUTO_ARCHIVE_DURATIONS.map((d) => <option key={d} value={d}>{AUTO_LABEL[d]}</option>)}</select></Field>
-    <SaveBar dirty={dirty} busy={busy} onSave={save} onReset={() => { setTags(init()); setRequire(!!ch.requireTag); setAuto(ch.defaultAutoArchiveDuration ?? 1440); }} />
+    <Field label={t('Sort Order')} hint={t('How posts are ordered by default.')}><select className="field" value={sortOrder} onChange={(e) => setSortOrder(e.target.value as 'latest_activity' | 'creation_date')}><option value="latest_activity">{t('Latest Activity')}</option><option value="creation_date">{t('Creation Date')}</option></select></Field>
+    <Field label={t('Forum Layout')} hint={t('How the post list is presented by default.')}><select className="field" value={forumLayout} onChange={(e) => setForumLayout(e.target.value as 'list' | 'gallery')}><option value="list">{t('List')}</option><option value="gallery">{t('Gallery')}</option></select></Field>
+    <Field label={t('Default Reaction Emoji')} hint={t('Automatically added to every new post.')}><input className="field" aria-label={t('Default Reaction Emoji')} maxLength={16} value={defaultEmoji} onChange={(e) => setDefaultEmoji(e.target.value)} placeholder="👋" /></Field>
+    <SaveBar dirty={dirty} busy={busy} onSave={save} onReset={reset} />
   </>);
 }

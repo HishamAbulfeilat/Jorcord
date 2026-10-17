@@ -35,7 +35,7 @@ describe('ForumView', () => {
     expect(screen.getByText('No posts yet')).toBeTruthy();
   });
 
-  it('renders each post as a card and opens the thread when clicked', () => {
+  it('renders each post as a card and opens the thread when clicked', async () => {
     const a = post({ id: '1000000000000000002', name: 'Sunrise', lastMessageId: '2000000000000000002' });
     const b = post({ id: '1000000000000000001', name: 'Beach', lastMessageId: '2000000000000000001' });
     setData({ '4000000000000000001': channel('media'), [a.id]: a, [b.id]: b });
@@ -46,5 +46,22 @@ describe('ForumView', () => {
     expect(screen.queryByText('No media yet')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: /Beach/ }));
     expect(nav.go).toHaveBeenCalledWith('1', b.id);
+  });
+
+  it('sorts by creation date when defaultSortOrder is creation_date', () => {
+    // latest activity puts "Sunset" first (newer lastMessageId); creation date puts "Dawn" first (newer id despite older activity)
+    const dawn = post({ id: '1000000000000000002', name: 'Dawn', lastMessageId: '2000000000000000001' });
+    const sunset = post({ id: '1000000000000000001', name: 'Sunset', lastMessageId: '2000000000000000002' });
+    setData({ [dawn.id]: dawn, [sunset.id]: sunset, '4000000000000000001': channel('forum', { defaultSortOrder: 'creation_date' }) });
+    render(<ForumView channel={channel('forum', { defaultSortOrder: 'creation_date' })} />);
+    const titles = screen.getAllByRole('button', { name: /Dawn|Sunset/ }).map((el) => el.textContent);
+    expect(titles[0]).toContain('Dawn');
+  });
+
+  it('honours the default forum layout', () => {
+    const one = post({ id: '1000000000000000002', name: 'Gallery post' });
+    setData({ [one.id]: one, '4000000000000000001': channel('forum', { defaultForumLayout: 'gallery' }) });
+    render(<ForumView channel={channel('forum', { defaultForumLayout: 'gallery' })} />);
+    expect(document.querySelector('[data-layout="gallery"]')).toBeTruthy();
   });
 });
