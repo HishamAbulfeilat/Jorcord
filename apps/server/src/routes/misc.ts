@@ -111,7 +111,7 @@ export function miscRoutes(app: FastifyInstance, ctx: Ctx) {
     const mod = already ? { mute: prev!.serverMute, deaf: prev!.serverDeaf } : await loadModeration(ctx, a.channel.guild_id ?? null, req.userId);
     const caps = voiceCaps(a.channel, a.perms, { serverMute: mod.mute, serverDeaf: mod.deaf, suppress: a.channel.type === 'stage' && (already ? prev!.suppress : !has(a.perms, Perm.MUTE_MEMBERS)) });
     const sources = [...(caps.canSpeak ? [TrackSource.MICROPHONE] : []), ...(caps.canStream ? [TrackSource.CAMERA, TrackSource.SCREEN_SHARE, TrackSource.SCREEN_SHARE_AUDIO] : [])];
-    const at = new AccessToken(ctx.config.livekit.apiKey, ctx.config.livekit.apiSecret, { identity: req.userId, name: u.display_name ?? u.username, ttl: '6h', metadata: JSON.stringify({ userId: req.userId }) });
+    const at = new AccessToken(ctx.config.livekit.apiKey, ctx.config.livekit.apiSecret, { identity: req.userId, name: u.display_name ?? u.username, ttl: '10m', metadata: JSON.stringify({ userId: req.userId }) });
     at.addGrant({ roomJoin: true, room: channelId, canSubscribe: caps.canSubscribe, canPublish: sources.length > 0, canPublishSources: sources, canPublishData: true, canUpdateOwnMetadata: true });
     const out: VoiceToken = { token: await at.toJwt(), url: resolveLivekitUrl(ctx.config.livekit.url, req, ctx.config.publicUrl), room: channelId };
     return out;

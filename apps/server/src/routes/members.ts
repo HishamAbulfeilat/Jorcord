@@ -15,6 +15,7 @@ import { audit, buildGuildFull } from '../services/guilds';
 import { trackVisibility } from '../services/visibility';
 import { refreshMember } from '../services/linkedroles';
 import { postSystemMessage } from '../services/messages';
+import { disconnectMember } from '../services/voice';
 import { channelAccess, guildAccess, guildPerms, loadGuildPerm, need, needOutrank, needOutrankMember } from '../services/perms';
 import { GUILD_SELECT, guildDTO, liveStatus, memberDTO, membersDTO, roleDTO, usersByIds } from '../services/serializers';
 
@@ -63,6 +64,9 @@ export async function joinGuild(ctx: Ctx, userId: string, guildId: string, invit
 }
 
 export async function removeMemberFromGuild(ctx: Ctx, guildId: string, userId: string) {
+  // a removed member must not stay connected to this guild's voice rooms (their LiveKit token would otherwise keep working)
+  const vs = await ctx.voice.get(userId);
+  if (vs?.channelId && vs.guildId === guildId) await disconnectMember(ctx, userId).catch((e) => ctx.log.warn({ err: e }, 'voice disconnect on removal failed'));
   await ctx.db.query('DELETE FROM members WHERE guild_id = $1 AND user_id = $2', [guildId, userId]);
   await clearServerTag(ctx, guildId, userId);
   await bumpDaily(ctx, guildId, 'leaves');
