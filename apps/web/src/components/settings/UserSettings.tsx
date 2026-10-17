@@ -27,6 +27,7 @@ import { CosmeticsPicker } from './CosmeticsPicker';
 import { ServerProfiles } from './ServerProfiles';
 import { RegisteredGamesTab } from './RegisteredGamesTab';
 import { ProfileEffect, ServerTagBadge, plateClass } from '@/components/ui/Cosmetics';
+import { ScanQrDialog } from './ScanQrDialog';
 
 let lastTab = 'account';
 export function UserSettings({ initialTab }: { initialTab?: string }) {
@@ -116,7 +117,7 @@ function PreviewCard({ me, f }: { me: any; f: any }) {
 }
 
 function Security() {
-  const me = useData((s) => s.me)!; const [setup, setSetup] = useState<{ secret: string; uri?: string; qr?: string } | null>(null); const [code, setCode] = useState(''); const [rec, setRec] = useState<string[] | null>(null);
+  const me = useData((s) => s.me)!; const [setup, setSetup] = useState<{ secret: string; uri?: string; qr?: string } | null>(null); const [code, setCode] = useState(''); const [rec, setRec] = useState<string[] | null>(null); const [scanning, setScanning] = useState(false);
   const sessions = useQuery({ queryKey: ['sessions'], queryFn: api.auth.sessions, retry: false });
   const refresh = () => api.users.me().then((u) => useData.getState().setMe(u)).catch(() => {});
   return (<>
@@ -130,6 +131,10 @@ function Security() {
       <div className="flex gap-2"><input className="field !w-40" placeholder="6-digit code" inputMode="numeric" value={code} onChange={(e) => setCode(e.target.value)} aria-label={t('Authentication code')} /><button className="btn btn-primary" disabled={code.length < 6} onClick={() => api.auth.mfaEnable(code).then((r) => { setRec(r.recoveryCodes ?? null); setSetup(null); setCode(''); toast('2FA enabled', 'success'); refresh(); }).catch(toastError)}>{t('Enable')}</button></div></div>
     ) : <button className="btn btn-primary btn-lg" onClick={() => api.auth.mfaSetup().then((r) => setSetup({ secret: r.secret, uri: r.uri ?? r.otpauthUrl, qr: r.qr })).catch(toastError)}>{t('Enable Authenticator App')}</button>}
     {rec && <div className="mt-3 rounded-lg bg-side p-4"><p className="mb-2 font-semibold text-header">{t('Recovery codes — save these now')}</p><pre className="font-mono text-sm">{rec.join('\n')}</pre></div>}
+    <H3>{t('Log in on another device')}</H3>
+    <p className="mb-2 text-sm text-muted">{t('Open Jorcord on a computer or browser, then scan the QR code on its login page to sign it in without typing a password.')}</p>
+    <button className="btn btn-secondary" onClick={() => setScanning(true)}>{t('Scan QR code')}</button>
+    {scanning && <ScanQrDialog onClose={() => { setScanning(false); void sessions.refetch(); }} />}
     <H3>{t('Devices')}</H3>
     {sessions.isLoading && <Spinner />}
     <ul>{sessions.data?.map((s: any, i: number) => <li key={s.id ?? i} className="flex items-center gap-3 border-b border-divider/50 py-3"><Monitor size={22} className="text-muted" /><div className="min-w-0 flex-1"><div className="truncate text-header">{s.userAgent ?? s.device ?? 'Unknown device'}{s.current && <span className="ms-2 rounded bg-success px-1 text-[10px] font-bold text-white">{t('THIS DEVICE')}</span>}</div><div className="text-xs text-muted">{s.ip} {s.lastUsedAt && `• ${new Date(s.lastUsedAt).toLocaleString()}`}</div></div>{!s.current && <button className="btn btn-secondary" onClick={() => api.auth.revokeSession(s.id).then(() => sessions.refetch()).catch(toastError)}>{t('Log out')}</button>}</li>)}</ul>
