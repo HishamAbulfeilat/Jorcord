@@ -22,7 +22,7 @@ env:
 
 jobs:
   prepare:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       version: ${{ steps.v.outputs.version }}
       is_release: ${{ steps.v.outputs.is_release }}
@@ -46,7 +46,7 @@ jobs:
 
   draft:
     needs: prepare
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       release_id: ${{ steps.d.outputs.release_id }}
       tag: ${{ steps.d.outputs.tag }}
@@ -68,7 +68,7 @@ jobs:
   # ---------------------------------------------------------------- web
   web:
     needs: [prepare, draft]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
@@ -102,7 +102,7 @@ jobs:
   pages:
     needs: [prepare, web]
     if: needs.prepare.outputs.is_release == 'true' || inputs.publish_pages
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     continue-on-error: true   # Pages may not be enabled yet: Settings > Pages > Source: GitHub Actions
     permissions:
       contents: read
@@ -121,7 +121,7 @@ jobs:
   # ---------------------------------------------------------------- server + livekit bundles
   server-bundle:
     needs: [prepare, draft]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
@@ -178,7 +178,7 @@ jobs:
 
   docker:
     needs: prepare
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 40
     permissions:
       contents: read
@@ -282,7 +282,7 @@ jobs:
   # ---------------------------------------------------------------- android
   android:
     needs: [prepare, draft]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 50
     steps:
       - uses: actions/checkout@v4
@@ -396,7 +396,7 @@ jobs:
   release:
     needs: [prepare, draft, web, server-bundle, docker, desktop, android, ios]
     if: always() && needs.draft.result == 'success' && needs.web.result == 'success' && needs.server-bundle.result == 'success' && needs.desktop.result == 'success' && needs.android.result == 'success' && needs.docker.result == 'success'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checksums, notes, publish
         env:
