@@ -197,10 +197,10 @@ describe('webhooks', () => {
     const path = `/webhooks/${hook.id}/${hook.token}`;
     const plain = await api.req('POST', path + '?wait=true', null, { content: 'plain' });
     expect(plain.body.author).toMatchObject({ username: 'Deploys', bot: true });
-    const o = await api.req('POST', path + '?wait=true', null, { content: 'custom', username: 'CI Bot', avatarUrl: 'https://cdn.example.com/a.png' });
+    const o = await api.req('POST', path + '?wait=true', null, { content: 'custom', username: 'CI Bot', avatarUrl: '/api/v1/files/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/x.png' });
     expect(o.status).toBe(200);
-    expect(o.body.author).toMatchObject({ username: 'CI Bot', displayName: 'CI Bot', avatar: 'https://cdn.example.com/a.png', bot: true });
-    expect((await api.req('POST', path + '?wait=true', null, { content: 'snake', avatar_url: '/files/x/y.png' })).body.author.avatar).toBe('/files/x/y.png');
+    expect(o.body.author).toMatchObject({ username: 'CI Bot', displayName: 'CI Bot', avatar: '/api/v1/files/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/x.png', bot: true });
+    expect((await api.req('POST', path + '?wait=true', null, { content: 'snake', avatar_url: '/api/v1/files/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/x.png' })).body.author.avatar).toBe('/api/v1/files/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/x.png');
     expect((await api.req('POST', path, null, { content: 'no wait' })).status).toBe(204);
     // history shows the override too, and bad input is rejected
     const hist = (await api.req('GET', `/channels/${general.id}/messages`, owner.token)).body;

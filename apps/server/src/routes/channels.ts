@@ -201,6 +201,10 @@ export function channelRoutes(app: FastifyInstance, ctx: Ctx) {
     const a = await channelAccess(ctx, req.userId, p.id);
     if (!a.channel.guild_id) throw badRequest('Overwrites apply to guild channels only');
     need(a.perms, Perm.MANAGE_ROLES);
+    if (p.overwriteId !== a.channel.guild_id && a.gp) { // same hierarchy rule as PUT: no editing the overwrite of a role at or above your own
+      const [r] = await ctx.db.query('SELECT position FROM roles WHERE id = $1 AND guild_id = $2', [p.overwriteId, a.channel.guild_id]);
+      if (r) needOutrank(a.gp, r.position);
+    }
     const settled = await trackVisibility(ctx, a.channel.guild_id, { channelIds: [p.id] });
     const rows = await ctx.db.query('DELETE FROM overwrites WHERE channel_id = $1 AND target_id = $2 RETURNING type', [p.id, p.overwriteId]);
     if (!rows.length) throw notFound('Overwrite');
@@ -521,14 +525,9 @@ export function webhookPublicRoutes(app: FastifyInstance, ctx: Ctx) {
 
   app.patch('/webhooks/:id/:token', async (req) => {
     const p = parse(z.object({ id: idSchema, token: z.string().min(10).max(100) }), req.params);
-    const b = parse(z.object({ name: z.string().trim().min(1).max(80).optional(), avatar: assetUrl.nullable().optional(), channelId: idSchema.optional() }).strict(), req.body);
+    const b = parse(z.object({ name: z.string().trim().min(1).max(80).optional(), avatar: assetUrl.nullable().optional() }).strict(), req.body); // channelId is deliberately not accepted here: moving a hook needs MANAGE_WEBHOOKS (PATCH /webhooks/:id)
     const w = (await ctx.db.query('SELECT * FROM webhooks WHERE id = $1', [p.id]))[0];
     checkToken(w, p);
-    if (b.channelId !== undefined && b.channelId !== w.channel_id) {
-      const [target] = await ctx.db.query('SELECT * FROM channels WHERE id = $1 AND guild_id = $2', [b.channelId, w.guild_id]);
-      if (!target || !['text', 'announcement'].includes(target.type)) throw badRequest('Webhooks need a text channel');
-      await ctx.db.query('UPDATE webhooks SET channel_id = $2 WHERE id = $1', [w.id, b.channelId]);
-    }
     if (b.name !== undefined) {
       await ctx.db.query('UPDATE webhooks SET name = $2 WHERE id = $1', [w.id, b.name]);
       await ctx.db.query('UPDATE users SET display_name = $2 WHERE id = $1', [w.bot_user_id, b.name]);

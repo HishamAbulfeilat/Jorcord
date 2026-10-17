@@ -56,7 +56,7 @@ export const DIRECTORY_CATEGORY_IDS = DIRECTORY_CATEGORIES.map((c) => c.id) as [
 export const DIRECTORY_TAG_RE = /^[a-z0-9][a-z0-9-]{1,19}$/;
 export interface DirectoryApp {
   id: Id; name: string; summary: string; description: string; icon: string | null; botUserId: Id; category: DirectoryCategory; tags: string[];
-  /** servers the bot is in */ installs: number; /** permission bits the app suggests when installing */ permissions: string; listedAt: string;
+  /** servers the bot is in */ installs: number; /** built into Jorcord and run by the server itself */ official: boolean; /** permission bits the app suggests when installing */ permissions: string; listedAt: string;
 }
 
 // ---------- moderation tools ----------

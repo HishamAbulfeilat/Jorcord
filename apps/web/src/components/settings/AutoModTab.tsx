@@ -37,7 +37,7 @@ export function AutoModTab({ guildId }: { guildId: string }) {
       {f.trigger === 'keyword' && <Field label={t('Keywords (comma separated)')}><input className="field" value={f.keywords} onChange={(e) => set({ keywords: e.target.value })} placeholder={t('word1, word2')} /></Field>}
       {f.trigger === 'keyword_preset' && <fieldset className="mb-3"><legend className="label">{t('Word lists')}</legend><div className="flex flex-wrap gap-3">{PRESETS.map(([id, label]) => <label key={id} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={f.presets.includes(id)} onChange={() => togglePreset(id)} />{t(label)}</label>)}</div></fieldset>}
       {(f.trigger === 'keyword' || f.trigger === 'keyword_preset') && <Field label={t('Allowed words and phrases (comma separated)')}><input className="field" value={f.allow} onChange={(e) => set({ allow: e.target.value })} /></Field>}
-      {f.trigger === 'regex' && <Field label={t('Patterns (one per line, up to 10, case-insensitive)')}>
+      {f.trigger === 'regex' && <Field label={t('Patterns (one per line, up to 3, case-insensitive)')}>
         <textarea className="field h-24 font-mono text-sm" aria-label={t('Patterns')} value={f.regex} onChange={(e) => set({ regex: e.target.value })} placeholder={'\\d{3}-\\d{4}\nfree\\s+nitro'} />
         <span className="mt-1 block text-xs text-muted">{t('Supports . [a-z] \\d \\w \\s \\b ^ $ ( ) | * + ? {n,m}. Back-references and look-around are not allowed so a pattern can never slow the server down.')}</span></Field>}
       {f.trigger === 'mention_spam' && num('Mentions per message before the rule triggers', 'mentionLimit', 1, 50)}

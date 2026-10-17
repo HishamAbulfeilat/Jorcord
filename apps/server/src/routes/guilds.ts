@@ -7,7 +7,8 @@ import { ApiError, badRequest, conflict, forbidden, notFound } from '../errors';
 import { assetUrl, idSchema, iso, limitParam, parse } from '../lib/ids';
 import { limitOrThrow } from '../lib/ratelimit';
 import { addBoosts, boostSummary, MAX_BOOSTS_PER_REQUEST, removeBoost, slotLimits, syncBoosterRole } from '../services/boosts';
-import { rowActions, testRules, validateRegexPatterns } from '../services/automod';
+import { MAX_REGEX_RULES_PER_GUILD, rowActions, testRules, validateRegexPatterns } from '../services/automod';
+import { deleteAttachmentFiles } from '../services/files';
 import { audit, buildGuildFull, createGuild, GUILD_TEMPLATES } from '../services/guilds';
 import { postSystemMessage } from '../services/messages';
 import { guildAccess, guildPerms, need } from '../services/perms';
@@ -91,10 +92,12 @@ export function guildRoutes(app: FastifyInstance, ctx: Ctx) {
     if (!gp.isOwner) throw forbidden('Only the owner can delete a guild');
     const members = (await ctx.db.query('SELECT user_id FROM members WHERE guild_id = $1', [id])).map((r) => r.user_id as string);
     await ctx.db.query(`UPDATE users SET server_tag = NULL WHERE server_tag->>'guildId' = $1`, [id]);
+    const attachmentLists = (await ctx.db.query(`SELECT attachments FROM messages WHERE guild_id = $1 AND attachments <> '[]'::jsonb`, [id])).map((r) => r.attachments);
     await ctx.db.tx(async (q) => {
       await q.query('DELETE FROM messages WHERE guild_id = $1', [id]);
       await q.query('DELETE FROM guilds WHERE id = $1', [id]);
     });
+    await deleteAttachmentFiles(ctx, attachmentLists).catch((e) => ctx.log.warn({ err: e }, 'attachment cleanup failed'));
     await ctx.pcache.invalidate({ k: 'guild', guildId: id });
     await ctx.hub.toUsers(members, 'GUILD_DELETE', { id });
     return reply.code(204).send();
@@ -240,7 +243,7 @@ export function guildRoutes(app: FastifyInstance, ctx: Ctx) {
     keywords: z.array(z.string().min(1).max(60)).max(100), action: actionEnum, actions: z.array(actionEnum).min(1).max(4), exemptRoles: z.array(idSchema).max(20),
     presets: z.array(z.enum(['profanity', 'sexual_content', 'slurs'])).max(3), allowList: z.array(z.string().min(1).max(60)).max(100),
     mentionLimit: z.number().int().min(1).max(50), exemptChannels: z.array(idSchema).max(50), timeoutSeconds: z.number().int().min(10).max(7 * 86400),
-    customMessage: z.string().trim().max(150).nullable(), alertChannelId: idSchema.nullable(), regexPatterns: z.array(z.string().min(1).max(100)).max(10), testMode: z.boolean(),
+    customMessage: z.string().trim().max(150).nullable(), alertChannelId: idSchema.nullable(), regexPatterns: z.array(z.string().min(1).max(100)).max(3), testMode: z.boolean(),
     options: z.object({ spamCount: z.number().int().min(2).max(30), spamSeconds: z.number().int().min(2).max(60), capsPercent: z.number().int().min(50).max(100), capsMinLength: z.number().int().min(5).max(200), repeatLimit: z.number().int().min(5).max(100) }).partial().strict(),
   }).strict();
   const checkRule = (b: { trigger?: string; presets?: string[]; regexPatterns?: string[] }, creating: boolean) => {
@@ -286,6 +289,10 @@ export function guildRoutes(app: FastifyInstance, ctx: Ctx) {
     await checkRoles(id, b.exemptRoles ?? []); await checkChannels(id, b.exemptChannels ?? []); await checkAlertChannel(id, b.alertChannelId); checkRule(b, true);
     const [cnt] = await ctx.db.query('SELECT count(*)::int AS n FROM automod_rules WHERE guild_id = $1', [id]);
     if (cnt.n >= 50) throw new ApiError(400, 'LIMIT_REACHED', 'A server can have at most 50 AutoMod rules');
+    if (b.trigger === 'regex') {
+      const [rc] = await ctx.db.query("SELECT count(*)::int AS n FROM automod_rules WHERE guild_id = $1 AND trigger = 'regex'", [id]);
+      if (rc.n >= MAX_REGEX_RULES_PER_GUILD) throw new ApiError(400, 'LIMIT_REACHED', `A server can have at most ${MAX_REGEX_RULES_PER_GUILD} regex AutoMod rules`);
+    }
     const rid = snowflake();
     await ctx.db.query('INSERT INTO automod_rules (id, guild_id, name, enabled, trigger, keywords, action, exempt_roles, presets, allow_list, mention_limit, exempt_channels, timeout_seconds, custom_message, actions, alert_channel_id, regex_patterns, test_mode, options) VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,$8::jsonb,$9::jsonb,$10::jsonb,$11,$12::jsonb,$13,$14,$15::jsonb,$16,$17::jsonb,$18,$19::jsonb)',
       [rid, id, b.name, b.enabled ?? true, b.trigger, JSON.stringify(b.keywords ?? []), b.action, JSON.stringify(b.exemptRoles ?? []), JSON.stringify(b.presets ?? []), JSON.stringify(b.allowList ?? []), b.mentionLimit ?? 5, JSON.stringify(b.exemptChannels ?? []), b.timeoutSeconds ?? 60, b.customMessage ?? null,

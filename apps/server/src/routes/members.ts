@@ -14,7 +14,9 @@ import { limitOrThrow } from '../lib/ratelimit';
 import { audit, buildGuildFull } from '../services/guilds';
 import { trackVisibility } from '../services/visibility';
 import { refreshMember } from '../services/linkedroles';
+import { onMemberJoined } from '../services/sysbots';
 import { postSystemMessage } from '../services/messages';
+import { disconnectMember } from '../services/voice';
 import { channelAccess, guildAccess, guildPerms, loadGuildPerm, need, needOutrank, needOutrankMember } from '../services/perms';
 import { GUILD_SELECT, guildDTO, liveStatus, memberDTO, membersDTO, roleDTO, usersByIds } from '../services/serializers';
 
@@ -59,10 +61,14 @@ export async function joinGuild(ctx: Ctx, userId: string, guildId: string, invit
     await detectRaid(ctx, guildId).catch((e) => ctx.log.warn({ err: e }, 'raid detection failed'));
     await refreshMember(ctx, guildId, userId).catch((e) => ctx.log.warn({ err: e }, 'linked role refresh failed')); // criteria such as account age can hold on day one
     if (full.systemChannelId) await postSystemMessage(ctx, full.systemChannelId, userId, 'join').catch((e) => ctx.log.warn({ err: e }, 'join message failed'));
+    await onMemberJoined(ctx, guildId, userId); // built-in Welcome bot (greeting + auto-role) when installed
   return full;
 }
 
 export async function removeMemberFromGuild(ctx: Ctx, guildId: string, userId: string) {
+  // a removed member must not stay connected to this guild's voice rooms (their LiveKit token would otherwise keep working)
+  const vs = await ctx.voice.get(userId);
+  if (vs?.channelId && vs.guildId === guildId) await disconnectMember(ctx, userId).catch((e) => ctx.log.warn({ err: e }, 'voice disconnect on removal failed'));
   await ctx.db.query('DELETE FROM members WHERE guild_id = $1 AND user_id = $2', [guildId, userId]);
   await clearServerTag(ctx, guildId, userId);
   await bumpDaily(ctx, guildId, 'leaves');

@@ -1,3 +1,4 @@
+import { UpdateBanner } from './UpdateBanner';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { DiscoveryPage } from '@/components/home/DiscoveryPage';
@@ -103,6 +104,10 @@ export function AppShell({ base = '' }: { base?: string }) {
     const h = (e: Event) => { const d = (e as CustomEvent).detail; navigate(`${base}/channels/${d.guildId ?? '@me'}${d.channelId ? '/' + d.channelId : ''}`); setLeft(false); };
     window.addEventListener('jorcord:goto', h); return () => window.removeEventListener('jorcord:goto', h);
   }, [navigate, base, setLeft]);
+  useEffect(() => {
+    const h = (e: Event) => { const to = (e as CustomEvent).detail?.to; if (typeof to === 'string' && to.startsWith('/') && !to.startsWith('//')) { navigate(`${base}${to}`); setLeft(false); } };
+    window.addEventListener('jorcord:navigate', h); return () => window.removeEventListener('jorcord:navigate', h);
+  }, [navigate, base, setLeft]);
   useGlobalKeys(base);
   // swipe drawers
   useEffect(() => {
@@ -129,6 +134,7 @@ export function AppShell({ base = '' }: { base?: string }) {
       <div ref={ref} className="relative flex h-full flex-col bg-rail">
         <a href="#main" onClick={(e) => { e.preventDefault(); const m = document.getElementById('main'); (m?.querySelector<HTMLElement>('[role=textbox], textarea') ?? m)?.focus(); }}
           className="fixed start-2 top-2 z-[200] -translate-y-24 rounded bg-brand px-3 py-2 text-sm font-semibold text-white focus:translate-y-0">{t('Skip to chat')}</a>
+        <UpdateBanner />
         <ConnectionBanner />
         <MobileVoiceBar />
         <div className="relative flex min-h-0 flex-1">

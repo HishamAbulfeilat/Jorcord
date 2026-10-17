@@ -9,9 +9,10 @@ import { limitOrThrow } from '../lib/ratelimit';
 import { parseComponents } from '../lib/components';
 import { parseEmbeds } from '../lib/embeds';
 import { buildPoll } from '../services/polls';
-import { claimAttachments, saveUpload } from '../services/files';
+import { claimAttachments, deleteAttachmentFiles, saveUpload } from '../services/files';
 import { audit, visibleChannelRows } from '../services/guilds';
 import { createMessage, parseMentions, postSystemMessage, consumeBurstQuota, resolveBurstColor } from '../services/messages';
+import { checkAutomod } from '../services/automod';
 import { channelAccess, channelPermsLite, guildAccess, need } from '../services/perms';
 import { joinThread } from '../services/threads';
 import { hasSearchCriteria, searchMessages, searchQuerySchema } from '../services/search';
@@ -181,14 +182,17 @@ export function messageRoutes(app: FastifyInstance, ctx: Ctx) {
     if (!m) throw notFound('Message');
     if (m.author_id !== req.userId || m.webhook_id || !['default', 'reply'].includes(m.type)) throw forbidden('You can only edit your own messages');
     if (m.forward) throw badRequest('Forwarded messages cannot be edited');
+    if (a.gp?.timedOut) throw forbidden('You cannot edit messages while timed out or before accepting the server rules');
     if (b.components !== undefined) {
       if (!req.isBot || m.application_id !== req.applicationId) throw new ApiError(403, 'USER_FORBIDDEN', 'Only the owning bot can edit components').num(20002);
       await ctx.db.query('UPDATE messages SET components = $2::jsonb, edited_at = now() WHERE id = $1', [p.mid, JSON.stringify(parseComponents(b.components))]);
     }
     if (b.content !== undefined) {
+      const ment = await parseMentions(ctx, a.channel, b.content, a.perms);
+      // edits are held to the same AutoMod rules as new messages (otherwise post something harmless, then edit it)
+      if (a.channel.guild_id) await checkAutomod(ctx, a.channel.guild_id, req.userId, a.gp?.memberRoleIds ?? [], a.perms, b.content, ment.mentions.length + ment.mentionRoles.length, [a.channel.id, ...(a.channel.parent_id ? [a.channel.parent_id] : [])]);
       // R19: the content being replaced is kept as a prior version before the update runs.
       await ctx.db.query('INSERT INTO message_edits (id, message_id, content) VALUES ($1, $2, $3)', [snowflake(), p.mid, m.content]);
-      const ment = await parseMentions(ctx, a.channel, b.content, a.perms);
       await ctx.db.query('UPDATE messages SET content = $2, edited_at = now(), mentions = $3::jsonb, mention_roles = $4::jsonb, mention_everyone = $5, has_link = $6 WHERE id = $1',
         [p.mid, b.content, JSON.stringify(ment.mentions), JSON.stringify(ment.mentionRoles), ment.mentionEveryone, /https?:\/\//i.test(b.content)]);
     }
@@ -212,7 +216,8 @@ export function messageRoutes(app: FastifyInstance, ctx: Ctx) {
   });
 
   const removeMessages = async (channel: any, ids: string[]) => {
-    const rows = await ctx.db.query('DELETE FROM messages WHERE channel_id = $1 AND id = ANY($2::text[]) RETURNING id', [channel.id, ids]);
+    const rows = await ctx.db.query('DELETE FROM messages WHERE channel_id = $1 AND id = ANY($2::text[]) RETURNING id, attachments', [channel.id, ids]);
+    await deleteAttachmentFiles(ctx, rows.map((r) => r.attachments)).catch((e) => ctx.log.warn({ err: e }, 'attachment cleanup failed'));
     for (const r of rows) await ctx.hub.toChannel(channel.id, 'MESSAGE_DELETE', { id: r.id, channelId: channel.id, guildId: channel.guild_id ?? null });
     return rows.length;
   };

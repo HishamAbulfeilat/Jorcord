@@ -89,10 +89,10 @@ describe('boost levels', () => {
 
   it('emoji and sticker slots follow the level (free boosts raise them)', async () => {
     const { guild, join, owner } = await setup(); const a = await join('a');
-    for (let i = 0; i < 50; i++) await env.ctx.db.query('INSERT INTO emojis (id, guild_id, name, animated, url) VALUES ($1,$2,$3,false,$4)', [snowflake(), guild.id, `e${i}x`, '/f/x']);
-    for (let i = 0; i < 5; i++) await env.ctx.db.query('INSERT INTO stickers (id, guild_id, name, url, format) VALUES ($1,$2,$3,$4,$5)', [snowflake(), guild.id, `s${i}x`, '/f/x', 'png']);
-    const emoji = () => api.req('POST', `/guilds/${guild.id}/emojis`, owner.token, { name: 'extra', url: '/f/x' });
-    const sticker = () => api.req('POST', `/guilds/${guild.id}/stickers`, owner.token, { name: 'extra', url: '/f/x' });
+    for (let i = 0; i < 50; i++) await env.ctx.db.query('INSERT INTO emojis (id, guild_id, name, animated, url) VALUES ($1,$2,$3,false,$4)', [snowflake(), guild.id, `e${i}x`, '/api/v1/files/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/x.png']);
+    for (let i = 0; i < 5; i++) await env.ctx.db.query('INSERT INTO stickers (id, guild_id, name, url, format) VALUES ($1,$2,$3,$4,$5)', [snowflake(), guild.id, `s${i}x`, '/api/v1/files/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/x.png', 'png']);
+    const emoji = () => api.req('POST', `/guilds/${guild.id}/emojis`, owner.token, { name: 'extra', url: '/api/v1/files/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/x.png' });
+    const sticker = () => api.req('POST', `/guilds/${guild.id}/stickers`, owner.token, { name: 'extra', url: '/api/v1/files/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/x.png' });
     const e0 = await emoji(); expect(e0.status).toBe(400); expect(e0.body.code).toBe('MAX_EMOJIS'); expect(e0.body.message).toContain('50');
     expect((await sticker()).body.code).toBe('MAX_STICKERS');
     await boost(guild.id, a, { count: 2 });

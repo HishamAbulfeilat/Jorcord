@@ -1,12 +1,15 @@
 /** Typed REST client written against docs/CONTRACT.md. All calls go through the swappable transport. */
 import type {
   Activity, Attachment, AuditEntry, AutoModRule, Channel, Emoji, Guild, GuildFull, Invite, Member, Message, MessageEdit, Relationship, ReadState, Role, SelfUser, Sticker, User, VoiceToken, Id, Presence, OverwriteDTO,
-  AllowedMentions,
+  AllowedMentions, GuildIntegration,
   Reminder, ModView, ModWarning, ModNote, BulkModerationFilter, BulkModerationResult, PruneResult, BoostSummary, LinkedRoleView, LinkedCriterion, RoleMetadataApp, DirectoryApp, DirectoryCategory, SoundboardSound, Connection, PublicConnection, GifFavorite, GuildTemplate, GuildWidgetSettings, GuildInsights, ChannelFollow, Onboarding, OnboardingResponse, GuildSafety, SafetyPreset, Application, ApplicationCommand, CommandPermissionOverwrite, CommandOptionChoice, CreatePoll, ForumTag, InteractionOptionValue, ModalSubmitRow, OAuthAuthorizePreview, OAuthAuthorizeResult, ScheduledEvent, StageInstance, Report, RecurrenceRule,
 } from '@jorcord/shared';
 import { send } from './transport';
 
 export interface AuthResult { user: SelfUser; accessToken: string; refreshToken: string }
+export interface RemoteAuthCode { id: string; pollSecret: string; scanSecret: string; expiresAt: string }
+export type RemoteAuthPoll = { status: 'pending' | 'scanned'; expiresAt: string } | ({ status: 'approved' } & AuthResult);
+export interface RemoteAuthScan { id: string; device: { userAgent: string | null; ip: string | null; createdAt: string | null }; expiresAt: string }
 export interface UserProfile extends User { activities?: Activity[]; connections?: PublicConnection[]; note?: string | null; mutualGuilds?: { id: Id; name: string; icon: string | null; nick?: string | null }[]; mutualFriends?: User[] }
 export interface MessageQuery { limit?: number; before?: Id; after?: Id; around?: Id }
 export interface SearchQuery { q?: string; authorId?: Id; mentions?: Id; channelId?: Id; /** comma-separated: link,embed,file,image,video,sticker */ has?: string; before?: string; after?: string; during?: string; pinned?: string; sort_by?: string; sort_order?: string }
@@ -43,7 +46,12 @@ export const api = {
     login: (b: { email: string; password: string; totp?: string }) => send<AuthResult>({ method: 'POST', path: '/auth/login', body: b, auth: false }),
     logout: () => send({ method: 'POST', path: '/auth/logout' }),
     sessions: () => send<any[]>({ method: 'GET', path: '/auth/sessions' }).then((x) => arr<any>(x)),
-    revokeSession: (id: string) => send({ method: 'POST', path: '/auth/sessions', body: { id } }),
+    revokeSession: (id: string) => send({ method: 'POST', path: '/auth/sessions', body: { sessionId: id } }),
+    /** QR-code login. Waiting device: create + poll. Signed-in device: scan, then confirm or decline. */
+    remoteCreate: () => send<RemoteAuthCode>({ method: 'POST', path: '/auth/remote/create', body: {}, auth: false }),
+    remotePoll: (id: string, pollSecret: string) => send<RemoteAuthPoll>({ method: 'POST', path: '/auth/remote/poll', body: { id, pollSecret }, auth: false }),
+    remoteScan: (id: string, scanSecret: string) => send<RemoteAuthScan>({ method: 'POST', path: '/auth/remote/scan', body: { id, scanSecret } }),
+    remoteConfirm: (id: string, scanSecret: string, approve: boolean) => send({ method: 'POST', path: '/auth/remote/confirm', body: { id, scanSecret, approve } }),
     mfaSetup: () => send<{ secret: string; uri?: string; otpauthUrl?: string; qr?: string }>({ method: 'POST', path: '/auth/mfa/setup' }),
     mfaEnable: (code: string) => send<{ recoveryCodes?: string[] }>({ method: 'POST', path: '/auth/mfa/enable', body: { code, totp: code } }),
     mfaDisable: (code: string, password?: string) => send({ method: 'POST', path: '/auth/mfa/disable', body: { code, totp: code, password } }),
@@ -166,6 +174,10 @@ export const api = {
     acceptScreening: (id: Id) => send<Member>({ method: 'PUT', path: `/guilds/${id}/members/@me/screening`, body: { acceptRules: true } }),
     /** What the composer's slash-command picker offers in a channel. */
     commands: (id: Id, channelId?: Id) => send<CommandCatalog>({ method: 'GET', path: `/guilds/${id}/application-commands`, query: channelId ? { channelId } : undefined }),
+    /** Server Settings > Bots & Apps: installed apps (Manage Server). */
+    integrations: (id: Id) => send<GuildIntegration[]>({ method: 'GET', path: `/guilds/${id}/integrations` }).then((x) => arr<GuildIntegration>(x)),
+    patchIntegration: (id: Id, appId: Id, permissions: string) => send<GuildIntegration>({ method: 'PATCH', path: `/guilds/${id}/integrations/${appId}`, body: { permissions } }),
+    removeIntegration: (id: Id, appId: Id) => send({ method: 'DELETE', path: `/guilds/${id}/integrations/${appId}` }),
     events: (id: Id) => send<ScheduledEvent[]>({ method: 'GET', path: `/guilds/${id}/scheduled-events` }).then((x) => arr<ScheduledEvent>(x)),
     createEvent: (id: Id, b: CreateEventInput) => send<ScheduledEvent>({ method: 'POST', path: `/guilds/${id}/scheduled-events`, body: b }),
     patchEvent: (id: Id, eid: Id, b: Partial<CreateEventInput> & { status?: number }) => send<ScheduledEvent>({ method: 'PATCH', path: `/guilds/${id}/scheduled-events/${eid}`, body: b }),
@@ -344,7 +356,7 @@ export const api = {
     reports: () => send<any[]>({ method: 'GET', path: '/admin/reports' }),
   },
   misc: {
-    gifs: (q?: string) => send<any>({ method: 'GET', path: q ? '/gifs/search' : '/gifs/trending', query: q ? { q } : undefined }).then((x) => arr<GifResult>(x)),
+    gifs: (q?: string, offset = 0) => send<any>({ method: 'GET', path: q ? '/gifs/search' : '/gifs/trending', query: { ...(q ? { q } : {}), ...(offset ? { offset } : {}) } }).then((x) => arr<GifResult>(x)),
     unfurl: (url: string) => send<any>({ method: 'GET', path: '/unfurl', query: { url } }),
   },
 };

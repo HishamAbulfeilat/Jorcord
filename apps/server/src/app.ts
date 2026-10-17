@@ -3,7 +3,7 @@ import multipart from '@fastify/multipart';
 import websocket from '@fastify/websocket';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { ZodError } from 'zod';
-import { authenticate } from './auth';
+import { authenticate, verifyGatewayToken } from './auth';
 import { createBus } from './bus';
 import { loadConfig, type Config } from './config';
 import type { Ctx } from './ctx';
@@ -14,6 +14,7 @@ import { Hub } from './gateway/hub';
 import { gatewayRoutes } from './gateway/ws';
 import { RateLimiter, installRateLimit } from './lib/ratelimit';
 import { authRoutes, publicAuthRoutes } from './routes/auth';
+import { remoteAuthPublicRoutes, remoteAuthRoutes } from './routes/remoteauth';
 import { applicationRoutes, oauthPublicRoutes } from './routes/applications';
 import { commandRoutes } from './routes/commands';
 import { eventRoutes } from './routes/events';
@@ -34,6 +35,8 @@ import { guildExtrasRoutes, widgetPublicRoutes } from './routes/guildextras';
 import { followRoutes } from './routes/follows';
 import { linkedRoleRoutes } from './routes/linkedroles';
 import { directoryRoutes } from './routes/directory';
+import { integrationRoutes } from './routes/integrations';
+import { ensureSystemApps } from './services/sysbots';
 import { modToolRoutes } from './routes/modtools';
 import { onboardingRoutes } from './routes/onboarding';
 import { safetyRoutes } from './routes/safety';
@@ -84,6 +87,7 @@ export async function buildApp(opts: BuildOptions = {}): Promise<{ app: FastifyI
   ctx.push = createPush(ctx);
   await ctx.pcache.init(bus, config.redisPrefix, !!config.redisUrl);
   await hub.init(ctx);
+  await ensureSystemApps(ctx); // official built-in bots (Welcome, Moderation, Utility)
 
   await app.register(cors, {
     origin: config.corsOrigins, credentials: false, methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'], maxAge: 600,
@@ -117,8 +121,14 @@ export async function buildApp(opts: BuildOptions = {}): Promise<{ app: FastifyI
     return reply.code(404).send({ code: 'NOT_FOUND', message: 'Route not found' });
   });
 
-  app.get('/health', async (_req, reply) => {
-    try { await db.query('SELECT 1'); return { status: 'ok', db: db.kind, uptime: Math.round(process.uptime()), sessions: hub.sessions.size }; }
+  app.get('/health', async (req, reply) => {
+    try {
+      await db.query('SELECT 1');
+      // anonymous callers (load balancers, the web client's server check) only learn status + db; uptime and session count are for signed-in users
+      const h = req.headers.authorization;
+      const authed = !!h?.startsWith('Bearer ') && !!(await verifyGatewayToken(ctx, h.slice(7)).catch(() => null));
+      return authed ? { status: 'ok', db: db.kind, uptime: Math.round(process.uptime()), sessions: hub.sessions.size } : { status: 'ok', db: db.kind };
+    }
     catch { return reply.code(503).send({ status: 'degraded', db: 'down' }); }
   });
   gatewayRoutes(app, ctx);
@@ -126,6 +136,7 @@ export async function buildApp(opts: BuildOptions = {}): Promise<{ app: FastifyI
 
   await app.register(async (api) => {
     publicAuthRoutes(api, ctx);
+    remoteAuthPublicRoutes(api, ctx);
     pushPublicRoutes(api, ctx);
     invitePublicRoutes(api, ctx);
     webhookPublicRoutes(api, ctx);
@@ -137,9 +148,9 @@ export async function buildApp(opts: BuildOptions = {}): Promise<{ app: FastifyI
     await api.register(async (priv) => {
       priv.addHook('preHandler', authenticate(ctx));
       priv.addHook('onResponse', godModeAuditHook(ctx));
-      authRoutes(priv, ctx); userRoutes(priv, ctx); guildRoutes(priv, ctx); channelRoutes(priv, ctx);
+      authRoutes(priv, ctx); remoteAuthRoutes(priv, ctx); userRoutes(priv, ctx); guildRoutes(priv, ctx); channelRoutes(priv, ctx);
       memberRoutes(priv, ctx); messageRoutes(priv, ctx); miscRoutes(priv, ctx); voiceRoutes(priv, ctx); pushRoutes(priv, ctx);
-      applicationRoutes(priv, ctx); commandRoutes(priv, ctx); interactionRoutes(priv, ctx); pollRoutes(priv, ctx); eventRoutes(priv, ctx); socialRoutes(priv, ctx); soundboardRoutes(priv, ctx); activityRoutes(priv, ctx); safetyRoutes(priv, ctx); onboardingRoutes(priv, ctx); followRoutes(priv, ctx); guildExtrasRoutes(priv, ctx); favoriteRoutes(priv, ctx); connectionRoutes(priv, ctx); linkedRoleRoutes(priv, ctx); directoryRoutes(priv, ctx); modToolRoutes(priv, ctx); adminRoutes(priv, ctx);
+      applicationRoutes(priv, ctx); commandRoutes(priv, ctx); interactionRoutes(priv, ctx); pollRoutes(priv, ctx); eventRoutes(priv, ctx); socialRoutes(priv, ctx); soundboardRoutes(priv, ctx); activityRoutes(priv, ctx); safetyRoutes(priv, ctx); onboardingRoutes(priv, ctx); followRoutes(priv, ctx); guildExtrasRoutes(priv, ctx); favoriteRoutes(priv, ctx); connectionRoutes(priv, ctx); linkedRoleRoutes(priv, ctx); directoryRoutes(priv, ctx); integrationRoutes(priv, ctx); modToolRoutes(priv, ctx); adminRoutes(priv, ctx);
     });
   }, { prefix: '/api/v1' });
 

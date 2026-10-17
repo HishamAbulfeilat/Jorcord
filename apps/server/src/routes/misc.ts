@@ -71,30 +71,40 @@ export function miscRoutes(app: FastifyInstance, ctx: Ctx) {
     return embed;
   });
 
-  const gifs = async (kind: 'search' | 'trending', q: string | undefined) => {
-    const key = `g:${kind}:${q ?? ''}`;
+  const GIF_PAGE = 30;
+  /** Tenor pages by opaque token, not offset: remember the token that starts each following page. */
+  const tenorNext = new Map<string, string>();
+  const gifs = async (kind: 'search' | 'trending', q: string | undefined, offset = 0) => {
+    const key = `g:${kind}:${q ?? ''}:${offset}`;
     const hit = cached<any[]>(key, 60_000); if (hit) return hit;
     let items: any[] = [];
     try {
       if (ctx.config.tenorKey) {
+        const base = `${kind}:${q ?? ''}`;
+        const pos = offset ? tenorNext.get(`${base}:${offset}`) : undefined;
+        if (offset && !pos) return [];
         const u = new URL(`https://tenor.googleapis.com/v2/${kind === 'search' ? 'search' : 'featured'}`);
-        u.searchParams.set('key', ctx.config.tenorKey); u.searchParams.set('limit', '30'); u.searchParams.set('media_filter', 'gif,tinygif');
+        u.searchParams.set('key', ctx.config.tenorKey); u.searchParams.set('limit', String(GIF_PAGE)); u.searchParams.set('media_filter', 'gif,tinygif');
         if (q) u.searchParams.set('q', q);
+        if (pos) u.searchParams.set('pos', pos);
         const j: any = await (await fetch(u, { signal: AbortSignal.timeout(5000) })).json();
+        if (j.next) { if (tenorNext.size > 2000) tenorNext.delete(tenorNext.keys().next().value!); tenorNext.set(`${base}:${offset + GIF_PAGE}`, String(j.next)); }
         items = (j.results ?? []).map((r: any) => ({ id: r.id, title: r.content_description ?? '', url: r.media_formats?.gif?.url, previewUrl: r.media_formats?.tinygif?.url, width: r.media_formats?.gif?.dims?.[0] ?? null, height: r.media_formats?.gif?.dims?.[1] ?? null }));
       } else if (ctx.config.giphyKey) {
         const u = new URL(`https://api.giphy.com/v1/gifs/${kind}`);
-        u.searchParams.set('api_key', ctx.config.giphyKey); u.searchParams.set('limit', '30'); if (q) u.searchParams.set('q', q);
+        u.searchParams.set('api_key', ctx.config.giphyKey); u.searchParams.set('limit', String(GIF_PAGE)); u.searchParams.set('offset', String(offset)); if (q) u.searchParams.set('q', q);
         const j: any = await (await fetch(u, { signal: AbortSignal.timeout(5000) })).json();
         items = (j.data ?? []).map((r: any) => ({ id: r.id, title: r.title ?? '', url: r.images?.original?.url, previewUrl: r.images?.fixed_width_small?.url ?? r.images?.fixed_width?.url, width: Number(r.images?.original?.width) || null, height: Number(r.images?.original?.height) || null }));
       }
     } catch (e) { ctx.log.warn({ err: e }, 'gif provider failed'); return []; }
-    items = items.filter((i) => typeof i.url === 'string' && i.url.startsWith('https://'));
+    // `preview` is the field the web client reads; `previewUrl` is kept for existing API consumers
+    items = items.filter((i) => typeof i.url === 'string' && i.url.startsWith('https://')).map((i) => ({ ...i, preview: typeof i.previewUrl === 'string' && i.previewUrl.startsWith('https://') ? i.previewUrl : i.url }));
     put(key, items);
     return items;
   };
-  app.get('/gifs/search', async (req) => { const { q } = parse(z.object({ q: z.string().min(1).max(100) }), req.query); return gifs('search', q); });
-  app.get('/gifs/trending', async () => gifs('trending', undefined));
+  const gifOffset = z.coerce.number().int().min(0).max(5000).default(0);
+  app.get('/gifs/search', async (req) => { const { q, offset } = parse(z.object({ q: z.string().min(1).max(100), offset: gifOffset }), req.query); return gifs('search', q, offset); });
+  app.get('/gifs/trending', async (req) => { const { offset } = parse(z.object({ offset: gifOffset }), req.query); return gifs('trending', undefined, offset); });
 
   // ---------- voice ----------
   app.post('/voice/token', async (req) => {
@@ -111,7 +121,7 @@ export function miscRoutes(app: FastifyInstance, ctx: Ctx) {
     const mod = already ? { mute: prev!.serverMute, deaf: prev!.serverDeaf } : await loadModeration(ctx, a.channel.guild_id ?? null, req.userId);
     const caps = voiceCaps(a.channel, a.perms, { serverMute: mod.mute, serverDeaf: mod.deaf, suppress: a.channel.type === 'stage' && (already ? prev!.suppress : !has(a.perms, Perm.MUTE_MEMBERS)) });
     const sources = [...(caps.canSpeak ? [TrackSource.MICROPHONE] : []), ...(caps.canStream ? [TrackSource.CAMERA, TrackSource.SCREEN_SHARE, TrackSource.SCREEN_SHARE_AUDIO] : [])];
-    const at = new AccessToken(ctx.config.livekit.apiKey, ctx.config.livekit.apiSecret, { identity: req.userId, name: u.display_name ?? u.username, ttl: '6h', metadata: JSON.stringify({ userId: req.userId }) });
+    const at = new AccessToken(ctx.config.livekit.apiKey, ctx.config.livekit.apiSecret, { identity: req.userId, name: u.display_name ?? u.username, ttl: '10m', metadata: JSON.stringify({ userId: req.userId }) });
     at.addGrant({ roomJoin: true, room: channelId, canSubscribe: caps.canSubscribe, canPublish: sources.length > 0, canPublishSources: sources, canPublishData: true, canUpdateOwnMetadata: true });
     const out: VoiceToken = { token: await at.toJwt(), url: resolveLivekitUrl(ctx.config.livekit.url, req, ctx.config.publicUrl), room: channelId };
     return out;

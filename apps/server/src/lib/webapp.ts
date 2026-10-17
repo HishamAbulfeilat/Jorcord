@@ -11,7 +11,9 @@ import type { FastifyReply, FastifyRequest } from 'fastify';
 
 /** Paths that belong to the backend: they never fall back to index.html, so API typos stay JSON 404s. */
 const API_PREFIXES = ['/api', '/gateway', '/files', '/health', '/voice', '/oauth2', '/interactions', '/webhooks', '/push', '/livekit'];
-export const isApiPath = (p: string) => API_PREFIXES.some((x) => p === x || p.startsWith(x + '/'));
+/** Browser pages that live under an API-looking prefix: the add-bot consent page that every OAuth2 invite link points at (the API itself is /api/v1/oauth2/*). */
+const WEB_PAGES = new Set(['/oauth2/authorize']);
+export const isApiPath = (p: string) => !WEB_PAGES.has(p.replace(/\/+$/, '')) && API_PREFIXES.some((x) => p === x || p.startsWith(x + '/'));
 
 const TYPES: Record<string, string> = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
