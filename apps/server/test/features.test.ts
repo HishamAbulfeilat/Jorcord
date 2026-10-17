@@ -284,8 +284,8 @@ describe('messages', () => {
 
   it('emojis, boosts, discovery, webhooks', async () => {
     const { owner, general, guild, members: [bob] } = await guildWith('w');
-    expect((await api.req('POST', `/guilds/${guild.id}/emojis`, bob!.token, { name: 'wave', url: '/api/v1/files/x/y.png' })).status).toBe(403);
-    const em = await api.req('POST', `/guilds/${guild.id}/emojis`, owner.token, { name: 'wave', url: '/api/v1/files/x/y.png' });
+    expect((await api.req('POST', `/guilds/${guild.id}/emojis`, bob!.token, { name: 'wave', url: '/api/v1/files/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/x.png' })).status).toBe(403);
+    const em = await api.req('POST', `/guilds/${guild.id}/emojis`, owner.token, { name: 'wave', url: '/api/v1/files/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/x.png' });
     expect(em.status).toBe(201);
     const r = await api.req('PUT', `/channels/${general.id}/messages/${(await api.req('POST', `/channels/${general.id}/messages`, bob!.token, { content: 'e' })).body.id}/reactions/wave:${em.body.id}/@me`, bob!.token);
     expect(r.status).toBe(204);

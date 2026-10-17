@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { LIMITS, type Embed } from '@jorcord/shared';
 import { ApiError } from '../errors';
-import { assetUrl } from './ids';
+import { externalUrl } from './ids';
 
 /**
  * Validation for sender-sent rich embeds (bots and webhooks; see CONTRACT.md).
@@ -17,8 +17,8 @@ const embedBody = z.object({
   title: z.string().min(1).max(256).optional(),
   description: z.string().min(1).max(4096).optional(),
   color: color.optional(),
-  thumbnail: assetUrl.optional(),
-  image: assetUrl.optional(),
+  thumbnail: externalUrl.optional(),
+  image: externalUrl.optional(),
   fields: z.array(field).max(25).optional(),
   footer: z.string().min(1).max(2048).optional(),
   author: z.string().min(1).max(256).optional(),
