@@ -550,6 +550,13 @@ describe('polls', () => {
     expect(owner_view.poll.answers[2].meVoted).toBe(false);
     const voters = await api.req('GET', `/channels/${general.id}/polls/${m.body.id}/answers/3`, owner.token);
     expect(voters.body.users.map((u: any) => u.id).sort()).toEqual([v1.id, v2.id].sort());
+    // the voter list is paginated: cursor pages stitch into the complete list
+    const page1 = (await api.req('GET', `/channels/${general.id}/polls/${m.body.id}/answers/3?limit=1`, owner.token)).body.users;
+    expect(page1).toHaveLength(1);
+    const page2 = (await api.req('GET', `/channels/${general.id}/polls/${m.body.id}/answers/3?limit=1&after=${page1[0].id}`, owner.token)).body.users;
+    expect(page2[0].id).not.toBe(page1[0].id);
+    expect([...page1, ...page2].map((u: any) => u.id).sort()).toEqual([v1.id, v2.id].sort());
+    expect((await api.req('GET', `/channels/${general.id}/polls/${m.body.id}/answers/3?after=${page2[0].id}`, owner.token)).body.users).toEqual([]);
     expect((await api.req('GET', `/channels/${general.id}/polls/${m.body.id}/answers/9`, owner.token)).status).toBe(404);
     expect((await api.req('DELETE', `/channels/${general.id}/polls/${m.body.id}/votes/@me`, v2.token)).status).toBe(200);
     // ending early: author or MANAGE_MESSAGES only

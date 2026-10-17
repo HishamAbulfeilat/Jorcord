@@ -35,7 +35,7 @@ Checklist items are grouped by feature. Each row lists the files it would touch 
 
 ## Embeds / atoms
 
-- [ ] **Poll answer-voters endpoint and remove-my-vote naming.** Discord has `GET /channels/:id/polls/:mid/answers/:id` plus `PUT /answers/@me` removal; Jorcord's `routes/polls.ts` has only `PUT`/`DELETE` on `votes/@me` and `GET .../answers/:answerId`, and `MESSAGE_POLL_VOTE` remove is missing (the client can only add votes; there is no un-vote event).
+- [x] **Poll answer-voters endpoint and remove-my-vote naming.** `GET /channels/:id/polls/:mid/answers/:id` (paginated with `after`/`limit`, wired into a paged `PollVotersModal`) plus `DELETE /votes/@me`; gateway emits `MESSAGE_POLL_VOTE_ADD`/`MESSAGE_POLL_VOTE_REMOVE` with the per-answer count and distinct-voter total, applied live in `stores/messages.pollVote` + the exact-total re-read in `session.ts`.
   Files: apps/server/src/routes/polls.ts, apps/server/src/services/polls.ts, apps/web/src/lib/polls.ts. Size: S.
 
 ## Go Live / streaming extras
