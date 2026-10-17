@@ -32,7 +32,7 @@ const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR
 describe('auth', () => {
   it('validates registration, rejects duplicates and weak input', async () => {
     const u = await api.register('dupe');
-    expect((await api.req('POST', '/auth/register', null, { email: u.user.email, username: 'other_name', password: 'longenoughpw' })).status).toBe(409);
+    expect((await api.req('POST', '/auth/register', null, { email: u.user.email, username: 'other_name', password: 'longenoughpw' })).status).toBe(400);
     expect((await api.req('POST', '/auth/register', null, { email: 'a@b.co', username: 'x', password: 'longenoughpw' })).status).toBe(400);
     expect((await api.req('POST', '/auth/register', null, { email: 'a@b.co', username: 'okname', password: 'short' })).status).toBe(400);
     expect((await api.req('POST', '/auth/register', null, { email: 'a@b.co', username: 'okname', password: 'longenoughpw', admin: true })).status).toBe(400);

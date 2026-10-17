@@ -3,7 +3,7 @@ import multipart from '@fastify/multipart';
 import websocket from '@fastify/websocket';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { ZodError } from 'zod';
-import { authenticate } from './auth';
+import { authenticate, verifyGatewayToken } from './auth';
 import { createBus } from './bus';
 import { loadConfig, type Config } from './config';
 import type { Ctx } from './ctx';
@@ -117,8 +117,14 @@ export async function buildApp(opts: BuildOptions = {}): Promise<{ app: FastifyI
     return reply.code(404).send({ code: 'NOT_FOUND', message: 'Route not found' });
   });
 
-  app.get('/health', async (_req, reply) => {
-    try { await db.query('SELECT 1'); return { status: 'ok', db: db.kind, uptime: Math.round(process.uptime()), sessions: hub.sessions.size }; }
+  app.get('/health', async (req, reply) => {
+    try {
+      await db.query('SELECT 1');
+      // anonymous callers (load balancers, the web client's server check) only learn status + db; uptime and session count are for signed-in users
+      const h = req.headers.authorization;
+      const authed = !!h?.startsWith('Bearer ') && !!(await verifyGatewayToken(ctx, h.slice(7)).catch(() => null));
+      return authed ? { status: 'ok', db: db.kind, uptime: Math.round(process.uptime()), sessions: hub.sessions.size } : { status: 'ok', db: db.kind };
+    }
     catch { return reply.code(503).send({ status: 'degraded', db: 'down' }); }
   });
   gatewayRoutes(app, ctx);

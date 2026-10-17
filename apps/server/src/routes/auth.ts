@@ -28,7 +28,7 @@ export function publicAuthRoutes(app: FastifyInstance, ctx: Ctx) {
       await ctx.db.query('INSERT INTO users (id, email, username, display_name, password_hash) VALUES ($1,$2,$3,$4,$5)',
         [id, b.email, b.username, b.displayName ?? null, await hashPassword(b.password)]);
     } catch (e: any) {
-      if (e?.code === '23505' || /unique|duplicate/i.test(String(e?.message))) throw conflict('Email or username already in use', 'ACCOUNT_EXISTS');
+      if (e?.code === '23505' || /unique|duplicate/i.test(String(e?.message))) throw new ApiError(400, 'REGISTRATION_FAILED', 'Could not register with these details'); // identical for a taken email and a taken username: no account enumeration
       throw e;
     }
     const [row] = await ctx.db.query('SELECT * FROM users WHERE id = $1', [id]);
