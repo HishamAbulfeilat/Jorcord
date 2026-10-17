@@ -117,7 +117,7 @@ export const api = {
     reorderRoles: (id: Id, b: { id: Id; position: number }[]) => send({ method: 'PATCH', path: `/guilds/${id}/roles`, body: b }),
     members: (id: Id, q: { limit?: number; after?: Id } = {}) => send<Member[]>({ method: 'GET', path: `/guilds/${id}/members`, query: q }).then((x) => arr<Member>(x)),
     searchMembers: (id: Id, q: string) => send<Member[]>({ method: 'GET', path: `/guilds/${id}/members/search`, query: { q } }).then((x) => arr<Member>(x)),
-    patchMember: (id: Id, userId: Id, b: Partial<{ nick: string | null; roles: Id[]; timeoutUntil: string | null }>) => send<Member>({ method: 'PATCH', path: `/guilds/${id}/members/${userId}`, body: b }),
+    patchMember: (id: Id, userId: Id, b: Partial<{ nick: string | null; roles: Id[]; timeoutUntil: string | null; avatar: string | null; banner: string | null; bio: string | null; pronouns: string | null }>) => send<Member>({ method: 'PATCH', path: `/guilds/${id}/members/${userId}`, body: b }),
     kick: (id: Id, userId: Id) => send({ method: 'DELETE', path: `/guilds/${id}/members/${userId}` }),
     ban: (id: Id, userId: Id, b: { reason?: string; deleteMessageSeconds?: number } = {}) => send({ method: 'PUT', path: `/guilds/${id}/bans/${userId}`, body: b }),
     unban: (id: Id, userId: Id) => send({ method: 'DELETE', path: `/guilds/${id}/bans/${userId}` }),

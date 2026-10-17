@@ -13,6 +13,7 @@ import { useMenuTrigger } from '@/components/ui/ContextMenu';
 import { Markdown } from '@/components/chat/Markdown';
 import { RoleIcon } from '@/components/ui/RoleIcon';
 import { headerBackground, bodyBackground, isHexPair, isHex } from '@/lib/profileTheme';
+import { memberProfile } from '@/lib/memberProfile';
 import { useStreamer } from '@/lib/streamer';
 import { t } from '@/i18n';
 import { ProfileEffect, ServerTagBadge, plateClass } from '@/components/ui/Cosmetics';
@@ -46,17 +47,18 @@ export function ProfileCard({ userId, guildId, compact }: { userId: string; guil
   const openSettings = useUI((s) => s.openSettings); const closeAll = () => { const s = useUI.getState(); s.closePopout(); s.closeModal(); };
   const q = useQuery({ queryKey: ['user', userId], queryFn: () => api.users.get(userId), staleTime: 60_000, retry: false });
   const u = { ...cached, ...q.data } as NonNullable<typeof cached>;
+  const prof = memberProfile(u, member);
   const trig = useMenuTrigger(() => userMenu(userId, guildId));
   if (!u?.id) return <div className="p-6 text-center text-muted">{t('Loading…')}</div>;
   const isMe = me?.id === userId;
   const canModView = !!guildId && !isMe && !!member && modPerms(guildId);
-  const banner = fileUrl(u.banner); const accent = u.accentColor ?? idColor(u.id);
+  const banner = fileUrl(prof.banner); const accent = u.accentColor ?? idColor(u.id);
   const myRoles = member && roles ? member.roles.map((r) => roles[r]).filter((r) => r && r.id !== guildId).sort((a, b) => b.position - a.position) : [];
   return (
     <div className="overflow-hidden rounded-lg bg-[rgb(var(--modal-alt))]" style={{ background: bodyBackground(u) }} data-theme-pair={isHexPair(u.themeColors) ? 'on' : 'off'} data-testid="profile-card" {...trig}>
       <div className={cx("relative", compact ? 'h-[60px]' : 'h-[100px]')} data-banner={banner ? 'image' : isHexPair(u.themeColors) ? 'theme' : 'gradient'} style={{ background: headerBackground(u, banner, accent) }}><ProfileEffect id={u.profileEffect} /></div>
       <div className="relative px-4 pb-4">
-        <div className="-mt-10 mb-1 flex items-end justify-between"><div className="rounded-full border-[6px] border-[rgb(var(--modal-alt))]"><Avatar user={u} memberAvatar={member?.avatar} size={80} presence ring="rgb(var(--modal-alt))" online={presence} /></div>
+        <div className="-mt-10 mb-1 flex items-end justify-between"><div className="rounded-full border-[6px] border-[rgb(var(--modal-alt))]"><Avatar user={u} memberAvatar={prof.avatar} size={80} presence ring="rgb(var(--modal-alt))" online={presence} /></div>
           {isMe ? <button className="btn btn-secondary" onClick={() => { closeAll(); openSettings({ kind: 'user', tab: 'profile' }); }}><Settings size={14} />{t('Edit Profile')}</button> : (
             <div className="mb-1 flex gap-2">
               {rel === 'friend' ? <button aria-label="Remove friend" title="Remove friend" className="btn btn-secondary" onClick={() => api.users.removeRelationship(userId).then(() => useData.getState().apply('RELATIONSHIP_REMOVE', { userId })).catch(toastError)}><UserMinus size={16} /></button>
@@ -68,12 +70,12 @@ export function ProfileCard({ userId, guildId, compact }: { userId: string; guil
         </div>
         <div className="rounded-lg bg-[rgb(var(--rail)/0.5)] p-3">
           <div className={cx("text-xl font-bold leading-6 text-header", plateClass(u.namePlate), u.namePlate && "px-2 py-1 -mx-1")}>{displayName(u, member)} <ServerTagBadge tag={u.serverTag} className="align-middle" /></div>
-          <div className="text-sm text-normal">{u.username}{u.pronouns && <span className="text-muted"> • {u.pronouns}</span>}</div>
+          <div className="text-sm text-normal">{u.username}{prof.pronouns && <span className="text-muted"> • {prof.pronouns}</span>}</div>
           {(u.customStatus?.text || u.customStatus?.emoji) && <div className="mt-2 text-sm text-normal" data-testid="profile-status">{u.customStatus.emoji} {u.customStatus.text}</div>}
           {!compact && presence && <div className="mt-1 text-xs text-muted">{t(PRESENCE_LABEL[presence] ?? 'Offline')}</div>}
           <hr className="my-3 border-divider" />
           <ActivityCards userId={userId} fallback={q.data?.activities} />
-          {u.bio && <><h4 className="mb-1 text-xs font-bold uppercase text-header">{t('About Me')}</h4><div className="mb-3 text-sm"><Markdown content={u.bio} guildId={guildId} /></div></>}
+          {prof.bio && <><h4 className="mb-1 text-xs font-bold uppercase text-header">{t('About Me')}</h4><div className="mb-3 text-sm"><Markdown content={prof.bio} guildId={guildId} /></div></>}
           <h4 className="mb-1 text-xs font-bold uppercase text-header">{t('Member Since')}</h4>
           <div className="mb-3 flex gap-3 text-sm"><span>{fmtStamp(new Date(u.createdAt).getTime()).replace(/ at .*/, '')}</span>{member && <span className="text-muted">• Joined {new Date(member.joinedAt).toLocaleDateString()}</span>}</div>
           {!!q.data?.connections?.length && (<><h4 className="mb-1 text-xs font-bold uppercase text-header">{t('Connections')}</h4><ul className="mb-3 flex flex-wrap gap-1.5" data-testid="profile-connections">{q.data.connections.map((c) => <li key={c.url}><a href={c.url} target="_blank" rel="noopener noreferrer nofollow" className="flex items-center gap-1 rounded bg-active px-2 py-1 text-xs font-medium text-header hover:underline" title={c.verified ? t('Verified') : t('Not verified')}>{c.name}{c.verified && <BadgeCheck size={13} className="text-success" aria-label={t('Verified')} />}</a></li>)}</ul></>)}

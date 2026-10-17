@@ -8,7 +8,7 @@ import { clearServerTag } from '../services/cosmetics';
 import { bumpDaily } from './guildextras';
 import { assertInvitesOpen, detectRaid } from '../services/safety';
 import { ApiError, badRequest, conflict, forbidden, notFound } from '../errors';
-import { idSchema, iso, limitParam, parse } from '../lib/ids';
+import { assetUrl, idSchema, iso, limitParam, parse } from '../lib/ids';
 import { randomToken } from '../lib/crypto';
 import { limitOrThrow } from '../lib/ratelimit';
 import { audit, buildGuildFull } from '../services/guilds';
@@ -197,7 +197,11 @@ export function memberRoutes(app: FastifyInstance, ctx: Ctx) {
 
   app.patch('/guilds/:id/members/:userId', async (req) => {
     const p = parse(z.object({ id: idSchema, userId: z.union([idSchema, z.literal('@me')]) }), req.params);
-    const b = parse(z.object({ nick: z.string().trim().max(32).nullable(), roles: z.array(idSchema).max(250), timeoutUntil: z.string().datetime().nullable() }).partial().strict(), req.body);
+    const b = parse(z.object({
+      nick: z.string().trim().max(32).nullable(), roles: z.array(idSchema).max(250), timeoutUntil: z.string().datetime().nullable(),
+      // per-server profile overrides: a member may only change their own
+      avatar: assetUrl.nullable(), banner: assetUrl.nullable(), bio: z.string().max(400).nullable(), pronouns: z.string().max(40).nullable(),
+    }).partial().strict(), req.body);
     const targetId = p.userId === '@me' ? req.userId : p.userId;
     const actor = await guildAccess(ctx, req.userId, p.id); const perms = guildPerms(actor);
     const target = await loadGuildPerm(ctx, p.id, targetId);
@@ -207,6 +211,18 @@ export function memberRoutes(app: FastifyInstance, ctx: Ctx) {
       if (self) need(perms, Perm.CHANGE_NICKNAME); else { need(perms, Perm.MANAGE_NICKNAMES); needOutrankMember(actor, target); }
       await ctx.db.query('UPDATE members SET nick = $3 WHERE guild_id = $1 AND user_id = $2', [p.id, targetId, b.nick || null]);
       await audit(ctx, p.id, req.userId, 'MEMBER_UPDATE', targetId, { nick: b.nick || null });
+    }
+    if (b.avatar !== undefined || b.banner !== undefined || b.bio !== undefined || b.pronouns !== undefined) {
+      if (!self) throw forbidden('You can only edit your own server profile', 'NOT_SELF');
+      const sets: string[] = [], vals: unknown[] = [p.id, targetId];
+      const put = (col: string, v: string | null) => { vals.push(v); sets.push(`${col} = $${vals.length}`); };
+      if (b.avatar !== undefined) put('avatar', b.avatar);
+      if (b.banner !== undefined) put('banner', b.banner);
+      if (b.bio !== undefined) put('bio', b.bio || null); // empty falls back to the user-level field
+      if (b.pronouns !== undefined) put('pronouns', b.pronouns || null);
+      await ctx.db.query(`UPDATE members SET ${sets.join(', ')} WHERE guild_id = $1 AND user_id = $2`, vals);
+      await ctx.pcache.invalidate({ k: 'member', guildId: p.id, userId: targetId });
+      await audit(ctx, p.id, req.userId, 'MEMBER_PROFILE_UPDATE', targetId, b);
     }
     if (b.roles !== undefined) {
       need(perms, Perm.MANAGE_ROLES);

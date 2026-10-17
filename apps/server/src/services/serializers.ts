@@ -81,7 +81,8 @@ export async function membersDTO(ctx: Ctx, rows: any[]): Promise<Member[]> {
   return rows.filter((r) => users.has(r.user_id)).map((r) => ({
     guildId: r.guild_id, user: users.get(r.user_id)!, nick: r.nick ?? null,
     roles: roles.filter((x) => x.guild_id === r.guild_id && x.user_id === r.user_id).map((x) => x.role_id),
-    joinedAt: iso(r.joined_at)!, timeoutUntil: iso(r.timeout_until), avatar: r.avatar ?? null, pending: !!r.pending,
+    joinedAt: iso(r.joined_at)!, timeoutUntil: iso(r.timeout_until), avatar: r.avatar ?? null,
+    banner: r.banner ?? null, bio: r.bio ?? null, pronouns: r.pronouns ?? null, pending: !!r.pending,
     boostingSince: iso(boosts.find((x) => x.guild_id === r.guild_id && x.user_id === r.user_id)?.since),
   }));
 }

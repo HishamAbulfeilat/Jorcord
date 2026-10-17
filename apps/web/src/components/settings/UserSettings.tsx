@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { VoiceSettingsForm } from '@/voice/VoiceSettings';
 import { useQuery } from '@tanstack/react-query';
-import { Link2, Accessibility, Bell, Globe, Keyboard, LogOut, Mic, Palette, Shield, User as UserIcon, UserCircle, Monitor, Radio, Laptop, Smile, Code2, Lock, ShieldAlert, Film } from 'lucide-react';
+import { Link2, Accessibility, Bell, Globe, Keyboard, LogOut, Mic, Palette, Shield, User as UserIcon, UserCircle, Monitor, Radio, Laptop, Smile, Code2, Lock, ShieldAlert, Film, Users } from 'lucide-react';
 import { PrivacyTab } from './PrivacyTab';
 import { ConnectionsTab } from './ConnectionsTab';
 import { AccountsSection } from './AccountsSection';
@@ -22,7 +22,9 @@ import { Avatar } from '@/components/ui/Avatar';
 import { cx, fileUrl, idColor } from '@/lib/format';
 import { logout } from '@/lib/auth';
 import { ProfileCard } from '@/components/modals/Profile';
+import { Markdown } from '@/components/chat/Markdown';
 import { CosmeticsPicker } from './CosmeticsPicker';
+import { ServerProfiles } from './ServerProfiles';
 import { ProfileEffect, ServerTagBadge, plateClass } from '@/components/ui/Cosmetics';
 
 let lastTab = 'account';
@@ -32,7 +34,7 @@ export function UserSettings({ initialTab }: { initialTab?: string }) {
   // only the configured super admin gets a 200 here; everyone else gets 404 and never sees the entry
   const isAdmin = !!useQuery({ queryKey: ['admin', 'me'], queryFn: api.admin.me, retry: false, staleTime: Infinity }).data?.admin;
   const groups = [
-    { title: t('User Settings'), items: [{ id: 'account', label: t('My Account'), icon: UserIcon }, { id: 'profile', label: t('Profile'), icon: UserCircle }, { id: 'privacy', label: t('Privacy & Safety'), icon: Lock }, { id: 'connections', label: t('Connections'), icon: Link2 }, { id: 'security', label: t('Security & Devices'), icon: Shield }] },
+    { title: t('User Settings'), items: [{ id: 'account', label: t('My Account'), icon: UserIcon }, { id: 'profile', label: t('Profile'), icon: UserCircle }, { id: 'profiles', label: t('Profiles'), icon: Users }, { id: 'privacy', label: t('Privacy & Safety'), icon: Lock }, { id: 'connections', label: t('Connections'), icon: Link2 }, { id: 'security', label: t('Security & Devices'), icon: Shield }] },
     { title: t('App Settings'), items: [{ id: 'appearance', label: t('Appearance'), icon: Palette }, { id: 'accessibility', label: t('Accessibility'), icon: Accessibility }, { id: 'voice', label: t('Voice & Video'), icon: Mic }, { id: 'notifications', label: t('Notifications'), icon: Bell }, { id: 'keybinds', label: t('Keybinds'), icon: Keyboard }, { id: 'streamer', label: t('Streamer Mode'), icon: Radio }, { id: 'language', label: t('Language'), icon: Globe }, ...(isTauri() ? [{ id: 'desktop', label: t('Desktop App'), icon: Laptop }] : [])] },
     { title: t('Developers'), items: [{ id: 'developer', label: t('Developer Portal'), icon: Code2 }] },
     ...(isAdmin ? [{ title: t('Instance'), items: [{ id: 'admin', label: t('Admin Dashboard'), icon: ShieldAlert }] }] : []),
@@ -42,6 +44,7 @@ export function UserSettings({ initialTab }: { initialTab?: string }) {
     <SettingsLayout title={t('User Settings')} groups={groups} tab={tab} onTab={(t) => { if (t === 'logout') { logout(); close(); } else if (t === 'developer') { close(); navigate('/developers'); } else if (t === 'admin') { close(); navigate('/admin'); } else setTab(t); }} onClose={close}>
       {tab === 'account' && <Account go={setTab} />}
       {tab === 'profile' && <Profile />}
+      {tab === 'profiles' && <ServerProfiles />}
       {tab === 'privacy' && <PrivacyTab />}
       {tab === 'connections' && <ConnectionsTab />}
       {tab === 'security' && <Security />}
@@ -107,7 +110,7 @@ function PreviewCard({ me, f }: { me: any; f: any }) {
   const tg = useData((s) => (f.serverTagGuildId ? s.guilds[f.serverTagGuildId]?.guild : undefined));
   return <div className="overflow-hidden rounded-lg bg-[rgb(var(--modal-alt))]"><div className="relative h-[60px]" data-testid="preview-banner" style={{ background: headerBackground({ banner: f.banner, themeColors: f.themeColors, accentColor: f.accentColor }, f.banner ? fileUrl(f.banner) : null, f.accentColor) }}><ProfileEffect id={f.profileEffect} /></div>
     <div className="px-4 pb-4"><div className="-mt-10 mb-2 w-fit rounded-full border-[6px] border-[rgb(var(--modal-alt))]"><Avatar user={{ ...me, avatar: f.avatar }} size={80} decoration={f.avatarDecoration} /></div>
-      <div className="rounded-lg bg-[rgb(var(--rail)/0.5)] p-3"><div className={`text-xl font-bold text-header ${plateClass(f.namePlate)} ${f.namePlate ? 'px-2 py-1 -mx-1' : ''}`} data-testid="preview-name">{f.displayName || me.username}{tg?.tag && <> <ServerTagBadge tag={{ guildId: tg.id, tag: tg.tag, badge: tg.tagBadge ?? null }} /></>}</div><div className="text-sm">{me.username}{f.pronouns && <span className="text-muted"> • {f.pronouns}</span>}</div>{f.bio && <><hr className="my-3 border-divider" /><div className="text-xs font-bold uppercase text-header">{t('About Me')}</div><p className="whitespace-pre-wrap text-sm">{f.bio}</p></>}</div></div></div>;
+      <div className="rounded-lg bg-[rgb(var(--rail)/0.5)] p-3"><div className={`text-xl font-bold text-header ${plateClass(f.namePlate)} ${f.namePlate ? 'px-2 py-1 -mx-1' : ''}`} data-testid="preview-name">{f.displayName || me.username}{tg?.tag && <> <ServerTagBadge tag={{ guildId: tg.id, tag: tg.tag, badge: tg.tagBadge ?? null }} /></>}</div><div className="text-sm">{me.username}{f.pronouns && <span className="text-muted"> • {f.pronouns}</span>}</div>{f.bio && <><hr className="my-3 border-divider" /><div className="text-xs font-bold uppercase text-header">{t('About Me')}</div><div className="text-sm"><Markdown content={f.bio} /></div></>}</div></div></div>;
 }
 
 function Security() {
