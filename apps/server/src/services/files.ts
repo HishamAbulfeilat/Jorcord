@@ -67,13 +67,13 @@ export function sniffImageType(buf: Buffer): { type: string; ext: string } | nul
  */
 export async function storeImageFromUrl(ctx: Ctx, userId: string, url: string, basename: string): Promise<string> {
   let res: Awaited<ReturnType<typeof safeGet>>;
-  try { res = await safeGet(url, { maxBytes: MAX_PROFILE_IMAGE_BYTES, timeoutMs: 10_000, allowPrivate: ctx.config.allowPrivateUnfurl }); }
+  try { res = await safeGet(url, { maxBytes: MAX_PROFILE_IMAGE_BYTES, timeoutMs: 10_000, allowPrivate: ctx.config.allowPrivateUnfurl, accept: 'image/gif,image/webp,image/png,image/jpeg,image/*;q=0.9,*/*;q=0.1' }); }
   catch { throw badRequest('Could not fetch an image from that URL'); }
   if (res.status < 200 || res.status >= 300) throw badRequest('That URL did not return an image');
   const declared = Number(res.headers['content-length'] ?? 0);
   if (res.truncated || declared > MAX_PROFILE_IMAGE_BYTES || res.body.length > MAX_PROFILE_IMAGE_BYTES) throw new ApiError(413, 'FILE_TOO_LARGE', 'Image exceeds 8 MB');
   const kind = sniffImageType(res.body);
-  if (!kind) throw new ApiError(400, 'UNSUPPORTED_IMAGE_TYPE', 'Only PNG, JPEG, WEBP and GIF images are allowed');
+  if (!kind) throw new ApiError(400, 'UNSUPPORTED_IMAGE_TYPE', 'Only PNG, JPEG, WEBP and GIF images are allowed (animated GIF and WebP included)');
   const key = randomBytes(24).toString('hex');
   const filename = `${basename}.${kind.ext}`;
   let width: number | null = null, height: number | null = null;
