@@ -10,7 +10,7 @@ const INSTALLS = `(SELECT count(*)::int FROM application_installs i WHERE i.appl
 const LISTED = 'a.directory_listed AND a.bot_public';
 export const directoryDTO = (r: any): DirectoryApp => ({
   id: r.id, name: r.name, summary: r.directory_summary || String(r.description ?? '').slice(0, 140), description: r.description ?? '', icon: r.icon ?? null, botUserId: r.bot_user_id,
-  category: (r.directory_category ?? 'other') as DirectoryCategory, tags: r.directory_tags ?? [], installs: r.installs ?? 0, permissions: r.directory_permissions ?? '0', listedAt: iso(r.directory_listed_at ?? r.created_at)!,
+  category: (r.directory_category ?? 'other') as DirectoryCategory, tags: r.directory_tags ?? [], installs: r.installs ?? 0, official: !!r.system_key, permissions: r.directory_permissions ?? '0', listedAt: iso(r.directory_listed_at ?? r.created_at)!,
 });
 
 /**
@@ -31,7 +31,7 @@ export function directoryRoutes(app: FastifyInstance, ctx: Ctx) {
     const like = q.q ? `%${q.q.replace(/[\\%_]/g, '\\$&')}%` : null;
     const where = `${LISTED} AND ($1::text IS NULL OR a.directory_category = $1) AND ($2::text IS NULL OR a.name ILIKE $2 OR a.directory_summary ILIKE $2 OR a.description ILIKE $2 OR a.directory_tags::text ILIKE $2)`;
     const [t] = await ctx.db.query(`SELECT count(*)::int AS n FROM applications a WHERE ${where}`, [q.category ?? null, like]);
-    const rows = await ctx.db.query(`SELECT a.*, ${INSTALLS} AS installs FROM applications a WHERE ${where} ORDER BY ${q.sort === 'new' ? 'a.directory_listed_at DESC NULLS LAST' : 'installs DESC, a.directory_listed_at DESC NULLS LAST'}, a.id LIMIT $3 OFFSET $4`, [q.category ?? null, like, limitParam(q.limit, 24, 50), q.offset]);
+    const rows = await ctx.db.query(`SELECT a.*, ${INSTALLS} AS installs FROM applications a WHERE ${where} ORDER BY (a.system_key IS NOT NULL) DESC, ${q.sort === 'new' ? 'a.directory_listed_at DESC NULLS LAST' : 'installs DESC, a.directory_listed_at DESC NULLS LAST'}, a.id LIMIT $3 OFFSET $4`, [q.category ?? null, like, limitParam(q.limit, 24, 50), q.offset]);
     return { items: rows.map(directoryDTO), total: t.n };
   });
 

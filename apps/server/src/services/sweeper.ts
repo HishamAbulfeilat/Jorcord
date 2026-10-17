@@ -5,6 +5,7 @@ import { endEmptyStages } from './stage';
 import { channelsDTO } from './serializers';
 import { fireDueReminders } from './reminders';
 import { syncGuild } from './linkedroles';
+import { fireDueBotReminders } from './sysbots';
 
 /** Thread auto-archive: no activity for `auto_archive_minutes` -> archived (THREAD_UPDATE). Atomic, so multi-node safe. */
 export async function archiveIdleThreads(ctx: Ctx) {
@@ -55,6 +56,7 @@ export async function runSweeps(ctx: Ctx) {
   await step('threads', () => archiveIdleThreads(ctx));
   await step('statuses', () => expireStatuses(ctx));
   await step('reminders', () => fireDueReminders(ctx));
+  await step('bot-reminders', () => fireDueBotReminders(ctx));
   await step('linked-roles', () => sweepLinkedRoles(ctx));
   await step('interactions', () => pruneInteractions(ctx));
 }

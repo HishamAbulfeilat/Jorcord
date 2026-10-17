@@ -1,7 +1,7 @@
 /** Typed REST client written against docs/CONTRACT.md. All calls go through the swappable transport. */
 import type {
   Activity, Attachment, AuditEntry, AutoModRule, Channel, Emoji, Guild, GuildFull, Invite, Member, Message, MessageEdit, Relationship, ReadState, Role, SelfUser, Sticker, User, VoiceToken, Id, Presence, OverwriteDTO,
-  AllowedMentions,
+  AllowedMentions, GuildIntegration,
   Reminder, ModView, ModWarning, ModNote, BulkModerationFilter, BulkModerationResult, PruneResult, BoostSummary, LinkedRoleView, LinkedCriterion, RoleMetadataApp, DirectoryApp, DirectoryCategory, SoundboardSound, Connection, PublicConnection, GifFavorite, GuildTemplate, GuildWidgetSettings, GuildInsights, ChannelFollow, Onboarding, OnboardingResponse, GuildSafety, SafetyPreset, Application, ApplicationCommand, CommandPermissionOverwrite, CommandOptionChoice, CreatePoll, ForumTag, InteractionOptionValue, ModalSubmitRow, OAuthAuthorizePreview, OAuthAuthorizeResult, ScheduledEvent, StageInstance, Report, RecurrenceRule,
 } from '@jorcord/shared';
 import { send } from './transport';
@@ -166,6 +166,10 @@ export const api = {
     acceptScreening: (id: Id) => send<Member>({ method: 'PUT', path: `/guilds/${id}/members/@me/screening`, body: { acceptRules: true } }),
     /** What the composer's slash-command picker offers in a channel. */
     commands: (id: Id, channelId?: Id) => send<CommandCatalog>({ method: 'GET', path: `/guilds/${id}/application-commands`, query: channelId ? { channelId } : undefined }),
+    /** Server Settings > Bots & Apps: installed apps (Manage Server). */
+    integrations: (id: Id) => send<GuildIntegration[]>({ method: 'GET', path: `/guilds/${id}/integrations` }).then((x) => arr<GuildIntegration>(x)),
+    patchIntegration: (id: Id, appId: Id, permissions: string) => send<GuildIntegration>({ method: 'PATCH', path: `/guilds/${id}/integrations/${appId}`, body: { permissions } }),
+    removeIntegration: (id: Id, appId: Id) => send({ method: 'DELETE', path: `/guilds/${id}/integrations/${appId}` }),
     events: (id: Id) => send<ScheduledEvent[]>({ method: 'GET', path: `/guilds/${id}/scheduled-events` }).then((x) => arr<ScheduledEvent>(x)),
     createEvent: (id: Id, b: CreateEventInput) => send<ScheduledEvent>({ method: 'POST', path: `/guilds/${id}/scheduled-events`, body: b }),
     patchEvent: (id: Id, eid: Id, b: Partial<CreateEventInput> & { status?: number }) => send<ScheduledEvent>({ method: 'PATCH', path: `/guilds/${id}/scheduled-events/${eid}`, body: b }),

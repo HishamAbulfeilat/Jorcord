@@ -103,6 +103,10 @@ export function AppShell({ base = '' }: { base?: string }) {
     const h = (e: Event) => { const d = (e as CustomEvent).detail; navigate(`${base}/channels/${d.guildId ?? '@me'}${d.channelId ? '/' + d.channelId : ''}`); setLeft(false); };
     window.addEventListener('jorcord:goto', h); return () => window.removeEventListener('jorcord:goto', h);
   }, [navigate, base, setLeft]);
+  useEffect(() => {
+    const h = (e: Event) => { const to = (e as CustomEvent).detail?.to; if (typeof to === 'string' && to.startsWith('/') && !to.startsWith('//')) { navigate(`${base}${to}`); setLeft(false); } };
+    window.addEventListener('jorcord:navigate', h); return () => window.removeEventListener('jorcord:navigate', h);
+  }, [navigate, base, setLeft]);
   useGlobalKeys(base);
   // swipe drawers
   useEffect(() => {

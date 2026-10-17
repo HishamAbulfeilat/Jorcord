@@ -34,6 +34,8 @@ import { guildExtrasRoutes, widgetPublicRoutes } from './routes/guildextras';
 import { followRoutes } from './routes/follows';
 import { linkedRoleRoutes } from './routes/linkedroles';
 import { directoryRoutes } from './routes/directory';
+import { integrationRoutes } from './routes/integrations';
+import { ensureSystemApps } from './services/sysbots';
 import { modToolRoutes } from './routes/modtools';
 import { onboardingRoutes } from './routes/onboarding';
 import { safetyRoutes } from './routes/safety';
@@ -84,6 +86,7 @@ export async function buildApp(opts: BuildOptions = {}): Promise<{ app: FastifyI
   ctx.push = createPush(ctx);
   await ctx.pcache.init(bus, config.redisPrefix, !!config.redisUrl);
   await hub.init(ctx);
+  await ensureSystemApps(ctx); // official built-in bots (Welcome, Moderation, Utility)
 
   await app.register(cors, {
     origin: config.corsOrigins, credentials: false, methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'], maxAge: 600,
@@ -139,7 +142,7 @@ export async function buildApp(opts: BuildOptions = {}): Promise<{ app: FastifyI
       priv.addHook('onResponse', godModeAuditHook(ctx));
       authRoutes(priv, ctx); userRoutes(priv, ctx); guildRoutes(priv, ctx); channelRoutes(priv, ctx);
       memberRoutes(priv, ctx); messageRoutes(priv, ctx); miscRoutes(priv, ctx); voiceRoutes(priv, ctx); pushRoutes(priv, ctx);
-      applicationRoutes(priv, ctx); commandRoutes(priv, ctx); interactionRoutes(priv, ctx); pollRoutes(priv, ctx); eventRoutes(priv, ctx); socialRoutes(priv, ctx); soundboardRoutes(priv, ctx); activityRoutes(priv, ctx); safetyRoutes(priv, ctx); onboardingRoutes(priv, ctx); followRoutes(priv, ctx); guildExtrasRoutes(priv, ctx); favoriteRoutes(priv, ctx); connectionRoutes(priv, ctx); linkedRoleRoutes(priv, ctx); directoryRoutes(priv, ctx); modToolRoutes(priv, ctx); adminRoutes(priv, ctx);
+      applicationRoutes(priv, ctx); commandRoutes(priv, ctx); interactionRoutes(priv, ctx); pollRoutes(priv, ctx); eventRoutes(priv, ctx); socialRoutes(priv, ctx); soundboardRoutes(priv, ctx); activityRoutes(priv, ctx); safetyRoutes(priv, ctx); onboardingRoutes(priv, ctx); followRoutes(priv, ctx); guildExtrasRoutes(priv, ctx); favoriteRoutes(priv, ctx); connectionRoutes(priv, ctx); linkedRoleRoutes(priv, ctx); directoryRoutes(priv, ctx); integrationRoutes(priv, ctx); modToolRoutes(priv, ctx); adminRoutes(priv, ctx);
     });
   }, { prefix: '/api/v1' });
 

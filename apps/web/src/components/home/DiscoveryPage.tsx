@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Compass, Menu, Search, Users } from 'lucide-react';
 import type { Guild } from '@jorcord/shared';
@@ -46,7 +47,7 @@ function Card({ g }: { g: Found }) {
 }
 
 export function DiscoveryPage() {
-  const [tab, setTab] = useState<'servers' | 'apps'>('servers'); const [q, setQ] = useState(''); const dq = useDebounced(q, 300); const mobile = useIsMobile(); const setLeft = useUI((s) => s.setLeftDrawer);
+  const [sp] = useSearchParams(); const [tab, setTab] = useState<'servers' | 'apps'>(sp.get('tab') === 'apps' ? 'apps' : 'servers'); const forGuild = sp.get('guild') ?? undefined; const [q, setQ] = useState(''); const dq = useDebounced(q, 300); const mobile = useIsMobile(); const setLeft = useUI((s) => s.setLeftDrawer);
   const res = useQuery({ queryKey: ['discover', dq], queryFn: () => api.guilds.discover(dq || undefined), retry: false });
   return (
     <div data-testid="discovery" className="flex h-full min-w-0 flex-1 flex-col bg-chat">
@@ -58,7 +59,7 @@ export function DiscoveryPage() {
         {([['servers', 'Servers'], ['apps', 'Apps']] as const).map(([id, label]) => <button key={id} role="tab" aria-selected={tab === id} onClick={() => setTab(id)} className={cx('rounded px-3 py-1.5 text-sm font-semibold', tab === id ? 'bg-hover text-header' : 'text-interactive hover:bg-hover')}>{t(label)}</button>)}
       </div>
       <div className="scroller min-h-0 flex-1">
-        {tab === 'apps' ? <div className="pt-4"><AppDirectory /></div> : <>
+        {tab === 'apps' ? <div className="pt-4"><AppDirectory guildId={forGuild} /></div> : <>
         <div className="relative mb-6 flex flex-col items-center gap-3 bg-gradient-to-br from-brand to-[#eb459e] px-6 py-10 text-center text-white">
           <h2 className="text-3xl font-extrabold">{t('Find your community on Jorcord')}</h2>
           <p className="max-w-lg text-white/90">{t('From gaming, to music, to learning, there is a place for you.')}</p>

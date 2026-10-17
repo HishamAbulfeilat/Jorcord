@@ -15,6 +15,7 @@ import { canUseCommand, validateInvocation } from './commands';
 import { createMessage } from './messages';
 import { DM_PERMS, loadGuildPerm, loadOverwrites, permsFor, type Access } from './perms';
 import { isInstalled } from './apps';
+import { runSystemInteraction } from './sysbots';
 import { memberDTO, messageDTO, userDTO } from './serializers';
 
 const MAX_FOLLOWUPS = 10;
@@ -61,7 +62,8 @@ export async function failInteraction(ctx: Ctx, id: string) {
 function deliver(ctx: Ctx, app: any, row: any, payload: Interaction) {
   const timer = setTimeout(() => void failInteraction(ctx, row.id).catch(() => {}), INTERACTION_ACK_DEADLINE_MS + 200);
   timer.unref();
-  if (app.interactions_endpoint_url) {
+  if (app.system_key) runSystemInteraction(ctx, app, row, payload); // built-in bots run in this process
+  else if (app.interactions_endpoint_url) {
     void (async () => {
       try {
         const r = await signedPost(ctx, app, app.interactions_endpoint_url, payload);

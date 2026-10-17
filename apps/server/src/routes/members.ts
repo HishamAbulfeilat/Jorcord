@@ -14,6 +14,7 @@ import { limitOrThrow } from '../lib/ratelimit';
 import { audit, buildGuildFull } from '../services/guilds';
 import { trackVisibility } from '../services/visibility';
 import { refreshMember } from '../services/linkedroles';
+import { onMemberJoined } from '../services/sysbots';
 import { postSystemMessage } from '../services/messages';
 import { disconnectMember } from '../services/voice';
 import { channelAccess, guildAccess, guildPerms, loadGuildPerm, need, needOutrank, needOutrankMember } from '../services/perms';
@@ -60,6 +61,7 @@ export async function joinGuild(ctx: Ctx, userId: string, guildId: string, invit
     await detectRaid(ctx, guildId).catch((e) => ctx.log.warn({ err: e }, 'raid detection failed'));
     await refreshMember(ctx, guildId, userId).catch((e) => ctx.log.warn({ err: e }, 'linked role refresh failed')); // criteria such as account age can hold on day one
     if (full.systemChannelId) await postSystemMessage(ctx, full.systemChannelId, userId, 'join').catch((e) => ctx.log.warn({ err: e }, 'join message failed'));
+    await onMemberJoined(ctx, guildId, userId); // built-in Welcome bot (greeting + auto-role) when installed
   return full;
 }
 

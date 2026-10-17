@@ -77,6 +77,7 @@ export async function installApplication(ctx: Ctx, o: { app: any; guildId: strin
 export async function uninstallBot(ctx: Ctx, guildId: string, botUserId: string) {
   const rows = await ctx.db.query(
     'DELETE FROM application_installs WHERE guild_id = $1 AND application_id IN (SELECT id FROM applications WHERE bot_user_id = $2) RETURNING role_id', [guildId, botUserId]);
+  if (rows.length) await ctx.db.query('DELETE FROM system_bot_settings WHERE guild_id = $1 AND bot_key IN (SELECT system_key FROM applications WHERE bot_user_id = $2 AND system_key IS NOT NULL)', [guildId, botUserId]);
   for (const r of rows) if (r.role_id) {
     await ctx.db.query(`DELETE FROM roles WHERE id = $1 AND guild_id = $2 AND managed_app_id IS NOT NULL`, [r.role_id, guildId]);
     await ctx.hub.toGuild(guildId, 'ROLE_DELETE', { id: r.role_id, guildId });

@@ -1,7 +1,7 @@
 /** Context-menu builders. Pure functions over store state; navigation goes through a window event the shell listens to. */
 import { Perm } from '@jorcord/shared';
 import type { Channel, Id, Message } from '@jorcord/shared';
-import { ShieldAlert, Rocket, Star, Megaphone, EyeOff, ListChecks, AlarmClock, Bookmark, Forward, ArrowDown, ArrowUp, Bell, FolderMinus, FolderPlus as FolderAdd, Folder as FolderI, MonitorUp, Unlink, AtSign, BellOff, Check, Copy, Edit3, Hash, LogOut, MessageSquare, Pencil, Pin, PinOff, Reply, Settings, ShieldBan, Smile, Trash2, UserMinus, UserPlus, Link2, UserX, Clock, BookOpen, Plus, FolderPlus, Mail, Ban } from 'lucide-react';
+import { ShieldAlert, Rocket, Star, Megaphone, EyeOff, ListChecks, AlarmClock, Bookmark, Forward, ArrowDown, ArrowUp, Bell, FolderMinus, FolderPlus as FolderAdd, Folder as FolderI, MonitorUp, Unlink, Bot, AtSign, BellOff, Check, Copy, Edit3, Hash, LogOut, MessageSquare, Pencil, Pin, PinOff, Reply, Settings, ShieldBan, Smile, Trash2, UserMinus, UserPlus, Link2, UserX, Clock, BookOpen, Plus, FolderPlus, Mail, Ban } from 'lucide-react';
 import { api } from './api';
 import { queryClient } from './queryClient';
 import { useSocial } from '@/stores/social';
@@ -32,6 +32,8 @@ export async function markGuildRead(gid: Id) {
 export function markChannelRead(c: Channel) { if (!c.lastMessageId) return; useData.getState().setRead(c.id, c.lastMessageId, 0); api.channels.ack(c.id, c.lastMessageId).catch(() => {}); }
 
 import { favoriteCandidate } from './gifFavorites';
+import { addAppPath } from './directory';
+import { navigateTo } from './navigate';
 export function guildMenu(gid: Id): MenuItem[] {
   const s = useData.getState(); const g = s.guilds[gid]?.guild; if (!g) return [];
   const p = gperms(gid); const muted = ui().prefs.mutedGuilds[gid]; const isOwner = g.ownerId === s.me?.id;
@@ -47,6 +49,7 @@ export function guildMenu(gid: Id): MenuItem[] {
     { label: t('Hide Muted Channels'), icon: EyeOff, checked: !!ui().prefs.hideMutedChannels[gid], onClick: () => ui().setPref('hideMutedChannels', { ...ui().prefs.hideMutedChannels, [gid]: !ui().prefs.hideMutedChannels[gid] }) },
     ...(g.features.includes('ONBOARDING') ? [{ label: t('Channels & Roles'), icon: ListChecks, onClick: () => ui().openModal({ kind: 'customize', guildId: gid }) }] : []),
     ...(g.rulesChannelId || g.description ? [{ label: t('View Server Welcome'), icon: BookOpen, onClick: () => ui().openModal({ kind: 'onboarding', guildId: gid }) }] : []),
+    ...(can(p, Perm.MANAGE_GUILD) ? [{ label: t('Add App'), icon: Bot, onClick: () => navigateTo(addAppPath(gid)) }] : []),
     { label: t('Linked Roles'), icon: Link2, onClick: () => ui().openSettings({ kind: 'guild', guildId: gid, tab: 'linkedroles' }) },
     { label: t('Server Boost'), icon: Rocket, onClick: () => ui().openSettings({ kind: 'guild', guildId: gid, tab: 'boosts' }) },
     ...(canOpenGuildSettings(p) ? [{ label: t('Server Settings'), icon: Settings, onClick: () => ui().openSettings({ kind: 'guild', guildId: gid }) }] : []),

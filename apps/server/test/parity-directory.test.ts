@@ -34,7 +34,7 @@ describe('app directory', () => {
     const list = (qs = '') => api.req('GET', `/directory/apps${qs}`, viewer.token);
     expect((await api.req('GET', '/directory/apps', null)).status).toBe(401);
     const all = (await list('?q=zeta')).body; expect(all.total).toBe(2); expect(all.items.map((i: any) => i.name).sort()).toEqual(['ZetaMod', 'ZetaTunes']);
-    expect(Object.keys(all.items[0]).sort()).toEqual(['botUserId', 'category', 'description', 'icon', 'id', 'installs', 'listedAt', 'name', 'permissions', 'summary', 'tags']);
+    expect(Object.keys(all.items[0]).sort()).toEqual(['botUserId', 'category', 'description', 'icon', 'id', 'installs', 'listedAt', 'name', 'official', 'permissions', 'summary', 'tags']);
     expect(JSON.stringify(all)).not.toMatch(/token|secret|owner|redirect|endpoint/i);
     expect((await list('?q=zeta&category=music')).body.items.map((i: any) => i.name)).toEqual(['ZetaTunes']);
     expect((await list('?q=automod')).body.items.map((i: any) => i.name)).toEqual(['ZetaMod']); // tags are searchable
