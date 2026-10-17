@@ -163,6 +163,8 @@ export function channelRoutes(app: FastifyInstance, ctx: Ctx) {
     }
     if (ch.type === 'thread') { if (ch.owner_id !== req.userId) need(a.perms, Perm.MANAGE_THREADS); } else need(a.perms, Perm.MANAGE_CHANNELS);
     const [g] = await ctx.db.query('SELECT system_channel_id, rules_channel_id FROM guilds WHERE id = $1', [ch.guild_id]);
+    // child threads die with their parent: remember them so clients can drop them too
+    const threads = ch.type === 'thread' ? [] : await ctx.db.query<{ id: string }>('SELECT id FROM channels WHERE parent_id = $1 AND type = \'thread\'', [id]);
     await ctx.db.tx(async (q) => {
       await q.query('DELETE FROM channels WHERE parent_id = $1 AND type = \'thread\'', [id]);
       await q.query('UPDATE channels SET parent_id = NULL WHERE parent_id = $1', [id]);
@@ -173,6 +175,7 @@ export function channelRoutes(app: FastifyInstance, ctx: Ctx) {
     await ctx.pcache.invalidate({ k: 'channel', channelId: id });
     await audit(ctx, ch.guild_id, req.userId, ch.type === 'thread' ? 'THREAD_DELETE' : 'CHANNEL_DELETE', id, { name: ch.name, type: ch.type });
     if (ch.type === 'thread') await ctx.hub.toGuild(ch.guild_id, 'THREAD_DELETE', { id, guildId: ch.guild_id, parentId: ch.parent_id ?? null });
+    else for (const t of threads) await ctx.hub.toGuild(ch.guild_id, 'THREAD_DELETE', { id: t.id, guildId: ch.guild_id, parentId: id });
     await ctx.hub.toGuild(ch.guild_id, 'CHANNEL_DELETE', { id, guildId: ch.guild_id });
     return reply.code(204).send();
   });

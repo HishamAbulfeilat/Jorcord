@@ -20,7 +20,7 @@ Checklist items are grouped by feature. Each row lists the files it would touch 
 
 ## Threads
 
-- [ ] **`THREAD_DELETE` gateway event.** `gateway/intents.ts` maps `THREAD_CREATE` / `THREAD_UPDATE` but not `THREAD_DELETE`; deleting a thread (or its parent) therefore does not broadcast a removal event, so a client with the thread cached cannot drop it.
+- [x] **`THREAD_DELETE` gateway event.** `gateway/intents.ts` maps `THREAD_DELETE` ([I.GUILDS, 0]); `DELETE /channels/:id` broadcasts `THREAD_DELETE {id,guildId,parentId}` for the thread itself and for every child thread when its parent channel is deleted; `apps/web/src/stores/data.ts` drops the cached thread from the guild on the event.
   Files: apps/server/src/gateway/intents.ts, apps/server/src/routes/channels.ts. Size: S.
 
 ## Stage channels

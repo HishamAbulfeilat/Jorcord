@@ -125,3 +125,18 @@ describe('interactions', () => {
   });
   it('localNotice builds a valid ephemeral Message', () => { const m = localNotice('ch', 'x', 'bot1'); expect(m.flags).toBe(64); expect(m.author.id).toBe('bot1'); expect(m.guildId).toBeNull(); });
 });
+
+describe('thread deletion in the data store', () => {
+  const channels = { parent: { id: 'parent' }, t: { id: 't', guildId: 'g', parentId: 'parent' } };
+  beforeEach(() => useData.setState({ guilds: { g: { channels, roles: {}, members: {}, emojis: [], stickers: [], memberCount: 1 } as never } } as never));
+  it('THREAD_DELETE drops the cached thread but leaves its parent channel', () => {
+    useData.getState().apply('THREAD_DELETE', { id: 't', guildId: 'g', parentId: 'parent' });
+    expect(useData.getState().guilds.g!.channels.t).toBeUndefined();
+    expect(useData.getState().guilds.g!.channels.parent).toBeDefined();
+  });
+  it('CHANNEL_DELETE of the parent id alone does not drop its threads: the server has to send THREAD_DELETE per thread', () => {
+    useData.getState().apply('CHANNEL_DELETE', { id: 'parent', guildId: 'g' });
+    expect(useData.getState().guilds.g!.channels.parent).toBeUndefined();
+    expect(useData.getState().guilds.g!.channels.t).toBeDefined();
+  });
+});
