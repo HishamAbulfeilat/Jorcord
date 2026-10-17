@@ -48,7 +48,12 @@ export interface Channel {
   availableTags?: ForumTag[]; requireTag?: boolean; defaultAutoArchiveDuration?: number;
   appliedTags?: Id[]; autoArchiveDuration?: number; locked?: boolean; archiveAt?: string | null;
 }
-export interface Member { guildId: Id; user: User; nick: string | null; roles: Id[]; joinedAt: string; timeoutUntil: string | null; avatar?: string | null; /** true until the member accepts the server rules (membership screening) */ pending?: boolean; /** ISO time of their first active boost of this server */ boostingSince?: string | null }
+export interface Member {
+  guildId: Id; user: User; nick: string | null; roles: Id[]; joinedAt: string; timeoutUntil: string | null; avatar?: string | null;
+  /** Per-server profile overrides (self-only); each falls back to the user-level field when unset. */
+  banner?: string | null; bio?: string | null; pronouns?: string | null;
+  /** true until the member accepts the server rules (membership screening) */ pending?: boolean; /** ISO time of their first active boost of this server */ boostingSince?: string | null;
+}
 export interface Attachment { id: Id; filename: string; contentType: string; size: number; url: string; width: number | null; height: number | null; spoiler: boolean }
 export interface Embed { type: 'link' | 'image' | 'video' | 'rich'; url?: string; title?: string; description?: string; color?: number; thumbnail?: string; image?: string; video?: string; siteName?: string; fields?: { name: string; value: string; inline?: boolean }[]; footer?: string; author?: string }
 export interface Reaction { emoji: string; emojiId: Id | null; count: number; me: boolean }

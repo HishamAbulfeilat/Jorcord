@@ -16,7 +16,11 @@ export interface Prefs {
   /** Soundboard: silence everything / one person's sounds (local), and playback gain 0-100. */
   /** "Hide Muted Channels" per server. */ hideMutedChannels: Record<Id, boolean>;
   soundboardMuted: boolean; soundboardMutedUsers: Record<Id, boolean>; soundboardVolume: number;
+  /** Desktop game detection: report "Playing <game>" and the games the user has registered. */
+  gameActivity: boolean; registeredGames: RegisteredGame[];
 }
+/** A game the user registered from the Running Games settings tab. */
+export interface RegisteredGame { name: string; executables: string[] }
 /** First-run language: the browser's, when we ship that translation. */
 export function detectLanguage(): string {
   try {
@@ -39,6 +43,7 @@ export const defaultPrefs: Prefs = {
   streamerMode: false, streamerAuto: true, streamerHidePersonal: true, streamerHideInvites: true, streamerNoSounds: true, streamerNoNotifications: true,
   mutedChannels: {}, mutedGuilds: {}, collapsedCategories: {},
   hideMutedChannels: {}, soundboardMuted: false, soundboardMutedUsers: {}, soundboardVolume: 100,
+  gameActivity: true, registeredGames: [],
 };
 
 export type RightPanel = 'members' | 'search' | 'pins' | 'threads' | 'reports' | null;

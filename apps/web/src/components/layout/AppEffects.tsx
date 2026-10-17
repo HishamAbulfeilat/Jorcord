@@ -6,6 +6,7 @@ import { useNotif } from '@/stores/notif';
 import { useRouteIds } from '@/lib/nav';
 import { syncPush } from '@/lib/push';
 import { setBadgeCount } from '@/lib/native';
+import { resetGameActivity, startGameDetection } from '@/lib/gameActivity';
 import { api } from '@/lib/api';
 import { queryClient } from '@/lib/queryClient';
 
@@ -18,6 +19,8 @@ export function AppEffects() {
   useEffect(() => { if (!me) return; useLayout.getState().hydrateFromServer(me.settings); }, [me?.id]); // eslint-disable-line
   useEffect(() => { if (!me) return; void useNotif.getState().load(); void syncPush().catch(() => {}); }, [me?.id]); // eslint-disable-line
   useEffect(() => { setBadgeCount(mentions); }, [mentions]);
+  // desktop: report "Playing <game>" while a detectable game is running (no-op in the browser)
+  useEffect(() => { if (!me) { void resetGameActivity(); return; } return startGameDetection(); }, [me?.id]); // eslint-disable-line
 
   // custom status expiry is enforced by the server (customStatus.expiresAt): it clears the status and broadcasts PRESENCE_UPDATE
 
