@@ -99,6 +99,16 @@ export function voiceRoutes(app: FastifyInstance, ctx: Ctx) {
     return requestToSpeak(ctx, req.userId, id, false);
   });
 
+  /** The raised-hand queue: suppressed members who asked to speak, ordered by when they raised their hand. */
+  app.get('/channels/:id/stage/queue', async (req) => {
+    const { id } = parse(stageParams, req.params);
+    await stageAccess(req.userId, id);
+    return (await ctx.voice.inChannel(id))
+      .filter((s) => s.suppress && s.requestToSpeakAt)
+      .sort((a, b) => String(a.requestToSpeakAt).localeCompare(String(b.requestToSpeakAt)))
+      .map((s) => ({ userId: s.userId, requestToSpeakAt: s.requestToSpeakAt }));
+  });
+
   /** Invite to speak. `@me` lets a moderator step onto the stage themselves. */
   app.put('/channels/:id/stage/speakers/:userId', async (req) => {
     const p = parse(z.object({ id: idSchema, userId: z.union([idSchema, z.literal('@me')]) }), req.params);
