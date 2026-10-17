@@ -13,9 +13,26 @@ import { endStage, stageDTO, startStage } from '../services/stage';
 import { membersDTO, usersByIds } from '../services/serializers';
 
 const isoTime = z.string().datetime({ offset: true });
+const recurrenceRuleSchema = z
+  .object({
+    frequency: z.enum(['daily', 'weekly', 'monthly']),
+    interval: z.number().int().min(1).max(12).default(1),
+    until: isoTime.optional(),
+    count: z.number().int().min(1).max(52).optional(),
+  })
+  .strict()
+  .nullable();
 const eventFields = {
-  name: z.string().trim().min(1).max(100), description: z.string().max(1000).nullable(), entityType: z.number().int().min(1).max(3), channelId: idSchema.nullable(),
-  scheduledStartTime: isoTime, scheduledEndTime: isoTime.nullable(), location: z.string().trim().min(1).max(100).nullable(), image: assetUrl.nullable(), privacyLevel: z.literal(2),
+  name: z.string().trim().min(1).max(100),
+  description: z.string().max(1000).nullable(),
+  entityType: z.number().int().min(1).max(3),
+  channelId: idSchema.nullable(),
+  scheduledStartTime: isoTime,
+  scheduledEndTime: isoTime.nullable(),
+  location: z.string().trim().min(1).max(100).nullable(),
+  image: assetUrl.nullable(),
+  privacyLevel: z.literal(2),
+  recurrenceRule: recurrenceRuleSchema.optional(),
 };
 const MAX_OPEN_EVENTS = 100;
 const ep = z.object({ id: idSchema, eid: idSchema });
@@ -65,18 +82,24 @@ export function eventRoutes(app: FastifyInstance, ctx: Ctx) {
     const { id } = parse(z.object({ id: idSchema }), req.params);
     const b = parse(z.object({ ...eventFields, description: eventFields.description.optional(), channelId: eventFields.channelId.optional(), scheduledEndTime: eventFields.scheduledEndTime.optional(), location: eventFields.location.optional(), image: eventFields.image.optional(), privacyLevel: eventFields.privacyLevel.optional() }).strict(), req.body);
     limitOrThrow(ctx.rl, `event-create:${req.userId}`, 10, 60_000, ctx.config.rateLimit);
-    const f = { ...b, channelId: b.channelId ?? null, scheduledEndTime: b.scheduledEndTime ?? null, location: b.location ?? null };
+    const f = { ...b, channelId: b.channelId ?? null, scheduledEndTime: b.scheduledEndTime ?? null, location: b.location ?? null, recurrenceRule: b.recurrenceRule ?? null };
     checkShape(f, true);
+    if (f.recurrenceRule) {
+      // external events cannot recur (they have no channel to anchor to, but Discord allows it; we allow it for now)
+      if (f.recurrenceRule.until && Date.parse(f.recurrenceRule.until) <= Date.parse(f.scheduledStartTime)) {
+        throw badRequest('recurrenceRule.until must be after scheduledStartTime');
+      }
+    }
     await checkEventPerms(req.userId, id, f.entityType, f.channelId, 'create');
     const [c] = await ctx.db.query('SELECT count(*)::int AS n FROM guild_scheduled_events WHERE guild_id = $1 AND status IN (1,2)', [id]);
     if (c.n >= MAX_OPEN_EVENTS) throw new ApiError(400, 'MAX_EVENTS', `At most ${MAX_OPEN_EVENTS} upcoming events per server`);
     const eid = snowflake();
     await ctx.db.query(
-      `INSERT INTO guild_scheduled_events (id, guild_id, channel_id, creator_id, name, description, scheduled_start, scheduled_end, entity_type, location, image) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
-      [eid, id, f.channelId, req.userId, f.name, f.description ?? null, f.scheduledStartTime, f.scheduledEndTime, f.entityType, f.location, f.image ?? null]);
+      `INSERT INTO guild_scheduled_events (id, guild_id, channel_id, creator_id, name, description, scheduled_start, scheduled_end, entity_type, location, image, recurrence_rule) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+      [eid, id, f.channelId, req.userId, f.name, f.description ?? null, f.scheduledStartTime, f.scheduledEndTime, f.entityType, f.location, f.image ?? null, f.recurrenceRule ? JSON.stringify(f.recurrenceRule) : null]);
     const row = await load(id, eid);
     await publishEvent(ctx, 'GUILD_SCHEDULED_EVENT_CREATE', row);
-    await audit(ctx, id, req.userId, 'GUILD_SCHEDULED_EVENT_CREATE', eid, { name: f.name, entityType: f.entityType });
+    await audit(ctx, id, req.userId, 'GUILD_SCHEDULED_EVENT_CREATE', eid, { name: f.name, entityType: f.entityType, recurrenceRule: f.recurrenceRule });
     return reply.code(201).send(await loadEventDTO(ctx, row, req.userId));
   });
 
@@ -95,12 +118,18 @@ export function eventRoutes(app: FastifyInstance, ctx: Ctx) {
       entityType: b.entityType ?? cur.entity_type, channelId: b.channelId !== undefined ? b.channelId : cur.channel_id,
       scheduledStartTime: b.scheduledStartTime ?? new Date(cur.scheduled_start).toISOString(), scheduledEndTime: b.scheduledEndTime !== undefined ? b.scheduledEndTime : cur.scheduled_end ? new Date(cur.scheduled_end).toISOString() : null,
       location: b.location !== undefined ? b.location : cur.location,
+      recurrenceRule: b.recurrenceRule !== undefined ? b.recurrenceRule : (cur.recurrence_rule as any),
     };
     // switching entity type away from external must clear its fields explicitly; keep stored values consistent
     if (f.entityType !== ET.EXTERNAL && b.entityType !== undefined && b.location === undefined) f.location = null;
     if (f.entityType === ET.EXTERNAL && b.entityType !== undefined && b.channelId === undefined) f.channelId = null;
     if (cur.status === ST.ACTIVE && (b.entityType !== undefined || b.channelId !== undefined || b.scheduledStartTime !== undefined)) throw badRequest('An active event cannot change its type, channel or start time');
     checkShape(f, b.scheduledStartTime !== undefined);
+    if (f.recurrenceRule) {
+      if (f.recurrenceRule.until && Date.parse(f.recurrenceRule.until) <= Date.parse(f.scheduledStartTime)) {
+        throw badRequest('recurrenceRule.until must be after scheduledStartTime');
+      }
+    }
     await checkEventPerms(req.userId, p.id, f.entityType, f.channelId, 'modify', cur.creator_id);
     if (b.status !== undefined) {
       const ok = (cur.status === ST.SCHEDULED && (b.status === ST.ACTIVE || b.status === ST.CANCELED)) || (cur.status === ST.ACTIVE && b.status === ST.COMPLETED) || b.status === cur.status;
@@ -115,6 +144,7 @@ export function eventRoutes(app: FastifyInstance, ctx: Ctx) {
     if (b.location !== undefined || b.entityType !== undefined) set('location', f.location);
     if (b.scheduledStartTime !== undefined) set('scheduled_start', f.scheduledStartTime);
     if (b.scheduledEndTime !== undefined) set('scheduled_end', f.scheduledEndTime);
+    if (b.recurrenceRule !== undefined) set('recurrence_rule', f.recurrenceRule ? JSON.stringify(f.recurrenceRule) : null);
     if (sets.length) await ctx.db.query(`UPDATE guild_scheduled_events SET ${sets.join(', ')} WHERE id = $1`, vals);
     if (b.status === ST.ACTIVE) await activateEvent(ctx, p.eid, req.userId);
     else if (b.status === ST.COMPLETED || b.status === ST.CANCELED) await finishEvent(ctx, p.eid, b.status, req.userId);
