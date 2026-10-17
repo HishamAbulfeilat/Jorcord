@@ -10,6 +10,13 @@ import { useUI } from '@/stores/ui';
 
 const tauri = (): any => (window as any).__TAURI__;
 
+/** A game the desktop app can recognise: a display name plus the executable names that mean it is running. */
+export interface GameExecutable { name: string; executables: string[] }
+/** A catalog or user game that is currently running. */
+export interface DetectedGame { name: string; executable: string }
+/** Result of a desktop detection pass: running games plus every running process name (for the "add a game" picker). */
+export interface RunningGames { games: DetectedGame[]; processes: string[] }
+
 /** Navigate for a deep link, switching server first when the link names another one. Returns the route. */
 export function applyDeepLink(link: DeepLink, navigate: (to: string) => void): string {
   const server = link.server ? normalizeServerUrl(link.server) : null;
@@ -70,6 +77,14 @@ export const desktop = {
     const u = tauri().updater; if (!u?.check) throw new Error('Updater is unavailable');
     const up = await u.check(); if (!up) return null;
     return { version: up.version, install: async () => { await up.downloadAndInstall(); await tauri().process?.relaunch?.(); } };
+  },
+  /** Scan running processes for detectable games. No-op outside Tauri (returns empty). */
+  async listRunningGames(userGames: GameExecutable[]): Promise<RunningGames> {
+    if (!isTauri()) return { games: [], processes: [] };
+    const t = tauri();
+    const invoke = t.core?.invoke ?? t.invoke;
+    if (typeof invoke !== 'function') return { games: [], processes: [] };
+    return invoke('list_running_games', { userGames });
   },
 };
 

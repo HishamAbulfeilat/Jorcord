@@ -1,9 +1,93 @@
+use std::collections::BTreeSet;
+use std::sync::OnceLock;
+use serde::{Deserialize, Serialize};
+use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System, UpdateKind};
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     AppHandle, Emitter, Manager, WindowEvent,
 };
 use tauri_plugin_autostart::MacosLauncher;
+
+/* ------------------------------------------------------------------ game detection */
+
+/// A game we can recognise, either from the bundled catalog or added by the user.
+#[derive(Clone, Deserialize)]
+struct GameEntry {
+    name: String,
+    executables: Vec<String>,
+}
+
+/// A catalog game whose executable is currently running.
+#[derive(Serialize)]
+struct DetectedGame {
+    name: String,
+    executable: String,
+}
+
+/// Result of a detection pass: the games that are running plus every running process name (for the "add a game" picker).
+#[derive(Serialize)]
+struct RunningGames {
+    games: Vec<DetectedGame>,
+    processes: Vec<String>,
+}
+
+const DETECTABLE_GAMES: &str = include_str!("detectable_games.json");
+
+/// Parse the bundled catalog once (compiled into the binary, no resource files) and keep it for later calls.
+fn bundled_games() -> &'static [GameEntry] {
+    static GAMES: OnceLock<Vec<GameEntry>> = OnceLock::new();
+    GAMES.get_or_init(|| serde_json::from_str(DETECTABLE_GAMES).unwrap_or_default())
+}
+
+/// Bare, lower-case executable name: strips any directory prefix and a trailing `.exe`.
+fn normalize(name: &str) -> String {
+    let base = name.rsplit(|c: char| c == '\\' || c == '/').next().unwrap_or(name);
+    base.strip_suffix(".exe").unwrap_or(base).to_lowercase()
+}
+
+/// Match running processes against the bundled catalog and the user's games, then return the matches plus every process name.
+#[tauri::command]
+fn list_running_games(user_games: Option<Vec<GameEntry>>) -> RunningGames {
+    let mut sys = System::new();
+    // Low-cost refresh: process names always come along; only the executable path is requested on top.
+    sys.refresh_processes_specifics(
+        ProcessesToUpdate::All,
+        true,
+        ProcessRefreshKind::nothing().with_exe(UpdateKind::Always),
+    );
+
+    let mut running: BTreeSet<String> = BTreeSet::new();
+    let mut processes: BTreeSet<String> = BTreeSet::new();
+    for proc_ in sys.processes().values() {
+        let name = normalize(&proc_.name().to_string_lossy());
+        if !name.is_empty() {
+            processes.insert(name.clone());
+            running.insert(name);
+        }
+        if let Some(file) = proc_.exe().and_then(|p| p.file_name()) {
+            let name = normalize(&file.to_string_lossy());
+            if !name.is_empty() {
+                running.insert(name);
+            }
+        }
+    }
+
+    let mut games: Vec<DetectedGame> = Vec::new();
+    let mut matched: BTreeSet<String> = BTreeSet::new();
+    for game in bundled_games().iter().chain(user_games.as_deref().unwrap_or_default()) {
+        if matched.contains(&game.name) {
+            continue;
+        }
+        if let Some(exe) = game.executables.iter().find(|e| running.contains(&normalize(e.as_str()))) {
+            matched.insert(game.name.clone());
+            games.push(DetectedGame { name: game.name.clone(), executable: exe.clone() });
+        }
+    }
+    games.sort_by(|a, b| a.name.cmp(&b.name));
+
+    RunningGames { games, processes: processes.into_iter().collect() }
+}
 
 fn show_main(app: &AppHandle) {
     if let Some(w) = app.get_webview_window("main") {
@@ -102,6 +186,7 @@ pub fn run() {
                 }
             }
         })
+        .invoke_handler(tauri::generate_handler![list_running_games])
         .run(tauri::generate_context!())
         .expect("error while running Jorcord");
 }

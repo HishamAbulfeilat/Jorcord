@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { VoiceSettingsForm } from '@/voice/VoiceSettings';
 import { useQuery } from '@tanstack/react-query';
-import { Link2, Accessibility, Bell, Globe, Keyboard, LogOut, Mic, Palette, Shield, User as UserIcon, UserCircle, Monitor, Radio, Laptop, Smile, Code2, Lock, ShieldAlert, Film, Users } from 'lucide-react';
+import { Link2, Accessibility, Bell, Globe, Keyboard, LogOut, Mic, Palette, Shield, User as UserIcon, UserCircle, Monitor, Radio, Laptop, Smile, Code2, Lock, ShieldAlert, Film, Users, Gamepad2 } from 'lucide-react';
 import { PrivacyTab } from './PrivacyTab';
 import { ConnectionsTab } from './ConnectionsTab';
 import { AccountsSection } from './AccountsSection';
@@ -25,6 +25,7 @@ import { ProfileCard } from '@/components/modals/Profile';
 import { Markdown } from '@/components/chat/Markdown';
 import { CosmeticsPicker } from './CosmeticsPicker';
 import { ServerProfiles } from './ServerProfiles';
+import { RegisteredGamesTab } from './RegisteredGamesTab';
 import { ProfileEffect, ServerTagBadge, plateClass } from '@/components/ui/Cosmetics';
 
 let lastTab = 'account';
@@ -35,7 +36,7 @@ export function UserSettings({ initialTab }: { initialTab?: string }) {
   const isAdmin = !!useQuery({ queryKey: ['admin', 'me'], queryFn: api.admin.me, retry: false, staleTime: Infinity }).data?.admin;
   const groups = [
     { title: t('User Settings'), items: [{ id: 'account', label: t('My Account'), icon: UserIcon }, { id: 'profile', label: t('Profile'), icon: UserCircle }, { id: 'profiles', label: t('Profiles'), icon: Users }, { id: 'privacy', label: t('Privacy & Safety'), icon: Lock }, { id: 'connections', label: t('Connections'), icon: Link2 }, { id: 'security', label: t('Security & Devices'), icon: Shield }] },
-    { title: t('App Settings'), items: [{ id: 'appearance', label: t('Appearance'), icon: Palette }, { id: 'accessibility', label: t('Accessibility'), icon: Accessibility }, { id: 'voice', label: t('Voice & Video'), icon: Mic }, { id: 'notifications', label: t('Notifications'), icon: Bell }, { id: 'keybinds', label: t('Keybinds'), icon: Keyboard }, { id: 'streamer', label: t('Streamer Mode'), icon: Radio }, { id: 'language', label: t('Language'), icon: Globe }, ...(isTauri() ? [{ id: 'desktop', label: t('Desktop App'), icon: Laptop }] : [])] },
+    { title: t('App Settings'), items: [{ id: 'appearance', label: t('Appearance'), icon: Palette }, { id: 'accessibility', label: t('Accessibility'), icon: Accessibility }, { id: 'voice', label: t('Voice & Video'), icon: Mic }, { id: 'notifications', label: t('Notifications'), icon: Bell }, { id: 'keybinds', label: t('Keybinds'), icon: Keyboard }, { id: 'streamer', label: t('Streamer Mode'), icon: Radio }, { id: 'language', label: t('Language'), icon: Globe }, ...(isTauri() ? [{ id: 'desktop', label: t('Desktop App'), icon: Laptop }, { id: 'registeredGames', label: t('Registered Games'), icon: Gamepad2 }] : [])] },
     { title: t('Developers'), items: [{ id: 'developer', label: t('Developer Portal'), icon: Code2 }] },
     ...(isAdmin ? [{ title: t('Instance'), items: [{ id: 'admin', label: t('Admin Dashboard'), icon: ShieldAlert }] }] : []),
     { items: [{ id: 'logout', label: t('Log Out'), icon: LogOut, danger: true }] },
@@ -54,6 +55,7 @@ export function UserSettings({ initialTab }: { initialTab?: string }) {
       {tab === 'notifications' && <NotificationsTab />}
       {tab === 'streamer' && <StreamerTab />}
       {tab === 'desktop' && <DesktopTab />}
+      {tab === 'registeredGames' && <RegisteredGamesTab />}
       {tab === 'keybinds' && <Keybinds />}
       {tab === 'language' && <Language />}
     </SettingsLayout>
