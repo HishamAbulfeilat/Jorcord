@@ -43,7 +43,8 @@ fn bundled_games() -> &'static [GameEntry] {
 /// Bare, lower-case executable name: strips any directory prefix and a trailing `.exe`.
 fn normalize(name: &str) -> String {
     let base = name.rsplit(|c: char| c == '\\' || c == '/').next().unwrap_or(name);
-    base.strip_suffix(".exe").unwrap_or(base).to_lowercase()
+    let lower = base.to_lowercase();
+    lower.strip_suffix(".exe").map(str::to_owned).unwrap_or(lower)
 }
 
 /// Match running processes against the bundled catalog and the user's games, then return the matches plus every process name.
