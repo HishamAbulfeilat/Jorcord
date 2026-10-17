@@ -2,7 +2,7 @@ import { Perm, has, snowflake, type AutoModAction, type AutoModOptions, type Emb
 import type { Ctx } from '../ctx';
 import { ApiError } from '../errors';
 import { limitOrThrow } from '../lib/ratelimit';
-import { RegexError, SafeRegex, compileSafeRegex } from '../lib/saferegex';
+import { RegexError, RegexTimeout, SafeRegex, compileSafeRegex } from '../lib/saferegex';
 import { audit } from './guilds';
 import { createMessage } from './messages';
 
@@ -31,7 +31,10 @@ const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const wholeWord = (w: string) => new RegExp(`(?<![\\p{L}\\p{N}])${esc(w)}(?![\\p{L}\\p{N}])`, 'u');
 
 export const SPAM_DEFAULTS = { spamCount: 5, spamSeconds: 5, capsPercent: 70, capsMinLength: 12, repeatLimit: 10 };
-export const MAX_REGEX_PATTERNS = 10;
+export const MAX_REGEX_PATTERNS = 3;
+export const MAX_REGEX_RULES_PER_GUILD = 5;
+/** Total wall-clock budget for all regex matching on one message (ms). */
+export const REGEX_BUDGET_MS = 25;
 export const AUTOMOD_ACTIONS: AutoModAction[] = ['block', 'timeout', 'alert', 'warn'];
 
 /** Compile a rule's regex list once per pattern (the engine is linear-time, so even hostile patterns cannot stall the server). Throws RegexError. */
@@ -60,11 +63,11 @@ export function longestRun(content: string): number {
 
 export interface RuleLike { trigger: string; keywords: string[]; presets: string[]; allowList: string[]; mentionLimit: number; regexPatterns?: string[]; options?: AutoModOptions }
 /** Pure matcher: does `content` (with `mentionCount` mentions) violate this rule? Spam needs history and is handled by the caller. */
-export function ruleMatches(r: RuleLike, content: string, mentionCount: number): boolean {
+export function ruleMatches(r: RuleLike, content: string, mentionCount: number, deadline?: number): boolean {
   if (r.trigger === 'link') return /https?:\/\//i.test(content);
   if (r.trigger === 'mention_spam') return mentionCount >= Math.max(1, r.mentionLimit);
   if (r.trigger === 'invite_link') return INVITE_RE.test(content);
-  if (r.trigger === 'regex') return (r.regexPatterns ?? []).some((p) => { try { return safeRegex(p).test(content); } catch { return false; } });
+  if (r.trigger === 'regex') return (r.regexPatterns ?? []).some((p) => { try { return safeRegex(p).test(content, deadline); } catch (e) { if (e instanceof RegexTimeout) throw e; return false; } });
   if (r.trigger === 'caps') {
     const { letters, upper } = capsRatio(content); const o = { ...SPAM_DEFAULTS, ...r.options };
     return letters >= o.capsMinLength && (upper / letters) * 100 >= o.capsPercent;
@@ -88,8 +91,13 @@ export function rowActions(r: any): AutoModAction[] {
 }
 const ruleLike = (r: any): RuleLike => ({ trigger: r.trigger, keywords: r.keywords, presets: r.presets, allowList: r.allow_list, mentionLimit: r.mention_limit, regexPatterns: r.regex_patterns ?? [], options: r.options ?? {} });
 
-async function ruleHit(ctx: Ctx, r: any, guildId: string, userId: string, content: string, mentionCount: number): Promise<boolean> {
-  if (r.trigger !== 'spam') return ruleMatches(ruleLike(r), content, mentionCount);
+async function ruleHit(ctx: Ctx, r: any, guildId: string, userId: string, content: string, mentionCount: number, deadline: number): Promise<boolean> {
+  if (r.trigger !== 'spam') {
+    try { return ruleMatches(ruleLike(r), content, mentionCount, deadline); } catch (e) {
+      if (e instanceof RegexTimeout) { ctx.log.warn({ guildId, ruleId: r.id }, 'automod regex time budget exceeded; treating as no match'); return false; }
+      throw e;
+    }
+  }
   const o = { ...SPAM_DEFAULTS, ...(r.options ?? {}) };
   const [c] = await ctx.db.query(`SELECT count(*)::int AS n FROM messages WHERE guild_id = $1 AND author_id = $2 AND type IN ('default','reply') AND id > $3`, [guildId, userId, snowflake(Date.now() - o.spamSeconds * 1000)]);
   return c.n >= o.spamCount;
@@ -129,10 +137,11 @@ async function sendAlert(ctx: Ctx, r: any, guildId: string, userId: string, chan
 export async function checkAutomod(ctx: Ctx, guildId: string, userId: string, memberRoleIds: string[], perms: bigint, content: string, mentionCount: number, channelIds: string[] = []) {
   if (has(perms, Perm.MANAGE_GUILD)) return; // administrators/managers are exempt
   const rules = await ctx.db.query('SELECT * FROM automod_rules WHERE guild_id = $1 AND enabled', [guildId]);
+  const deadline = Date.now() + REGEX_BUDGET_MS;
   for (const r of rules) {
     if ((r.exempt_roles as string[]).some((x) => memberRoleIds.includes(x))) continue;
     if ((r.exempt_channels as string[]).some((x) => channelIds.includes(x))) continue;
-    if (!(await ruleHit(ctx, r, guildId, userId, content, mentionCount))) continue;
+    if (!(await ruleHit(ctx, r, guildId, userId, content, mentionCount, deadline))) continue;
     const actions = rowActions(r);
     if (r.test_mode) { // dry run: log only, the message goes through
       await audit(ctx, guildId, userId, 'AUTOMOD_TEST', r.id, { content: content.slice(0, 200), actions }, r.name);
@@ -154,5 +163,5 @@ export async function checkAutomod(ctx: Ctx, guildId: string, userId: string, me
 /** Dry run for the admin UI: which enabled-or-not rules would match this text (spam needs history and is reported as not evaluated). No side effects. */
 export function testRules(rules: any[], content: string, mentionCount: number) {
   return rules.map((r) => ({ ruleId: r.id as string, name: r.name as string, trigger: r.trigger as string, enabled: !!r.enabled, testMode: !!r.test_mode, actions: rowActions(r),
-    matched: r.trigger === 'spam' ? false : ruleMatches(ruleLike(r), content, mentionCount), evaluated: r.trigger !== 'spam' }));
+    matched: r.trigger === 'spam' ? false : (() => { try { return ruleMatches(ruleLike(r), content, mentionCount, Date.now() + REGEX_BUDGET_MS); } catch { return false; } })(), evaluated: r.trigger !== 'spam' }));
 }

@@ -12,8 +12,9 @@
 export class RegexError extends Error {}
 
 export const MAX_PATTERN_LENGTH = 100;
-export const MAX_PROGRAM_SIZE = 1500;
-export const MAX_INPUT = 4000;
+export const MAX_PROGRAM_SIZE = 200;
+export const MAX_INPUT = 500;
+export class RegexTimeout extends Error {}
 const MAX_REPEAT = 100;
 
 type Test = (cp: number) => boolean;
@@ -186,7 +187,8 @@ export class SafeRegex {
     return new SafeRegex(pattern, compile(ast));
   }
   /** True when the pattern matches anywhere in `input`. Always O(len * program). */
-  test(input: string): boolean {
+  test(input: string, deadline?: number): boolean {
+    const truncated = input.length > MAX_INPUT; // `$` must not match at the artificial clip boundary
     const cps = [...input.slice(0, MAX_INPUT)].map((c) => c.codePointAt(0)!);
     const prog = this.prog, n = prog.length;
     let clist: number[] = [], nlist: number[] = [];
@@ -195,7 +197,7 @@ export class SafeRegex {
       const prev = pos > 0 ? cps[pos - 1]! : -1, next = pos < cps.length ? cps[pos]! : -1;
       switch (kind) {
         case 'bol': return pos === 0 || prev === 10;
-        case 'eol': return pos === cps.length || next === 10;
+        case 'eol': return (pos === cps.length && !truncated) || next === 10;
         default: { const wb = (prev >= 0 && isWord(prev)) !== (next >= 0 && isWord(next)); return kind === 'wb' ? wb : !wb; }
       }
     };
@@ -215,6 +217,7 @@ export class SafeRegex {
       return matched;
     };
     for (let pos = 0; pos <= cps.length; pos++) {
+      if (deadline !== undefined && (pos & 15) === 0 && Date.now() > deadline) throw new RegexTimeout('regex time budget exceeded');
       if (add(clist, 0, pos, pos * 2)) return true; // a fresh attempt starting here
       if (pos === cps.length) break;
       const c = cps[pos]!; nlist = [];

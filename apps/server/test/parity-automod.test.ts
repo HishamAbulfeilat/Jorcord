@@ -23,7 +23,7 @@ describe('AutoMod v3', () => {
     const { owner, guild, u, general, rule } = await setup();
     for (const bad of ['(a)\\1', '(?=x)', '[a-', 'x'.repeat(101), '(((']) expect((await rule({ name: 'r', trigger: 'regex', regexPatterns: [bad], action: 'block' })).status, bad).toBe(400);
     expect((await rule({ name: 'r', trigger: 'regex', action: 'block' })).status).toBe(400); // needs a pattern
-    expect((await rule({ name: 'r', trigger: 'regex', regexPatterns: Array(11).fill('a'), action: 'block' })).status).toBe(400);
+    expect((await rule({ name: 'r', trigger: 'regex', regexPatterns: Array(4).fill('a'), action: 'block' })).status).toBe(400);
     const r = await rule({ name: 'phone', trigger: 'regex', regexPatterns: ['\\d{3}-\\d{4}', '(a+)+$'], action: 'block' });
     expect(r.status).toBe(201); expect(r.body.regexPatterns).toHaveLength(2);
     expect((await say(u, general.id, 'call 555-1234')).body.code).toBe('AUTOMOD_BLOCKED');
