@@ -23,7 +23,7 @@ export const logSerializers = {
  * Helmet-equivalent response hardening for an API that returns JSON only. Routes that need different values (the file
  * download route sets its own CSP / CORP) win because we never overwrite a header that is already present.
  */
-export function securityHeaders(reply: FastifyReply, req: FastifyRequest, config: Pick<Config, 'isProd'>) {
+export function securityHeaders(reply: FastifyReply, req: FastifyRequest, config: Pick<Config, 'isProd' | 'publicUrl'>) {
   const set = (k: string, v: string) => { if (!reply.hasHeader(k)) reply.header(k, v); };
   set('x-content-type-options', 'nosniff');
   set('referrer-policy', 'no-referrer');
@@ -34,7 +34,9 @@ export function securityHeaders(reply: FastifyReply, req: FastifyRequest, config
   set('permissions-policy', 'camera=(), microphone=(), geolocation=(), payment=(), usb=()');
   set('x-dns-prefetch-control', 'off');
   set('x-permitted-cross-domain-policies', 'none');
-  if (config.isProd && req.protocol === 'https') set('strict-transport-security', 'max-age=15552000; includeSubDomains');
+  // HSTS only when we are actually serving over TLS: either the request arrived on https (directly or via a trusted
+  // proxy) or the configured public URL is https. Never advertise HSTS on a plain-http deployment.
+  if (config.isProd && (config.publicUrl.startsWith('https://') || req.protocol === 'https')) set('strict-transport-security', 'max-age=15552000; includeSubDomains');
   // API responses are per-user: never let a shared cache keep them (file downloads set their own immutable caching)
   if (req.url.startsWith('/api/') || req.url.startsWith('/health')) set('cache-control', 'no-store');
 }
