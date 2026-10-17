@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Jorcord</string>
+    <string name="title_activity_main">Jorcord</string>
+    <string name="package_name">app.jorcord.mobile</string>
+    <string name="custom_url_scheme">app.jorcord.mobile</string>
+</resources>

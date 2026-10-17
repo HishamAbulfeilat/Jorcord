@@ -1,0 +1,28 @@
+# LiveKit config for e2e: private ports so it never collides with a dev stack on 7880/3000. No TURN (not needed on loopback).
+port: 7890
+log_level: warn
+keys:
+  devkey: secret
+rtc:
+  tcp_port: 7891
+  port_range_start: 51000
+  port_range_end: 51400
+  use_external_ip: false
+  node_ip: 127.0.0.1
+room:
+  auto_create: true
+  empty_timeout: 60
+  departure_timeout: 5
+  enabled_codecs:
+    - mime: audio/opus
+    - mime: audio/red
+    - mime: video/vp8
+    - mime: video/vp9
+    - mime: video/av1
+    - mime: video/h264
+turn:
+  enabled: false
+webhook:
+  api_key: devkey
+  urls:
+    - http://127.0.0.1:3100/voice/webhook

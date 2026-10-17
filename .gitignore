@@ -1,0 +1,12 @@
+node_modules
+dist
+.env
+data/
+*.log
+.turbo
+dump.rdb
+e2e/.data-prod/
+e2e/test-results-prod/
+
+# OpenCode state
+.omc/

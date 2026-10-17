@@ -1,0 +1,57 @@
+# Jorcord LiveKit config (development defaults; see README for production).
+port: 7880              # HTTP/WS signalling
+log_level: info
+# Dev keys. REPLACE in production (and set the same in the Jorcord server env).
+keys:
+  devkey: RXV0Mcnrl3LUHV6rhVJzzlPQhC04PaayaogmzKay5TQj0pKw
+
+rtc:
+  tcp_port: 0        # disable TCP fallback to avoid port conflict
+  udp_port: 7882     # single UDP port for media (simplifies firewalling)
+  # port_range_start: 50000
+  # port_range_end: 50200 # not used when udp_port is set
+  use_external_ip: false  # set true on cloud VMs with a public IP (STUN discovery)
+  congestion_control:
+    enabled: true
+    allow_pause: false          # never pause video streams under congestion, degrade instead
+  packet_buffer_size: 1000      # larger buffer helps high-bitrate 4K keyframes / NACK recovery
+
+room:
+  auto_create: true
+  empty_timeout: 300
+  departure_timeout: 20
+  max_participants: 0   # 0 = unlimited; Jorcord enforces LIMITS.maxVoiceUsers (99) at token time
+  enabled_codecs:       # order = server preference; AV1/VP9 enable SVC (L3T3_KEY)
+    - mime: audio/opus
+    - mime: audio/red
+    - mime: video/vp8
+    - mime: video/vp9
+    - mime: video/av1
+    - mime: video/h264
+  playout_delay:
+    enabled: true
+    min: 0
+    max: 100
+
+audio:
+  active_level: 35         # lower = more sensitive speaker detection (dBov-ish, 0..127)
+  min_percentile: 40
+  update_interval: 400
+  smooth_intervals: 2
+
+video:
+  dynacast_pause_delay: 5s
+
+turn:
+  enabled: true
+  domain: localhost        # production: turn.example.com
+  udp_port: 3478
+
+webhook:
+  api_key: devkey
+  urls:
+    - http://host.docker.internal:3000/api/v1/voice/webhook   # docker; for the local binary use http://127.0.0.1:3000/api/v1/voice/webhook
+
+limit:
+  num_tracks: 0
+  bytes_per_sec: 0

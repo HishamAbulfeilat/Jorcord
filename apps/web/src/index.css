@@ -1,0 +1,149 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font: "Inter", "gg sans-fallback", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Roboto, Arial, "Noto Sans", sans-serif;
+  --mono: ui-monospace, "Cascadia Code", "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --sat: env(safe-area-inset-top, 0px); --sab: env(safe-area-inset-bottom, 0px);
+  --sal: env(safe-area-inset-left, 0px); --sar: env(safe-area-inset-right, 0px);
+  --font-scale: 1;
+  /* dark (default) */
+  --rail: 30 31 34; --side: 43 45 49; --chat: 49 51 56; --float: 17 18 20; --chat-hover: 46 48 53;
+  --input: 30 31 34; --modal: 49 51 56; --modal-alt: 43 45 49; --hover: 53 55 60; --active: 64 66 73;
+  --brand: 88 101 242; --brand-hover: 71 82 196; --brand-active: 60 69 165;
+  --text: 219 222 225; --muted: 148 155 164; --header: 242 243 245; --interactive: 181 186 193; --interactive-hover: 219 222 225;
+  --link: 0 168 252; --danger: 218 55 60; --danger-hover: 162 43 47; --success: 35 165 89; --warn: 240 178 50;
+  --divider: 63 65 71; --mention: 201 205 251; --mention-bg: 88 101 242;
+  --composer: 56 58 64;
+  --rail-btn: 49 51 56; --scroll: 26 27 30;
+  /* text-safe variants of the status colours (>= 4.5:1 on every surface of the theme); the base tokens stay for fills/borders */
+  --danger-text: 255 140 144; --warn-text: 240 178 50; --success-text: 60 200 115;
+  color-scheme: dark;
+}
+[data-theme="light"] {
+  --rail: 227 229 232; --side: 242 243 245; --chat: 255 255 255; --float: 255 255 255; --chat-hover: 247 247 248;
+  --input: 227 229 232; --modal: 255 255 255; --modal-alt: 242 243 245; --hover: 235 237 239; --active: 215 217 220;
+  --text: 49 51 56; --muted: 92 94 102; --header: 6 6 7; --interactive: 78 80 88; --interactive-hover: 6 6 7;
+  --link: 0 108 231; --divider: 225 226 228; --mention: 80 92 220; --mention-bg: 88 101 242;
+  --composer: 235 237 239;
+  --rail-btn: 255 255 255; --scroll: 196 198 204;
+  --danger-text: 180 25 30; --warn-text: 120 75 0; --success-text: 18 100 48;
+  color-scheme: light;
+}
+[data-theme="amoled"] {
+  --rail: 0 0 0; --side: 8 8 9; --chat: 0 0 0; --float: 24 24 27; --chat-hover: 12 12 13;
+  --input: 22 22 24; --modal: 12 12 13; --modal-alt: 0 0 0; --hover: 24 24 26; --active: 38 38 41;
+  --divider: 36 36 40; --composer: 24 24 26; --rail-btn: 24 24 27; --scroll: 58 58 63;
+}
+[data-density="compact"] .msg-cozy { padding-top: 0 !important; }
+[data-reduce-motion="true"] *, [data-reduce-motion="true"] *::before, [data-reduce-motion="true"] *::after {
+  animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; scroll-behavior: auto !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; scroll-behavior: auto !important; }
+}
+
+html, body, #root { height: 100%; }
+html { font-size: calc(16px * var(--font-scale)); -webkit-text-size-adjust: 100%; overscroll-behavior: none; touch-action: pan-y pinch-zoom; }
+#root { touch-action: pan-y pinch-zoom; overscroll-behavior: none; }
+body {
+  margin: 0; background: rgb(var(--chat)); color: rgb(var(--text)); font-family: var(--font);
+  overflow: hidden; overscroll-behavior: none; -webkit-tap-highlight-color: transparent; font-size: 1rem; line-height: 1.375;
+}
+button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+input, textarea, select { font: inherit; color: inherit; }
+*:focus { outline: none; }
+*:focus-visible { outline: 2px solid rgb(var(--link)); outline-offset: 2px; border-radius: 4px; }
+input:focus-visible, textarea:focus-visible, select:focus-visible { outline: none; }
+.field:focus-visible, select.field:focus-visible { outline: 2px solid rgb(var(--link)); outline-offset: 0; }
+a { color: rgb(var(--link)); text-decoration: none; }
+a:hover { text-decoration: underline; }
+::selection { background: rgb(var(--brand) / .45); }
+
+/* scrollbars */
+.scroller { overflow-y: auto; scrollbar-width: thin; scrollbar-color: rgb(var(--scroll)) transparent; }
+.scroller::-webkit-scrollbar { width: 8px; height: 8px; }
+.scroller::-webkit-scrollbar-thumb { background: rgb(var(--scroll)); border-radius: 8px; border: 2px solid transparent; background-clip: padding-box; min-height: 40px; }
+.scroller::-webkit-scrollbar-track { background: transparent; }
+.scroller-hide { scrollbar-width: none; }
+.scroller-hide::-webkit-scrollbar { display: none; }
+
+@layer components {
+  .btn { @apply inline-flex items-center justify-center gap-2 rounded-[3px] px-4 text-sm font-medium transition-colors select-none disabled:opacity-50 disabled:cursor-not-allowed; min-height: 32px; }
+  .btn-lg { min-height: 38px; }
+  .btn-primary { @apply bg-brand text-white hover:bg-brand-hover active:bg-brand-active; }
+  .btn-secondary { @apply bg-[rgb(var(--active))] text-normal hover:bg-[rgb(var(--divider))]; }
+  .btn-danger { @apply bg-danger text-white hover:bg-danger-hover; }
+  .btn-link { @apply bg-transparent text-normal hover:underline; }
+  .field { @apply w-full rounded-[3px] bg-input px-2.5 py-2 text-normal placeholder:text-muted; min-height: 40px; }
+  .label { @apply mb-2 block text-xs font-bold uppercase tracking-wide text-interactive; }
+  .touch { min-height: 44px; }
+  .item { @apply flex items-center gap-2 rounded px-2 text-interactive hover:bg-hover hover:text-interactive-hover; }
+  .section-title { @apply text-xs font-bold uppercase tracking-wide text-muted; }
+}
+
+/* markdown */
+.md { word-break: break-word; white-space: pre-wrap; }
+.md strong { font-weight: 700; } .md em { font-style: italic; } .md u { text-decoration: underline; } .md s { text-decoration: line-through; }
+.md code.inline { font-family: var(--mono); font-size: .875em; background: rgb(var(--rail) / .6); padding: 0 .25em; border-radius: 3px; white-space: pre-wrap; }
+.md pre.block { font-family: var(--mono); font-size: .8125rem; line-height: 1.125rem; background: rgb(var(--side)); border: 1px solid rgb(var(--divider)); border-radius: 4px; padding: 7px 9px; margin: 6px 0 0; white-space: pre-wrap; max-width: 90%; overflow-x: auto; }
+.md blockquote { border-inline-start: 4px solid rgb(var(--active)); padding: 0 12px 0 12px; margin: 2px 0; background: transparent; border-radius: 2px; }
+.md h1 { font-size: 1.5rem; font-weight: 700; line-height: 1.75rem; margin: 8px 0 4px; } .md h2 { font-size: 1.25rem; font-weight: 700; margin: 8px 0 4px; } .md h3 { font-size: 1rem; font-weight: 700; margin: 8px 0 4px; }
+.md ul, .md ol { margin: 4px 0; padding-inline-start: 1.5rem; } .md ul { list-style: disc; } .md ol { list-style: decimal; }
+.md .mention { background: rgb(var(--mention-bg) / .3); color: rgb(var(--mention)); border-radius: 3px; padding: 0 2px; font-weight: 500; cursor: pointer; }
+.md .mention:hover { background: rgb(var(--mention-bg)); color: #fff; }
+.md .spoiler { background: rgb(var(--active)); color: transparent; border-radius: 3px; cursor: pointer; padding: 0 2px; user-select: none; }
+.md .spoiler > * { opacity: 0; }
+.md .spoiler.revealed { background: rgb(var(--rail) / .5); color: inherit; user-select: text; cursor: text; }
+.md .spoiler.revealed > * { opacity: 1; }
+.md .timestamp { background: rgb(var(--active) / .6); border-radius: 3px; padding: 0 2px; }
+.md img.emoji { display: inline-block; vertical-align: -0.3em; width: 1.375em; height: 1.375em; object-fit: contain; }
+.md.jumbo { font-size: 2.5rem; line-height: 3rem; } .md.jumbo img.emoji { width: 3rem; height: 3rem; }
+.hljs-keyword, .hljs-selector-tag, .hljs-literal, .hljs-built_in { color: #ff7b72; } .hljs-string, .hljs-attr { color: #a5d6ff; }
+.hljs-number, .hljs-symbol { color: #79c0ff; } .hljs-comment, .hljs-quote { color: #8b949e; font-style: italic; }
+.hljs-title, .hljs-section, .hljs-function .hljs-title { color: #d2a8ff; } .hljs-variable, .hljs-type, .hljs-name { color: #ffa657; } .hljs-meta { color: #79c0ff; }
+[data-theme="light"] .hljs-keyword, [data-theme="light"] .hljs-built_in { color: #cf222e; } [data-theme="light"] .hljs-string, [data-theme="light"] .hljs-attr { color: #0a3069; }
+[data-theme="light"] .hljs-title { color: #8250df; } [data-theme="light"] .hljs-comment { color: #6e7781; } [data-theme="light"] .hljs-number { color: #0550ae; }
+
+.safe-top { padding-top: var(--sat); } .safe-bottom { padding-bottom: var(--sab); }
+.pill-unread { position: absolute; inset-inline-start: -4px; width: 8px; height: 8px; border-start-end-radius: 4px; border-end-end-radius: 4px; background: rgb(var(--header)); }
+@keyframes skeleton { 0%,100% { opacity: .5 } 50% { opacity: .9 } }
+.skeleton { animation: skeleton 1.4s ease-in-out infinite; background: rgb(var(--active)); border-radius: 4px; }
+@keyframes flash { from { background: rgb(var(--warn) / .25) } to { background: transparent } }
+.flash { animation: flash 2s ease-out; }
+/* burst (super) reaction: a one-shot pop as a chip appears */
+@keyframes burst { 0% { transform: scale(.7) } 45% { transform: scale(1.18) } 100% { transform: scale(1) } }
+.burst-react { animation: burst .5s cubic-bezier(.3,1.4,.5,1); }
+.drawer { transition: transform .22s cubic-bezier(.2,.8,.2,1); will-change: transform; }
+
+/* wrappers + soft keyboards: follow the visual viewport while a keyboard is open (set by lib/native.ts) */
+html[data-vv="kb"], html[data-vv="kb"] body, html[data-vv="kb"] #root { height: var(--vvh); }
+/* desktop overlay window (lib/overlay.ts sets data-overlay): transparent page, only the card shows over the game */
+html[data-overlay], html[data-overlay] body, html[data-overlay] #root { background: transparent; }
+/* RTL: mirror directional glyphs; text in messages picks its own direction */
+[dir="rtl"] .rtl-flip { transform: scaleX(-1); }
+.md, .msg-text { unicode-bidi: plaintext; }
+/* streamer mode */
+.streamer-blur { filter: blur(6px); user-select: none; }
+.streamer-blur:hover, .streamer-blur:focus { filter: blur(0); }
+/* members/messages of a hover-animated avatar */
+img[data-still] { image-rendering: auto; }
+
+/* status colours as TEXT use the contrast-safe tokens; backgrounds (bg-danger etc.) keep the brand values */
+.text-danger { color: rgb(var(--danger-text)); }
+.text-warn { color: rgb(var(--warn-text)); }
+.text-success { color: rgb(var(--success-text)); }
+
+/* Increased contrast: user toggle (data-contrast) or OS preference. Real token changes instead of a pixel filter, so focus rings/borders also strengthen. */
+:root[data-contrast="more"], :root[data-contrast="more"][data-theme] { --muted: 200 204 210; --interactive: 225 228 232; --divider: 120 124 132; --text: 242 243 245; }
+:root[data-contrast="more"][data-theme="light"] { --muted: 60 62 68; --interactive: 40 42 48; --divider: 120 124 132; --text: 6 6 7; }
+@media (prefers-contrast: more) {
+  :root:not([data-theme="light"]) { --muted: 200 204 210; --interactive: 225 228 232; --divider: 120 124 132; --text: 242 243 245; }
+  :root[data-theme="light"] { --muted: 60 62 68; --interactive: 40 42 48; --divider: 120 124 132; --text: 6 6 7; }
+  *:focus-visible { outline-width: 3px; }
+}
+@media (forced-colors: active) {
+  *:focus-visible { outline: 2px solid Highlight; }
+  .btn, .field { border: 1px solid ButtonText; }
+}

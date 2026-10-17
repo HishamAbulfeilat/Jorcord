@@ -1,0 +1,424 @@
+name: Release
+# Push a tag vX.Y.Z to build everything and publish ONE GitHub Release with every asset attached.
+# Every build job uploads straight to ONE draft release (created first); the last job adds SHA256SUMS.txt and publishes it.
+# Dry runs (manual / branch push) do the same against a throw-away draft that is deleted at the end, so nothing is published.
+# (Release assets, not Actions artifacts, so the Actions artifact storage quota is not needed.)
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      publish_pages:
+        description: 'Also deploy the web app to GitHub Pages'
+        type: boolean
+        default: false
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+permissions:
+  contents: write
+env:
+  GH_TOKEN: ${{ github.token }}
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      is_release: ${{ steps.v.outputs.is_release }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: v
+        run: |
+          set -e
+          PKG=$(node -p "require('./package.json').version")
+          for f in apps/web apps/server apps/desktop apps/mobile; do
+            [ "$(node -p "require('./$f/package.json').version")" = "$PKG" ] || { echo "::error::$f/package.json version differs from $PKG"; exit 1; }
+          done
+          [ "$(node -p "require('./apps/desktop/src-tauri/tauri.conf.json').version")" = "$PKG" ] || { echo "::error::tauri.conf.json version differs from $PKG"; exit 1; }
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            [ "${GITHUB_REF_NAME}" = "v$PKG" ] || { echo "::error::tag ${GITHUB_REF_NAME} does not match package version v$PKG"; exit 1; }
+            echo "is_release=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_release=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "version=$PKG" >> "$GITHUB_OUTPUT"
+
+  draft:
+    needs: prepare
+    runs-on: ubuntu-latest
+    outputs:
+      release_id: ${{ steps.d.outputs.release_id }}
+      tag: ${{ steps.d.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: d
+        run: |
+          set -e
+          # drop leftovers of failed dry runs
+          for old in $(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq '.[] | select(.draft and (.tag_name|startswith("dryrun-"))) | .id'); do gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/$old"; done
+          V=${{ needs.prepare.outputs.version }}
+          if [ "${{ needs.prepare.outputs.is_release }}" = true ]; then TAG="v$V"; else TAG="dryrun-${{ github.run_id }}"; fi
+          sed "s/VERSION/$V/g" .github/release-notes.md > notes.md
+          ID=$(gh api --method POST "repos/$GITHUB_REPOSITORY/releases" \
+            -f tag_name="$TAG" -f target_commitish="$GITHUB_SHA" -f name="Jorcord v$V" -F draft=true -F prerelease=false \
+            -F generate_release_notes=true -f body="$(cat notes.md)" --jq .id)
+          echo "release_id=$ID" >> "$GITHUB_OUTPUT"; echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+  # ---------------------------------------------------------------- web
+  web:
+    needs: [prepare, draft]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @jorcord/shared build --if-present
+      - name: Build for GitHub Pages (base path /<repo>/)
+        env:
+          VITE_BASE: /${{ github.event.repository.name }}/
+          VITE_STATIC_HOST: '1'
+        run: |
+          pnpm --filter @jorcord/web build
+          cp apps/web/dist/index.html apps/web/dist/404.html   # SPA fallback for deep links
+          touch apps/web/dist/.nojekyll
+          mv apps/web/dist pages-dist
+      - name: Build for any static host (served from the domain root)
+        env:
+          VITE_STATIC_HOST: '1'
+        run: |
+          pnpm --filter @jorcord/web build
+          cp apps/web/dist/index.html apps/web/dist/404.html
+          mkdir -p out
+          (cd apps/web/dist && zip -qr "$GITHUB_WORKSPACE/out/jorcord-web-v${{ needs.prepare.outputs.version }}.zip" .)
+      - run: .github/scripts/upload-assets.sh ${{ needs.draft.outputs.release_id }} out/*
+      - uses: actions/upload-pages-artifact@v3
+        continue-on-error: true   # needs Actions artifact storage; Pages is best-effort
+        with: { path: pages-dist }
+
+  pages:
+    needs: [prepare, web]
+    if: needs.prepare.outputs.is_release == 'true' || inputs.publish_pages
+    runs-on: ubuntu-latest
+    continue-on-error: true   # Pages may not be enabled yet: Settings > Pages > Source: GitHub Actions
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/configure-pages@v5
+        continue-on-error: true
+        with: { enablement: true }
+      - id: deploy
+        uses: actions/deploy-pages@v4
+
+  # ---------------------------------------------------------------- server + livekit bundles
+  server-bundle:
+    needs: [prepare, draft]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @jorcord/shared build --if-present
+      - name: Build the web app for the server's own origin
+        run: VITE_BASE=/ pnpm --filter @jorcord/web build
+      - name: Assemble server tarball
+        run: |
+          set -e
+          V=${{ needs.prepare.outputs.version }}
+          D=bundle/jorcord-server
+          pnpm --filter @jorcord/server deploy --prod --legacy "$D"
+          cp -r apps/web/dist "$D/web"
+          cp .env.docker.example "$D/.env.example"
+          # compose file for the bundle: pull the published image instead of building from source
+          grep -v 'build: { context' docker-compose.yml | sed "s|:\${JORCORD_VERSION:-latest}|:\${JORCORD_VERSION:-$V}|" > "$D/docker-compose.yml"
+          cp scripts/init-env.sh "$D/init-env.sh"
+          cat > "$D/run.sh" <<'EOT'
+          #!/bin/sh
+          # Runs the Jorcord server directly with Node 22+. Reads ./.env if present. Data lives in ./data unless DATA_DIR is set.
+          cd "$(dirname "$0")"
+          [ -f .env ] && { set -a; . ./.env; set +a; }
+          export NODE_ENV="${NODE_ENV:-production}" DATA_DIR="${DATA_DIR:-$PWD/data}" WEB_DIST="${WEB_DIST:-$PWD/web}"
+          exec node_modules/.bin/tsx src/index.ts
+          EOT
+          sed -i 's/^          //' "$D/run.sh"
+          chmod +x "$D/run.sh" "$D/init-env.sh"
+          cat > "$D/README.txt" <<EOT
+          Jorcord server v$V
+          Node 22+ and Linux x64 (the bundled node_modules contain native modules for linux-x64/glibc).
+          On other platforms or CPUs use the Docker image: docker pull ghcr.io/hishamabulfeilat/jorcord-server:$V
+
+          Quick start (embedded database, no other services needed):
+            JWT_SECRET=\$(openssl rand -base64 48) ./run.sh        # listens on :3000
+          Full stack (Postgres, Redis, LiveKit, MinIO):
+            ./init-env.sh && docker compose up -d
+          Then open http://localhost:3000 : the server serves the bundled web app from ./web (WEB_DIST). No server address or CORS setup needed.
+          Desktop/mobile apps: enter http://localhost:3000 as the server address.
+          Migrations (migrations/) run automatically on boot.
+          EOT
+          sed -i 's/^          //' "$D/README.txt"
+          mkdir -p out
+          tar -C bundle -czf "out/jorcord-server-v$V.tar.gz" jorcord-server
+          # LiveKit config bundle (no binary)
+          mkdir -p lk/jorcord-livekit-config
+          (cd infra/livekit && cp -r README.md docker-compose.yml livekit.yaml ../../lk/jorcord-livekit-config/)
+          tar -C lk -czf "out/jorcord-livekit-config-v$V.tar.gz" jorcord-livekit-config
+          ls -la out
+      - run: .github/scripts/upload-assets.sh ${{ needs.draft.outputs.release_id }} out/*
+
+  docker:
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - if: needs.prepare.outputs.is_release == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/jorcord-server
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable=${{ github.ref_type == 'tag' }}
+            type=sha
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/server/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: ${{ needs.prepare.outputs.is_release == 'true' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ---------------------------------------------------------------- desktop
+  desktop:
+    needs: [prepare, draft]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-22.04, args: '', name: linux }
+          - { os: windows-latest, args: '', name: windows }
+          - { os: macos-latest, args: '--target aarch64-apple-darwin', name: macos-arm64 }
+          - { os: macos-15-intel, args: '--target x86_64-apple-darwin', name: macos-x64 }
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ startsWith(matrix.os, 'macos') && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri
+      - if: startsWith(matrix.os, 'ubuntu')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev patchelf rpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @jorcord/shared build --if-present
+      - name: Build bundles
+        shell: bash
+        working-directory: apps/desktop
+        env:
+          # Optional secrets: unsigned bundles are produced when they are empty.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          NO_STRIP: 'true'
+          APPIMAGE_EXTRACT_AND_RUN: '1'
+        run: |
+          ARGS="${{ matrix.args }}"
+          # Without an updater signing key, skip updater artifacts (they need one).
+          if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then ARGS="$ARGS --config src-tauri/tauri.noupdater.conf.json"; fi
+          # Drop empty Apple vars so Tauri does not try to import an empty certificate.
+          for v in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do
+            eval "[ -n \"\$$v\" ] || unset $v"
+          done
+          pnpm exec tauri build $ARGS
+      - name: Collect installers
+        shell: bash
+        run: |
+          mkdir -p out
+          find apps/desktop/src-tauri/target -path '*/release/bundle/*' -type f \
+            \( -name '*.msi' -o -name '*-setup.exe' -o -name '*.dmg' -o -name '*.AppImage' -o -name '*.deb' -o -name '*.rpm' \) \
+            -exec cp -v {} out/ \;
+          ls -la out
+      - name: Upload to release
+        shell: bash
+        run: .github/scripts/upload-assets.sh ${{ needs.draft.outputs.release_id }} out/*
+
+  # ---------------------------------------------------------------- android
+  android:
+    needs: [prepare, draft]
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 21 }
+      - name: Android SDK (preinstalled on the runner; accept licenses, add platform 36)
+        run: |
+          export ANDROID_HOME=${ANDROID_HOME:-/usr/local/lib/android/sdk}
+          echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
+          SM=$(ls "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager | sort -V | tail -1)
+          yes | "$SM" --licenses > /dev/null || true
+          "$SM" "platforms;android-36" "build-tools;36.0.0" > /dev/null
+      - uses: gradle/actions/setup-gradle@v4
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @jorcord/shared build --if-present
+      - run: pnpm --filter @jorcord/web build
+      - name: Signing material
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KS_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASS: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          GOOGLE_SERVICES_B64: ${{ secrets.GOOGLE_SERVICES_JSON_B64 }}
+        run: |
+          set -e
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.jks"
+            echo "ANDROID_KEYSTORE_PASSWORD=$KS_PASS" >> "$GITHUB_ENV"
+            echo "ANDROID_KEY_ALIAS=$KS_ALIAS" >> "$GITHUB_ENV"
+            echo "ANDROID_KEY_PASSWORD=${KEY_PASS:-$KS_PASS}" >> "$GITHUB_ENV"
+            echo "SIGNING=your configured release keystore" >> "$GITHUB_ENV"
+          else
+            P=$(openssl rand -hex 16); echo "::add-mask::$P"
+            keytool -genkeypair -keystore "$RUNNER_TEMP/release.jks" -storetype PKCS12 -alias jorcord -keyalg RSA -keysize 2048 \
+              -validity 10000 -storepass "$P" -keypass "$P" -dname "CN=Jorcord CI (ephemeral), O=Jorcord"
+            echo "ANDROID_KEYSTORE_PASSWORD=$P" >> "$GITHUB_ENV"
+            echo "ANDROID_KEY_ALIAS=jorcord" >> "$GITHUB_ENV"
+            echo "ANDROID_KEY_PASSWORD=$P" >> "$GITHUB_ENV"
+            echo "SIGNING=an ephemeral CI keystore (no ANDROID_KEYSTORE_B64 secret set)" >> "$GITHUB_ENV"
+          fi
+          echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+          if [ -n "$GOOGLE_SERVICES_B64" ]; then echo "$GOOGLE_SERVICES_B64" | base64 -d > apps/mobile/android/app/google-services.json; fi
+      - run: pnpm --filter @jorcord/mobile exec cap sync android
+      - name: Build APKs and AAB
+        working-directory: apps/mobile/android
+        env:
+          APP_VERSION: ${{ needs.prepare.outputs.version }}
+          ANDROID_VERSION_CODE: ${{ github.run_number }}
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease bundleRelease --no-daemon --stacktrace
+      - name: Collect and verify
+        run: |
+          set -e
+          V=${{ needs.prepare.outputs.version }}
+          B=apps/mobile/android/app/build/outputs
+          mkdir -p out
+          for f in $B/apk/release/app-*-release.apk; do
+            abi=$(basename "$f" | sed -E 's/^app-(.*)-release\.apk$/\1/')
+            cp "$f" "out/Jorcord-$V-android-$abi.apk"
+          done
+          cp $B/bundle/release/app-release.aab "out/Jorcord-$V-android.aab"
+          APKSIGNER=$(ls $ANDROID_HOME/build-tools/*/apksigner | tail -1)
+          "$APKSIGNER" verify --print-certs "out/Jorcord-$V-android-universal.apk" | head -3
+          echo "$SIGNING" > out/.signing; ls -la out
+      - run: .github/scripts/upload-assets.sh ${{ needs.draft.outputs.release_id }} out/*.apk out/*.aab
+
+  # ---------------------------------------------------------------- ios
+  ios:
+    # Unsigned: Apple signing needs your account. We package the unsigned archive as an .ipa that sideloaders can re-sign.
+    needs: [prepare, draft]
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - name: Select newest Xcode
+        run: |
+          X=$(ls -d /Applications/Xcode_*.app | sort -V | tail -1); echo "Using $X"
+          sudo xcode-select -s "$X"; xcodebuild -version
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @jorcord/shared build --if-present
+      - run: pnpm --filter @jorcord/web build
+      - run: pnpm --filter @jorcord/mobile exec cap sync ios
+      - name: Unsigned archive
+        working-directory: apps/mobile/ios/App
+        env:
+          APP_VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          WS=App.xcworkspace; [ -d "$WS" ] || WS=""
+          if [ -d App.xcworkspace ]; then TARGET="-workspace App.xcworkspace"; else TARGET="-project App.xcodeproj"; fi
+          xcodebuild $TARGET -scheme App -configuration Release -sdk iphoneos \
+            -archivePath "$RUNNER_TEMP/Jorcord.xcarchive" archive \
+            MARKETING_VERSION="$APP_VERSION" CURRENT_PROJECT_VERSION="${{ github.run_number }}" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" | tail -n 60
+      - name: Package unsigned .ipa
+        run: |
+          set -e
+          mkdir -p out ipa/Payload
+          cp -R "$RUNNER_TEMP/Jorcord.xcarchive/Products/Applications/App.app" ipa/Payload/
+          (cd ipa && zip -qry "$GITHUB_WORKSPACE/out/Jorcord-${{ needs.prepare.outputs.version }}-ios-unsigned.ipa" Payload)
+          ls -la out
+      - run: .github/scripts/upload-assets.sh ${{ needs.draft.outputs.release_id }} out/*
+
+  # ---------------------------------------------------------------- publish (single, non-draft release)
+  release:
+    needs: [prepare, draft, web, server-bundle, docker, desktop, android, ios]
+    if: always() && needs.draft.result == 'success' && needs.web.result == 'success' && needs.server-bundle.result == 'success' && needs.desktop.result == 'success' && needs.android.result == 'success' && needs.docker.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checksums, notes, publish
+        env:
+          IOS_RESULT: ${{ needs.ios.result }}
+          ID: ${{ needs.draft.outputs.release_id }}
+          IS_RELEASE: ${{ needs.prepare.outputs.is_release }}
+        run: |
+          set -e
+          mkdir dl && cd dl
+          gh api "repos/$GITHUB_REPOSITORY/releases/$ID/assets?per_page=100" --jq '.[] | "\(.id) \(.name)"' > ../list.txt
+          while read -r aid name; do gh api -H "Accept: application/octet-stream" "repos/$GITHUB_REPOSITORY/releases/assets/$aid" > "$name"; done < ../list.txt
+          sha256sum * > ../SHA256SUMS.txt; cat ../SHA256SUMS.txt; cd ..
+          gh api --method POST -H "Content-Type: application/octet-stream" "https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/$ID/assets?name=SHA256SUMS.txt" --input SHA256SUMS.txt > /dev/null
+          BODY=$(gh api "repos/$GITHUB_REPOSITORY/releases/$ID" --jq .body)
+          {
+            printf '%s\n\n' "$BODY"
+            echo "Android APKs/AAB are signed with the release keystore from the \`ANDROID_KEYSTORE_B64\` secrets when configured, otherwise with an ephemeral CI keystore (then upgrading from an earlier release needs an uninstall first)."
+            [ "$IOS_RESULT" = success ] || { echo; echo "**The iOS .ipa could not be built for this release** (CI job failed); build it yourself using docs/PLATFORMS.md."; }
+          } > body.md
+          if [ "$IS_RELEASE" = true ]; then
+            gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/$ID" -F body=@body.md -F draft=false -F make_latest=true --jq .html_url
+          else
+            echo "Dry run OK, assets:"; cat list.txt
+            gh api --method DELETE "repos/$GITHUB_REPOSITORY/releases/$ID"
+          fi

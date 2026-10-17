@@ -1,0 +1,7 @@
+{
+  "name": "agent-deck",
+  "version": "0.1.0",
+  "description": "Observe-only dashboard: a status band above the prompt, an Agent Deck pane for subagents and token usage, smart alerts and an efficiency coach.",
+  "author": { "name": "agent-deck" },
+  "types": "./types/index.d.ts"
+}

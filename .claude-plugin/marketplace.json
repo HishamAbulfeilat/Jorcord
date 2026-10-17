@@ -1,0 +1,7 @@
+{
+  "name": "jorcord-mods",
+  "owner": { "name": "HishamAbulfeilat" },
+  "plugins": [
+    { "name": "agent-deck", "source": "./mods/agent-deck", "description": "Live multi-agent deck, token/context/usage band, alerts and efficiency tips for Claude" }
+  ]
+}

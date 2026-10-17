@@ -1,0 +1,24 @@
+# Production overrides for a single public VM: Caddy terminates HTTPS; app/signalling stay internal.
+services:
+  server:
+    ports: !override ["127.0.0.1:3000:3000"]
+    environment:
+      TRUST_PROXY: "true"
+      SUPER_ADMIN_USER_ID: ${SUPER_ADMIN_USER_ID:-}
+  livekit:
+    ports: !override
+      - "7881:7881"
+      - "7882:7882/udp"
+      - "3478:3478/udp"
+  minio:
+    ports: !reset []
+  caddy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    depends_on: [server]
+    ports: ["80:80", "443:443", "443:443/udp"]
+    command: caddy reverse-proxy --from ${DOMAIN} --to server:3000
+    volumes: [caddy-data:/data, caddy-config:/config]
+volumes:
+  caddy-data:
+  caddy-config:

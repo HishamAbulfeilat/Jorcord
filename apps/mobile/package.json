@@ -1,0 +1,34 @@
+{
+  "name": "@jorcord/mobile",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Jorcord mobile shell (Capacitor 8, Android + iOS)",
+  "scripts": {
+    "icons": "node scripts/generate-assets.mjs",
+    "sync": "pnpm --filter @jorcord/web build && cap sync",
+    "sync:android": "cap sync android",
+    "open:android": "cap open android",
+    "run:android": "cap run android",
+    "build:apk": "pnpm run sync && cd android && ./gradlew assembleRelease",
+    "build:aab": "pnpm run sync && cd android && ./gradlew bundleRelease",
+    "open:ios": "cap open ios",
+    "typecheck": "echo 'mobile: no TS sources'",
+    "test": "echo 'mobile: no JS tests'"
+  },
+  "dependencies": {
+    "@capacitor/android": "8.5.3",
+    "@capacitor/app": "8.1.2",
+    "@capacitor/core": "8.5.3",
+    "@capacitor/haptics": "8.0.2",
+    "@capacitor/ios": "8.5.3",
+    "@capacitor/keyboard": "8.0.6",
+    "@capacitor/local-notifications": "8.3.1",
+    "@capacitor/push-notifications": "8.1.3",
+    "@capacitor/splash-screen": "8.0.2",
+    "@capacitor/status-bar": "8.0.4"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "8.5.3",
+    "sharp": "0.35.5"
+  }
+}

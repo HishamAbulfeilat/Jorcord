@@ -1,0 +1,158 @@
+# Jorcord backend stack: server + Postgres + Redis + LiveKit (files on a local volume; MinIO/S3 optional via `--profile s3`).
+#   cp .env.example .env   # (see docs/DEPLOY.md) set at least JWT_SECRET, POSTGRES_PASSWORD, LIVEKIT_API_SECRET, MINIO_ROOT_PASSWORD
+#   docker compose up -d --build
+# Then open http://localhost:3000 : the server image also serves the web app (WEB_DIST=/app/web), same origin, so no CORS setup is needed.
+# Other web hosts (GitHub Pages, a CDN) can still be used: add their origin to CORS_ORIGINS. See docs/DEPLOY.md.
+name: jorcord
+
+services:
+  server:
+    # Pulls the published image; `docker compose up --build` builds it from source instead.
+    image: ghcr.io/hishamabulfeilat/jorcord-server:${JORCORD_VERSION:-latest}
+    build: { context: ., dockerfile: apps/server/Dockerfile }
+    restart: unless-stopped
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      livekit: { condition: service_started }
+    ports: ["${SERVER_PORT:-3000}:3000"]
+    environment:
+      NODE_ENV: production
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET (>= 32 random chars)}
+      PUBLIC_URL: ${PUBLIC_URL:-http://localhost:3000}
+      # Only needed for web clients hosted elsewhere; the bundled web app is same-origin (PUBLIC_URL's origin is always allowed).
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173}
+      TRUST_PROXY: ${TRUST_PROXY:-false}
+      DATABASE_URL: postgres://jorcord:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/jorcord
+      REDIS_URL: redis://redis:6379
+      # LiveKit signalling URL handed to browsers. `auto` (default) = the server proxies signalling at /livekit on the app's own origin/port,
+      # so it works for localhost, a LAN IP or a domain (and wss behind your TLS proxy) with no extra port. Set an explicit
+      # ws(s)://host:port to bypass the proxy. The server itself always calls the internal API URL below.
+      LIVEKIT_URL: ${LIVEKIT_URL:-auto}
+      LIVEKIT_API_URL: http://livekit:7880
+      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:-jorcord}
+      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:?set LIVEKIT_API_SECRET (>= 32 chars)}
+      # Files go to the server-data volume by default. For S3/MinIO: `docker compose --profile s3 up -d` with STORAGE_DRIVER=s3 in .env.
+      STORAGE_DRIVER: ${STORAGE_DRIVER:-local}
+      S3_ENDPOINT: ${S3_ENDPOINT:-http://minio:9000}
+      S3_REGION: us-east-1
+      S3_BUCKET: ${S3_BUCKET:-jorcord-files}
+      S3_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-jorcord}
+      S3_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-unused-without-s3}
+      S3_FORCE_PATH_STYLE: "true"
+      SMTP_URL: ${SMTP_URL:-}
+      SUPER_ADMIN_USER_ID: ${SUPER_ADMIN_USER_ID:-}
+      MAIL_FROM: ${MAIL_FROM:-Jorcord <no-reply@localhost>}
+      TENOR_API_KEY: ${TENOR_API_KEY:-}
+      GIPHY_API_KEY: ${GIPHY_API_KEY:-}
+    volumes:
+      - server-data:/data   # DATA_DIR: only holds small local state when S3 + Postgres are used
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: jorcord
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: jorcord
+    volumes: [pg-data:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U jorcord -d jorcord"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    # Pub/sub bus + presence + voice state. Nothing here needs to survive a restart (clients re-identify), so no persistence.
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory", "256mb", "--maxmemory-policy", "noeviction"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  livekit:
+    image: livekit/livekit-server:v1.11.0
+    restart: unless-stopped
+    environment:
+      # Inline config (equivalent to infra/livekit/livekit.yaml, with Docker-friendly ports + the Jorcord webhook).
+      LIVEKIT_CONFIG: |
+        port: 7880
+        log_level: info
+        keys:
+          ${LIVEKIT_API_KEY:-jorcord}: ${LIVEKIT_API_SECRET:?set LIVEKIT_API_SECRET}
+        rtc:
+          tcp_port: 7881
+          # Media UDP. Default: a port range. Single-port mode (easy firewalling): LIVEKIT_UDP_PORT=7882 + LIVEKIT_UDP_PUBLISH=7882:7882/udp
+          udp_port: ${LIVEKIT_UDP_PORT:-0}
+          port_range_start: 50000
+          port_range_end: 50200
+          # The address ICE candidates advertise. Inside Docker the default (container IP 172.x) is NOT reachable from your browser,
+          # which is why voice hung on "Connecting…". 127.0.0.1 is right when the browser runs on the Docker host; set your LAN IP for
+          # other devices, or empty + LIVEKIT_USE_EXTERNAL_IP=true on a VPS with a public IP.
+          node_ip: ${LIVEKIT_NODE_IP-127.0.0.1}
+          use_external_ip: ${LIVEKIT_USE_EXTERNAL_IP:-false}
+          congestion_control: { enabled: true, allow_pause: false }
+        room:
+          auto_create: true
+          empty_timeout: 300
+          departure_timeout: 20
+          enabled_codecs:
+            - { mime: audio/opus }
+            - { mime: audio/red }
+            - { mime: video/vp8 }
+            - { mime: video/vp9 }
+            - { mime: video/av1 }
+            - { mime: video/h264 }
+        webhook:
+          api_key: ${LIVEKIT_API_KEY:-jorcord}
+          urls: ["http://server:3000/api/v1/voice/webhook"]
+        turn:
+          # Embedded TURN (UDP). For TURN/TLS on 443/5349 see docs/DEPLOY.md (needs certificates).
+          enabled: ${LIVEKIT_TURN_ENABLED:-false}
+          domain: ${LIVEKIT_TURN_DOMAIN:-localhost}
+          udp_port: 3478
+    ports:
+      - "7880:7880"          # signalling; only needed when LIVEKIT_URL is an explicit ws://host:7880 (auto goes through the app port)
+      - "7881:7881"          # ICE/TCP fallback (works when UDP is blocked)
+      - "3478:3478/udp"      # TURN (only used when LIVEKIT_TURN_ENABLED=true)
+      - "${LIVEKIT_UDP_PUBLISH:-50000-50200:50000-50200/udp}"   # media; widen range + mapping for big deployments
+
+  minio:
+    profiles: [s3]
+    image: minio/minio:RELEASE.2024-10-13T13-34-11Z
+    restart: unless-stopped
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-jorcord}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD}
+    volumes: [minio-data:/data]
+    ports: ["127.0.0.1:9001:9001"]   # admin console, local only
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # One-shot: create the bucket (private; files are only reachable through the Jorcord server).
+  minio-setup:
+    profiles: [s3]
+    image: minio/mc:latest
+    depends_on:
+      minio: { condition: service_healthy }
+    restart: "no"
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 $${MINIO_ROOT_USER} $${MINIO_ROOT_PASSWORD} &&
+      mc mb --ignore-existing local/${S3_BUCKET:-jorcord-files} &&
+      mc anonymous set none local/${S3_BUCKET:-jorcord-files}"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-jorcord}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD}
+
+volumes:
+  server-data:
+  pg-data:
+  minio-data:

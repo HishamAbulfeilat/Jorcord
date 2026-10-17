@@ -1,0 +1,11 @@
+**/node_modules
+**/dist
+**/data
+.git
+.github
+e2e
+infra
+docs
+*.log
+.env
+**/.env

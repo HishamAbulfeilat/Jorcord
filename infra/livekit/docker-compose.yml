@@ -1,0 +1,22 @@
+# docker compose -f infra/livekit/docker-compose.yml up
+# Linux: host networking is the simplest/fastest for WebRTC.
+# Windows: use explicit port mapping because host networking is not supported.
+services:
+  livekit:
+    image: livekit/livekit-server:v1.11.0
+    command: --config /etc/livekit.yaml
+    # For Windows Docker Desktop, publish the needed ports.
+    # For Linux you can still use network_mode: host by commenting out the ports below
+    # and uncommenting network_mode: host.
+    # network_mode: host
+    ports:
+      - "7880:7880/tcp"   # HTTP/WS signalling
+      - "7881:7881/tcp"   # ICE/TCP fallback
+      - "7882:7882/udp"   # single UDP media port
+    restart: unless-stopped
+    volumes:
+      - ./livekit.yaml:/etc/livekit.yaml:ro
+  # Optional: Redis for multi-node / egress
+  # redis:
+  #   image: redis:7-alpine
+  #   ports: ["6379:6379"]
