@@ -60,11 +60,16 @@ export const useMessages = create<MsgState>((set) => {
             ? { emoji, emojiId, count: 0, me: false, burstCount: 1, meBurst: mine, burstColors: burstColor ? [burstColor] : [] }
             : { emoji, emojiId, count: 1, me: mine });
         } else if (burst) {
-          const r = rs[i]!; const burstCount = Math.max(0, (r.burstCount ?? 0) + delta);
+          const r = rs[i]!;
+          // the gateway echoes my own optimistic change back: applying it twice would double-count
+          if (mine && (delta > 0 ? !!r.meBurst : !r.meBurst)) return m;
+          const burstCount = Math.max(0, (r.burstCount ?? 0) + delta);
           if (burstCount === 0 && r.count === 0) rs.splice(i, 1);
           else rs[i] = { ...r, burstCount, meBurst: mine ? delta > 0 : !!r.meBurst, burstColors: r.burstColors?.length ? r.burstColors : (burstColor ? [burstColor] : []) };
         } else {
-          const r = rs[i]!; const count = Math.max(0, r.count + delta);
+          const r = rs[i]!;
+          if (mine && (delta > 0 ? r.me : !r.me)) return m;
+          const count = Math.max(0, r.count + delta);
           if (count === 0 && !r.burstCount) rs.splice(i, 1);
           else rs[i] = { ...r, count, me: mine ? delta > 0 : r.me };
         }

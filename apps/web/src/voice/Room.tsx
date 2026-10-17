@@ -12,7 +12,7 @@ import { useVoiceUI } from '@/stores/voiceui';
 import { useIsMobile } from '@/lib/hooks';
 import { cx } from '@/lib/format';
 import { Avatar } from '@/components/ui/Avatar';
-import { ParticipantTile, ScreenTile } from './tiles';
+import { NetBars, ParticipantTile, ScreenTile } from './tiles';
 import { TroubleshootPanel } from './Troubleshoot';
 import { retryVoice, startScreenShare } from './controller';
 import type { VoiceFailure } from '@/stores/voiceui';
@@ -63,8 +63,31 @@ function gridCols(n: number, mobile: boolean) {
   return n <= 1 ? 1 : n <= 4 ? 2 : n <= 9 ? 3 : 4;
 }
 
+/** Connection quality / ping strip, shown above the call while "Show Connection Stats" is on. */
+export function ConnectionStatus() {
+  const snap = useVoiceSnapshot(); const c = snap.connection;
+  const me = snap.participants.find((p) => p.isLocal);
+  return (
+    <div data-testid="connection-status" role="status" className="mx-3 mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md bg-side px-3 py-1 text-xs text-muted">
+      <NetBars quality={me?.quality ?? 'unknown'} />
+      <span>{c?.rttMs != null ? `${c.rttMs} ms` : t('Measuring…')}</span>
+      {!!c?.packetLossPct && <span>{c.packetLossPct}% {t('loss')}</span>}
+    </div>
+  );
+}
+
 /** The call surface: participant grid, or a spotlighted stream with a filmstrip. */
-export function CallSurface({ compact, tall }: { compact?: boolean; tall?: boolean }) {
+export function CallSurface(props: { compact?: boolean; tall?: boolean }) {
+  const showStats = useUI((s) => s.prefs.showVoiceStats);
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      {showStats && <ConnectionStatus />}
+      <CallSurfaceBody {...props} />
+    </div>
+  );
+}
+
+function CallSurfaceBody({ compact, tall }: { compact?: boolean; tall?: boolean }) {
   const snap = useVoiceSnapshot(); const mobile = useIsMobile();
   const focus = useVoiceUI((s) => s.focus); const setFocus = useVoiceUI((s) => s.setFocus);
   const showStats = useUI((s) => s.prefs.showVoiceStats);

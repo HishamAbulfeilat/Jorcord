@@ -62,7 +62,7 @@ function VoiceMemberRow({ userId, channelId, speaking, children }: { userId: str
   return <li data-speaking={speaking} className="flex items-center gap-2 rounded px-1 py-0.5 text-sm text-interactive hover:bg-hover" {...trig}>{children}</li>;
 }
 
-function VoiceMembers({ channelId }: { channelId: string }) {
+export function VoiceMembers({ channelId }: { channelId: string }) {
   const states = useData(useShallow((s) => Object.values(s.voiceStates).filter((v) => v.channelId === channelId)));
   const users = useData(useShallow((s) => states.map((v) => s.users[v.userId])));
   const snap = useVoiceSnapshot();
@@ -78,9 +78,12 @@ function VoiceMembers({ channelId }: { channelId: string }) {
             <span className={cx('rounded-full', speaking && 'shadow-[0_0_0_2px_rgb(var(--success))]')} style={{ lineHeight: 0 }}><Avatar user={u} size={20} /></span>
             <span className="truncate">{displayName(u)}</span>
             <span className="ms-auto flex items-center gap-1 text-muted">
-              {v.streaming && <span className="rounded bg-danger px-1 text-[10px] font-bold uppercase leading-4 text-white">{t('Live')}</span>}
+              {v.streaming && <span data-testid="vs-live" className="rounded bg-danger px-1 text-[10px] font-bold uppercase leading-4 text-white">{t('Live')}</span>}
               {v.video && <Video size={14} aria-label={t('Camera on')} />}
-              {v.selfDeaf || v.serverDeaf ? <VolumeX size={14} className="text-danger" aria-label={t('Deafened')} /> : v.selfMute || v.serverMute ? <MicOff size={14} className="text-danger" aria-label={t('Muted')} /> : null}
+              {v.serverDeaf ? <VolumeX size={14} className="text-danger" data-testid="vs-server-deaf" aria-label={t('Server Deafened')} />
+                : v.selfDeaf ? <VolumeX size={14} data-testid="vs-self-deaf" aria-label={t('Deafened')} />
+                : v.serverMute ? <MicOff size={14} className="text-danger" data-testid="vs-server-mute" aria-label={t('Server Muted')} />
+                : v.selfMute ? <MicOff size={14} data-testid="vs-self-mute" aria-label={t('Muted')} /> : null}
             </span>
           </VoiceMemberRow>
         );

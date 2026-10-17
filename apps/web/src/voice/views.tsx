@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { Loader2 } from 'lucide-react';
-import { MessageSquare, Menu, Mic, MicOff, Phone, PhoneOff, Radio, Signal, Video, Volume2, Headphones, VolumeX, MonitorUp, Camera, CameraOff } from 'lucide-react';
+import { MessageSquare, Menu, Mic, MicOff, Phone, PhoneOff, Radio, Signal, Video, Volume2, Headphones, VolumeX, MonitorUp, MonitorX, Settings, Camera, CameraOff } from 'lucide-react';
 import type { Channel } from '@jorcord/shared';
 import { Perm } from '@jorcord/shared';
 import { useVoiceSnapshot } from '@jorcord/voice/react';
@@ -98,11 +98,14 @@ function ConnectingView() {
   );
 }
 
+/** Shared look of the icon-only buttons in the Voice Connected panel (camera, Go Live, soundboard, settings). */
+export const DOCK_BTN = 'flex h-8 w-full items-center justify-center rounded bg-[rgb(var(--active))] text-header hover:bg-[rgb(var(--divider))]';
+
 /** "Voice Connected" panel above the user panel. */
 export function VoiceDock() {
   const conn = useVoiceUI((s) => s.conn); const cid = useVoiceUI((s) => s.connectedChannelId);
   const ch = useData((s) => findChannel(s, cid)); const guild = useData((s) => (ch?.guildId ? s.guilds[ch.guildId]?.guild : undefined)); const me = useData((s) => s.me?.id);
-  const snap = useVoiceSnapshot(); const nav = useNav(); const openModal = useUI((s) => s.openModal);
+  const snap = useVoiceSnapshot(); const nav = useNav(); const openModal = useUI((s) => s.openModal); const showStats = useUI((s) => s.prefs.showVoiceStats);
   const [pop, setPopLocal] = useState(false); const [details, setDetails] = useState(false); const [diag, setDiag] = useState(false);
   const globalPop = useVoiceUI((s) => s.sharePop); const setGlobalPop = useVoiceUI((s) => s.setSharePop); const barMounted = useVoiceUI((s) => s.barMounted);
   const setPop = (v: boolean) => { setPopLocal(v); setGlobalPop(v); };
@@ -121,16 +124,16 @@ export function VoiceDock() {
         </div>
         <Tip text="Disconnect" side="top"><button aria-label={t('Disconnect')} onClick={() => void leaveVoice()} className="flex h-8 w-8 items-center justify-center rounded text-interactive hover:bg-hover hover:text-interactive-hover"><PhoneOff size={20} /></button></Tip>
       </div>
-      {conn === 'connected' && snap.connection?.rttMs != null && <div data-testid="voice-dock-ping" className="mt-0.5 text-[11px] text-muted">{snap.connection.rttMs} ms{snap.connection.packetLossPct ? ` · ${snap.connection.packetLossPct}% ${t('loss')}` : ''}</div>}
+      {conn === 'connected' && showStats && snap.connection?.rttMs != null && <div data-testid="voice-dock-ping" className="mt-0.5 text-[11px] text-muted">{snap.connection.rttMs} ms{snap.connection.packetLossPct ? ` · ${snap.connection.packetLossPct}% ${t('loss')}` : ''}</div>}
       {details && !diag && <ConnectionPopover onClose={() => setDetails(false)} onDisconnect={() => { setDetails(false); void leaveVoice(); }} onDiagnostics={() => { setDetails(false); setDiag(true); }} />}
       {diag && <DiagnosticsPanel onClose={() => setDiag(false)} />}
       <div className="relative mt-2 grid grid-cols-4 gap-1.5">
-        <button aria-label={snap.cameraOn ? 'Turn Off Camera' : 'Turn On Camera'} aria-pressed={snap.cameraOn} onClick={() => getVoiceClient().setCamera(!snap.cameraOn).catch(() => {})} className={cx('flex h-8 items-center justify-center rounded bg-[rgb(var(--active))] text-header hover:bg-[rgb(var(--divider))]', snap.cameraOn && '!bg-white !text-black')}>{snap.cameraOn ? <Camera size={18} /> : <CameraOff size={18} />}</button>
+        <Tip text={snap.cameraOn ? t('Turn Off Camera') : t('Turn On Camera')} side="top"><button data-testid="dock-camera" aria-label={snap.cameraOn ? 'Turn Off Camera' : 'Turn On Camera'} aria-pressed={snap.cameraOn} onClick={() => getVoiceClient().setCamera(!snap.cameraOn).catch(() => {})} className={cx(DOCK_BTN, snap.cameraOn && '!bg-white !text-black')}>{snap.cameraOn ? <Camera size={18} /> : <CameraOff size={18} />}</button></Tip>
         {snap.platform.canScreenShare
-          ? <button aria-label={snap.screenOn ? 'Stop Streaming' : 'Share Your Screen'} aria-pressed={snap.screenOn} onClick={() => { if (snap.screenOn) void getVoiceClient().stopScreenShare(); else setPop(true); }} className={cx('flex h-8 items-center justify-center gap-1 rounded bg-[rgb(var(--active))] text-[13px] font-semibold text-header hover:bg-[rgb(var(--divider))]', snap.screenOn && '!bg-danger !text-white')}><MonitorUp size={18} /><span className="max-sm:hidden">{snap.screenOn ? t('Live') : t('Go Live')}</span></button>
+          ? <Tip text={snap.screenOn ? t('Stop Streaming') : t('Go Live')} side="top"><button data-testid="dock-golive" aria-label={snap.screenOn ? 'Stop Streaming' : 'Share Your Screen'} aria-pressed={snap.screenOn} onClick={() => { if (snap.screenOn) void getVoiceClient().stopScreenShare(); else setPop(true); }} className={cx(DOCK_BTN, snap.screenOn && '!bg-danger !text-white')}>{snap.screenOn ? <MonitorX size={18} /> : <MonitorUp size={18} />}</button></Tip>
           : <span aria-hidden className="hidden" />}
         {ch?.guildId && conn === 'connected' && <SoundboardButton channelId={ch.id} guildId={ch.guildId} />}
-        <button aria-label={t('Voice Settings')} onClick={() => openModal({ kind: 'voiceSettings' })} className="flex h-8 items-center justify-center rounded bg-[rgb(var(--active))] text-header hover:bg-[rgb(var(--divider))]"><Headphones size={18} /></button>
+        <Tip text={t('Voice Settings')} side="top"><button data-testid="dock-settings" aria-label={t('Voice Settings')} onClick={() => openModal({ kind: 'voiceSettings' })} className={DOCK_BTN}><Settings size={18} /></button></Tip>
         {(pop || globalPop) && !barMounted && <ScreenSharePopover onClose={() => setPop(false)} />}
       </div>
     </div>

@@ -41,7 +41,7 @@ export const defaultPrefs: Prefs = {
   desktopNotifications: false, notificationSounds: true, defaultNotify: 'mentions', suppressEveryone: false,
   inputDevice: 'default', outputDevice: 'default', videoDevice: 'default', inputVolume: 100, outputVolume: 100, noiseSuppression: true, echoCancellation: true, autoGain: true, pushToTalk: false,
   noiseEngine: 'browser', voiceBitrate: 64, musicMode: false, pttCode: 'Backquote', vadMode: false, vadThreshold: 0.03,
-  screenPreset: '1080p60', cameraPreset: '720p30', screenHint: 'motion', screenAudio: true, showVoiceStats: false,
+  screenPreset: '1080p60', cameraPreset: '720p30', screenHint: 'motion', screenAudio: true, showVoiceStats: true,
   keybinds: defaultKeybinds,
   streamerMode: false, streamerAuto: true, streamerHidePersonal: true, streamerHideInvites: true, streamerNoSounds: true, streamerNoNotifications: true,
   mutedChannels: {}, mutedGuilds: {}, collapsedCategories: {},
@@ -71,7 +71,7 @@ export type ModalSpec =
 export type SettingsSpec = { kind: 'user'; tab?: string } | { kind: 'guild'; guildId: Id; tab?: string } | null;
 export interface MenuItem { label?: string; icon?: any; onClick?: () => void; danger?: boolean; separator?: boolean; checked?: boolean; disabled?: boolean; hint?: string; children?: MenuItem[] }
 export interface Toast { id: number; kind: 'info' | 'success' | 'error'; text: string }
-export type Popout = { kind: 'user'; userId: Id; guildId?: Id; rect: DOMRect } | { kind: 'emoji'; rect: DOMRect; onPick: (e: { char?: string; name: string; id?: Id; animated?: boolean; gif?: string; sticker?: Id; burst?: boolean; burstColor?: string }) => void; guildId?: Id; stickers?: boolean; allowBurst?: boolean } | null;
+export type Popout = { kind: 'user'; userId: Id; guildId?: Id; rect: DOMRect } | { kind: 'emoji'; rect: DOMRect; onPick: (e: { char?: string; name: string; id?: Id; animated?: boolean; gif?: string; sticker?: Id; burst?: boolean; burstColor?: string }) => void; guildId?: Id; stickers?: boolean; allowBurst?: boolean; gifOnly?: boolean } | null;
 
 interface UIState {
   prefs: Prefs; setPref<K extends keyof Prefs>(k: K, v: Prefs[K]): void;

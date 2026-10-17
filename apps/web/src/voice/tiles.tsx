@@ -69,7 +69,7 @@ export function ParticipantTile({ p, size = 'lg', focused, onClick, showStats }:
           </div>}
       <NamePill p={p} extra={p.handRaised ? <Hand size={13} className="text-warn" aria-label="Hand raised" /> : null} />
       {p.priority && <Crown size={14} className="absolute end-2 top-2 text-warn" />}
-      <span className="pointer-events-none absolute end-2 top-2 z-[5] opacity-0 transition-opacity group-hover:opacity-100"><NetBars quality={p.quality} /></span>
+      <span data-testid="tile-netbars" className={cx('pointer-events-none absolute end-2 top-2 z-[5] transition-opacity', showStats ? 'opacity-100' : 'opacity-0 group-hover:opacity-100')}><NetBars quality={p.quality} /></span>
       {showStats && present && <StatsPanel identity={p.identity} source="camera" />}
     </div>
   );
@@ -82,7 +82,7 @@ export function ScreenTile({ p, size = 'lg', focused, onClick }: { p: Participan
   const client = useVoiceClient();
   const snap = useVoiceSnapshot();
   const { ref, present } = useVideoTrack(p.identity, 'screen');
-  const [stats, setStats] = useState(() => useUI.getState().prefs.showVoiceStats);
+  const stats = useUI((s) => s.prefs.showVoiceStats); const setPref = useUI((s) => s.setPref);
   const [watching, setWatching] = useState(true);
   const [q, setQ] = useState<ViewerQuality>('auto');
   const box = useRef<HTMLDivElement>(null);
@@ -115,7 +115,7 @@ export function ScreenTile({ p, size = 'lg', focused, onClick }: { p: Participan
               </select>
             </label>
           )}
-          <button aria-label="Stream stats" aria-pressed={stats} onClick={() => setStats((s) => !s)} className={cx('flex h-8 w-8 items-center justify-center rounded bg-black/60 text-white hover:bg-black/80', stats && 'bg-brand')}><Activity size={16} /></button>
+          <button aria-label="Stream stats" aria-pressed={stats} onClick={() => setPref('showVoiceStats', !stats)} className={cx('flex h-8 w-8 items-center justify-center rounded bg-black/60 text-white hover:bg-black/80', stats && 'bg-brand')}><Activity size={16} /></button>
           {!p.isLocal && watching && <button aria-label="Stop watching" onClick={() => { setWatching(false); client.setWatching(p.identity, 'screen', false); }} className="flex h-8 w-8 items-center justify-center rounded bg-black/60 text-white hover:bg-black/80"><EyeOff size={16} /></button>}
           <button aria-label="Fullscreen" onClick={() => { const el = box.current; if (document.fullscreenElement) void document.exitFullscreen(); else void el?.requestFullscreen?.(); }} className="flex h-8 w-8 items-center justify-center rounded bg-black/60 text-white hover:bg-black/80"><Maximize2 size={16} /></button>
         </div>

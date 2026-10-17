@@ -101,7 +101,7 @@ export function ControlBar({ onSettings, className }: { onSettings: () => void; 
         <RoundBtn label={priority ? 'Disable Priority Speaker' : 'Enable Priority Speaker'} active={priority} pressed={priority} onClick={() => setPrioritySpeaker(!priority)}><Crown size={22} /></RoundBtn>
       )}
       <RoundBtn label={t('Voice Settings')} onClick={onSettings}><Settings size={22} /></RoundBtn>
-      <RoundBtn label={showStats ? 'Hide Connection Stats' : 'Show Connection Stats'} pressed={showStats} active={showStats} onClick={() => setPref('showVoiceStats', !showStats)} className="max-sm:hidden"><Activity size={22} /></RoundBtn>
+      <RoundBtn label={showStats ? 'Hide Connection Stats' : 'Show Connection Stats'} pressed={showStats} active={showStats} onClick={() => setPref('showVoiceStats', !showStats)} ><Activity size={22} /></RoundBtn>
       <RoundBtn label={t('Disconnect')} danger onClick={() => void leaveVoice()}><PhoneOff size={22} /></RoundBtn>
     </div>
   );

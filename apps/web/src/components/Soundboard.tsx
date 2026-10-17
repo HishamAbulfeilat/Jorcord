@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Play, Trash2, Upload, Volume2, VolumeX } from 'lucide-react';
+import { AudioLines, Play, Trash2, Upload, Volume2, VolumeX } from 'lucide-react';
 import { LIMITS, Perm, type Id, type SoundboardSound } from '@jorcord/shared';
 import { api } from '@/lib/api';
 import { useUI, toast, toastError } from '@/stores/ui';
@@ -32,7 +32,7 @@ export function SoundboardButton({ channelId, guildId }: { channelId: Id; guildI
   return (
     <div ref={ref} className="relative contents">
       <Tip text={t('Soundboard')} side="top">
-        <button aria-label={t('Soundboard')} aria-expanded={open} onClick={() => setOpen((v) => !v)} className={cx('flex h-8 items-center justify-center rounded text-header', open ? 'bg-white text-black' : 'bg-[rgb(var(--active))] hover:bg-[rgb(var(--divider))]')}><Volume2 size={18} /></button>
+        <button aria-label={t('Soundboard')} aria-expanded={open} onClick={() => setOpen((v) => !v)} data-testid="dock-soundboard" className={cx('flex h-8 w-full items-center justify-center rounded text-header', open ? '!bg-white !text-black' : 'bg-[rgb(var(--active))] hover:bg-[rgb(var(--divider))]')}><AudioLines size={18} /></button>
       </Tip>
       {open && (
         <div role="dialog" aria-label={t('Soundboard')} data-testid="soundboard-popover" className="absolute inset-x-0 bottom-full z-50 mb-2 animate-pop rounded-lg bg-float p-3 text-start shadow-elev">
