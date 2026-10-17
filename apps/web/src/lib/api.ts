@@ -281,7 +281,8 @@ export const api = {
     /** Replaces my votes with `answerIds` ([] clears them). Returns the poll message as I see it. */
     vote: (channelId: Id, id: Id, answerIds: number[]) => send<Message>({ method: 'PUT', path: `/channels/${channelId}/polls/${id}/votes`, body: { answerIds } }),
     removeVote: (channelId: Id, id: Id) => send<Message>({ method: 'DELETE', path: `/channels/${channelId}/polls/${id}/votes/@me` }),
-    voters: (channelId: Id, id: Id, answerId: number) => send<{ users: User[] }>({ method: 'GET', path: `/channels/${channelId}/polls/${id}/answers/${answerId}`, query: { limit: 100 } }).then((x) => x?.users ?? []),
+    /** Voters of one answer, paginated: `after` is the last user id of the previous page. */
+    voters: (channelId: Id, id: Id, answerId: number, after?: string, limit = 100) => send<{ users: User[] }>({ method: 'GET', path: `/channels/${channelId}/polls/${id}/answers/${answerId}`, query: { limit, after } }).then((x) => x?.users ?? []),
     endPoll: (channelId: Id, id: Id) => send<Message>({ method: 'POST', path: `/channels/${channelId}/polls/${id}/expire` }),
     /** Report a message in a guild channel (the reporter must be able to read the channel). Returns the new report id. */
     report: (channelId: Id, messageId: Id, body: { reason: string; description?: string }) => send<{ id: Id }>({ method: 'POST', path: `/channels/${channelId}/messages/${messageId}/report`, body }),

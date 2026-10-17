@@ -1,6 +1,6 @@
 /** Modals added by the platform pass: polls, app modals, events, stages, screening, thread settings. */
 import { useEffect, useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { BookOpen, CalendarDays, Lock, MapPin, Plus, Radio, Trash2, Users, Volume2, X } from 'lucide-react';
 import { ComponentType as CT, Perm, ScheduledEventEntityType as ET, ScheduledEventStatus as ST, AUTO_ARCHIVE_DURATIONS } from '@jorcord/shared';
 import type { Component, Modal as ModalSpec, ScheduledEvent } from '@jorcord/shared';
@@ -51,14 +51,25 @@ export function CreatePollModal({ channelId, close }: { channelId: string; close
   );
 }
 
+const PER_PAGE = 25;
+
 export function PollVotersModal({ channelId, messageId, answerId, close }: { channelId: string; messageId: string; answerId?: number; close: () => void }) {
   const poll = useMessages((s) => s.ch[channelId]?.list.find((m) => m.id === messageId)?.poll);
   const [sel, setSel] = useState(answerId ?? poll?.answers[0]?.id ?? 1);
-  const q = useQuery({ queryKey: ['poll-voters', channelId, messageId, sel], queryFn: () => api.messages.voters(channelId, messageId, sel), staleTime: 5_000 });
+  const q = useInfiniteQuery({
+    queryKey: ['poll-voters', channelId, messageId, sel],
+    queryFn: ({ pageParam }) => api.messages.voters(channelId, messageId, sel, pageParam as string | undefined, PER_PAGE),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (last) => (last.length === PER_PAGE ? last[last.length - 1]!.id : undefined),
+    staleTime: 5_000,
+  });
+  const users = q.data?.pages.flat() ?? [];
   return (
     <Modal title={t('Votes')} width={420} onClose={close}>
       <div role="tablist" aria-label={t('Answers')} className="mb-3 flex flex-wrap gap-1">{poll?.answers.map((a) => <button key={a.id} role="tab" aria-selected={sel === a.id} onClick={() => setSel(a.id)} className={cx('rounded px-2.5 py-1 text-sm font-medium', sel === a.id ? 'bg-active text-header' : 'text-interactive hover:bg-hover')}>{a.emoji} {a.text} · {a.count}</button>)}</div>
-      {q.isLoading ? <Spinner className="mx-auto" /> : !q.data?.length ? <p className="py-4 text-center text-sm text-muted">{t('No votes yet.')}</p> : <ul data-testid="voters">{q.data.map((u) => <li key={u.id} className="flex items-center gap-3 py-1.5"><Avatar user={u} size={28} /><span className="font-medium text-header">{displayName(u)}</span></li>)}</ul>}
+      {q.isLoading ? <Spinner className="mx-auto" /> : !users.length ? <p className="py-4 text-center text-sm text-muted">{t('No votes yet.')}</p>
+        : <ul data-testid="voters">{users.map((u) => <li key={u.id} className="flex items-center gap-3 py-1.5"><Avatar user={u} size={28} /><span className="font-medium text-header">{displayName(u)}</span></li>)}</ul>}
+      {q.hasNextPage && <button data-testid="voters-more" className="btn btn-secondary mb-1 block w-full" disabled={q.isFetchingNextPage} onClick={() => q.fetchNextPage()}>{t('Load more')}</button>}
     </Modal>
   );
 }
