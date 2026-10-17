@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react';
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Bot, Check, ShieldAlert } from 'lucide-react';
-import type { OAuthScope, PermName } from '@jorcord/shared';
+import { Perm, type OAuthScope, type PermName } from '@jorcord/shared';
 import { api } from '@/lib/api';
 import { useAuth } from '@/stores/auth';
 import { Logo } from '@/components/ui/Logo';
@@ -38,8 +38,11 @@ export function OAuthAuthorize() {
   const { application: app, scopes, guilds } = preview.data;
   const wantsBot = scopes.includes('bot'); const wantsGuild = needsGuild(scopes);
   const requested = permissionNames(preview.data.permissions);
-  const granted = requested.filter((n) => !unchecked.has(n));
   const chosenGuild = guildId || guilds[0]?.id || '';
+  // you can only give the bot what you hold yourself in that server: the rest is shown, switched off and locked (the server refuses it otherwise)
+  const grantable = BigInt(guilds.find((g) => g.id === chosenGuild)?.grantable ?? preview.data.permissions);
+  const lockedPerms = requested.filter((n) => (grantable & Perm[n]) === 0n);
+  const granted = requested.filter((n) => !unchecked.has(n) && !lockedPerms.includes(n));
   const icon = fileUrl(app.icon);
 
   const authorize = async () => {
@@ -73,7 +76,7 @@ export function OAuthAuthorize() {
     {wantsBot && requested.length > 0 && (
       <fieldset className="mb-4"><legend className="mb-1.5 text-xs font-bold uppercase tracking-wide text-[#b5bac1]">{t('Bot permissions')}</legend>
         <div className="grid max-h-60 gap-1 overflow-y-auto rounded bg-[#1e1f22] p-2 sm:grid-cols-2">{requested.map((n) => <label key={n} className="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 text-sm hover:bg-[#35373c]">
-          <input type="checkbox" className="h-4 w-4 accent-[#5865f2]" checked={!unchecked.has(n)} onChange={(e) => setUnchecked((cur) => { const s = new Set(cur); e.target.checked ? s.delete(n) : s.add(n); return s; })} />
+          <input type="checkbox" className="h-4 w-4 accent-[#5865f2]" checked={!unchecked.has(n) && !lockedPerms.includes(n)} disabled={lockedPerms.includes(n)} title={lockedPerms.includes(n) ? t('You do not have this permission in this server, so you cannot give it to the bot.') : undefined} onChange={(e) => setUnchecked((cur) => { const s = new Set(cur); e.target.checked ? s.delete(n) : s.add(n); return s; })} />
           <span className={n === 'ADMINISTRATOR' ? 'font-semibold text-[#f23f43]' : ''}>{label(n)}</span>{n === 'ADMINISTRATOR' && <ShieldAlert size={14} className="text-[#f23f43]" aria-label={t('Dangerous')} />}</label>)}</div></fieldset>)}
     {wantsBot && !requested.length && <p className="mb-4 flex items-center gap-2 rounded bg-[#1e1f22] p-3 text-sm text-[#b5bac1]"><Bot size={16} aria-hidden />{t('The bot asks for no special permissions.')}</p>}
     {err && <p role="alert" className="mb-3 text-sm text-[#f23f43]">{err}</p>}

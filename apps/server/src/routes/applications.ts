@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { ALL_PERMS, DIRECTORY_CATEGORY_IDS, DIRECTORY_TAG_RE, OAuthScopes, PRIVILEGED_INTENTS, Perm, snowflake, type OAuthAuthorizePreview, type OAuthAuthorizeResult, type OAuthScope } from '@jorcord/shared';
+import { ALL_PERMS, DIRECTORY_CATEGORY_IDS, has, DIRECTORY_TAG_RE, OAuthScopes, PRIVILEGED_INTENTS, Perm, snowflake, type OAuthAuthorizePreview, type OAuthAuthorizeResult, type OAuthScope } from '@jorcord/shared';
 import type { Ctx } from '../ctx';
 import { ApiError, badRequest, forbidden, notFound, unauthorized } from '../errors';
 import { generateAppKeys } from '../lib/interactionSig';
@@ -150,7 +150,7 @@ export function applicationRoutes(app: FastifyInstance, ctx: Ctx) {
   async function authorizableGuilds(userId: string) {
     const rows = await ctx.db.query('SELECT g.id, g.name, g.icon FROM guilds g JOIN members m ON m.guild_id = g.id WHERE m.user_id = $1 ORDER BY g.name', [userId]);
     const out = [];
-    for (const g of rows) { try { need(guildPerms(await guildAccess(ctx, userId, g.id)), Perm.MANAGE_GUILD); out.push({ id: g.id as string, name: g.name as string, icon: g.icon ?? null }); } catch { /* not a manager */ } }
+    for (const g of rows) { try { const perms = guildPerms(await guildAccess(ctx, userId, g.id)); need(perms, Perm.MANAGE_GUILD); out.push({ id: g.id as string, name: g.name as string, icon: g.icon ?? null, grantable: (has(perms, Perm.ADMINISTRATOR) ? ALL_PERMS : perms & ALL_PERMS).toString() }); } catch { /* not a manager */ } }
     return out;
   }
   const permsParam = z.string().regex(/^\d{1,20}$/).default('0');

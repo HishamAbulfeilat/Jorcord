@@ -64,7 +64,7 @@ export interface Application {
   /** Only present in the create response and in the bot token reset response: the one time the bot token / client secret is shown. */
   token?: string; clientSecret?: string;
 }
-export interface OAuthAuthorizePreview { application: Pick<Application, 'id' | 'name' | 'description' | 'icon' | 'botUser'>; scopes: OAuthScope[]; permissions: string; guilds: { id: Id; name: string; icon: string | null }[] }
+export interface OAuthAuthorizePreview { application: Pick<Application, 'id' | 'name' | 'description' | 'icon' | 'botUser'>; scopes: OAuthScope[]; permissions: string; guilds: { id: Id; name: string; icon: string | null; /** permission bits the approver holds there, i.e. the most they may give the bot */ grantable: string }[] }
 export interface OAuthAuthorizeResult { guildId?: Id; code?: string; redirectUri?: string; state?: string }
 
 // ---------- application commands ----------
@@ -139,3 +139,11 @@ export interface StageInstance { id: Id; guildId: Id; channelId: Id; topic: stri
 // ---------- forum tags / thread lifecycle ----------
 export interface ForumTag { id: Id; name: string; emoji: string | null; moderated: boolean }
 export const AUTO_ARCHIVE_DURATIONS = [60, 1440, 4320, 10080] as const;
+
+/** One app installed in a server, as listed under Server Settings > Bots & Apps. */
+export interface GuildIntegration {
+  applicationId: Id; name: string; description: string; icon: string | null; botUserId: Id;
+  /** a built-in Jorcord bot */ official: boolean; scopes: string[];
+  /** the bot's managed role (null when only slash commands were installed) */ roleId: Id | null;
+  /** permission bits of that role */ permissions: string; installedBy: Id; installedAt: string;
+}

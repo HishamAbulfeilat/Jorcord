@@ -60,6 +60,16 @@ describe('web client served by the server', () => {
     const miss = await env.app.inject({ method: 'POST', url: '/channels/1', headers: HTML });
     expect(miss.statusCode).toBe(404);
   });
+  it('serves the add-bot consent page that OAuth2 invite links point at (a bot invite link used to 404 here)', async () => {
+    const r = await env.app.inject({ url: '/oauth2/authorize?client_id=1&scope=bot%20applications.commands&permissions=8', headers: HTML });
+    expect(r.statusCode).toBe(200);
+    expect(r.body).toContain('id="root"');
+    expect((await env.app.inject({ url: '/oauth2/authorize/', headers: HTML })).statusCode).toBe(200);
+    // only that page: everything else under /oauth2 stays an API-style 404, and so does a non-navigation request
+    expect((await env.app.inject({ url: '/oauth2/token', headers: HTML })).statusCode).toBe(404);
+    expect((await env.app.inject({ url: '/oauth2/authorize/x', headers: HTML })).statusCode).toBe(404);
+    expect((await env.app.inject({ url: '/oauth2/authorize' })).statusCode).toBe(404);
+  });
   it('/health and the API still work and are not cached', async () => {
     const h = await env.app.inject({ url: '/health' });
     expect(h.statusCode).toBe(200);
