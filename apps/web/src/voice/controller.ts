@@ -10,6 +10,7 @@ import { useUI, type Prefs } from '@/stores/ui';
 import { useVoiceUI, voiceHooks } from '@/stores/voiceui';
 import { playSound } from '@/lib/sound';
 import { callService } from '@/lib/native';
+import { CallRecorder, type RecordingRoom } from './callRecorder';
 import { t } from '@/i18n';
 
 export function settingsFromPrefs(p: Prefs): Partial<VoiceSettings> {
@@ -46,6 +47,10 @@ let joining: Promise<void> | null = null;
 let lastSent = '';
 let wantChannel: string | null = null;
 let lastSendAt = 0;
+/** The local call recorder (null when this tab is not the one recording). */
+let callRecorder: CallRecorder | null = null;
+let recordingChannel: string | null = null;
+let stoppingRecording: Promise<void> | null = null;
 
 export function getVoiceClient(): VoiceClient {
   if (!client) {
@@ -107,6 +112,14 @@ function bindClient(c: VoiceClient) {
     if (!me || d.userId !== me || !wantChannel || joining || Date.now() - lastSendAt < 2500) return;
     scheduleReconcile();
   });
+  // A moderator can stop the server session: never keep capturing after the indicator is gone.
+  getGateway().on('VOICE_RECORDING_UPDATE', (d) => {
+    if (d.recording || !recordingChannel || d.channelId !== recordingChannel || stoppingRecording) return;
+    const recorder = callRecorder;
+    callRecorder = null; recordingChannel = null;
+    recorder?.cancel();
+    useUI.getState().toast(t('The recording was stopped.'), 'info');
+  });
   voiceHooks.toggleMute = () => { const s = c.getSnapshot(); if (s.deafened) { void c.setDeafened(false); } else void c.setMuted(!s.muted).catch((e) => c.reportError(e)); };
   voiceHooks.toggleDeaf = () => { void c.toggleDeafen(); };
 }
@@ -141,6 +154,7 @@ function scheduleReconcile() {
     // Mid-recovery the server may have dropped our state (LiveKit webhook after the grace period). The client re-announces once it is back.
     if (status === 'reconnecting') { scheduleReconcile(); return; }
     if (!st?.channelId) {
+      discardCallRecording();
       wantChannel = null; lastSent = '';
       const ui = useVoiceUI.getState(); ui.patch({ conn: 'idle', joiningChannelId: null }); ui.setConnected(null);
       void c.disconnect().catch(() => {});
@@ -200,10 +214,17 @@ export async function joinVoice(channelId: string) {
   joining = run; await run; joining = null;
 }
 
+/** Stop and discard the local take when the call itself is gone (a lost connection cannot upload it). */
+function discardCallRecording() {
+  callRecorder?.cancel();
+  callRecorder = null; recordingChannel = null;
+}
+
 /** Every automatic retry failed (or the token was refused): clear the gateway voice state and tell the user why. */
 function giveUp() {
   const ch = wantChannel; if (!ch) return;
   const c = client; const err = c?.getSnapshot().error;
+  discardCallRecording();
   wantChannel = null; lastSent = '';
   const ui = useVoiceUI.getState();
   ui.patch({ conn: 'idle', joiningChannelId: null, connectingSince: null, failure: { channelId: ch, code: err?.code ?? 'connection', message: err?.message ?? t('Lost connection to voice.'), hint: err?.hint, at: Date.now() } });
@@ -223,8 +244,76 @@ export function retryVoice() {
   if (ch) void joinVoice(ch);
 }
 
+export type CallRecordingMode = 'audio' | 'video';
+
+/**
+ * Start the server-owned recording indicator, then capture locally: every participant's audio (plus the
+ * active screen share in video mode) is mixed into one MediaRecorder take. The server enforces RECORD_VOICE.
+ */
+export async function startCallRecording(channelId: string, mode: CallRecordingMode) {
+  if (callRecorder || recordingChannel) return;
+  if (useData.getState().voiceRecordings[channelId]) {
+    useUI.getState().toast(t('This channel is already being recorded.'), 'error');
+    return;
+  }
+  let startedOnServer = false;
+  try {
+    const { recording } = await api.voice.recordingStart(channelId);
+    startedOnServer = true;
+    useData.getState().apply('VOICE_RECORDING_UPDATE', { channelId, recording });
+    const recorder = new CallRecorder({ onLimit: (reason) => { void stopCallRecording({ reason }); } });
+    await recorder.start(getVoiceClient().room as unknown as RecordingRoom, { video: mode === 'video' });
+    callRecorder = recorder;
+    recordingChannel = channelId;
+    useUI.getState().toast(t('Recording started.'), 'success');
+  } catch (e: any) {
+    // A session that did start on the server must not stay marked as recording when local capture failed.
+    if (startedOnServer) {
+      await api.voice.recordingStop(channelId).catch(() => {});
+      useData.getState().apply('VOICE_RECORDING_UPDATE', { channelId, recording: null });
+    }
+    useUI.getState().toast(e?.message || t('Could not start recording.'), 'error');
+  }
+}
+
+/** Stop the local take, upload it, and let the server post it as an attachment while clearing the indicator. */
+export function stopCallRecording(opts: { silent?: boolean; reason?: 'time' | 'size' } = {}): Promise<void> {
+  if (stoppingRecording) return stoppingRecording;
+  const recorder = callRecorder;
+  const channelId = recordingChannel;
+  if (!recorder && !channelId) return Promise.resolve();
+  const run = (async () => {
+    const file = recorder ? await recorder.stop().catch(() => null) : null;
+    callRecorder = null; recordingChannel = null;
+
+    let attachments: string[] | undefined;
+    if (file) {
+      try { attachments = [(await api.files.upload(file)).id]; }
+      catch (e: any) { useUI.getState().toast(e?.message || t('Could not upload the recording.'), 'error'); }
+    }
+    if (channelId) {
+      try {
+        await api.voice.recordingStop(channelId, attachments);
+        useData.getState().apply('VOICE_RECORDING_UPDATE', { channelId, recording: null });
+      } catch (e: any) {
+        useUI.getState().toast(e?.message || t('Could not stop recording.'), 'error');
+      }
+    }
+
+    if (!opts.silent) {
+      if (opts.reason === 'time') useUI.getState().toast(t('Recording stopped at the 2-hour limit.'), 'info');
+      else if (opts.reason === 'size') useUI.getState().toast(t('Recording stopped at the upload size limit.'), 'info');
+      else if (attachments) useUI.getState().toast(t('Recording posted in the channel.'), 'success');
+    }
+  })();
+  stoppingRecording = run.finally(() => { stoppingRecording = null; });
+  return stoppingRecording;
+}
+
 export async function leaveVoice() {
   const c = client; const ch = wantChannel;
+  // Finish and post the current take while we are still in the channel (the stop endpoint requires membership).
+  await stopCallRecording({ silent: true });
   wantChannel = null; lastSent = '';
   const ui = useVoiceUI.getState();
   ui.patch({ conn: 'idle', joiningChannelId: null, connectingSince: null, failure: null }); ui.setConnected(null); ui.setFocus(null);

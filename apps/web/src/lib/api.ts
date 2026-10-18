@@ -1,6 +1,6 @@
 /** Typed REST client written against docs/CONTRACT.md. All calls go through the swappable transport. */
 import type {
-  Activity, Attachment, AuditEntry, AutoModRule, Channel, Emoji, Guild, GuildFull, Invite, Member, Message, MessageEdit, Relationship, ReadState, Role, SelfUser, Sticker, User, VoiceToken, Id, Presence, OverwriteDTO,
+  Activity, Attachment, AuditEntry, AutoModRule, Channel, Emoji, Guild, GuildFull, Invite, Member, Message, MessageEdit, Relationship, ReadState, Role, SelfUser, Sticker, User, VoiceToken, VoiceRecording, Id, Presence, OverwriteDTO,
   AllowedMentions, GuildIntegration,
   Reminder, ModView, ModWarning, ModNote, BulkModerationFilter, BulkModerationResult, PruneResult, BoostSummary, LinkedRoleView, LinkedCriterion, RoleMetadataApp, DirectoryApp, DirectoryCategory, SoundboardSound, Connection, PublicConnection, GifFavorite, GuildTemplate, GuildWidgetSettings, GuildInsights, ChannelFollow, Onboarding, OnboardingResponse, GuildSafety, SafetyPreset, Application, ApplicationCommand, CommandPermissionOverwrite, CommandOptionChoice, CreatePoll, ForumTag, InteractionOptionValue, ModalSubmitRow, OAuthAuthorizePreview, OAuthAuthorizeResult, ScheduledEvent, StageInstance, Report, RecurrenceRule, ChannelActivity, ChannelActivityKind,
 } from '@jorcord/shared';
@@ -331,6 +331,10 @@ export const api = {
     stageSpeaker: (channelId: Id, userId: Id | '@me', on: boolean) => send({ method: on ? 'PUT' : 'DELETE', path: `/channels/${channelId}/stage/speakers/${userId}` }),
     /** Priority speaker: others are ducked while you talk (requires PRIORITY_SPEAKER). The client sets the LiveKit attribute after this succeeds. */
     prioritySpeaker: (channelId: Id, on: boolean) => send<{ channelId: Id; prioritySpeaker: boolean }>({ method: on ? 'PUT' : 'DELETE', path: `/channels/${channelId}/voice/priority-speaker` }),
+    /** Start the server-owned recording indicator for a voice channel (RECORD_VOICE or MANAGE_CHANNELS). */
+    recordingStart: (channelId: Id) => send<{ channelId: Id; recording: VoiceRecording }>({ method: 'POST', path: `/channels/${channelId}/voice/recording/start` }),
+    /** Stop the recording and, when a take was uploaded, post it in the channel's text chat. */
+    recordingStop: (channelId: Id, attachments: Id[] = []) => send<{ channelId: Id; recording: null; message?: Message }>({ method: 'POST', path: `/channels/${channelId}/voice/recording/stop`, body: attachments.length ? { attachments } : {} }),
   },
   push: {
     vapidKey: () => send<{ publicKey: string | null }>({ method: 'GET', path: '/push/vapid-public-key', auth: false }),

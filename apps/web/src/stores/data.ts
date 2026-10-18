@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Activity, Channel, Emoji, Events, Guild, GuildFull, Id, Member, Presence, ReadState, Relationship, Role, SelfUser, Sticker, User, VoiceState } from '@jorcord/shared';
+import type { Activity, Channel, Emoji, Events, Guild, GuildFull, Id, Member, Presence, ReadState, Relationship, Role, SelfUser, Sticker, User, VoiceRecording, VoiceState } from '@jorcord/shared';
 import { compareId } from '@/lib/format';
 
 export interface GuildState {
@@ -20,6 +20,8 @@ export interface DataState {
   users: Record<Id, User>;
   typing: Record<Id, Record<Id, number>>;
   voiceStates: Record<Id, VoiceState>;
+  /** Active voice-channel recordings, keyed by channel (VOICE_RECORDING_UPDATE; absent = not recording). */
+  voiceRecordings: Record<Id, VoiceRecording>;
   reset(): void;
   applyReady(p: Events['READY']): void;
   apply<K extends keyof Events>(name: K, d: Events[K]): void;
@@ -32,7 +34,7 @@ export interface DataState {
   setTyping(channelId: Id, userId: Id): void;
 }
 
-const empty = { ready: false, me: null, guilds: {}, guildOrder: [], dms: {}, messageRequests: {}, relationships: {}, readStates: {}, presences: {}, activities: {}, users: {}, typing: {}, voiceStates: {} };
+const empty = { ready: false, me: null, guilds: {}, guildOrder: [], dms: {}, messageRequests: {}, relationships: {}, readStates: {}, presences: {}, activities: {}, users: {}, typing: {}, voiceStates: {}, voiceRecordings: {} };
 const rec = <T extends { id: Id }>(xs: T[]): Record<Id, T> => Object.fromEntries(xs.map((x) => [x.id, x]));
 const toGuildState = (g: GuildFull): GuildState => {
   const { channels, roles, members, emojis, stickers, memberCount, ...guild } = g;
@@ -145,6 +147,7 @@ export const useData = create<DataState>((set, get) => ({
       case 'RELATIONSHIP_REMOVE': return set((st) => ({ relationships: omit(st.relationships, d.userId) }));
       case 'READ_STATE_UPDATE': return set((st) => ({ readStates: { ...st.readStates, [d.channelId]: d } }));
       case 'VOICE_STATE_UPDATE': return set((st) => d.channelId ? { voiceStates: { ...st.voiceStates, [d.userId]: d } } : { voiceStates: omit(st.voiceStates, d.userId) });
+      case 'VOICE_RECORDING_UPDATE': return set((st) => d.recording ? { voiceRecordings: { ...st.voiceRecordings, [d.channelId]: d.recording } } : { voiceRecordings: omit(st.voiceRecordings, d.channelId) });
       case 'EMOJIS_UPDATE': return patchGuild(d.guildId, (g) => ({ ...g, emojis: d.emojis }));
       case 'STICKERS_UPDATE': return patchGuild(d.guildId, (g) => ({ ...g, stickers: d.stickers }));
       case 'THREAD_DELETE': return patchGuild(d.guildId, (g) => { const { [d.id]: _, ...rest } = g.channels; return { ...g, channels: rest }; });

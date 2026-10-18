@@ -15,6 +15,7 @@ import { Avatar } from '@/components/ui/Avatar';
 import { NetBars, ParticipantTile, ScreenTile } from './tiles';
 import { TroubleshootPanel } from './Troubleshoot';
 import { retryVoice, startScreenShare } from './controller';
+import { RecordingIndicator } from './Recording';
 import type { VoiceFailure } from '@/stores/voiceui';
 import { t } from '@/i18n';
 
@@ -39,6 +40,7 @@ export function VoiceBanners() {
   const reconnecting = snap.status === 'reconnecting';
   return (
     <>
+      <RecordingIndicator />
       {reconnecting && <ReconnectBanner />}
       {snap.screenResumeNeeded && snap.status === 'connected' && (
         <div role="status" data-testid="voice-screen-resume" className="flex items-center justify-center gap-3 bg-brand/90 px-3 py-1.5 text-sm text-white">
