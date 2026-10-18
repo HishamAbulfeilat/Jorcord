@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { STREAM_PRESETS } from '@jorcord/voice';
+import { CAMERA_FRAME_RATES, STREAM_PRESETS, cameraPlan, type CameraFrameRate, type CameraQuality } from '@jorcord/voice';
 import { LIMITS } from '@jorcord/shared';
 import { Toggle, Row, Modal } from '@/components/ui/primitives';
 import { useUI } from '@/stores/ui';
@@ -7,6 +7,59 @@ import { cx } from '@/lib/format';
 
 const H3 = ({ children }: { children: React.ReactNode }) => <h3 className="section-title mb-2 mt-5">{children}</h3>;
 const Field = ({ label, children }: { label: string; children: React.ReactNode }) => <label className="mb-4 block"><span className="label">{label}</span>{children}</label>;
+
+/**
+ * Local camera preview (never published). Requests the same quality ladder as the call and falls back
+ * 1080p -> 720p -> 480p, so what you see here matches what the call will send.
+ */
+function CameraPreview({ deviceId, quality, fps }: { deviceId: string; quality: CameraQuality; fps: CameraFrameRate }) {
+  const video = useRef<HTMLVideoElement>(null);
+  const [on, setOn] = useState(false);
+  const [err, setErr] = useState('');
+  useEffect(() => {
+    if (!on) return;
+    let cancelled = false;
+    let stream: MediaStream | null = null;
+    (async () => {
+      if (!navigator.mediaDevices?.getUserMedia) { setErr('Camera preview is not available on this device.'); setOn(false); return; }
+      setErr('');
+      for (const a of cameraPlan(quality, fps).attempts) {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            audio: false,
+            video: {
+              ...(deviceId !== 'default' ? { deviceId: { exact: deviceId } } : {}),
+              width: { ideal: a.width }, height: { ideal: a.height }, frameRate: { ideal: a.fps },
+            },
+          });
+          break;
+        } catch { /* try the next lower resolution */ }
+      }
+      if (cancelled) { stream?.getTracks().forEach((t) => t.stop()); return; }
+      if (!stream) { setErr('Could not start the camera preview.'); setOn(false); return; }
+      if (video.current) { video.current.srcObject = stream; void video.current.play?.().catch(() => {}); }
+    })();
+    return () => {
+      cancelled = true;
+      stream?.getTracks().forEach((t) => t.stop());
+      if (video.current) video.current.srcObject = null;
+    };
+  }, [on, deviceId, quality, fps]);
+  return (
+    <div className="mb-4 rounded-lg bg-side p-3">
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <span className="font-semibold text-header">Camera Preview</span>
+        <button type="button" className="btn btn-secondary" onClick={() => { setErr(''); setOn((v) => !v); }}>{on ? 'Stop Preview' : 'Preview Camera'}</button>
+      </div>
+      <div className="relative aspect-video overflow-hidden rounded bg-black">
+        {on
+          ? <video ref={video} autoPlay playsInline muted aria-label="Camera preview" data-testid="camera-preview" className="h-full w-full object-cover" style={{ transform: 'scaleX(-1)' }} />
+          : <div className="flex h-full items-center justify-center text-sm text-muted">Preview your camera and framing.</div>}
+      </div>
+      {err && <p className="mt-2 text-sm text-danger" role="alert">{err}</p>}
+    </div>
+  );
+}
 
 /** Voice & Video settings: devices, input mode, noise suppression, bitrate, stream defaults, mic test. */
 export function VoiceSettingsForm({ compact }: { compact?: boolean }) {
@@ -80,9 +133,15 @@ export function VoiceSettingsForm({ compact }: { compact?: boolean }) {
 
       <H3>Camera & streaming</H3>
       <div className={cx('grid gap-x-6', !compact && 'sm:grid-cols-2')}>
-        <Field label="Camera quality"><select className="field" aria-label="Camera quality" value={p.cameraPreset} onChange={(e) => set('cameraPreset', e.target.value as any)}>{STREAM_PRESETS.filter((x) => x.id !== 'source' && x.id !== '4k60').map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}</select></Field>
+        <Field label="Video quality"><select className="field" aria-label="Video quality" value={p.videoQuality} onChange={(e) => set('videoQuality', e.target.value as CameraQuality)}>
+          <option value="auto">Auto (up to 1080p)</option><option value="720p">720p</option><option value="1080p">1080p</option>
+        </select></Field>
+        <Field label="Frame rate"><select className="field" aria-label="Frame rate" value={p.videoFps} onChange={(e) => set('videoFps', Number(e.target.value) as CameraFrameRate)}>
+          {CAMERA_FRAME_RATES.map((f) => <option key={f} value={f}>{f} fps</option>)}
+        </select></Field>
         <Field label="Default stream quality"><select className="field" aria-label="Default stream quality" value={p.screenPreset} onChange={(e) => set('screenPreset', e.target.value as any)}>{STREAM_PRESETS.map((x) => <option key={x.id} value={x.id}>{x.id === 'source' ? 'Source' : x.label}</option>)}</select></Field>
       </div>
+      <CameraPreview deviceId={p.videoDevice} quality={p.videoQuality} fps={p.videoFps} />
       <Row title="Show connection stats" desc="Resolution, frame rate, bitrate and codec on video tiles."><Toggle label="Show connection stats" checked={p.showVoiceStats} onChange={(v) => set('showVoiceStats', v)} /></Row>
     </div>
   );

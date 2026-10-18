@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { Id, Message, Modal } from '@jorcord/shared';
+import type { CameraFrameRate, CameraQuality } from '@jorcord/voice';
 import type { OverlayCorner } from '@/lib/overlay';
 import { api } from '@/lib/api';
 import { useData } from '@/stores/data';
@@ -13,6 +14,8 @@ export interface Prefs {
   noiseSuppression: boolean; echoCancellation: boolean; autoGain: boolean; pushToTalk: boolean;
   noiseEngine: 'browser' | 'rnnoise' | 'off'; voiceBitrate: number; musicMode: boolean; pttCode: string; vadMode: boolean; vadThreshold: number;
   screenPreset: '720p30' | '1080p60' | '1440p60' | '4k60' | 'source'; cameraPreset: '720p30' | '1080p60' | '1440p60' | '4k60' | 'source'; screenHint: 'motion' | 'detail'; screenAudio: boolean; showVoiceStats: boolean;
+  /** Camera capture: quality preset (auto steps 1080p -> 720p -> 480p) and requested frame rate. */
+  videoQuality: CameraQuality; videoFps: CameraFrameRate;
   keybinds: Record<string, string>;
   streamerMode: boolean; streamerAuto: boolean; streamerHidePersonal: boolean; streamerHideInvites: boolean; streamerNoSounds: boolean; streamerNoNotifications: boolean;
   mutedChannels: Record<Id, boolean>; mutedGuilds: Record<Id, boolean>; collapsedCategories: Record<Id, boolean>;
@@ -44,6 +47,7 @@ export const defaultPrefs: Prefs = {
   inputDevice: 'default', outputDevice: 'default', videoDevice: 'default', inputVolume: 100, outputVolume: 100, noiseSuppression: true, echoCancellation: true, autoGain: true, pushToTalk: false,
   noiseEngine: 'browser', voiceBitrate: 64, musicMode: false, pttCode: 'Backquote', vadMode: false, vadThreshold: 0.03,
   screenPreset: '1080p60', cameraPreset: '720p30', screenHint: 'motion', screenAudio: true, showVoiceStats: true,
+  videoQuality: 'auto', videoFps: 30,
   keybinds: defaultKeybinds,
   streamerMode: false, streamerAuto: true, streamerHidePersonal: true, streamerHideInvites: true, streamerNoSounds: true, streamerNoNotifications: true,
   mutedChannels: {}, mutedGuilds: {}, collapsedCategories: {},

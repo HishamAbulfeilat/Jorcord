@@ -25,6 +25,7 @@ export function settingsFromPrefs(p: Prefs): Partial<VoiceSettings> {
     inputMode: p.pushToTalk ? 'ptt' : p.vadMode ? 'vad' : 'open',
     pttCode: p.pttCode, vadThreshold: p.vadThreshold,
     cameraPreset: p.cameraPreset as StreamPresetId, screenPreset: p.screenPreset as StreamPresetId,
+    cameraQuality: p.videoQuality, cameraFps: p.videoFps,
     screenHint: p.screenHint, screenAudio: p.screenAudio,
   };
 }
@@ -336,6 +337,9 @@ export function applyPrefs(p: Prefs) {
   if (s.inputMode !== cur.inputMode) client.setInputMode(s.inputMode!);
   if (s.pttCode !== cur.pttCode) client.setPttKey(s.pttCode!);
   if (s.vadThreshold !== cur.vadThreshold) client.setVadThreshold(s.vadThreshold!);
+  if (s.cameraQuality !== cur.cameraQuality || s.cameraFps !== cur.cameraFps) {
+    void client.setCameraSettings({ quality: s.cameraQuality, fps: s.cameraFps }).catch(() => {});
+  }
 }
 
 export function startScreenShare(o: { preset: StreamPresetId; hint: ContentHint; audio: boolean }) {
@@ -390,7 +394,8 @@ function debugApi(c: VoiceClient) {
     localTrack: (source: 'camera' | 'screen') => {
       const t: any = c.getVideoTrack(room.localParticipant.identity, source);
       const st = t?.mediaStreamTrack?.getSettings?.();
-      return st ? { width: st.width, height: st.height, frameRate: st.frameRate, preset: c.getSnapshot().settings.screenPreset, codec: c.getSnapshot().activeCodec } : null;
+      const s = c.getSnapshot().settings;
+      return st ? { width: st.width, height: st.height, frameRate: st.frameRate, preset: source === 'camera' ? s.cameraQuality : s.screenPreset, codec: c.getSnapshot().activeCodec } : null;
     },
     /** Decoded media element dimensions of the on-screen video tile. */
     tileVideo: (identity: string, source: 'camera' | 'screen') => {

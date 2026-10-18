@@ -24,13 +24,13 @@ export function NetBars({ quality, className }: { quality: string; className?: s
   );
 }
 
-export function StatsPanel({ identity, source, className }: { identity: string; source: 'camera' | 'screen'; className?: string }) {
+export function StatsPanel({ identity, source, className, sent }: { identity: string; source: 'camera' | 'screen'; className?: string; sent?: boolean }) {
   const st = useStreamStats(identity, source, true);
   const rows: [string, string][] = st
-    ? [['Resolution', `${st.width}x${st.height}`], ['Frame rate', `${st.fps} fps`], ['Bitrate', formatKbps(st.bitrateKbps)], ['Codec', st.codec || '-'], ['RTT', st.rttMs == null ? '-' : `${st.rttMs} ms`], ...(st.qualityLimitation ? [['Limited by', st.qualityLimitation] as [string, string]] : []), ...(st.layer ? [['Layer', st.layer] as [string, string]] : [])]
+    ? [[sent ? 'Sent resolution' : 'Resolution', `${st.width}x${st.height}`], [sent ? 'Sent frame rate' : 'Frame rate', `${st.fps} fps`], ['Bitrate', formatKbps(st.bitrateKbps)], ['Codec', st.codec || '-'], ['RTT', st.rttMs == null ? '-' : `${st.rttMs} ms`], ...(st.qualityLimitation ? [['Limited by', st.qualityLimitation] as [string, string]] : []), ...(st.layer ? [['Layer', st.layer] as [string, string]] : [])]
     : [['Stats', 'waiting for data']];
   return (
-    <dl data-testid="stream-stats" data-width={st?.width ?? 0} data-height={st?.height ?? 0} data-fps={st?.fps ?? 0} aria-label="Stream statistics"
+    <dl data-testid="stream-stats" data-width={st?.width ?? 0} data-height={st?.height ?? 0} data-fps={st?.fps ?? 0} data-sent={sent ? 'true' : undefined} aria-label="Stream statistics"
       className={cx('pointer-events-none absolute end-2 top-2 z-10 m-0 grid min-w-[150px] gap-0.5 rounded-md bg-black/75 p-2 font-mono text-[11px] leading-4 text-white backdrop-blur', className)}>
       {rows.map(([k, v]) => <div key={k} className="flex justify-between gap-3"><dt className="text-white/60">{k}</dt><dd className="m-0">{v}</dd></div>)}
     </dl>
@@ -70,7 +70,7 @@ export function ParticipantTile({ p, size = 'lg', focused, onClick, showStats }:
       <NamePill p={p} extra={p.handRaised ? <Hand size={13} className="text-warn" aria-label="Hand raised" /> : null} />
       {p.priority && <Crown size={14} className="absolute end-2 top-2 text-warn" />}
       <span data-testid="tile-netbars" className={cx('pointer-events-none absolute end-2 top-2 z-[5] transition-opacity', showStats ? 'opacity-100' : 'opacity-0 group-hover:opacity-100')}><NetBars quality={p.quality} /></span>
-      {showStats && present && <StatsPanel identity={p.identity} source="camera" />}
+      {showStats && present && <StatsPanel identity={p.identity} source="camera" sent={p.isLocal} />}
     </div>
   );
 }

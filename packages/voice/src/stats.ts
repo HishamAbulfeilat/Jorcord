@@ -1,8 +1,8 @@
 import { bitrateKbps, type StreamStats } from './network';
 
-export interface StatsSample { bytes: number; ts: number }
+export interface StatsSample { bytes: number; ts: number; frames?: number }
 
-/** Parse an RTCStatsReport (or array of stats) for one video RTP stream. Pure; pass previous sample to get bitrate. */
+/** Parse an RTCStatsReport (or array of stats) for one video RTP stream. Pure; pass previous sample to get bitrate/fps. */
 export function parseVideoStats(
   report: Iterable<any> | Map<string, any>,
   dir: 'outbound' | 'inbound',
@@ -17,6 +17,9 @@ export function parseVideoStats(
   const top = rtps[0] ?? {};
   const bytes = rtps.reduce((n, r) => n + (dir === 'outbound' ? r.bytesSent ?? 0 : r.bytesReceived ?? 0), 0);
   const ts = (top.timestamp as number) ?? Date.now();
+  // Some browsers omit framesPerSecond on outbound-rtp; derive the sent rate from framesEncoded/framesSent deltas.
+  const frames = top.framesEncoded ?? top.framesSent ?? top.framesDecoded ?? top.framesReceived ?? 0;
+  const derivedFps = prev?.frames != null && frames >= prev.frames && ts > prev.ts ? Math.round(((frames - prev.frames) * 1000) / (ts - prev.ts)) : 0;
   const codec = byId.get(top.codecId)?.mimeType?.replace('video/', '') ?? '';
   let rtt: number | null = null;
   const pair = all.find((s) => s.type === 'candidate-pair' && (s.nominated || s.state === 'succeeded') && typeof s.currentRoundTripTime === 'number');
@@ -26,10 +29,10 @@ export function parseVideoStats(
     if (ri) rtt = Math.round(ri.roundTripTime * 1000);
   }
   return {
-    sample: { bytes, ts },
+    sample: { bytes, ts, frames },
     stats: {
       bitrateKbps: prev ? bitrateKbps(prev.bytes, prev.ts, bytes, ts) : 0,
-      fps: Math.round(top.framesPerSecond ?? 0),
+      fps: Math.round(top.framesPerSecond ?? derivedFps),
       width: top.frameWidth ?? 0,
       height: top.frameHeight ?? 0,
       codec,
