@@ -49,6 +49,8 @@ export interface Channel {
   /** Forum/media defaults: post sort order, default layout, and the reaction auto-added to every new post. */
   defaultSortOrder?: 'latest_activity' | 'creation_date'; defaultForumLayout?: 'list' | 'gallery'; defaultReactionEmoji?: string | null;
   appliedTags?: Id[]; autoArchiveDuration?: number; locked?: boolean; archiveAt?: string | null;
+  /** A channel that hosts clips (short videos) and exposes the clips API. */
+  isClipsChannel?: boolean;
 }
 export interface Member {
   guildId: Id; user: User; nick: string | null; roles: Id[]; joinedAt: string; timeoutUntil: string | null; avatar?: string | null;

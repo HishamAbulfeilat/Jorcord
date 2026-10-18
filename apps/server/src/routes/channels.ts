@@ -24,10 +24,11 @@ const owSchema = z.object({ id: idSchema, type: z.enum(['role', 'member']), allo
 const chanFields = {
   name: z.string().trim().min(1).max(100), topic: z.string().max(1024).nullable(), nsfw: z.boolean(), slowmode: z.number().int().min(0).max(21600),
   bitrate: z.number().int().min(8000).max(510000).nullable(), userLimit: z.number().int().min(0).max(99).nullable(), parentId: idSchema.nullable(), position: z.number().int().min(0).max(10000),
+  isClipsChannel: z.boolean(),
 };
 const tagSchema = z.object({ id: idSchema.optional(), name: z.string().trim().min(1).max(20), emoji: z.string().max(64).nullable().optional(), moderated: z.boolean().optional() }).strict();
 const archiveDuration = z.number().int().refine((n) => (AUTO_ARCHIVE_DURATIONS as readonly number[]).includes(n), 'must be 60, 1440, 4320 or 10080');
-const createChannel = z.object({ ...chanFields, type: z.enum(GUILD_TYPES), overwrites: z.array(owSchema).max(100).optional() }).partial({ topic: true, nsfw: true, slowmode: true, bitrate: true, userLimit: true, parentId: true, position: true }).strict();
+const createChannel = z.object({ ...chanFields, type: z.enum(GUILD_TYPES), overwrites: z.array(owSchema).max(100).optional() }).partial({ topic: true, nsfw: true, slowmode: true, bitrate: true, userLimit: true, parentId: true, position: true, isClipsChannel: true }).strict();
 
 export function channelRoutes(app: FastifyInstance, ctx: Ctx) {
   async function validateParent(guildId: string, parentId: string | null | undefined, type: string) {
@@ -72,7 +73,7 @@ export function channelRoutes(app: FastifyInstance, ctx: Ctx) {
     const [c] = await ctx.db.query('SELECT count(*)::int AS n, coalesce(max(position), -1)::int AS mx FROM channels WHERE guild_id = $1 AND type <> \'thread\'', [id]);
     if (c.n >= 500) throw new ApiError(400, 'MAX_CHANNELS', 'Channel limit reached');
     await checkOverwrites(id, perms, gp, b.overwrites ?? []);
-    const cid = await insertChannel(ctx.db, { guildId: id, type: b.type, name: b.name, topic: b.topic, position: b.position ?? c.mx + 1, parentId: b.parentId, nsfw: b.nsfw, slowmode: b.slowmode, bitrate: b.bitrate, userLimit: b.userLimit });
+    const cid = await insertChannel(ctx.db, { guildId: id, type: b.type, name: b.name, topic: b.topic, position: b.position ?? c.mx + 1, parentId: b.parentId, nsfw: b.nsfw, slowmode: b.slowmode, bitrate: b.bitrate, userLimit: b.userLimit, isClipsChannel: b.isClipsChannel });
     await saveOverwrites(cid, b.overwrites ?? []);
     await audit(ctx, id, req.userId, 'CHANNEL_CREATE', cid, { name: b.name, type: b.type });
     const [row] = await ctx.db.query('SELECT * FROM channels WHERE id = $1', [cid]);
@@ -136,7 +137,7 @@ export function channelRoutes(app: FastifyInstance, ctx: Ctx) {
     if (b.availableTags !== undefined) b.availableTags = await normaliseTags(id, ch.available_tags ?? [], b.availableTags);
     if (b.parentId !== undefined) await validateParent(ch.guild_id, b.parentId, ch.type);
     const col: Record<string, string> = { name: 'name', topic: 'topic', nsfw: 'nsfw', slowmode: 'slowmode', bitrate: 'bitrate', userLimit: 'user_limit', parentId: 'parent_id', position: 'position', archived: 'archived',
-      requireTag: 'require_tag', defaultAutoArchiveDuration: 'default_auto_archive', autoArchiveDuration: 'auto_archive_minutes', locked: 'locked', availableTags: 'available_tags', appliedTags: 'applied_tags', defaultSortOrder: 'default_sort_order', defaultForumLayout: 'default_forum_layout', defaultReactionEmoji: 'default_reaction_emoji' };
+      requireTag: 'require_tag', defaultAutoArchiveDuration: 'default_auto_archive', autoArchiveDuration: 'auto_archive_minutes', locked: 'locked', availableTags: 'available_tags', appliedTags: 'applied_tags', defaultSortOrder: 'default_sort_order', defaultForumLayout: 'default_forum_layout', defaultReactionEmoji: 'default_reaction_emoji', isClipsChannel: 'is_clips_channel' };
     const sets: string[] = [], vals: unknown[] = [id];
     for (const [k, v] of Object.entries(b)) { if (!col[k]) continue; vals.push(k === 'availableTags' || k === 'appliedTags' ? JSON.stringify(v) : v); sets.push(`${col[k]} = $${vals.length}${k === 'availableTags' || k === 'appliedTags' ? '::jsonb' : ''}`); }
     if (ch.type === 'thread' && (b.archived === false || b.autoArchiveDuration !== undefined)) sets.push('activity_at = now()'); // unarchiving / changing the timer restarts the idle clock

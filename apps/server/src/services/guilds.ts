@@ -32,12 +32,12 @@ export const GUILD_TEMPLATES: Record<string, { name: string; channels: TemplateC
   ],
 };
 
-export async function insertChannel(q: Queryable, c: { id?: string; guildId: string | null; type: string; name: string | null; topic?: string | null; position?: number; parentId?: string | null; nsfw?: boolean; slowmode?: number; bitrate?: number | null; userLimit?: number | null; ownerId?: string | null }) {
+export async function insertChannel(q: Queryable, c: { id?: string; guildId: string | null; type: string; name: string | null; topic?: string | null; position?: number; parentId?: string | null; nsfw?: boolean; slowmode?: number; bitrate?: number | null; userLimit?: number | null; ownerId?: string | null; isClipsChannel?: boolean }) {
   const id = c.id ?? snowflake();
   await q.query(
-    `INSERT INTO channels (id, guild_id, type, name, topic, position, parent_id, nsfw, slowmode, bitrate, user_limit, owner_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+    `INSERT INTO channels (id, guild_id, type, name, topic, position, parent_id, nsfw, slowmode, bitrate, user_limit, owner_id, is_clips_channel) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
     [id, c.guildId, c.type, c.name, c.topic ?? null, c.position ?? 0, c.parentId ?? null, c.nsfw ?? false, c.slowmode ?? 0,
-      c.bitrate ?? (c.type === 'voice' || c.type === 'stage' ? 64000 : null), c.userLimit ?? null, c.ownerId ?? null]);
+      c.bitrate ?? (c.type === 'voice' || c.type === 'stage' ? 64000 : null), c.userLimit ?? null, c.ownerId ?? null, c.isClipsChannel ?? false]);
   return id;
 }
 
