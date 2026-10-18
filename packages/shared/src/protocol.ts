@@ -1,6 +1,6 @@
 /** Gateway protocol: JSON over WebSocket at /gateway. Opcode model mirrors Discord's. */
 import type { Application, ApplicationCommand, Interaction, Modal, ScheduledEvent, StageInstance, CommandOptionChoice } from './platform';
-import type { Activity, GifFavorite, SoundboardSound } from './parity';
+import type { Activity, ChannelActivity, GifFavorite, SoundboardSound } from './parity';
 import type { Channel, Guild, Id, Invite, Member, Message, Presence, ReadState, Relationship, Reminder, Role, SelfUser, User, VoiceState, Emoji, Sticker } from './types';
 
 export const Op = { DISPATCH: 0, HEARTBEAT: 1, IDENTIFY: 2, PRESENCE_UPDATE: 3, VOICE_STATE_UPDATE: 4, RESUME: 6, RECONNECT: 7, REQUEST_MEMBERS: 8, TYPING: 9, HELLO: 10, HEARTBEAT_ACK: 11 } as const;
@@ -72,6 +72,8 @@ export interface Events {
   /** Soundboard: a guild's sound list changed / someone played a sound in a voice channel (sent to the people in that channel). */
   SOUNDBOARD_SOUNDS_UPDATE: { guildId: Id; sounds: SoundboardSound[] };
   VOICE_CHANNEL_EFFECT_SEND: { guildId: Id | null; channelId: Id; userId: Id; sound: SoundboardSound };
+  /** Shared voice-channel activity started/updated/ended; sent only to members who can view the channel. */
+  ACTIVITY_START: ChannelActivity; ACTIVITY_UPDATE: ChannelActivity; ACTIVITY_END: { id: Id; channelId: Id; guildId: Id | null };
   /** To my own sessions: a GIF favorite was added or removed. */
   GIF_FAVORITES_UPDATE: { item?: GifFavorite; removedId?: Id };
   /** Reports (mod queue): a report was created or triaged; clients with moderation perms re-read the queue. */

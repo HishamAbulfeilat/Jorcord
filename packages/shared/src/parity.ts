@@ -15,6 +15,21 @@ export interface Activity {
 }
 export const MAX_ACTIVITIES = 5;
 
+// ---------- shared voice-channel activities ----------
+/** Activities that can be started inside a voice channel and shared with everybody in the call. */
+export type ChannelActivityKind = 'youtube' | 'tictactoe';
+/**
+ * A shared session running in a voice channel (a YouTube watch party or a Tic-Tac-Toe game). The `state` blob
+ * is opaque to the server: its shape depends on `kind` and is validated by the clients. It is capped by
+ * {@link ACTIVITY_STATE_MAX_BYTES} so a session cannot be used as bulk storage.
+ */
+export interface ChannelActivity {
+  id: Id; channelId: Id; guildId: Id | null; kind: ChannelActivityKind; hostId: Id;
+  state: unknown; startedAt: string; updatedAt: string;
+}
+/** Serialized `state` size cap (bytes) accepted by PATCH /activities/:id/state. */
+export const ACTIVITY_STATE_MAX_BYTES = 4096;
+
 // ---------- cosmetics: avatar decorations, profile effects, name plates, server tags ----------
 /** Free, original catalog: every item is drawn with CSS/SVG by the clients (no image assets). Servers validate ids against these lists. */
 export interface CosmeticItem { id: string; name: string }
