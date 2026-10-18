@@ -13,8 +13,8 @@ import { createRnnoiseProcessor } from './noise';
 import { createPushToTalk } from './ptt';
 import { effectiveVolume } from './priority';
 import {
-  detectSupportedVideoCodecs, isScalableCodec, pickCodec, recommendBitrateKbps, selectPreset, simulcastLayers,
-  viewerQualityToDimensions, type ContentHint, type StreamPresetId, type VideoCodecName, type ViewerQuality,
+  cameraPlan, detectSupportedVideoCodecs, isScalableCodec, normalizeCameraFps, pickCodec, recommendBitrateKbps, selectPreset, simulcastLayers,
+  viewerQualityToDimensions, type CameraEncoding, type CameraQuality, type ContentHint, type StreamPresetId, type VideoCodecName, type ViewerQuality,
 } from './presets';
 import { detectPlatform, mobileConstraints, type Platform } from './mobile';
 import { initialSpeaking, speakingReducer, type SpeakingState } from './speaking';
@@ -43,6 +43,10 @@ export interface VoiceSettings {
   pttReleaseMs: number;
   vadThreshold: number;
   cameraPreset: StreamPresetId;
+  /** Camera capture quality: auto starts at 1080p and falls back to 720p/480p. */
+  cameraQuality: CameraQuality;
+  /** Requested camera frame rate (15/24/30/60). */
+  cameraFps: number;
   screenPreset: StreamPresetId;
   screenHint: Exclude<ContentHint, 'text'> | 'text';
   screenAudio: boolean;
@@ -51,7 +55,8 @@ export interface VoiceSettings {
 
 export const DEFAULT_SETTINGS: VoiceSettings = {
   audio: DEFAULT_AUDIO, inputMode: 'open', pttCode: 'Backquote', pttReleaseMs: 200, vadThreshold: 0.03,
-  cameraPreset: '720p30', screenPreset: '1080p60', screenHint: 'motion', screenAudio: true, codec: 'auto',
+  cameraPreset: '720p30', cameraQuality: 'auto', cameraFps: 30,
+  screenPreset: '1080p60', screenHint: 'motion', screenAudio: true, codec: 'auto',
 };
 
 export interface VoiceSnapshot {
@@ -130,18 +135,24 @@ export class VoiceClient {
     const platform = detectPlatform();
     this.supportedCodecs = detectSupportedVideoCodecs();
     const ra = resolveAudio(settings.audio);
+    // Prefer AV1/VP9 when the browser can encode them; H264 is the compatibility backup. VP8 is the last resort.
+    const initialCodec = pickCodec(this.supportedCodecs, settings.codec);
     this.room = new Room({
+      // adaptiveStream + dynacast: subscribers only pull the layer they can display, and the publisher stops
+      // sending layers nobody watches. This is what makes the simulcast ladder above worthwhile.
       adaptiveStream: { pauseVideoInBackground: true },
       dynacast: true,
       stopLocalTrackOnUnpublish: true,
       webAudioMix: false, // keep HTMLAudioElement path: required for setSinkId + iOS reliability
       audioCaptureDefaults: { ...ra.capture },
       audioOutput: settings.audio.outputDeviceId ? { deviceId: settings.audio.outputDeviceId } : undefined,
-      videoCaptureDefaults: { resolution: { width: 1280, height: 720, frameRate: 30 } },
+      // Camera default: 1080p30 (auto). setCamera() always passes explicit per-attempt constraints on top.
+      videoCaptureDefaults: { resolution: { width: 1920, height: 1080, frameRate: 30 } },
       publishDefaults: {
         audioPreset: { maxBitrate: ra.publish.audioBitrate },
         dtx: ra.publish.dtx, red: ra.publish.red, forceStereo: ra.publish.forceStereo,
-        videoCodec: 'vp9', backupCodec: { codec: 'h264' },
+        videoCodec: initialCodec as VideoCodec,
+        backupCodec: initialCodec === 'h264' || initialCodec === 'vp8' ? false : { codec: 'h264' },
         simulcast: true, degradationPreference: 'maintain-framerate',
       },
       ...(opts.e2ee ? { e2ee: { keyProvider: opts.e2ee.keyProvider, worker: opts.e2ee.worker } } : {}),
@@ -570,20 +581,64 @@ export class VoiceClient {
     return { options: o, resolved: r, codec };
   }
 
+  /** Camera publish options for one quality attempt: simulcast ladder, bitrate cap, codec fallback, motion hint. */
+  private cameraPublishOpts(encoding: CameraEncoding, codec: VideoCodecName): TrackPublishOptions {
+    const svc = isScalableCodec(codec);
+    const layers = encoding.layers.map((l) => new VideoPreset(l.width, l.height, l.maxBitrateKbps * 1000, l.fps));
+    return {
+      videoCodec: codec as VideoCodec,
+      backupCodec: codec === 'h264' || codec === 'vp8' ? false : { codec: 'h264' },
+      simulcast: !svc && layers.length > 0,
+      ...(svc ? { scalabilityMode: 'L3T3_KEY' as const } : {}),
+      degradationPreference: 'maintain-framerate',
+      videoEncoding: { maxBitrate: encoding.maxBitrateKbps * 1000, maxFramerate: encoding.fps },
+      videoSimulcastLayers: layers,
+    };
+  }
+
   async setCamera(on: boolean, deviceId?: string) {
     const lp = this.room.localParticipant;
     try {
       if (!on) { this.intent.camera = false; await lp.setCameraEnabled(false); this.emit({ cameraOn: false }); return; }
-      const { options, resolved, codec } = this.publishOptsFor('camera', this.snap.settings.cameraPreset, 'motion');
-      const cap: VideoCaptureOptions = {
-        resolution: { width: resolved.width, height: resolved.height, frameRate: resolved.fps },
-        ...(deviceId ? { deviceId } : {}),
-        ...(this.snap.platform.isMobile ? { facingMode: 'user' as const } : {}),
-      };
-      await lp.setCameraEnabled(true, cap, options);
-      this.intent.camera = true; this.intent.cameraDeviceId = deviceId ?? this.intent.cameraDeviceId;
-      this.emit({ cameraOn: true, activeCodec: codec });
+      const codec = this.codecFor();
+      const plan = cameraPlan(this.snap.settings.cameraQuality, this.snap.settings.cameraFps, codec, mobileConstraints(this.snap.platform));
+      let lastError: unknown;
+      // Ask for the top quality first and step down (1080p -> 720p -> 480p) if the camera rejects it.
+      for (const encoding of plan.attempts) {
+        const cap: VideoCaptureOptions = {
+          resolution: { width: encoding.width, height: encoding.height, frameRate: encoding.fps },
+          ...(deviceId ? { deviceId } : {}),
+          ...(this.snap.platform.isMobile ? { facingMode: 'user' as const } : {}),
+        };
+        try {
+          await lp.setCameraEnabled(true, cap, this.cameraPublishOpts(encoding, codec));
+          // contentHint is not part of LiveKit's capture options: set it on the real track so the encoder optimises for motion.
+          const track = lp.getTrackPublication(Track.Source.Camera)?.track?.mediaStreamTrack;
+          if (track) track.contentHint = plan.contentHint;
+          this.intent.camera = true; this.intent.cameraDeviceId = deviceId ?? this.intent.cameraDeviceId;
+          this.emit({ cameraOn: true, activeCodec: codec });
+          return;
+        } catch (e) {
+          lastError = e;
+          try { await lp.setCameraEnabled(false); } catch { /* a failed attempt may never have started */ }
+        }
+      }
+      throw lastError;
     } catch (e) { this.emit({ cameraOn: !!lp.getTrackPublication(Track.Source.Camera) }); throw this.fail(e, 'media'); }
+  }
+
+  /** Change camera quality / frame rate. Re-publishes only when the camera is on, so the next frame uses the new preset. */
+  async setCameraSettings(patch: { quality?: CameraQuality; fps?: number }) {
+    const cur = this.snap.settings;
+    const quality = patch.quality ?? cur.cameraQuality;
+    const fps = normalizeCameraFps(patch.fps ?? cur.cameraFps);
+    if (quality === cur.cameraQuality && fps === cur.cameraFps) return;
+    this.snap = { ...this.snap, settings: { ...cur, cameraQuality: quality, cameraFps: fps } };
+    this.emit();
+    if (!this.snap.cameraOn) return;
+    const deviceId = this.intent.cameraDeviceId;
+    await this.setCamera(false);
+    await this.setCamera(true, deviceId);
   }
 
   async startScreenShare(o: { preset?: StreamPresetId; hint?: ContentHint; audio?: boolean } = {}) {

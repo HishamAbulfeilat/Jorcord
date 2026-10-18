@@ -137,6 +137,79 @@ export function simulcastLayers(top: { width: number; height: number; fps: numbe
     .map((l) => ({ ...l, fps: Math.min(l.fps, top.fps), maxBitrateKbps: recommendBitrateKbps(l.width, l.height, Math.min(l.fps, top.fps), codec, hint) }));
 }
 
+/**
+ * Camera quality presets. `auto` asks for 1080p and steps down to 720p then 480p when the device or uplink
+ * cannot provide it; the fixed presets start at their own step of the same ladder.
+ */
+export type CameraQuality = 'auto' | '720p' | '1080p';
+export const CAMERA_FRAME_RATES = [15, 24, 30, 60] as const;
+export type CameraFrameRate = (typeof CAMERA_FRAME_RATES)[number];
+export const CAMERA_MAX_FPS = 60;
+
+/** Capture ladder used for camera: highest first, so a failed/oversized request can fall back gracefully. */
+const CAMERA_LADDER = [
+  { width: 1920, height: 1080 },
+  { width: 1280, height: 720 },
+  { width: 854, height: 480 },
+] as const;
+
+/** Keep a requested frame rate usable (1..60) even if a stored preference is stale. */
+export function normalizeCameraFps(fps: number): number {
+  return Math.min(CAMERA_MAX_FPS, Math.max(1, Math.round(fps || 30)));
+}
+
+export interface CameraCaptureConstraints { width: number; height: number; frameRate: number }
+
+/** Requested capture constraints for a camera quality/frame rate pair (highest attempt, platform-clamped). */
+export function cameraConstraints(quality: CameraQuality, fps = 30, c: PresetConstraints = {}): CameraCaptureConstraints {
+  const target = quality === '720p' ? 1 : 0;
+  const l: { width: number; height: number } = CAMERA_LADDER[target]!;
+  const q = clampToLimits({ width: l.width, height: l.height, fps: Math.min(normalizeCameraFps(fps), c.maxFps ?? CAMERA_MAX_FPS) });
+  let width = q.width, height = q.height;
+  const maxH = c.maxHeight ?? height;
+  if (height > maxH) { width = Math.round((width * maxH) / height); height = maxH; }
+  return { width, height, frameRate: q.fps };
+}
+
+export interface CameraEncoding { width: number; height: number; fps: number; maxBitrateKbps: number; layers: Layer[] }
+
+export interface CameraPlan extends CameraEncoding {
+  quality: CameraQuality;
+  /** Camera video is always encoded for motion (people), not screen detail. */
+  contentHint: 'motion';
+  /** Capture attempts from highest to lowest (1080p -> 720p -> 480p), each with its own bitrate/layers. */
+  attempts: CameraEncoding[];
+}
+
+/**
+ * Pure camera preset -> capture constraints, bitrate and simulcast layers.
+ * `attempts` is what the publisher tries in order; the first entry is the requested top quality.
+ */
+export function cameraPlan(quality: CameraQuality, fps = 30, codec: VideoCodecName = 'h264', c: PresetConstraints = {}): CameraPlan {
+  const start = quality === '720p' ? 1 : 0;
+  const frameRate = Math.min(normalizeCameraFps(fps), c.maxFps ?? CAMERA_MAX_FPS);
+  const attempts: CameraEncoding[] = [];
+  for (let i = start; i < CAMERA_LADDER.length; i++) {
+    const l = CAMERA_LADDER[i]!;
+    if (c.maxHeight && l.height > c.maxHeight) continue;
+    const encoding = { width: l.width, height: l.height, fps: frameRate, maxBitrateKbps: recommendBitrateKbps(l.width, l.height, frameRate, codec, 'motion') };
+    attempts.push({ ...encoding, layers: simulcastLayers(encoding, codec, 'motion') });
+  }
+  // Constraints below 480p (or an unsupported combination): keep one clamped attempt.
+  if (!attempts.length) {
+    const cc = cameraConstraints(quality, frameRate, c);
+    const encoding = { width: cc.width, height: cc.height, fps: cc.frameRate, maxBitrateKbps: recommendBitrateKbps(cc.width, cc.height, cc.frameRate, codec, 'motion') };
+    attempts.push({ ...encoding, layers: simulcastLayers(encoding, codec, 'motion') });
+  }
+  const top = attempts[0]!;
+  return { quality, contentHint: 'motion', ...top, attempts };
+}
+
+/**
+ * Camera codecs follow the global preference order (AV1 > VP9 > H264 > VP8): VP9/AV1 are used when the browser
+ * can encode them, with H264/VP8 as the fallback.
+ */
+
 /** Viewer-side quality choice. */
 export type ViewerQuality = 'auto' | 'low' | 'medium' | 'high';
 export function viewerQualityToDimensions(q: ViewerQuality, top: { width: number; height: number }): { width: number; height: number } | null {
