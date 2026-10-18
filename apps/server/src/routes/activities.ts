@@ -36,7 +36,8 @@ async function loadActivity(ctx: Ctx, id: string) {
  *
  * Shared activities (Watch Together / games): every read and write resolves the channel through `channelAccess`, so a
  * caller without VIEW_CHANNEL gets the same 404 as a missing channel. Events go through `toChannel`, which only fan out
- * to members who can view it. Only the host may update the shared state or end the session.
+ * to members who can view it. Only the host may update Watch Together state or end a session; in a two-player game
+ * either member in the call may publish a move, with turn order validated by the clients.
  */
 export function activityRoutes(app: FastifyInstance, ctx: Ctx) {
   app.put('/users/@me/activities', async (req) => {
@@ -94,7 +95,9 @@ export function activityRoutes(app: FastifyInstance, ctx: Ctx) {
     const b = parse(z.object({ state: activityState }).strict(), req.body);
     const row = await loadActivity(ctx, id);
     await channelAccess(ctx, req.userId, row.channel_id);
-    if (row.host_id !== req.userId) throw forbidden('Only the host can change the activity');
+    // Turn-based games are played by both members in the call, so any channel viewer may publish a move; the
+    // clients validate whose turn it is. Watch Together stays host-driven.
+    if (row.kind !== 'tictactoe' && row.host_id !== req.userId) throw forbidden('Only the host can change the activity');
     limitOrThrow(ctx.rl, `activity-update:${req.userId}`, 60, 60_000, ctx.config.rateLimit);
     const [updated] = await ctx.db.query('UPDATE channel_activities SET state = $2::jsonb, updated_at = now() WHERE id = $1 RETURNING *', [id, JSON.stringify(b.state ?? {})]);
     const dto = activityDTO(updated);

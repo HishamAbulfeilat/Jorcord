@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
-import { Pause, Play, X } from 'lucide-react';
+import { Gamepad2, Pause, Play, X } from 'lucide-react';
 import type { ChannelActivity } from '@jorcord/shared';
 import { api } from '@/lib/api';
 import { useData } from '@/stores/data';
 import { useChannelActivities } from '@/stores/channelActivities';
 import { t } from '@/i18n';
+import { initialTicTacToeState } from './TicTacToe';
 
 /**
  * YouTube links only, from youtube.com or youtu.be. The id is exactly 11 URL-safe base64 characters.
@@ -59,6 +60,7 @@ export function watchState(activity?: Pick<ChannelActivity, 'state'> | null): Wa
  */
 export function WatchTogetherPopover({ channelId, onClose }: { channelId: string; onClose: () => void }) {
   const active = useChannelActivities((s) => s.byChannel[channelId]?.find((a) => a.kind === 'youtube') ?? null);
+  const ticTacToe = useChannelActivities((s) => s.byChannel[channelId]?.find((a) => a.kind === 'tictactoe') ?? null);
   const setChannel = useChannelActivities((s) => s.setChannel);
   const upsert = useChannelActivities((s) => s.upsert);
   const remove = useChannelActivities((s) => s.remove);
@@ -124,6 +126,24 @@ export function WatchTogetherPopover({ channelId, onClose }: { channelId: string
     finally { setBusy(false); }
   };
 
+  const startTicTacToe = async () => {
+    setBusy(true); setError(null);
+    try { upsert(await api.activities.start(channelId, { kind: 'tictactoe', state: initialTicTacToeState() })); }
+    catch (e) {
+      if ((e as { status?: number }).status === 409) {
+        try { setChannel(channelId, (await api.activities.list(channelId)).activities); } catch { /* the next event catches up */ }
+      } else setError((e as Error).message || t('Could not start Tic-Tac-Toe'));
+    } finally { setBusy(false); }
+  };
+
+  const endTicTacToe = async () => {
+    if (!ticTacToe) return;
+    setBusy(true); setError(null);
+    try { await api.activities.end(ticTacToe.id); remove(ticTacToe.id, channelId); }
+    catch (e) { setError((e as Error).message || t('Could not end Tic-Tac-Toe')); }
+    finally { setBusy(false); }
+  };
+
   return (
     <div ref={box} role="dialog" aria-label={t('Watch Together')} data-testid="watch-together"
       className="fixed inset-x-3 bottom-[88px] z-50 animate-pop rounded-lg bg-float p-3 text-start shadow-elev md:absolute md:inset-x-auto md:bottom-full md:end-0 md:mb-3 md:w-[420px]">
@@ -160,6 +180,14 @@ export function WatchTogetherPopover({ channelId, onClose }: { channelId: string
           ) : <p className="mt-2 text-xs text-muted">{t('The host controls playback.')}</p>}
         </>
       )}
+      <div className="mt-3 border-t border-divider/70 pt-3">
+        <div className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-interactive"><Gamepad2 size={14} />{t('Tic-Tac-Toe')}</div>
+        {ticTacToe
+          ? ticTacToe.hostId === me
+            ? <button className="btn btn-danger btn-lg w-full" onClick={() => void endTicTacToe()} disabled={busy}>{t('End Tic-Tac-Toe')}</button>
+            : <p className="text-xs text-muted">{t('Tic-Tac-Toe is running in this channel.')}</p>
+          : <button className="btn btn-secondary btn-lg w-full" onClick={() => void startTicTacToe()} disabled={busy}>{t('Start Tic-Tac-Toe')}</button>}
+      </div>
     </div>
   );
 }

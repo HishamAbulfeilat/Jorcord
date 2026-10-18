@@ -92,4 +92,47 @@ describe('shared voice-channel activities', () => {
     expect((await api.req('GET', `/channels/${voice.id}/activities`, member.token)).status).toBe(200);
     wMember.close();
   });
+
+  it('lets a channel viewer publish Tic-Tac-Toe moves while non-viewers can neither see nor act on the game', async () => {
+    const { owner, guild, member, voice } = await setup();
+    const outsider = await api.register('wout2');
+    const wMember = await connect(member.token);
+
+    const created = await api.req('POST', `/channels/${voice.id}/activities`, owner.token, {
+      kind: 'tictactoe', state: { board: Array(9).fill(null), turn: 'X' },
+    });
+    expect(created.status).toBe(201);
+    const id = created.body.id;
+    expect(created.body).toMatchObject({ channelId: voice.id, kind: 'tictactoe', hostId: owner.id });
+
+    // Either player in the call may publish a move; the turn itself is validated by the clients.
+    const state = { board: ['X', null, null, null, null, null, null, null, null], turn: 'O' };
+    const moved = await api.req('PATCH', `/activities/${id}/state`, member.token, { state });
+    expect(moved.status).toBe(200);
+    expect(moved.body.state).toEqual(state);
+    // A viewer still cannot end the host's session.
+    expect((await api.req('DELETE', `/activities/${id}`, member.token)).status).toBe(403);
+
+    // A user outside the guild has no VIEW_CHANNEL: the same 404 as a missing activity, for reads and writes.
+    expect((await api.req('GET', `/activities/${id}`, outsider.token)).status).toBe(404);
+    expect((await api.req('PATCH', `/activities/${id}/state`, outsider.token, { state })).status).toBe(404);
+    expect((await api.req('DELETE', `/activities/${id}`, outsider.token)).status).toBe(404);
+
+    // A voice channel the plain member cannot see must not leak the board, history or live events.
+    const secret = (await api.req('POST', `/guilds/${guild.id}/channels`, owner.token, {
+      name: 'secret-game', type: 'voice', overwrites: [{ id: guild.id, type: 'role', allow: '0', deny: String(Perm.VIEW_CHANNEL) }],
+    })).body;
+    const hidden = await api.req('POST', `/channels/${secret.id}/activities`, owner.token, {
+      kind: 'tictactoe', state: { board: Array(9).fill(null), turn: 'X' },
+    });
+    expect(hidden.status).toBe(201);
+    const hiddenId = hidden.body.id;
+
+    expect((await api.req('GET', `/channels/${secret.id}/activities`, member.token)).status).toBe(404);
+    expect((await api.req('GET', `/activities/${hiddenId}`, member.token)).status).toBe(404);
+    expect((await api.req('PATCH', `/activities/${hiddenId}/state`, member.token, { state })).status).toBe(404);
+    expect((await api.req('DELETE', `/activities/${hiddenId}`, member.token)).status).toBe(404);
+    await wMember.expectNone((f) => f.t === 'ACTIVITY_START' && f.d.channelId === secret.id);
+    wMember.close();
+  });
 });

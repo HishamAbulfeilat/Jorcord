@@ -17,6 +17,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { ControlBar, ScreenSharePopover } from './controls';
 import { ConnectionPopover, DiagnosticsPanel, useConnectingElapsed } from './Troubleshoot';
 import { CallSurface, Lobby, StageSurface, VoiceBanners } from './Room';
+import { TicTacToeView } from './TicTacToe';
 import { NetBars } from './tiles';
 import { getVoiceClient, joinVoice, leaveVoice } from './controller';
 import { setCurrentChannel } from '@/lib/session';
@@ -72,6 +73,7 @@ export function VoiceChannelView({ channel }: { channel: Channel }) {
             {snap.status === 'connecting' || conn === 'connecting'
               ? <ConnectingView />
               : stage ? <StageSurface channelId={channel.id} /> : <CallSurface />}
+            {!stage && <TicTacToeView channelId={channel.id} />}
             <ControlBar onSettings={() => openModal({ kind: 'voiceSettings' })} className="shrink-0 safe-bottom" />
           </>
         ) : (
