@@ -4,6 +4,8 @@ import { LIMITS } from '@jorcord/shared';
 import { Toggle, Row, Modal } from '@/components/ui/primitives';
 import { useUI } from '@/stores/ui';
 import { cx } from '@/lib/format';
+import { SelfViewVideo } from './tiles';
+import { isCanvasFilterSupported } from './cameraEffects';
 
 const H3 = ({ children }: { children: React.ReactNode }) => <h3 className="section-title mb-2 mt-5">{children}</h3>;
 const Field = ({ label, children }: { label: string; children: React.ReactNode }) => <label className="mb-4 block"><span className="label">{label}</span>{children}</label>;
@@ -53,7 +55,7 @@ function CameraPreview({ deviceId, quality, fps }: { deviceId: string; quality: 
       </div>
       <div className="relative aspect-video overflow-hidden rounded bg-black">
         {on
-          ? <video ref={video} autoPlay playsInline muted aria-label="Camera preview" data-testid="camera-preview" className="h-full w-full object-cover" style={{ transform: 'scaleX(-1)' }} />
+          ? <SelfViewVideo videoRef={video} label="Camera preview" testId="camera-preview" className="h-full w-full object-cover" />
           : <div className="flex h-full items-center justify-center text-sm text-muted">Preview your camera and framing.</div>}
       </div>
       {err && <p className="mt-2 text-sm text-danger" role="alert">{err}</p>}
@@ -99,6 +101,7 @@ export function VoiceSettingsForm({ compact }: { compact?: boolean }) {
   const mode = p.pushToTalk ? 'ptt' : p.vadMode ? 'vad' : 'open';
   const setMode = (m: string) => { set('pushToTalk', m === 'ptt'); set('vadMode', m === 'vad'); };
   const supportsSink = typeof HTMLMediaElement !== 'undefined' && 'setSinkId' in HTMLMediaElement.prototype;
+  const blurSupported = isCanvasFilterSupported();
   return (
     <div data-testid="voice-settings">
       <div className={cx('grid gap-x-6', !compact && 'sm:grid-cols-2')}>{sel('audioinput', 'inputDevice', 'Input Device')}{supportsSink && sel('audiooutput', 'outputDevice', 'Output Device')}</div>
@@ -141,6 +144,11 @@ export function VoiceSettingsForm({ compact }: { compact?: boolean }) {
         </select></Field>
         <Field label="Default stream quality"><select className="field" aria-label="Default stream quality" value={p.screenPreset} onChange={(e) => set('screenPreset', e.target.value as any)}>{STREAM_PRESETS.map((x) => <option key={x.id} value={x.id}>{x.id === 'source' ? 'Source' : x.label}</option>)}</select></Field>
       </div>
+      <Row title="Mirror my camera" desc="Flip your own preview only; everyone else still sees the un-mirrored feed."><Toggle label="Mirror my camera" checked={p.mirrorSelfView} onChange={(v) => set('mirrorSelfView', v)} /></Row>
+      <Row title="Background blur" desc={blurSupported ? 'Soft-focus blur of your preview (softens the whole frame — no person cut-out). Runs locally and pauses in background tabs.' : 'This browser cannot apply canvas filters, so blur is unavailable.'}>
+        <Toggle label="Background blur" checked={p.cameraBlur} disabled={!blurSupported} onChange={(v) => set('cameraBlur', v)} />
+      </Row>
+      <Row title="Auto brightness & contrast" desc="Nudges exposure when the frame is too dark or too bright."><Toggle label="Auto brightness and contrast" checked={p.cameraAutoAdjust} onChange={(v) => set('cameraAutoAdjust', v)} /></Row>
       <CameraPreview deviceId={p.videoDevice} quality={p.videoQuality} fps={p.videoFps} />
       <Row title="Show connection stats" desc="Resolution, frame rate, bitrate and codec on video tiles."><Toggle label="Show connection stats" checked={p.showVoiceStats} onChange={(v) => set('showVoiceStats', v)} /></Row>
     </div>

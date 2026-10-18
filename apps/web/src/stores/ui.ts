@@ -14,6 +14,8 @@ export interface Prefs {
   screenPreset: '720p30' | '1080p60' | '1440p60' | '4k60' | 'source'; cameraPreset: '720p30' | '1080p60' | '1440p60' | '4k60' | 'source'; screenHint: 'motion' | 'detail'; screenAudio: boolean; showVoiceStats: boolean;
   /** Camera capture: quality preset (auto steps 1080p -> 720p -> 480p) and requested frame rate. */
   videoQuality: CameraQuality; videoFps: CameraFrameRate;
+  /** Local self-view only: mirror the preview, and opt-in canvas effects (both off by default except mirroring). */
+  mirrorSelfView: boolean; cameraBlur: boolean; cameraAutoAdjust: boolean;
   keybinds: Record<string, string>;
   streamerMode: boolean; streamerAuto: boolean; streamerHidePersonal: boolean; streamerHideInvites: boolean; streamerNoSounds: boolean; streamerNoNotifications: boolean;
   mutedChannels: Record<Id, boolean>; mutedGuilds: Record<Id, boolean>; collapsedCategories: Record<Id, boolean>;
@@ -46,6 +48,7 @@ export const defaultPrefs: Prefs = {
   noiseEngine: 'browser', voiceBitrate: 64, musicMode: false, pttCode: 'Backquote', vadMode: false, vadThreshold: 0.03,
   screenPreset: '1080p60', cameraPreset: '720p30', screenHint: 'motion', screenAudio: true, showVoiceStats: true,
   videoQuality: 'auto', videoFps: 30,
+  mirrorSelfView: true, cameraBlur: false, cameraAutoAdjust: false,
   keybinds: defaultKeybinds,
   streamerMode: false, streamerAuto: true, streamerHidePersonal: true, streamerHideInvites: true, streamerNoSounds: true, streamerNoNotifications: true,
   mutedChannels: {}, mutedGuilds: {}, collapsedCategories: {},
