@@ -8,10 +8,38 @@ import { useUI } from '@/stores/ui';
 import { voiceUserMenu } from './menu';
 import { useMenuTrigger } from '@/components/ui/ContextMenu';
 import { useVoiceUI } from '@/stores/voiceui';
+import { SelfViewPainter, effectsEnabled, isCanvasFilterSupported } from './cameraEffects';
 import { cx } from '@/lib/format';
 
 export function useVoiceUser(identity: string) {
   return useData((s) => s.users[identity]);
+}
+
+/**
+ * Local camera element for the self-view. Mirrors per preference and, when the opt-in canvas effects are
+ * enabled and supported, paints through an overlay canvas. The <video> stays mounted either way so the
+ * LiveKit track keeps its attachment.
+ */
+export function SelfViewVideo({ videoRef, className, style, label, testId }: { videoRef: React.MutableRefObject<HTMLVideoElement | null>; className?: string; style?: React.CSSProperties; label?: string; testId?: string }) {
+  const mirror = useUI((s) => s.prefs.mirrorSelfView);
+  const blur = useUI((s) => s.prefs.cameraBlur);
+  const autoAdjust = useUI((s) => s.prefs.cameraAutoAdjust);
+  const canvas = useRef<HTMLCanvasElement>(null);
+  const [painting, setPainting] = useState(false);
+  useEffect(() => {
+    const video = videoRef.current; const el = canvas.current;
+    if (!video || !el || !effectsEnabled({ blur, autoAdjust }) || !isCanvasFilterSupported()) { setPainting(false); return; }
+    setPainting(true);
+    const painter = new SelfViewPainter({ video, canvas: el, effects: () => ({ blur, autoAdjust }) });
+    return painter.start();
+  }, [videoRef, blur, autoAdjust]);
+  const transform = mirror ? 'scaleX(-1)' : undefined;
+  return (
+    <>
+      <video ref={videoRef} autoPlay playsInline muted aria-label={label} data-testid={testId} className={cx(className, painting && 'invisible')} style={{ ...style, transform }} />
+      <canvas ref={canvas} aria-hidden className={cx(className, 'pointer-events-none absolute inset-0', !painting && 'hidden')} style={{ transform }} />
+    </>
+  );
 }
 
 export function NetBars({ quality, className }: { quality: string; className?: string }) {
@@ -61,7 +89,9 @@ export function ParticipantTile({ p, size = 'lg', focused, onClick, showStats }:
       aria-label={`${p.name}${p.speaking ? ', speaking' : ''}${p.micMuted ? ', muted' : ''}`}
       className={cx('group relative min-h-0 min-w-0 overflow-hidden rounded-lg bg-[#1e1f22] transition-shadow duration-100', onClick && 'cursor-pointer', p.speaking ? 'shadow-[inset_0_0_0_3px_rgb(var(--success))]' : focused ? 'shadow-[inset_0_0_0_2px_rgb(var(--brand))]' : '', sm ? 'aspect-video h-full shrink-0' : 'h-full w-full')}>
       {present
-        ? <video ref={ref} autoPlay playsInline muted className="h-full w-full object-cover" style={{ transform: p.isLocal ? 'scaleX(-1)' : undefined }} />
+        ? (p.isLocal
+            ? <SelfViewVideo videoRef={ref} className="h-full w-full object-cover" />
+            : <video ref={ref} autoPlay playsInline muted className="h-full w-full object-cover" />)
         : <div className="flex h-full w-full items-center justify-center">
             <span className={cx('rounded-full transition-shadow duration-100', p.speaking && 'shadow-[0_0_0_4px_rgb(var(--success))]')} style={{ lineHeight: 0 }}>
               <Avatar user={user ?? { id: p.identity, username: p.name, displayName: p.name, avatar: null }} size={sm ? 44 : 88} />
