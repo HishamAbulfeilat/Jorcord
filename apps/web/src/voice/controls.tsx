@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Camera, CameraOff, ChevronUp, Crown, Headphones, Mic, MicOff, MonitorUp, MonitorX, PhoneOff, Settings, Activity, VolumeX } from 'lucide-react';
+import { Camera, CameraOff, ChevronUp, Clapperboard, Crown, Headphones, Mic, MicOff, MonitorUp, MonitorX, PhoneOff, Settings, Activity, VolumeX } from 'lucide-react';
 import { STREAM_PRESETS, type StreamPresetId } from '@jorcord/voice';
 import { useVoiceClient, useVoiceSnapshot } from '@jorcord/voice/react';
 import { Perm } from '@jorcord/shared';
@@ -10,6 +10,7 @@ import { useVoiceUI } from '@/stores/voiceui';
 import { myChannelPerms } from '@/lib/session';
 import { cx } from '@/lib/format';
 import { isDmChannel, leaveVoice, setPrioritySpeaker, startScreenShare } from './controller';
+import { WatchTogetherPopover } from './WatchTogether';
 import { t } from '@/i18n';
 
 function RoundBtn({ label, active, danger, onClick, children, disabled, pressed, className }: { label: string; active?: boolean; danger?: boolean; onClick?: () => void; children: React.ReactNode; disabled?: boolean; pressed?: boolean; className?: string }) {
@@ -71,6 +72,7 @@ export function ControlBar({ onSettings, className }: { onSettings: () => void; 
   const selfMute = useVoiceUI((s) => s.selfMute); const selfDeaf = useVoiceUI((s) => s.selfDeaf); const toggleMute = useVoiceUI((s) => s.toggleMute); const toggleDeaf = useVoiceUI((s) => s.toggleDeaf);
   const showStats = useUI((s) => s.prefs.showVoiceStats); const setPref = useUI((s) => s.setPref);
   const [pop, setPopLocal] = useState(false);
+  const [activitiesOpen, setActivitiesOpen] = useState(false);
   const globalPop = useVoiceUI((s) => s.sharePop); const setGlobalPop = useVoiceUI((s) => s.setSharePop); const setBarMounted = useVoiceUI((s) => s.setBarMounted);
   useEffect(() => { setBarMounted(true); return () => setBarMounted(false); }, [setBarMounted]);
   const setPop = (v: boolean | ((x: boolean) => boolean)) => { const n = typeof v === 'function' ? v(pop || globalPop) : v; setPopLocal(n); setGlobalPop(n); };
@@ -99,6 +101,12 @@ export function ControlBar({ onSettings, className }: { onSettings: () => void; 
       <RoundBtn label={selfDeaf ? 'Undeafen' : 'Deafen'} pressed={selfDeaf} className={selfDeaf ? '!bg-danger/20 !text-danger' : ''} onClick={toggleDeaf}>{selfDeaf ? <VolumeX size={22} /> : <Headphones size={22} />}</RoundBtn>
       {canPriority && (
         <RoundBtn label={priority ? 'Disable Priority Speaker' : 'Enable Priority Speaker'} active={priority} pressed={priority} onClick={() => setPrioritySpeaker(!priority)}><Crown size={22} /></RoundBtn>
+      )}
+      {channelId && snap.status === 'connected' && (
+        <div className="relative flex items-center" data-watch-together-toggle>
+          <RoundBtn label={t('Activities')} active={activitiesOpen} pressed={activitiesOpen} onClick={() => setActivitiesOpen((v) => !v)}><Clapperboard size={22} /></RoundBtn>
+          {activitiesOpen && <WatchTogetherPopover channelId={channelId} onClose={() => setActivitiesOpen(false)} />}
+        </div>
       )}
       <RoundBtn label={t('Voice Settings')} onClick={onSettings}><Settings size={22} /></RoundBtn>
       <RoundBtn label={showStats ? 'Hide Connection Stats' : 'Show Connection Stats'} pressed={showStats} active={showStats} onClick={() => setPref('showVoiceStats', !showStats)} ><Activity size={22} /></RoundBtn>

@@ -2,7 +2,7 @@
 import type {
   Activity, Attachment, AuditEntry, AutoModRule, Channel, Emoji, Guild, GuildFull, Invite, Member, Message, MessageEdit, Relationship, ReadState, Role, SelfUser, Sticker, User, VoiceToken, Id, Presence, OverwriteDTO,
   AllowedMentions, GuildIntegration,
-  Reminder, ModView, ModWarning, ModNote, BulkModerationFilter, BulkModerationResult, PruneResult, BoostSummary, LinkedRoleView, LinkedCriterion, RoleMetadataApp, DirectoryApp, DirectoryCategory, SoundboardSound, Connection, PublicConnection, GifFavorite, GuildTemplate, GuildWidgetSettings, GuildInsights, ChannelFollow, Onboarding, OnboardingResponse, GuildSafety, SafetyPreset, Application, ApplicationCommand, CommandPermissionOverwrite, CommandOptionChoice, CreatePoll, ForumTag, InteractionOptionValue, ModalSubmitRow, OAuthAuthorizePreview, OAuthAuthorizeResult, ScheduledEvent, StageInstance, Report, RecurrenceRule,
+  Reminder, ModView, ModWarning, ModNote, BulkModerationFilter, BulkModerationResult, PruneResult, BoostSummary, LinkedRoleView, LinkedCriterion, RoleMetadataApp, DirectoryApp, DirectoryCategory, SoundboardSound, Connection, PublicConnection, GifFavorite, GuildTemplate, GuildWidgetSettings, GuildInsights, ChannelFollow, Onboarding, OnboardingResponse, GuildSafety, SafetyPreset, Application, ApplicationCommand, CommandPermissionOverwrite, CommandOptionChoice, CreatePoll, ForumTag, InteractionOptionValue, ModalSubmitRow, OAuthAuthorizePreview, OAuthAuthorizeResult, ScheduledEvent, StageInstance, Report, RecurrenceRule, ChannelActivity, ChannelActivityKind,
 } from '@jorcord/shared';
 import { send } from './transport';
 
@@ -310,6 +310,14 @@ export const api = {
     uploadImage: (file: File) => { const f = new FormData(); f.append('file', file, file.name); return send<Attachment>({ method: 'POST', path: '/uploads', form: f }).then((a) => a.url); },
     /** Stage an avatar/banner from a URL (the GIF picker); the server re-hosts it and returns the stored URL. */
     uploadImageFromUrl: (kind: 'avatar' | 'banner', url: string) => send<{ url: string }>({ method: 'POST', path: `/users/@me/${kind}/from-url`, body: { url } }).then((r) => r.url),
+  },
+  /** Shared voice-channel sessions (Watch Together). Reads and writes are rejected by the server unless the caller can view the channel. */
+  activities: {
+    list: (channelId: Id) => send<{ activities: ChannelActivity[] }>({ method: 'GET', path: `/channels/${channelId}/activities` }),
+    start: (channelId: Id, b: { kind: ChannelActivityKind; state: unknown }) => send<ChannelActivity>({ method: 'POST', path: `/channels/${channelId}/activities`, body: b }),
+    /** The host publishes play/pause/seek; the server fans out ACTIVITY_UPDATE to channel viewers. */
+    update: (id: Id, state: unknown) => send<ChannelActivity>({ method: 'PATCH', path: `/activities/${id}/state`, body: { state } }),
+    end: (id: Id) => send({ method: 'DELETE', path: `/activities/${id}` }),
   },
   voice: {
     token: (channelId: Id) => send<VoiceToken>({ method: 'POST', path: '/voice/token', body: { channelId } }),

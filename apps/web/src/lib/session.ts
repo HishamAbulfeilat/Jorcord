@@ -20,6 +20,7 @@ import { onAutocompleteResult, onInteractionFailed, onInteractionModal, settleFo
 import { queryClient } from './queryClient';
 import { onVoiceEffect } from './soundboard';
 import { useSocial } from '@/stores/social';
+import { useChannelActivities } from '@/stores/channelActivities';
 import { setRateLimitNotifier } from './transport';
 import { toast } from '@/stores/ui';
 import { emitOverlayToast } from './overlay';
@@ -54,6 +55,9 @@ export function startSession(token: string) {
   unsubs.push(gw.on('LINKED_ROLES_UPDATE', (d) => queryClient.invalidateQueries({ queryKey: ['linked-roles', d.guildId] })));
   unsubs.push(gw.on('USER_NOTE_UPDATE', (d) => queryClient.setQueryData(['user', d.userId], (old: any) => (old ? { ...old, note: d.note } : old))));
   unsubs.push(gw.on('SOUNDBOARD_SOUNDS_UPDATE', (d) => queryClient.setQueryData(['sounds', d.guildId], d.sounds)));
+  unsubs.push(gw.on('ACTIVITY_START', (a) => useChannelActivities.getState().upsert(a)));
+  unsubs.push(gw.on('ACTIVITY_UPDATE', (a) => useChannelActivities.getState().upsert(a)));
+  unsubs.push(gw.on('ACTIVITY_END', (d) => useChannelActivities.getState().remove(d.id, d.channelId)));
   unsubs.push(gw.on('VOICE_CHANNEL_EFFECT_SEND', (d) => onVoiceEffect(d, meId())));
   unsubs.push(gw.on('GIF_FAVORITES_UPDATE', () => { void queryClient.invalidateQueries({ queryKey: ['gif-favs'] }); }));
   unsubs.push(gw.on('INTERACTION_FAILED', onInteractionFailed));
@@ -97,7 +101,7 @@ function refreshPoll(channelId: string, messageId: string) {
 export function endSession(reset = true) {
   unsubs.forEach((u) => u()); unsubs = [];
   getGateway().disconnect();
-  if (reset) { useData.getState().reset(); usePlatform.getState().reset(); useSocial.getState().reset(); }
+  if (reset) { useData.getState().reset(); usePlatform.getState().reset(); useSocial.getState().reset(); useChannelActivities.getState().reset(); }
 }
 
 function onMessageCreate(m: Message) {
