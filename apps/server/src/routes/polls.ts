@@ -60,16 +60,20 @@ export function pollRoutes(app: FastifyInstance, ctx: Ctx) {
     return messageDTO(ctx, m, req.userId);
   });
 
-  /** Voters of one answer (votes are public, like Discord's non-anonymous polls). Ascending by user id. */
+  /** Voters of one answer (votes are public, like Discord's non-anonymous polls). Ascending by user id. `?type=` filters by voter kind: `members` = humans, `bots` = bot accounts. */
   app.get('/channels/:id/polls/:mid/answers/:answerId', async (req) => {
     const p = parse(pm.extend({ answerId: z.coerce.number().int().min(1).max(10) }), req.params);
-    const q = parse(z.object({ after: idSchema.optional(), limit: z.coerce.number().optional() }), req.query);
+    const q = parse(z.object({ after: idSchema.optional(), limit: z.coerce.number().optional(), type: z.enum(['members', 'bots']).optional() }), req.query);
     const a = await channelAccess(ctx, req.userId, p.id);
     need(a.perms, Perm.READ_MESSAGE_HISTORY);
     const [m] = await ctx.db.query('SELECT poll FROM messages WHERE id = $1 AND channel_id = $2 AND poll IS NOT NULL', [p.mid, p.id]);
     if (!m) throw notFound('Message');
     if (!(m.poll.answers as { id: number }[]).some((x) => x.id === p.answerId)) throw notFound('Message');
-    const rows = await ctx.db.query('SELECT user_id FROM poll_votes WHERE message_id = $1 AND answer_id = $2 AND ($3::text IS NULL OR user_id > $3) ORDER BY user_id LIMIT $4', [p.mid, p.answerId, q.after ?? null, limitParam(q.limit, 25)]);
+    const rows = await ctx.db.query(
+      `SELECT v.user_id FROM poll_votes v JOIN users u ON u.id = v.user_id
+       WHERE v.message_id = $1 AND v.answer_id = $2 AND ($3::text IS NULL OR v.user_id > $3) AND ($4::bool IS NULL OR u.bot = $4)
+       ORDER BY v.user_id LIMIT $5`,
+      [p.mid, p.answerId, q.after ?? null, q.type === undefined ? null : q.type === 'bots', limitParam(q.limit, 25)]);
     const users = await usersByIds(ctx, rows.map((r) => r.user_id));
     return { users: rows.map((r) => users.get(r.user_id)).filter(Boolean) };
   });
