@@ -18,6 +18,7 @@ export const Perm = {
   CREATE_PRIVATE_THREADS: 1n << 35n, SEND_IN_THREADS: 1n << 36n,
   USE_SOUNDBOARD: 1n << 37n, MANAGE_EVENTS: 1n << 38n, CREATE_EVENTS: 1n << 39n,
   MODERATE_MEMBERS: 1n << 40n, SEND_POLLS: 1n << 41n, USE_EXTERNAL_APPS: 1n << 42n,
+  RECORD_VOICE: 1n << 43n,
 } as const;
 export type PermName = keyof typeof Perm;
 export const ALL_PERMS = Object.values(Perm).reduce((a, b) => a | b, 0n);
@@ -30,6 +31,7 @@ export const DEFAULT_EVERYONE =
   Perm.SEND_VOICE_MESSAGES;
 /** Bits added after the first release; migration 005 ORs them into existing @everyone roles. */
 export const PERMS_ADDED_TO_EVERYONE_IN_005 = Perm.SEND_POLLS | Perm.USE_EXTERNAL_APPS;
+// RECORD_VOICE is deliberately absent from DEFAULT_EVERYONE: only administrators and holders of MANAGE_CHANNELS may record voice by default.
 
 /** Jorcord permission name -> the bit position Discord uses for the equivalent permission (public docs, topics/permissions). Informational only: never put Discord positions on the wire. */
 export const DISCORD_PERMISSION_BITS: Record<PermName, number> = {
@@ -39,6 +41,8 @@ export const DISCORD_PERMISSION_BITS: Record<PermName, number> = {
   MOVE_MEMBERS: 24, USE_VAD: 25, CHANGE_NICKNAME: 26, MANAGE_NICKNAMES: 27, MANAGE_ROLES: 28, MANAGE_WEBHOOKS: 29, MANAGE_EMOJIS: 30 /* MANAGE_GUILD_EXPRESSIONS */,
   USE_SLASH_COMMANDS: 31 /* USE_APPLICATION_COMMANDS */, REQUEST_TO_SPEAK: 32, MANAGE_THREADS: 34, CREATE_PUBLIC_THREADS: 35, CREATE_PRIVATE_THREADS: 36,
   SEND_IN_THREADS: 38 /* SEND_MESSAGES_IN_THREADS */, USE_SOUNDBOARD: 42, MANAGE_EVENTS: 33, CREATE_EVENTS: 44, MODERATE_MEMBERS: 40, SEND_POLLS: 49, USE_EXTERNAL_APPS: 50, SEND_VOICE_MESSAGES: 45,
+  // Discord has no voice-recording permission; the closest voice-management bit is used for documentation only.
+  RECORD_VOICE: 48,
 };
 
 export const has = (perms: bigint, p: bigint) => (perms & Perm.ADMINISTRATOR) !== 0n || (perms & p) === p;

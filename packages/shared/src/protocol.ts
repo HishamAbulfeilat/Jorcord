@@ -1,7 +1,7 @@
 /** Gateway protocol: JSON over WebSocket at /gateway. Opcode model mirrors Discord's. */
 import type { Application, ApplicationCommand, Interaction, Modal, ScheduledEvent, StageInstance, CommandOptionChoice } from './platform';
 import type { Activity, ChannelActivity, GifFavorite, SoundboardSound } from './parity';
-import type { Channel, Guild, Id, Invite, Member, Message, Presence, ReadState, Relationship, Reminder, Role, SelfUser, User, VoiceState, Emoji, Sticker } from './types';
+import type { Channel, Guild, Id, Invite, Member, Message, Presence, ReadState, Relationship, Reminder, Role, SelfUser, User, VoiceState, VoiceRecording, Emoji, Sticker } from './types';
 
 export const Op = { DISPATCH: 0, HEARTBEAT: 1, IDENTIFY: 2, PRESENCE_UPDATE: 3, VOICE_STATE_UPDATE: 4, RESUME: 6, RECONNECT: 7, REQUEST_MEMBERS: 8, TYPING: 9, HELLO: 10, HEARTBEAT_ACK: 11 } as const;
 
@@ -34,6 +34,8 @@ export interface Events {
   RELATIONSHIP_ADD: Relationship; RELATIONSHIP_REMOVE: { userId: Id };
   READ_STATE_UPDATE: ReadState;
   VOICE_STATE_UPDATE: VoiceState;
+  /** Voice-channel recording indicator: `recording` is the active session (who started it and when), or null once stopped. */
+  VOICE_RECORDING_UPDATE: { channelId: Id; recording: VoiceRecording | null };
   EMOJIS_UPDATE: { guildId: Id; emojis: Emoji[] };
   STICKERS_UPDATE: { guildId: Id; stickers: Sticker[] };
   THREAD_CREATE: Channel; THREAD_UPDATE: Channel;

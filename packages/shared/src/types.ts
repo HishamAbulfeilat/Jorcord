@@ -98,6 +98,8 @@ export interface Relationship { user: User; type: 'friend' | 'blocked' | 'incomi
 export interface Emoji { id: Id; guildId: Id; name: string; animated: boolean; url: string }
 export interface Sticker { id: Id; guildId: Id; name: string; url: string; format: 'png' | 'apng' | 'lottie' | 'gif' }
 export interface VoiceState { userId: Id; guildId: Id | null; channelId: Id | null; selfMute: boolean; selfDeaf: boolean; serverMute: boolean; serverDeaf: boolean; video: boolean; streaming: boolean; suppress: boolean; /** ISO time when the user asked to speak on a stage (null/absent = no request). */ requestToSpeakAt?: string | null; /** userId of the streamer this member is currently watching (null/absent = not watching). */ watching?: string | null; /** cap on how many members may watch this member's stream (null/absent = uncapped). */ streamViewerLimit?: number | null }
+/** An active voice-channel recording session. */
+export interface VoiceRecording { id: Id; channelId: Id; guildId: Id | null; startedBy: Id; startedAt: string }
 export interface AuditEntry { id: Id; guildId: Id; actorId: Id; action: string; /** numeric AuditActionType (additive) */ actionType?: number; targetId: Id | null; changes: unknown; reason: string | null; createdAt: string }
 export interface ReadState { channelId: Id; lastReadId: Id | null; mentionCount: number }
 export interface Webhook { id: Id; guildId: Id; channelId: Id; name: string; avatar: string | null; token?: string }

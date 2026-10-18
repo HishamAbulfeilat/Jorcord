@@ -1,11 +1,14 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { Perm } from '@jorcord/shared';
+import { Perm, has } from '@jorcord/shared';
 import type { Ctx } from '../ctx';
-import { badRequest, notFound } from '../errors';
+import { badRequest, forbidden, notFound } from '../errors';
 import { idSchema, parse } from '../lib/ids';
+import { claimAttachments } from '../services/files';
 import { audit, visibleChannelRows } from '../services/guilds';
+import { createMessage } from '../services/messages';
 import { channelAccess, guildAccess, guildPerms, loadGuildPerm, need, needOutrankMember } from '../services/perms';
+import { startVoiceRecording, stopVoiceRecording } from '../services/recordings';
 import { VOICE_TYPES, disconnectMember, moveMember, requestToSpeak, setServerVoiceFlags, setSuppressed } from '../services/voice';
 
 const memberParams = z.object({ id: idSchema, userId: idSchema });
@@ -158,5 +161,56 @@ export function voiceRoutes(app: FastifyInstance, ctx: Ctx) {
     const { id } = parse(stageParams, req.params);
     await priorityAccess(req.userId, id);
     return { channelId: id, prioritySpeaker: false };
+  });
+
+  // ---------- voice recording (with a visible, server-enforced indicator) ----------
+  /**
+   * RECORD_VOICE is intentionally not in DEFAULT_EVERYONE: by default only administrators (who hold every bit) and
+   * members with MANAGE_CHANNELS may record. An explicit role grant of RECORD_VOICE also works.
+   */
+  const canRecordVoice = (perms: bigint) => has(perms, Perm.RECORD_VOICE) || has(perms, Perm.MANAGE_CHANNELS);
+  const recordingAccess = async (userId: string, channelId: string) => {
+    const a = await channelAccess(ctx, userId, channelId);
+    if (!a.channel.guild_id || !VOICE_TYPES.includes(a.channel.type)) throw badRequest('Not a guild voice channel');
+    if (!canRecordVoice(a.perms)) throw forbidden('Missing permissions');
+    return a;
+  };
+  const requireInChannel = async (userId: string, channelId: string) => {
+    const st = await ctx.voice.get(userId);
+    if (!st?.channelId || st.channelId !== channelId) throw badRequest('Join the voice channel first');
+  };
+
+  app.post('/channels/:id/voice/recording/start', async (req) => {
+    const { id } = parse(stageParams, req.params);
+    const a = await recordingAccess(req.userId, id);
+    await requireInChannel(req.userId, id);
+    const recording = await startVoiceRecording(ctx, id, a.channel.guild_id ?? null, req.userId);
+    await audit(ctx, a.channel.guild_id, req.userId, 'VOICE_RECORDING_START', id, { recordingId: recording.id });
+    return { channelId: id, recording };
+  });
+
+  /**
+   * Stop the recording, clearing the indicator for everyone in the channel. Uploaded takes (`POST /uploads`) may be
+   * passed as `attachments`; the server then claims them and posts them as a message in the channel's text chat.
+   */
+  app.post('/channels/:id/voice/recording/stop', async (req) => {
+    const { id } = parse(stageParams, req.params);
+    const a = await recordingAccess(req.userId, id);
+    await requireInChannel(req.userId, id);
+    const { attachments: uploaded } = parse(z.object({ attachments: z.array(idSchema).max(10).optional() }).strict(), req.body);
+    const recording = await stopVoiceRecording(ctx, id, req.userId);
+    await audit(ctx, a.channel.guild_id, req.userId, 'VOICE_RECORDING_STOP', id, { recordingId: recording.id });
+    if (!uploaded?.length) return { channelId: id, recording: null };
+    need(a.perms, Perm.SEND_MESSAGES, Perm.ATTACH_FILES);
+    const attachments = await claimAttachments(ctx, req.userId, uploaded);
+    try {
+      if (attachments.some((at) => at.contentType.startsWith('audio/'))) need(a.perms, Perm.SEND_VOICE_MESSAGES);
+      const message = await createMessage(ctx, { channel: a.channel, authorId: req.userId, content: '', attachments, senderPerms: a.perms, memberRoleIds: a.gp?.memberRoleIds });
+      return { channelId: id, recording: null, message };
+    } catch (e) {
+      // release the claim exactly like POST /channels/:id/messages, so the upload stays sendable
+      await ctx.db.query('UPDATE files SET attached = false WHERE id = ANY($1::text[])', [attachments.map((x) => x.id)]);
+      throw e;
+    }
   });
 }
