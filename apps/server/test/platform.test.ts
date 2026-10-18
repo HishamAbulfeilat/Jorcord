@@ -1,7 +1,7 @@
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { AuditActionType, DEFAULT_EVERYONE, DISCORD_PERMISSION_BITS, ErrorCode, Perm, type PermName } from '@jorcord/shared';
+import { AuditActionType, DEFAULT_EVERYONE, DISCORD_PERMISSION_BITS, ErrorCode, Perm, snowflake, type PermName } from '@jorcord/shared';
 import { Api, WsClient, startServer, type TestEnv } from './helpers';
 import { verifyInteractionSignature } from '../src/lib/interactionSig';
 import { runSweeps } from '../src/services/sweeper';
