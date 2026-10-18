@@ -16,7 +16,7 @@ export function AppEffects() {
   const guilds = useData((s) => s.guilds); const onboarded = useLayout((s) => s.onboarded);
   const mentions = useData((s) => Object.values(s.readStates).reduce((a, r) => a + r.mentionCount, 0));
 
-  useEffect(() => { if (!me) return; useLayout.getState().hydrateFromServer(me.settings); }, [me?.id]); // eslint-disable-line
+  useEffect(() => { if (!me) return; useLayout.getState().hydrateFromServer(me.settings); useUI.getState().hydrateFromServer(me.settings); }, [me?.id]); // eslint-disable-line
   useEffect(() => { if (!me) return; void useNotif.getState().load(); void syncPush().catch(() => {}); }, [me?.id]); // eslint-disable-line
   useEffect(() => { setBadgeCount(mentions); }, [mentions]);
   // desktop: report "Playing <game>" while a detectable game is running (no-op in the browser)

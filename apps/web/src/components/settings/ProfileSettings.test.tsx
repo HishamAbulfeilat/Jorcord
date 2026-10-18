@@ -112,4 +112,30 @@ describe('Profile settings controls', () => {
     fireEvent.click(screen.getByText('Set a custom status'));
     expect((useUI.getState().modal as any).kind).toBe('customStatus');
   });
+
+  it('uploads a banner image and saves the stored URL', async () => {
+    upload.mockResolvedValue('/api/v1/files/k/banner.png');
+    mount();
+    const inputs = document.querySelectorAll<HTMLInputElement>('input[type=file]');
+    fireEvent.change(inputs[1]!, { target: { files: [new File([new Uint8Array([137, 80, 78, 71])], 'banner.png', { type: 'image/png' })] } });
+    await waitFor(() => expect(upload).toHaveBeenCalled());
+    await save({ banner: '/api/v1/files/k/banner.png' });
+  });
+
+  it('removes the avatar through the picker and saves null', async () => {
+    useData.setState((s) => ({ me: { ...(s.me as any), avatar: '/api/v1/files/k/a.png' } }) as never);
+    mount();
+    fireEvent.click(screen.getByText('Remove'));
+    await save({ avatar: null });
+  });
+
+  it('wears a server tag chosen in the cosmetics picker and saves it with the profile', async () => {
+    useData.setState({
+      guilds: { g1: { guild: { id: 'g1', name: 'Tagged', tag: 'TAG', tagBadge: 'flame' }, channels: {}, roles: {}, members: {}, emojis: [], stickers: [], memberCount: 1 } },
+      guildOrder: ['g1'],
+    } as never);
+    mount();
+    fireEvent.click(screen.getByRole('radio', { name: 'Tagged tag TAG' }));
+    await save({ serverTagGuildId: 'g1' });
+  });
 });

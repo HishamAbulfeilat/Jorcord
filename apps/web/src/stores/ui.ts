@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import type { Id, Message, Modal } from '@jorcord/shared';
 import type { OverlayCorner } from '@/lib/overlay';
+import { api } from '@/lib/api';
+import { useData } from '@/stores/data';
 
 export type Theme = 'dark' | 'light' | 'amoled';
 export interface Prefs {
@@ -75,6 +77,8 @@ export type Popout = { kind: 'user'; userId: Id; guildId?: Id; rect: DOMRect } |
 
 interface UIState {
   prefs: Prefs; setPref<K extends keyof Prefs>(k: K, v: Prefs[K]): void;
+  /** Merge the account's saved preferences (PATCH /users/@me settings) after login, newest wins. */
+  hydrateFromServer(settings: Record<string, unknown> | undefined): void;
   leftDrawer: boolean; rightDrawer: boolean; setLeftDrawer(v: boolean): void; setRightDrawer(v: boolean): void;
   panel: RightPanel; setPanel(p: RightPanel): void; togglePanel(p: Exclude<RightPanel, null>): void;
   reportGuildId: Id | null; openReports(guildId: Id): void; closeReports(): void;
@@ -94,13 +98,48 @@ interface UIState {
 }
 
 const KEY = 'jorcord.prefs.v1';
+const UPDATED_KEY = 'jorcord.prefs.v1.updated';
 const loadPrefs = (): Prefs => { try { return { ...defaultPrefs, ...JSON.parse(localStorage.getItem(KEY) ?? '{}') }; } catch { return defaultPrefs; } };
 const savePrefs = (p: Prefs) => { try { localStorage.setItem(KEY, JSON.stringify(p)); } catch { /* private mode */ } };
+const loadUpdated = () => { try { return Number(localStorage.getItem(UPDATED_KEY)) || 0; } catch { return 0; } };
+const saveUpdated = (at: number) => { try { localStorage.setItem(UPDATED_KEY, String(at)); } catch { /* private mode */ } };
 let tid = 1;
+let persistTimer: ReturnType<typeof setTimeout> | undefined;
+
+/**
+ * Settings follow the account: every preference change is written to `users.settings.prefs`
+ * through the existing `PATCH /users/@me` endpoint (debounced like the rail layout), so the
+ * switches in Appearance / Accessibility / Notifications / Streamer Mode / Keybinds / Language
+ * are not lost when the account is opened on another device.
+ */
+function persistPrefs(prefs: Prefs, updatedAt: number) {
+  clearTimeout(persistTimer);
+  persistTimer = setTimeout(() => {
+    const me = useData.getState().me; if (!me) return;
+    const settings = { ...(me.settings ?? {}), prefs, prefsUpdatedAt: updatedAt };
+    try {
+      const patchMe = api?.users?.patchMe; if (!patchMe) return;
+      void Promise.resolve(patchMe({ settings }))
+        .then((u) => { const cur = useData.getState().me; if (cur) useData.getState().setMe({ ...cur, settings: u?.settings ?? settings }); })
+        .catch(() => { /* offline: localStorage still has it */ });
+    } catch { /* transport unavailable (e.g. demo/tests without a server) */ }
+  }, 300);
+}
 
 export const useUI = create<UIState>((set, get) => ({
   prefs: loadPrefs(),
-  setPref: (k, v) => set((s) => { const prefs = { ...s.prefs, [k]: v }; savePrefs(prefs); return { prefs }; }),
+  setPref: (k, v) => {
+    const prefs = { ...get().prefs, [k]: v }; const updatedAt = Date.now();
+    savePrefs(prefs); saveUpdated(updatedAt); set({ prefs });
+    persistPrefs(prefs, updatedAt);
+  },
+  hydrateFromServer(settings) {
+    const remote = (settings as any)?.prefs as Partial<Prefs> | undefined;
+    const updatedAt = Number((settings as any)?.prefsUpdatedAt) || 0;
+    if (!remote || typeof remote !== 'object' || updatedAt <= loadUpdated()) return;
+    const prefs = { ...defaultPrefs, ...remote };
+    savePrefs(prefs); saveUpdated(updatedAt); set({ prefs });
+  },
   leftDrawer: false, rightDrawer: false, setLeftDrawer: (leftDrawer) => set({ leftDrawer }), setRightDrawer: (rightDrawer) => set({ rightDrawer }),
   panel: 'members', setPanel: (panel) => set({ panel }), togglePanel: (p) => set((s) => ({ panel: s.panel === p ? null : p })),
   reportGuildId: null, openReports: (guildId: Id) => set({ panel: 'reports', reportGuildId: guildId }), closeReports: () => set({ panel: null as any, reportGuildId: null }),

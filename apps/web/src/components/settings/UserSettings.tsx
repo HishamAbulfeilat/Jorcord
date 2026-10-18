@@ -141,7 +141,11 @@ function Security() {
 function Appearance() {
   const prefs = useUI((s) => s.prefs); const set = useUI((s) => s.setPref); const me = useData((s) => s.me);
   const themes: { id: Theme; label: string; bg: string; fg: string }[] = [{ id: 'dark', label: T('Dark'), bg: '#313338', fg: '#2b2d31' }, { id: 'light', label: T('Light'), bg: '#ffffff', fg: '#f2f3f5' }, { id: 'amoled', label: T('AMOLED'), bg: '#000000', fg: '#080809' }];
-  const pick = (t: Theme) => { set('theme', t); api.users.patchMe({ theme: t }).catch(() => {}); };
+  const pick = (t: Theme) => {
+    set('theme', t);
+    // keep the account copy in sync too (SelfUser.theme is what a fresh device uses)
+    api.users.patchMe({ theme: t }).then((u) => { const cur = useData.getState().me; if (cur) useData.getState().setMe({ ...cur, theme: u?.theme ?? t }); }).catch(() => {});
+  };
   return (<>
     <H1>{t('Appearance')}</H1>
     <H3>{t('Theme')}</H3>
