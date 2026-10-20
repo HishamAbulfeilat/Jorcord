@@ -10,7 +10,7 @@ import { verifyTotp } from '../lib/totp';
 import { dropPushDevices } from '../services/pushDevices';
 import { idSchema, iso, parse } from '../lib/ids';
 import { limitOrThrow } from '../lib/ratelimit';
-import { consumeAuthToken, sendPasswordResetEmail, sendVerificationEmail } from '../services/authTokens';
+import { consumeAuthToken, isAuthTokenUsable, sendPasswordChangedEmail, sendPasswordResetEmail, sendVerificationEmail } from '../services/authTokens';
 import { selfUserDTO } from '../services/serializers';
 
 
@@ -73,16 +73,23 @@ export function publicAuthRoutes(app: FastifyInstance, ctx: Ctx) {
     if (row) void sendPasswordResetEmail(ctx, row).catch((e) => ctx.log.warn({ err: e }, 'reset email failed'));
     return reply.code(204).send();
   });
+  /** Lets the reset page reject a dead link before the user types a new password. Never reveals the account. */
+  app.post('/auth/password/reset/validate', async (req, reply) => {
+    limitOrThrow(ctx.rl, `reset-check:${req.ip}`, 30, 15 * 60_000, ctx.config.rateLimit);
+    const { token } = parse(z.object({ token: z.string().min(20).max(128) }).strict(), req.body);
+    return reply.send({ valid: await isAuthTokenUsable(ctx, token, 'reset_password') });
+  });
   app.post('/auth/password/reset', async (req, reply) => {
     limitOrThrow(ctx.rl, `reset:${req.ip}`, 20, 15 * 60_000, ctx.config.rateLimit);
     const b = parse(z.object({ token: z.string().min(20).max(128), newPassword: passwordSchema }).strict(), req.body);
     const userId = await consumeAuthToken(ctx, b.token, 'reset_password');
     if (!userId) throw new ApiError(400, 'INVALID_TOKEN', 'This link is invalid or has expired');
-    await ctx.db.query('UPDATE users SET password_hash = $2, verified = true WHERE id = $1 AND deleted_at IS NULL', [userId, await hashPassword(b.newPassword)]);
+    const [account] = await ctx.db.query('UPDATE users SET password_hash = $2, verified = true WHERE id = $1 AND deleted_at IS NULL RETURNING id, email', [userId, await hashPassword(b.newPassword)]);
     const revoked = await ctx.db.query('UPDATE sessions SET revoked = true WHERE user_id = $1 AND NOT revoked RETURNING id', [userId]); // a reset logs out every device
     await dropPushDevices(ctx, revoked.map((r) => r.id));
     revoked.forEach((r) => ctx.hub.disconnectAuthSession(r.id));
     await ctx.db.query(`DELETE FROM auth_tokens WHERE user_id = $1 AND kind = 'reset_password'`, [userId]);
+    if (account?.email) void sendPasswordChangedEmail(ctx, account).catch((e) => ctx.log.warn({ err: e }, 'password changed email failed'));
     return reply.code(204).send();
   });
 
@@ -171,12 +178,13 @@ export function authRoutes(app: FastifyInstance, ctx: Ctx) {
   app.post('/auth/password', async (req, reply) => {
     const b = parse(z.object({ currentPassword: z.string().max(128), newPassword: passwordSchema }).strict(), req.body);
     limitOrThrow(ctx.rl, `pwchange:${req.userId}`, 10, 15 * 60_000, ctx.config.rateLimit); // current-password guessing brake
-    const [u] = await ctx.db.query('SELECT password_hash FROM users WHERE id = $1', [req.userId]);
+    const [u] = await ctx.db.query('SELECT password_hash, email FROM users WHERE id = $1', [req.userId]);
     if (!(await verifyPassword(u.password_hash, b.currentPassword))) throw unauthorized('Invalid credentials', 'INVALID_CREDENTIALS');
     await ctx.db.query('UPDATE users SET password_hash = $2 WHERE id = $1', [req.userId, await hashPassword(b.newPassword)]);
     const others = await ctx.db.query('UPDATE sessions SET revoked = true WHERE user_id = $1 AND id <> $2 AND NOT revoked RETURNING id', [req.userId, req.authSessionId]);
     await dropPushDevices(ctx, others.map((r) => r.id));
     others.forEach((r) => ctx.hub.disconnectAuthSession(r.id));
+    if (u.email) void sendPasswordChangedEmail(ctx, { id: req.userId, email: u.email }).catch((e) => ctx.log.warn({ err: e }, 'password changed email failed'));
     return reply.code(204).send();
   });
 }

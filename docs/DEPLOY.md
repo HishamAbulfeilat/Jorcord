@@ -74,9 +74,11 @@ in the bucket (same two-character shard layout) and switch `STORAGE_DRIVER`.
 
 ### Email
 Email verification (sent at sign-up, resend via `POST /auth/verify-email/send`) and password reset
-(`POST /auth/password/forgot`) need working SMTP. In development the message, including the link, is logged to the
-console. **In production without `SMTP_URL` nothing is sent** (a warning is logged) - the tokens are credentials and
-are never logged outside development.
+(`POST /auth/password/forgot`) need working SMTP. Messages are sent as HTML with a plain-text alternative, and the reset
+page checks `POST /auth/password/reset/validate` before asking for a new password. A successful reset (or an in-app
+password change) also sends a "password was changed" security notice. In development the message, including the link, is
+logged to the console. **In production without `SMTP_URL` nothing is sent** (a warning is logged) - the tokens are
+credentials and are never logged outside development.
 
 ### Search
 On Postgres, migration `003_search.pg.sql` builds a GIN index and searches match **word prefixes** ("kube" finds

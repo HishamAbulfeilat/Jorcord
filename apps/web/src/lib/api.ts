@@ -58,6 +58,7 @@ export const api = {
     verifyEmail: (token: string) => send({ method: 'POST', path: '/auth/verify-email', body: { token }, auth: false }),
     sendVerifyEmail: () => send({ method: 'POST', path: '/auth/verify-email/send' }),
     forgotPassword: (email: string) => send({ method: 'POST', path: '/auth/password/forgot', body: { email }, auth: false }),
+    validateResetToken: (token: string) => send<{ valid: boolean }>({ method: 'POST', path: '/auth/password/reset/validate', body: { token }, auth: false }),
     resetPassword: (token: string, newPassword: string) => send({ method: 'POST', path: '/auth/password/reset', body: { token, newPassword }, auth: false }),
     password: (b: { currentPassword: string; newPassword: string }) => send({ method: 'POST', path: '/auth/password', body: b }),
   },

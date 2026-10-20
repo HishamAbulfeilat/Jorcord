@@ -1,6 +1,6 @@
 import type { Config } from '../config';
 
-export interface Mail { to: string; subject: string; text: string }
+export interface Mail { to: string; subject: string; text: string; html?: string }
 export interface Mailer {
   send(mail: Mail): Promise<void>;
   /** Recent messages kept in memory for development and tests only (never in production). */
@@ -15,7 +15,7 @@ export async function createMailer(cfg: Pick<Config, 'smtpUrl' | 'mailFrom' | 'i
   if (cfg.smtpUrl) {
     const nodemailer = (await import('nodemailer')).default;
     const transport = nodemailer.createTransport(cfg.smtpUrl);
-    return { outbox, async send(m) { await transport.sendMail({ from: cfg.mailFrom, to: m.to, subject: m.subject, text: m.text }); } };
+    return { outbox, async send(m) { await transport.sendMail({ from: cfg.mailFrom, to: m.to, subject: m.subject, text: m.text, ...(m.html ? { html: m.html } : {}) }); } };
   }
   return {
     outbox,

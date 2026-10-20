@@ -98,7 +98,11 @@ export function ForgotPasswordPage() {
   };
   return (
     <Shell title="Forgot your password?" sub="Enter your email and we will send a reset link." footer={<Link to="/login" className="text-[#00a8fc] underline">Back to login</Link>}>
-      {done ? <p role="status" className="text-[#dbdee1]">If an account exists for <b>{email}</b>, a reset link is on its way. Check your inbox.</p> : (
+      {done ? <div>
+        <p role="status" className="text-[#dbdee1]">If an account exists for <b>{email}</b>, a reset link is on its way. Check your inbox.</p>
+        <p className="mt-3 text-sm text-[#b5bac1]">The link expires in 1 hour. If it does not arrive within a few minutes, check your spam folder.</p>
+        <button type="button" onClick={() => { setDone(false); setEmail(''); }} className="mt-4 text-sm text-[#00a8fc] underline">Use a different email</button>
+      </div> : (
         <form onSubmit={submit}>
           <label className="mb-4 block"><span className={labelCls}>Email</span><input className={inputCls} type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoFocus /></label>
           {err && <p role="alert" className="mb-2 text-sm text-[#f23f43]">{err}</p>}
@@ -110,7 +114,16 @@ export function ForgotPasswordPage() {
 
 export function ResetPasswordPage() {
   const [sp] = useSearchParams(); const token = sp.get('token') ?? ''; const nav = useNavigate();
+  const [check, setCheck] = useState<'checking' | 'valid' | 'invalid'>(token ? 'checking' : 'invalid');
   const [pw, setPw] = useState(''); const [pw2, setPw2] = useState(''); const [err, setErr] = useState(''); const [busy, setBusy] = useState(false); const [done, setDone] = useState(false);
+  useEffect(() => {
+    if (!token) return;
+    let dead = false;
+    api.auth.validateResetToken(token)
+      .then((r) => { if (!dead) setCheck(r.valid ? 'valid' : 'invalid'); })
+      .catch(() => { if (!dead) setCheck('invalid'); });
+    return () => { dead = true; };
+  }, [token]);
   const submit = async (e: React.FormEvent) => {
     e.preventDefault(); if (pw !== pw2) { setErr('Passwords do not match.'); return; }
     setBusy(true); setErr('');
@@ -119,13 +132,22 @@ export function ResetPasswordPage() {
   };
   return (
     <Shell title="Reset password" sub="Choose a new password. All other sessions will be signed out." footer={<Link to="/login" className="text-[#00a8fc] underline">Back to login</Link>}>
-      {!token ? <p role="alert" className="text-[#f23f43]">This reset link is missing its token.</p> : done ? <p role="status" className="text-[#dbdee1]">Password updated. Redirecting to login…</p> : (
-        <form onSubmit={submit}>
-          <label className="mb-4 block"><span className={labelCls}>New password</span><input className={inputCls} type="password" autoComplete="new-password" minLength={8} value={pw} onChange={(e) => setPw(e.target.value)} required autoFocus /></label>
-          <label className="mb-4 block"><span className={labelCls}>Confirm password</span><input className={inputCls} type="password" autoComplete="new-password" minLength={8} value={pw2} onChange={(e) => setPw2(e.target.value)} required /></label>
-          {err && <p role="alert" className="mb-2 text-sm text-[#f23f43]">{err}</p>}
-          <button disabled={busy || pw.length < 8} className="flex h-11 w-full items-center justify-center rounded-[3px] bg-[#5865f2] font-medium text-white hover:bg-[#4752c4] disabled:opacity-60">{busy ? <Spinner /> : 'Change password'}</button>
-        </form>)}
+      {check === 'checking' ? <div className="flex justify-center py-6"><Spinner /></div>
+        : check === 'invalid' ? <div>
+          <p role="alert" className="text-[#f23f43]">{token ? 'This reset link is invalid, expired, or has already been used.' : 'This reset link is missing its token.'}</p>
+          <Link to="/forgot-password" className="mt-4 inline-block text-sm text-[#00a8fc] underline">Request a new link</Link>
+        </div>
+        : done ? <div>
+          <p role="status" className="text-[#dbdee1]">Password updated. Redirecting to login…</p>
+          <Link to="/login" className="mt-3 inline-block text-sm text-[#00a8fc] underline">Sign in now</Link>
+        </div> : (
+          <form onSubmit={submit}>
+            <label className="mb-4 block"><span className={labelCls}>New password</span><input className={inputCls} type="password" autoComplete="new-password" minLength={8} value={pw} onChange={(e) => setPw(e.target.value)} required autoFocus /></label>
+            <label className="mb-4 block"><span className={labelCls}>Confirm password</span><input className={inputCls} type="password" autoComplete="new-password" minLength={8} value={pw2} onChange={(e) => setPw2(e.target.value)} required /></label>
+            {err && <p role="alert" className="mb-2 text-sm text-[#f23f43]">{err}</p>}
+            {err && <p className="mb-2 text-sm"><Link to="/forgot-password" className="text-[#00a8fc] underline">Request a new link</Link></p>}
+            <button disabled={busy || pw.length < 8} className="flex h-11 w-full items-center justify-center rounded-[3px] bg-[#5865f2] font-medium text-white hover:bg-[#4752c4] disabled:opacity-60">{busy ? <Spinner /> : 'Change password'}</button>
+          </form>)}
     </Shell>
   );
 }
