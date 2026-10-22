@@ -380,6 +380,7 @@ function debugApi(c: VoiceClient) {
     /** noise suppression as applied to the published mic (e2e): the setting, the processor on the track, and any fallback. */
     noise: () => { const mic: any = room.localParticipant.getTrackPublication('microphone' as any)?.track; return { ...c.getSnapshot().noise, processor: mic?.getProcessor?.()?.name ?? null }; },
     setNoise: (m: Prefs['noiseEngine']) => { const st = useUI.getState(); st.setPref('noiseSuppression', m !== 'off'); st.setPref('noiseEngine', m); },
+    userVolume: (id: string) => c.getUserVolume(id), userMuted: (id: string) => c.isUserMuted(id),
     remotes: () => [...room.remoteParticipants.values()].map((p) => ({
       identity: p.identity,
       tracks: [...p.trackPublications.values()].map(pubInfo),

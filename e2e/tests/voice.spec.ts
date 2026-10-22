@@ -42,6 +42,36 @@ test('mute/deafen are mirrored to the other user', async () => {
   await expect(B.page.getByRole('list', { name: 'Voice participants' }).getByLabel('Muted')).toHaveCount(0);
 });
 
+test('per-user volume: right-click a participant, keyboard the 0-200% slider, mute locally; persisted and applied', async () => {
+  const bobId = (await dbg<any[]>(A.page, 'remotes'))[0].identity;
+  const prefs = () => A.page.evaluate(() => JSON.parse(localStorage.getItem('jorcord.prefs.v1') ?? '{}'));
+  await A.page.locator(`[data-tile="${bobId}:camera"]`).click({ button: 'right' });
+  const slider = A.page.getByRole('slider', { name: 'User Volume' });
+  await expect(slider).toBeFocused(); // keyboard users land on the slider first
+  await slider.press('End'); // 200 %
+  await expect.poll(async () => (await prefs()).userVolumes?.[bobId]).toBe(200);
+  await expect.poll(() => dbg<number>(A.page, 'userVolume', bobId)).toBe(2);
+  await slider.press('Home'); // 0 %
+  await expect.poll(async () => (await prefs()).userVolumes?.[bobId]).toBe(0);
+  await slider.press('ArrowDown'); // leaves the slider for the mute item
+  await expect(A.page.getByRole('menuitem', { name: /Mute \(just for me\)/ })).toBeFocused();
+  await A.page.waitForTimeout(450); // the menu ignores clicks for 400 ms after opening (finger lift after a long press)
+  await A.page.keyboard.press('Enter'); // Mute (just for me) ... closes the menu
+  await expect.poll(async () => (await prefs()).userMuted?.[bobId]).toBe(true);
+  expect(await dbg<boolean>(A.page, 'userMuted', bobId)).toBe(true);
+  await expect(A.page.getByRole('slider', { name: 'User Volume' })).toHaveCount(0);
+  // survives a reload (persisted per user) and is replayed onto the new client
+  await A.page.reload();
+  await voiceChannel(A.page).click();
+  await expect(A.page.getByTestId('voice-dock')).toContainText('Voice Connected', { timeout: 30_000 });
+  await expect.poll(() => dbg<boolean>(A.page, 'userMuted', bobId)).toBe(true);
+  // restore for the following tests
+  await A.page.locator(`[data-tile="${bobId}:camera"]`).click({ button: 'right' });
+  await A.page.waitForTimeout(450);
+  await A.page.getByRole('menuitem', { name: /Unmute \(just for me\)/ }).click();
+  await expect.poll(() => dbg<boolean>(A.page, 'userMuted', bobId)).toBe(false);
+});
+
 test('camera: remote video track subscribed and decoded', async () => {
   await A.page.getByTestId('voice-view').getByRole('button', { name: 'Turn On Camera' }).click();
   await expect.poll(async () => (await dbg<any[]>(B.page, 'remotes'))[0]?.cameraSubscribed, { timeout: 20_000 }).toBe(true);
@@ -98,9 +128,10 @@ test.describe('screen share quality picker', () => {
       await expect.poll(async () => (await dbg<any>(B.page, 'tileVideo', aId, 'screen'))?.videoWidth ?? 0, { timeout: 30_000 }).toBeGreaterThan(0);
       // stats overlay in the UI reports dimensions too
       await B.page.getByTestId('screen-tile').hover();
-      await B.page.getByRole('button', { name: 'Stream stats' }).click();
+      const statsBtn = B.page.getByRole('button', { name: 'Stream stats' });
+      if ((await statsBtn.getAttribute('aria-pressed')) !== 'true') await statsBtn.click(); // showVoiceStats defaults to on
       await expect(B.page.getByTestId('stream-stats')).toHaveAttribute('data-width', /[1-9]\d+/);
-      await B.page.getByRole('button', { name: 'Stream stats' }).click();
+      await statsBtn.click();
 
       await A.page.getByTestId('voice-view').getByRole('button', { name: 'Stop Streaming' }).click();
       await expect(B.page.getByTestId('screen-tile')).toHaveCount(0);
