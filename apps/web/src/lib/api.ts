@@ -6,6 +6,9 @@ import type {
 } from '@jorcord/shared';
 import { send } from './transport';
 
+/** A clip: its message plus clip metadata (`clipId` = `messageId` = message id). */
+export type ClipMessage = Message & { clipId: Id; messageId: Id; durationSeconds: number | null };
+
 export interface AuthResult { user: SelfUser; accessToken: string; refreshToken: string }
 export interface RemoteAuthCode { id: string; pollSecret: string; scanSecret: string; expiresAt: string }
 export type RemoteAuthPoll = { status: 'pending' | 'scanned'; expiresAt: string } | ({ status: 'approved' } & AuthResult);
@@ -331,6 +334,12 @@ export const api = {
     get: (code: string) => send<Invite>({ method: 'GET', path: `/invites/${code}`, auth: false }),
     join: (code: string) => send<{ guild?: GuildFull; guildId?: Id } & Partial<GuildFull>>({ method: 'POST', path: `/invites/${code}` }),
     delete: (code: string) => send({ method: 'DELETE', path: `/invites/${code}` }),
+  },
+  clips: {
+    list: (channelId: Id, before?: Id) => send<ClipMessage[]>({ method: 'GET', path: `/channels/${channelId}/clips`, query: { limit: 24, ...(before ? { before } : {}) } }),
+    /** Post an uploaded video as a clip (clips channels only; at most 30 s). */
+    post: (channelId: Id, b: { attachmentId: Id; durationSeconds: number; content?: string }) => send<ClipMessage>({ method: 'POST', path: `/channels/${channelId}/clips`, body: b }),
+    remove: (channelId: Id, clipId: Id) => send({ method: 'DELETE', path: `/channels/${channelId}/clips/${clipId}` }),
   },
   files: {
     upload: (file: File) => { const f = new FormData(); f.append('file', file, file.name); return send<Attachment>({ method: 'POST', path: '/uploads', form: f }); },

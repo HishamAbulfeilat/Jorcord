@@ -12,6 +12,7 @@ import { cx } from '@/lib/format';
 import { isDmChannel, leaveVoice, setPrioritySpeaker, startScreenShare } from './controller';
 import { WatchTogetherPopover } from './WatchTogether';
 import { RecordButton } from './Recording';
+import { ClipButton } from './ClipRecorder';
 import { t } from '@/i18n';
 
 function RoundBtn({ label, active, danger, onClick, children, disabled, pressed, className }: { label: string; active?: boolean; danger?: boolean; onClick?: () => void; children: React.ReactNode; disabled?: boolean; pressed?: boolean; className?: string }) {
@@ -99,6 +100,7 @@ export function ControlBar({ onSettings, className }: { onSettings: () => void; 
         </div>
       )}
       <RecordButton />
+      <ClipButton />
       <RoundBtn label={muted ? 'Unmute' : 'Mute'} pressed={muted} active={false} className={muted ? '!bg-danger/20 !text-danger' : ''} onClick={toggleMute} disabled={!canPublish && !muted}>{muted ? <MicOff size={22} /> : <Mic size={22} />}</RoundBtn>
       <RoundBtn label={selfDeaf ? 'Undeafen' : 'Deafen'} pressed={selfDeaf} className={selfDeaf ? '!bg-danger/20 !text-danger' : ''} onClick={toggleDeaf}>{selfDeaf ? <VolumeX size={22} /> : <Headphones size={22} />}</RoundBtn>
       {canPriority && (

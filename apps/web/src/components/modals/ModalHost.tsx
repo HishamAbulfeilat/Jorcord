@@ -34,6 +34,8 @@ const OnboardingModal = lazyNamed(() => import('./ExtraModals'), 'OnboardingModa
 const ShortcutsModal = lazyNamed(() => import('./ExtraModals'), 'ShortcutsModal');
 const StreamerStartModal = lazyNamed(() => import('./ExtraModals'), 'StreamerStartModal');
 const VoiceSettingsModal = lazyNamed(() => import('@/voice/VoiceSettings'), 'VoiceSettingsModal');
+const ClipPreviewModal = lazyNamed(() => import('@/voice/ClipModals'), 'ClipPreviewModal');
+const ClipsViewerModal = lazyNamed(() => import('@/voice/ClipModals'), 'ClipsViewerModal');
 const CreatePollModal = lazyNamed(() => import('./PlatformModals'), 'CreatePollModal');
 const EventEditorModal = lazyNamed(() => import('./PlatformModals'), 'EventEditorModal');
 const EventsModal = lazyNamed(() => import('./PlatformModals'), 'EventsModal');
@@ -268,6 +270,8 @@ function ModalBody({ m, close }: { m: ModalSpec; close: () => void }) {
     case 'customize': return <CustomizeModal guildId={m.guildId} close={close} />;
     case 'onboarding': return <OnboardingModal guildId={m.guildId} step={m.step} close={close} />;
     case 'streamerStart': return <StreamerStartModal close={close} />;
+    case 'clipPreview': return <ClipPreviewModal close={close} />;
+    case 'clipsViewer': return <ClipsViewerModal channelId={m.channelId} close={close} />;
     case 'voiceSettings': return <VoiceSettingsModal onClose={close} />;
     case 'reactors': return <Reactors spec={m} close={close} />;
     case 'leaveGuild': return <LeaveGuild guildId={m.guildId} close={close} />;

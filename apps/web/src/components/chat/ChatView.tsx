@@ -22,7 +22,7 @@ import { lazyNamed, Lazy } from '@/lib/lazy';
 const DmCallPanel = lazyNamed(() => import('@/voice/DmCall'), 'DmCallPanel');
 /** Load the call surface lazily; the header buttons only need it when a call starts. */
 const startDmCall = (channelId: string, video: boolean) => import('@/voice/DmCall').then((m) => m.startCall(channelId, video));
-import { Phone, Video, Settings as Cog, Lock, Archive } from 'lucide-react';
+import { Phone, Video, Film, Settings as Cog, Lock, Archive } from 'lucide-react';
 import { Perm } from '@jorcord/shared';
 import { can } from '@/lib/perms';
 import { myChannelPerms } from '@/lib/session';
@@ -54,6 +54,7 @@ export function ChannelHeader({ channel }: { channel: Channel }) {
       {isThread && channel.locked && <Lock size={16} className="shrink-0 text-muted" aria-label={t('Locked')} />}
       {channel.topic && !mobile && <><span className="mx-1 h-6 w-px bg-divider" aria-hidden /><div className="min-w-0 flex-1 truncate text-sm text-muted" title={channel.topic}><Markdown content={channel.topic} guildId={channel.guildId} inline /></div></>}
       <div className="ms-auto flex items-center gap-1 md:gap-2">
+        {channel.isClipsChannel && <HeaderButton label={t('Clips')} onClick={() => openModal({ kind: 'clipsViewer', channelId: channel.id })}><Film size={22} /></HeaderButton>}
         {isDm && <HeaderButton label={t('Start Voice Call')} onClick={() => void startDmCall(channel.id, false)}><Phone size={22} /></HeaderButton>}
         {isDm && <HeaderButton label={t('Start Video Call')} onClick={() => void startDmCall(channel.id, true)}><Video size={24} /></HeaderButton>}
         {isThread && (can(myChannelPerms(channel.id), Perm.MANAGE_THREADS) || channel.ownerId === me?.id) && <HeaderButton label={t('Thread Settings')} onClick={() => openModal({ kind: 'threadSettings', channelId: channel.id })}><Cog size={22} /></HeaderButton>}

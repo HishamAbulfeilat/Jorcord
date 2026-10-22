@@ -25,6 +25,8 @@ export interface Prefs {
   /** "Hide Muted Channels" per server. */ hideMutedChannels: Record<Id, boolean>;
   /** Local listening volume (percent, 0-200) and local mute per person, applied to their mic and screen-share audio. Defaults omitted. */
   userVolumes: Record<Id, number>; userMuted: Record<Id, boolean>;
+  /** Clip recorder: how much to keep (30/60/120 s) and whether to start the rolling buffer by itself when a stream starts (off: recording is opt-in). */
+  clipWindow: 30 | 60 | 120; clipAutoBuffer: boolean;
   soundboardMuted: boolean; soundboardMutedUsers: Record<Id, boolean>; soundboardVolume: number;
   /** Desktop game detection: report "Playing <game>" and the games the user has registered. */
   gameActivity: boolean; registeredGames: RegisteredGame[];
@@ -56,7 +58,7 @@ export const defaultPrefs: Prefs = {
   keybinds: defaultKeybinds,
   streamerMode: false, streamerAuto: true, streamerHidePersonal: true, streamerHideInvites: true, streamerNoSounds: true, streamerNoNotifications: true,
   mutedChannels: {}, mutedGuilds: {}, collapsedCategories: {},
-  hideMutedChannels: {}, userVolumes: {}, userMuted: {}, soundboardMuted: false, soundboardMutedUsers: {}, soundboardVolume: 100,
+  hideMutedChannels: {}, userVolumes: {}, userMuted: {}, clipWindow: 30, clipAutoBuffer: false, soundboardMuted: false, soundboardMutedUsers: {}, soundboardVolume: 100,
   gameActivity: true, registeredGames: [],
   overlayEnabled: false, overlayLocked: false, overlayCorner: 'top-right',
 };
@@ -68,7 +70,7 @@ export type ModalSpec =
   | { kind: 'invite'; guildId: Id; channelId?: Id } | { kind: 'profile'; userId: Id; guildId?: Id }
   | { kind: 'confirm'; title: string; body: string; confirmLabel?: string; danger?: boolean; onConfirm: () => void | Promise<void> }
   | { kind: 'image'; url: string; name?: string } | { kind: 'createThread'; channelId: Id; messageId: Id; suggested?: string }
-  | { kind: 'newDm'; addTo?: Id } | { kind: 'voiceSettings' } | { kind: 'createForumPost'; channelId: Id } | { kind: 'shortcuts' }
+  | { kind: 'newDm'; addTo?: Id } | { kind: 'voiceSettings' } | { kind: 'createForumPost'; channelId: Id } | { kind: 'shortcuts' } | { kind: 'clipPreview' } | { kind: 'clipsViewer'; channelId: Id }
   | { kind: 'channelSettings'; channelId: Id } | { kind: 'reactors'; channelId: Id; messageId: Id; emoji: string; emojiId: Id | null; burst?: boolean }
   | { kind: 'prompt'; title: string; label: string; initial?: string; onSubmit: (v: string) => void | Promise<void> }
   | { kind: 'leaveGuild'; guildId: Id }

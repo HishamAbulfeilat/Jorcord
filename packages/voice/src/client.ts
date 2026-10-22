@@ -767,6 +767,19 @@ export class VoiceClient {
   }
 
   /** Poll WebRTC stats for the stats overlay. Call every ~1s. */
+  /** My own camera or screen share as a new MediaStream of cloned tracks (screen audio included), for local clip recording. Null when that source is off. */
+  getLocalMediaStream(source: StreamSource): MediaStream | null {
+    const lp = this.room.localParticipant;
+    const video = lp.getTrackPublication(source === 'screen' ? Track.Source.ScreenShare : Track.Source.Camera)?.track?.mediaStreamTrack;
+    if (!video || video.readyState === 'ended') return null;
+    const tracks = [video.clone()];
+    if (source === 'screen') {
+      const audio = lp.getTrackPublication(Track.Source.ScreenShareAudio)?.track?.mediaStreamTrack;
+      if (audio && audio.readyState !== 'ended') tracks.push(audio.clone());
+    }
+    return new MediaStream(tracks);
+  }
+
   async getStats(identity: string, source: StreamSource): Promise<StreamStats | null> {
     const t: any = this.getVideoTrack(identity, source);
     if (!t) return null;
