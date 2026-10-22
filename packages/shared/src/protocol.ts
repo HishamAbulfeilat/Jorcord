@@ -5,12 +5,21 @@ import type { Channel, Guild, Id, Invite, Member, Message, Presence, ReadState, 
 
 export const Op = { DISPATCH: 0, HEARTBEAT: 1, IDENTIFY: 2, PRESENCE_UPDATE: 3, VOICE_STATE_UPDATE: 4, RESUME: 6, RECONNECT: 7, REQUEST_MEMBERS: 8, TYPING: 9, HELLO: 10, HEARTBEAT_ACK: 11 } as const;
 
+/** An incoming DM / group-DM call that is ringing for me. `expiresAt` is when the server stops ringing (30 s by default). */
+export interface CallRing {
+  callId: Id; channelId: Id; /** the caller */ userId: Id; name: string; channelType: 'dm' | 'group_dm'; groupName: string | null;
+  startedAt: string; expiresAt: string; /** DND: show the invitation but do not play the ring tone */ silent: boolean;
+}
+export type CallRingEndReason = 'answered' | 'declined' | 'timeout' | 'cancelled';
+
 export interface GatewayFrame<T = unknown> { op: number; t?: string; s?: number; d?: T }
 
 export interface ReadyPayload {
   sessionId: string; user: SelfUser; guilds: GuildFull[]; privateChannels: Channel[];
   relationships: Relationship[]; readStates: ReadState[]; presences: { userId: Id; presence: Presence; activities?: Activity[] }[];
   voiceStates: VoiceState[];
+  /** Calls ringing for me right now (so a fresh/reconnected session still rings). */
+  calls?: CallRing[];
   /** DM channel ids that are message requests for me (from non-friends, not yet accepted). */
   messageRequests?: Id[];
 }
@@ -40,6 +49,10 @@ export interface Events {
   RELATIONSHIP_ADD: Relationship; RELATIONSHIP_REMOVE: { userId: Id };
   READ_STATE_UPDATE: ReadState;
   VOICE_STATE_UPDATE: VoiceState;
+  /** To a DM / group-DM member: someone started a call. Ring until CALL_RING_END, the user answers (joins voice) or `expiresAt`. */
+  CALL_RING: CallRing;
+  /** To the same user (all sessions) and the caller: the ring is over. `answered` = joined on some device, `declined` = they declined, `timeout` = 30 s passed, `cancelled` = the caller hung up first. */
+  CALL_RING_END: { channelId: Id; callId: Id; reason: CallRingEndReason; by?: Id };
   /** Voice-channel recording indicator: `recording` is the active session (who started it and when), or null once stopped. */
   VOICE_RECORDING_UPDATE: { channelId: Id; recording: VoiceRecording | null };
   EMOJIS_UPDATE: { guildId: Id; emojis: Emoji[] };

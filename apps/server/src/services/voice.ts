@@ -2,6 +2,7 @@ import { Perm, has, type VoiceState, type VoiceStateUpdatePayload } from '@jorco
 import type { Ctx } from '../ctx';
 import { ApiError, badRequest, forbidden } from '../errors';
 import { channelAccess } from './perms';
+import { onVoiceJoined, onVoiceLeft, startRing } from './calls';
 
 export const VOICE_TYPES = ['voice', 'stage', 'dm', 'group_dm'];
 
@@ -28,6 +29,7 @@ export async function clearVoiceState(ctx: Ctx, userId: string) {
   await ctx.voice.delete(userId);
   await publishVoice(ctx, prev.channelId, leaveState(prev));
   if (prev.streaming) await clearWatchers(ctx, prev.channelId, userId);
+  await onVoiceLeft(ctx, userId, prev.channelId);
 }
 
 /**
@@ -78,6 +80,11 @@ export async function updateVoiceState(ctx: Ctx, userId: string, p: VoiceStateUp
   const prev = await ctx.voice.get(userId);
   const inChannel = prev?.channelId === p.channelId;
   let alone = false; // first person into a DM call => ring the others
+  if (!inChannel && a.channel.type === 'dm') {
+    const [blk] = await ctx.db.query(
+      `SELECT 1 AS x FROM relationships r JOIN dm_participants p ON p.channel_id = $1 WHERE r.type = 'blocked' AND ((r.user_id = $2 AND r.other_id = p.user_id) OR (r.other_id = $2 AND r.user_id = p.user_id)) LIMIT 1`, [a.channel.id, userId]);
+    if (blk) throw forbidden('You cannot call this user', 'BLOCKED');
+  }
   if (!inChannel) {
     const n = (await ctx.voice.inChannel(p.channelId)).length;
     alone = n === 0;
@@ -102,7 +109,9 @@ export async function updateVoiceState(ctx: Ctx, userId: string, p: VoiceStateUp
   if (prev?.channelId && prev.channelId !== p.channelId) await publishVoice(ctx, prev.channelId, leaveState(prev));
   await publishVoice(ctx, p.channelId, state);
   if (streamEnded) await clearWatchers(ctx, prev!.channelId!, userId);
-  if (alone && (a.channel.type === 'dm' || a.channel.type === 'group_dm')) ctx.push.notifyCall(a.channel, userId);
+  if (prev?.channelId && prev.channelId !== p.channelId) await onVoiceLeft(ctx, userId, prev.channelId);
+  if (!inChannel) await onVoiceJoined(ctx, userId, p.channelId); // answering on this device stops the ring on the others
+  if (alone && (a.channel.type === 'dm' || a.channel.type === 'group_dm')) await startRing(ctx, a.channel, userId);
 }
 
 /** Server-side mute/deafen: persisted on the member, applied to the live state and to LiveKit. */

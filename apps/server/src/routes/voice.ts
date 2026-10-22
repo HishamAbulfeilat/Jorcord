@@ -9,6 +9,7 @@ import { audit, visibleChannelRows } from '../services/guilds';
 import { createMessage } from '../services/messages';
 import { channelAccess, guildAccess, guildPerms, loadGuildPerm, need, needOutrankMember } from '../services/perms';
 import { startVoiceRecording, stopVoiceRecording } from '../services/recordings';
+import { declineRing } from '../services/calls';
 import { VOICE_TYPES, disconnectMember, moveMember, requestToSpeak, setServerVoiceFlags, setSuppressed } from '../services/voice';
 
 const memberParams = z.object({ id: idSchema, userId: idSchema });
@@ -24,6 +25,15 @@ export function voiceRoutes(app: FastifyInstance, ctx: Ctx) {
     if (targetId !== actorId) needOutrankMember(actor, target);
     return { actor, target };
   }
+
+  /** Decline an incoming DM / group-DM call: stops the ring on all my devices (and ends it for a 1:1 call). */
+  app.post('/channels/:id/call/decline', async (req, reply) => {
+    const { id } = parse(z.object({ id: idSchema }), req.params);
+    const a = await channelAccess(ctx, req.userId, id);
+    if (a.channel.type !== 'dm' && a.channel.type !== 'group_dm') throw badRequest('Only direct-message calls ring');
+    if (!(await declineRing(ctx, req.userId, id))) throw notFound('Call');
+    return reply.code(204).send();
+  });
 
   app.get('/guilds/:id/voice-states', async (req) => {
     const { id } = parse(z.object({ id: idSchema }), req.params);

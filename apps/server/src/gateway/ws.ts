@@ -12,6 +12,7 @@ import { buildGuildFull } from '../services/guilds';
 import { channelPermsLite, guildAccess } from '../services/perms';
 import { channelsDTO, membersDTO, publicActivities, selfUserDTO } from '../services/serializers';
 import { updateVoiceState, clearVoiceAfterGrace } from '../services/voice';
+import { activeRingsFor } from '../services/calls';
 import { relationshipDTOs } from '../routes/users';
 import type { GwSession } from './hub';
 import { shapeReady } from './intents';
@@ -39,7 +40,7 @@ async function buildReady(ctx: Ctx, userId: string, sessionId: string): Promise<
   const voiceStates = (await ctx.voice.all()).filter((v) => v.channelId && visible.has(v.channelId));
   return {
     sessionId, user: selfUserDTO(ctx, u), guilds, privateChannels, relationships: await relationshipDTOs(ctx, userId),
-    messageRequests: requestIds, readStates: rs.map((r) => ({ channelId: r.channel_id, lastReadId: r.last_read_id ?? null, mentionCount: r.mention_count })), presences, voiceStates,
+    messageRequests: requestIds, readStates: rs.map((r) => ({ channelId: r.channel_id, lastReadId: r.last_read_id ?? null, mentionCount: r.mention_count })), presences, voiceStates, calls: activeRingsFor(ctx, userId),
   };
 }
 
