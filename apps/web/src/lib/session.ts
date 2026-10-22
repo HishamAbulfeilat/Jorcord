@@ -55,6 +55,10 @@ export function startSession(token: string) {
     toast(`Reminder: ${(r.message.content || r.message.attachments[0]?.filename || 'a message').slice(0, 80)}`, 'info');
     window.dispatchEvent(new CustomEvent('jorcord:reminder', { detail: r }));
   }));
+  unsubs.push(gw.on('SCHEDULED_MESSAGE_UPDATE', (s) => {
+    void queryClient.invalidateQueries({ queryKey: ['inbox', 'scheduled'] });
+    if (s.status === 'failed') toast(`A scheduled message could not be sent: ${(s.error ?? 'unknown error').slice(0, 120)}`, 'error');
+  }));
   unsubs.push(gw.on('LINKED_ROLES_UPDATE', (d) => queryClient.invalidateQueries({ queryKey: ['linked-roles', d.guildId] })));
   unsubs.push(gw.on('USER_NOTE_UPDATE', (d) => queryClient.setQueryData(['user', d.userId], (old: any) => (old ? { ...old, note: d.note } : old))));
   unsubs.push(gw.on('SOUNDBOARD_SOUNDS_UPDATE', (d) => queryClient.setQueryData(['sounds', d.guildId], d.sounds)));

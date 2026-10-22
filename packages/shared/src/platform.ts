@@ -126,6 +126,16 @@ export interface MediaRef { url: string }
 export interface MediaGalleryItem { media: MediaRef; description?: string | null; spoiler?: boolean }
 export interface Modal { customId: string; title: string; components: Component[] }
 
+// ---------- scheduled messages ----------
+/** Limits for composing a message to be sent later. */
+export const SCHEDULED_MESSAGE_LIMITS = { minDelayMs: 10_000, maxDelayMs: 30 * 86_400_000, maxPending: 25 } as const;
+export type ScheduledMessageStatus = 'pending' | 'sending' | 'sent' | 'failed' | 'canceled';
+/** My own scheduled send (private). `error` explains a failed one (lost permission, slowmode, deleted reply target ...). */
+export interface ScheduledMessage {
+  id: Id; channelId: Id; guildId: Id | null; content: string; replyTo: Id | null; sendAt: string; status: ScheduledMessageStatus;
+  error: string | null; sentMessageId: Id | null; createdAt: string;
+}
+
 // ---------- polls ----------
 export interface PollAnswer { id: number; text: string; emoji?: string | null; count: number; meVoted: boolean }
 export interface Poll { question: string; answers: PollAnswer[]; allowMultiselect: boolean; layoutType: 1; expiry: string; isFinalized: boolean; totalVotes: number }

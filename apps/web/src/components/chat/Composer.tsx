@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { parseWarnCommand } from '@/lib/modtools';
-import { Mic, PlusCircle, Smile, SendHorizonal, X, Eye, EyeOff, Hash, Image as ImageIcon, Gift, Upload, BarChart3 } from 'lucide-react';
+import { Mic, PlusCircle, Smile, SendHorizonal, X, Eye, EyeOff, Hash, Image as ImageIcon, Gift, Upload, BarChart3, CalendarClock } from 'lucide-react';
 import { LIMITS, Perm, snowflake } from '@jorcord/shared';
 import type { AllowedMentions, ApplicationCommand, Channel } from '@jorcord/shared';
 import { api } from '@/lib/api';
@@ -310,6 +310,7 @@ export function Composer({ channel, stagedExternal }: { channel: Channel; staged
           {over && <span className={cx('self-center pe-2 text-xs font-semibold', text.length > LIMITS.maxMessageLength ? 'text-danger' : 'text-muted')}>{LIMITS.maxMessageLength - text.length}</span>}
           <button aria-label={t('Choose emoji or GIF')} disabled={!cs.canSend} onClick={(e) => openPopout({ kind: 'emoji', rect: e.currentTarget.getBoundingClientRect(), guildId: gid ?? undefined, stickers: !!gid, onPick: (p) => { if (p.sticker) void sendSticker(p.sticker); else if ((p as any).gif) send((p as any).gif); else if (p.char) insert(p.char); else if (p.id) { tokens.current.set(`:${p.name}:`, `<${p.animated ? 'a' : ''}:${p.name}:${p.id}>`); insert(`:${p.name}: `); } } })} className="flex h-11 w-11 shrink-0 items-center justify-center text-interactive hover:text-interactive-hover disabled:opacity-40"><Smile size={24} /></button>
           <button aria-label={t('Open GIF picker')} data-testid="composer-gif" disabled={!cs.canSend} onClick={(e) => openPopout({ kind: 'emoji', gifOnly: true, rect: e.currentTarget.getBoundingClientRect(), guildId: gid ?? undefined, onPick: (p) => { if ((p as any).gif) void send((p as any).gif); } })} className="flex h-11 w-9 shrink-0 items-center justify-center text-interactive hover:text-interactive-hover disabled:opacity-40"><span aria-hidden className="rounded border-2 border-current px-0.5 text-[10px] font-extrabold leading-[14px]">GIF</span></button>
+          {hasText && cs.canSend && !text.startsWith('/') && text.length <= LIMITS.maxMessageLength && <button aria-label={t('Schedule message')} title={t('Send later')} data-testid="composer-schedule" onClick={() => openModal({ kind: 'scheduleMessage', channelId: cid, content: finalize(text), replyTo: replyId ?? null, onDone: () => { setText(''); setDraft(cid, ''); tokens.current.clear(); setReply(cid, null); setSuggest(null); } })} className="flex h-11 w-9 shrink-0 items-center justify-center text-interactive hover:text-interactive-hover"><CalendarClock size={20} /></button>}
           {mobile && (hasText || canPostEmpty) && <button aria-label={t('Send message')} onClick={() => send()} className="m-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand text-white"><SendHorizonal size={18} /></button>}
           {!mobile && <span className="hidden"><Gift size={0} /></span>}
         </div>

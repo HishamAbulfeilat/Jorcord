@@ -26,6 +26,7 @@ import { pollRoutes } from './routes/polls';
 import { runSweeps } from './services/sweeper';
 import { channelRoutes, webhookPublicRoutes } from './routes/channels';
 import { clipRoutes } from './routes/clips';
+import { scheduledMessageRoutes } from './routes/scheduledMessages';
 import { guildRoutes } from './routes/guilds';
 import { invitePublicRoutes, memberRoutes } from './routes/members';
 import { messageRoutes } from './routes/messages';
@@ -156,6 +157,7 @@ export async function buildApp(opts: BuildOptions = {}): Promise<{ app: FastifyI
       priv.addHook('onResponse', godModeAuditHook(ctx));
       authRoutes(priv, ctx); passkeyRoutes(priv, ctx); appealRoutes(priv, ctx); exportRoutes(priv, ctx); remoteAuthRoutes(priv, ctx); userRoutes(priv, ctx); guildRoutes(priv, ctx); channelRoutes(priv, ctx);
       clipRoutes(priv, ctx);
+      scheduledMessageRoutes(priv, ctx);
       memberRoutes(priv, ctx); messageRoutes(priv, ctx); miscRoutes(priv, ctx); voiceRoutes(priv, ctx); pushRoutes(priv, ctx);
       applicationRoutes(priv, ctx); commandRoutes(priv, ctx); interactionRoutes(priv, ctx); pollRoutes(priv, ctx); eventRoutes(priv, ctx); socialRoutes(priv, ctx); soundboardRoutes(priv, ctx); activityRoutes(priv, ctx); safetyRoutes(priv, ctx); onboardingRoutes(priv, ctx); followRoutes(priv, ctx); guildExtrasRoutes(priv, ctx); favoriteRoutes(priv, ctx); connectionRoutes(priv, ctx); linkedRoleRoutes(priv, ctx); directoryRoutes(priv, ctx); integrationRoutes(priv, ctx); modToolRoutes(priv, ctx); adminRoutes(priv, ctx);
     });

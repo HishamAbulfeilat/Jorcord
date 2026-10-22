@@ -1,8 +1,8 @@
 /** Social-layer modals: Inbox (mentions), later saved items and reminders. */
 import { useMemo, useState } from 'react';
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlarmClock, AtSign, Bookmark, Hash, Trash2, Users, ShieldBan } from 'lucide-react';
-import type { Id, Message, Report, ReportReason, ReportStatus } from '@jorcord/shared';
+import { AlarmClock, AtSign, CalendarClock, Bookmark, Hash, Trash2, Users, ShieldBan } from 'lucide-react';
+import type { Id, Message, Report, ScheduledMessage, ReportReason, ReportStatus } from '@jorcord/shared';
 import { api } from '@/lib/api';
 import { useData } from '@/stores/data';
 import { useUI, toast, toastError } from '@/stores/ui';
@@ -15,7 +15,7 @@ import { Modal, Tabs, Spinner, Empty } from '@/components/ui/primitives';
 import { ResultCard } from '@/components/chat/Panels';
 import { t } from '@/i18n';
 
-type InboxTab = 'mentions' | 'saved' | 'reminders';
+type InboxTab = 'mentions' | 'saved' | 'reminders' | 'scheduled';
 
 function MentionsList({ close }: { close: () => void }) {
   const guilds = useData((s) => s.guilds);
@@ -88,13 +88,35 @@ function RemindersList({ close }: { close: () => void }) {
   );
 }
 
+function ScheduledList() {
+  const guilds = useData((s) => s.guilds); const dms = useData((s) => s.dms); const qc = useQueryClient();
+  const q = useQuery({ queryKey: ['inbox', 'scheduled'], queryFn: api.messages.scheduled });
+  const cancel = (id: string) => api.messages.cancelScheduled(id).then(() => qc.invalidateQueries({ queryKey: ['inbox', 'scheduled'] })).catch(toastError);
+  const where = (s: ScheduledMessage) => { const ch = s.guildId ? guilds[s.guildId]?.channels[s.channelId] : undefined; return s.guildId ? `#${ch?.name ?? 'channel'}` : dms[s.channelId]?.recipients?.map((u) => u.displayName || u.username).join(', ') || t('Direct message'); };
+  return (
+    <div>
+      {q.isLoading && <Spinner className="mx-auto my-6" />}
+      {!q.isLoading && !q.data?.length && <Empty icon={<CalendarClock size={40} />} title={t('Nothing scheduled')}>{t('Write a message, then use the clock button next to the emoji picker to send it later.')}</Empty>}
+      <ul aria-label={t('Scheduled messages')} className="flex flex-col gap-2">
+        {q.data?.map((s) => (
+          <li key={s.id} data-scheduled={s.id} data-status={s.status} className="group relative rounded-lg border border-divider bg-side p-3">
+            <div className="mb-1 flex items-center gap-1 text-xs font-semibold text-muted"><CalendarClock size={12} />{s.status === 'pending' || s.status === 'sending' ? t('Sends') : s.status === 'sent' ? t('Sent') : s.status === 'failed' ? t('Failed') : t('Canceled')} {when(s.sendAt)} · {where(s)}</div>
+            <div className="whitespace-pre-wrap break-words text-sm text-normal">{s.content}</div>
+            {s.error && <div className="mt-1 text-xs text-danger" role="alert">{s.error}</div>}
+            <button aria-label={s.status === 'pending' ? t('Cancel scheduled message') : t('Remove from list')} title={s.status === 'pending' ? t('Cancel scheduled message') : t('Remove from list')} disabled={s.status === 'sending'} onClick={() => void cancel(s.id)} className="absolute end-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-[rgb(var(--rail))] text-muted hover:text-danger disabled:opacity-40"><Trash2 size={14} /></button>
+          </li>))}
+      </ul>
+    </div>
+  );
+}
+
 export function InboxModal({ initialTab, close }: { initialTab?: InboxTab; close: () => void }) {
   const [tab, setTab] = useState<InboxTab>(initialTab ?? 'mentions');
   const due = useQuery({ queryKey: ['inbox', 'reminders'], queryFn: api.users.reminders }).data?.filter((r) => r.firedAt).length ?? 0;
   return (
     <Modal title={t('Inbox')} onClose={close} width={560}>
-      <div className="mb-3"><Tabs label={t('Inbox')} value={tab} onChange={setTab} tabs={[{ id: 'mentions', label: t('Mentions') }, { id: 'saved', label: t('Saved') }, { id: 'reminders', label: t('Reminders'), badge: due }]} /></div>
-      <div className="max-h-[60dvh] overflow-y-auto" data-testid="inbox">{tab === 'mentions' && <MentionsList close={close} />}{tab === 'saved' && <SavedList close={close} />}{tab === 'reminders' && <RemindersList close={close} />}</div>
+      <div className="mb-3"><Tabs label={t('Inbox')} value={tab} onChange={setTab} tabs={[{ id: 'mentions', label: t('Mentions') }, { id: 'saved', label: t('Saved') }, { id: 'reminders', label: t('Reminders'), badge: due }, { id: 'scheduled', label: t('Scheduled') }]} /></div>
+      <div className="max-h-[60dvh] overflow-y-auto" data-testid="inbox">{tab === 'mentions' && <MentionsList close={close} />}{tab === 'saved' && <SavedList close={close} />}{tab === 'reminders' && <RemindersList close={close} />}{tab === 'scheduled' && <ScheduledList />}</div>
     </Modal>
   );
 }

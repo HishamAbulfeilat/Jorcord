@@ -1,5 +1,5 @@
 /** Gateway protocol: JSON over WebSocket at /gateway. Opcode model mirrors Discord's. */
-import type { Application, ApplicationCommand, Interaction, Modal, ScheduledEvent, StageInstance, CommandOptionChoice } from './platform';
+import type { Application, ApplicationCommand, Interaction, Modal, ScheduledEvent, ScheduledMessage, StageInstance, CommandOptionChoice } from './platform';
 import type { Activity, ChannelActivity, GifFavorite, SoundboardSound } from './parity';
 import type { Channel, Guild, Id, Invite, Member, Message, Presence, ReadState, Relationship, Reminder, Role, SelfUser, User, VoiceState, VoiceRecording, Emoji, Sticker } from './types';
 
@@ -87,6 +87,8 @@ export interface Events {
   MESSAGE_REQUEST_UPDATE: { channelId: Id; request: boolean };
   /** To me: a reminder came due (the message is the one I asked to be reminded about). */
   REMINDER_DUE: Reminder;
+  /** To me: one of my scheduled messages was sent, failed or canceled (also from another session). */
+  SCHEDULED_MESSAGE_UPDATE: ScheduledMessage;
   /** To me: my saved-for-later list changed on another session. */
   SAVED_UPDATE: { channelId: Id; messageId: Id; saved: boolean };
   USER_NOTE_UPDATE: { userId: Id; note: string | null };

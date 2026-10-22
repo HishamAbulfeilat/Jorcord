@@ -2,7 +2,7 @@
 import type {
   Activity, Attachment, AuditEntry, AutoModRule, Channel, Emoji, Guild, GuildFull, Invite, Member, Message, MessageEdit, Relationship, ReadState, Role, SelfUser, Sticker, User, VoiceToken, VoiceRecording, Id, Presence, OverwriteDTO,
   AllowedMentions, GuildIntegration,
-  Reminder, ModView, ModWarning, ModNote, BulkModerationFilter, BulkModerationResult, PruneResult, BoostSummary, LinkedRoleView, LinkedCriterion, RoleMetadataApp, DirectoryApp, DirectoryCategory, SoundboardSound, Connection, PublicConnection, GifFavorite, GuildTemplate, GuildWidgetSettings, GuildInsights, ChannelFollow, Onboarding, OnboardingResponse, GuildSafety, SafetyPreset, Application, ApplicationCommand, CommandPermissionOverwrite, CommandOptionChoice, CreatePoll, ForumTag, InteractionOptionValue, ModalSubmitRow, OAuthAuthorizePreview, OAuthAuthorizeResult, ScheduledEvent, StageInstance, Report, RecurrenceRule, ChannelActivity, ChannelActivityKind,
+  Reminder, ScheduledMessage, ModView, ModWarning, ModNote, BulkModerationFilter, BulkModerationResult, PruneResult, BoostSummary, LinkedRoleView, LinkedCriterion, RoleMetadataApp, DirectoryApp, DirectoryCategory, SoundboardSound, Connection, PublicConnection, GifFavorite, GuildTemplate, GuildWidgetSettings, GuildInsights, ChannelFollow, Onboarding, OnboardingResponse, GuildSafety, SafetyPreset, Application, ApplicationCommand, CommandPermissionOverwrite, CommandOptionChoice, CreatePoll, ForumTag, InteractionOptionValue, ModalSubmitRow, OAuthAuthorizePreview, OAuthAuthorizeResult, ScheduledEvent, StageInstance, Report, RecurrenceRule, ChannelActivity, ChannelActivityKind,
 } from '@jorcord/shared';
 import { send } from './transport';
 
@@ -322,6 +322,10 @@ export const api = {
     unpin: (channelId: Id, id: Id) => send({ method: 'DELETE', path: `/channels/${channelId}/pins/${id}` }),
     createThread: (channelId: Id, id: Id, name: string, autoArchiveDuration?: number) => send<Channel>({ method: 'POST', path: `/channels/${channelId}/messages/${id}/threads`, body: { name, ...(autoArchiveDuration ? { autoArchiveDuration } : {}) } }),
     /** Replaces my votes with `answerIds` ([] clears them). Returns the poll message as I see it. */
+    /** Send later: only the author sees and manages these. */
+    schedule: (channelId: Id, b: { content: string; sendAt: string; replyTo?: Id | null }) => send<ScheduledMessage>({ method: 'POST', path: `/channels/${channelId}/scheduled-messages`, body: b }),
+    scheduled: () => send<ScheduledMessage[]>({ method: 'GET', path: '/users/@me/scheduled-messages' }).then((x) => arr<ScheduledMessage>(x)),
+    cancelScheduled: (id: Id) => send({ method: 'DELETE', path: `/users/@me/scheduled-messages/${id}` }),
     vote: (channelId: Id, id: Id, answerIds: number[]) => send<Message>({ method: 'PUT', path: `/channels/${channelId}/polls/${id}/votes`, body: { answerIds } }),
     removeVote: (channelId: Id, id: Id) => send<Message>({ method: 'DELETE', path: `/channels/${channelId}/polls/${id}/votes/@me` }),
     /** Voters of one answer, paginated: `after` is the last user id of the previous page. */

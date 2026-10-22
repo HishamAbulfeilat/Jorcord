@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { ScheduleModal } from './ScheduleModal';
 import { ExternalLinkModal, RiskyFileModal } from './LinkGuard';
 import { createPortal } from 'react-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -254,6 +255,7 @@ function ModalBody({ m, close }: { m: ModalSpec; close: () => void }) {
     case 'invite': return <InviteModal close={close} guildId={m.guildId} channelId={m.channelId} />;
     case 'profile': return <Modal onClose={close} width={380} padded={false}><ProfileCard userId={m.userId} guildId={m.guildId} /></Modal>;
     case 'confirm': return <Simple {...m} close={close} />;
+    case 'scheduleMessage': return <ScheduleModal channelId={m.channelId} content={m.content} replyTo={m.replyTo} onDone={m.onDone} close={close} />;
     case 'externalLink': return <ExternalLinkModal url={m.url} close={close} />;
     case 'riskyFile': return <RiskyFileModal url={m.url} filename={m.filename} download={m.download} close={close} />;
     case 'prompt': return <Prompt {...m} close={close} />;
