@@ -126,7 +126,7 @@ export const MessageItem = memo(function MessageItem({ m, grouped, highlighted, 
     return (
       <div className={cx(base, 'flex items-center gap-3 py-1.5')} {...trig} id={`msg-${m.id}`}>
         <span className="flex w-10 justify-end"><Icon size={18} className={m.type === 'join' ? 'text-success' : 'text-muted'} /></span>
-        <span className="text-[15px] text-muted"><button className="font-medium text-header hover:underline" onClick={openUser}>{info.name}</button> {m.type === 'boost' ? t(boostAnnouncement(m.content, guildName)) : SYSTEM[m.type]('').trim()} <span className="ms-1 whitespace-nowrap text-xs">{fmtStamp(ts)}</span></span>
+        <span className="text-[15px] text-muted"><button className="font-medium text-header hover:underline" onClick={openUser}>{info.name}</button> {m.type === 'boost' ? t(boostAnnouncement(m.content, guildName)) : m.type === 'call' && m.content === 'missed' ? (m.author.id === me?.id ? t('called, but no one picked up.') : t('called, but you missed it.')) : SYSTEM[m.type]('').trim()} <span className="ms-1 whitespace-nowrap text-xs">{fmtStamp(ts)}</span></span>
       </div>
     );
   }

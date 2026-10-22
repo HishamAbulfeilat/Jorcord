@@ -348,6 +348,8 @@ export const api = {
     end: (id: Id) => send({ method: 'DELETE', path: `/activities/${id}` }),
   },
   voice: {
+    /** Decline an incoming DM / group-DM call (stops the ring on all my devices). */
+    declineCall: (channelId: Id) => send({ method: 'POST', path: `/channels/${channelId}/call/decline` }),
     token: (channelId: Id) => send<VoiceToken>({ method: 'POST', path: '/voice/token', body: { channelId } }),
     /** Server mute/deafen another member (MUTE_MEMBERS / DEAFEN_MEMBERS). */
     moderate: (guildId: Id, userId: Id, b: { mute?: boolean; deaf?: boolean }) => send({ method: 'PATCH', path: `/guilds/${guildId}/voice-states/${userId}`, body: b }),

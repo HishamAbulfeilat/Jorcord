@@ -31,6 +31,7 @@ import { AppEffects } from '@/components/layout/AppEffects';
 import { FIXED_SERVER, getServerUrl, isNative, isStaticHost, needsServerSetup, onServerChange } from '@/lib/server';
 import { initNative, syncStatusBar } from '@/lib/native';
 import { setLocale, t } from '@/i18n';
+import { IncomingCalls } from '@/voice/IncomingCall';
 
 function useThemeEffects() {
   const prefs = useUI((s) => s.prefs); const me = useData((s) => s.me);
@@ -50,7 +51,7 @@ function Overlays() {
   return (<>
     <Lazy>{settings?.kind === 'user' && <UserSettings initialTab={settings.tab} />}
     {settings?.kind === 'guild' && <GuildSettings guildId={settings.guildId} initialTab={settings.tab} />}</Lazy>
-    <ModalHost /><PopoutHost /><ContextMenuHost /><Toasts />
+    <ModalHost /><PopoutHost /><ContextMenuHost /><IncomingCalls /><Toasts />
   </>);
 }
 

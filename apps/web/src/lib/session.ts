@@ -24,6 +24,7 @@ import { useChannelActivities } from '@/stores/channelActivities';
 import { setRateLimitNotifier } from './transport';
 import { toast } from '@/stores/ui';
 import { emitOverlayToast } from './overlay';
+import { useCalls, wireCallEvents } from '@/stores/calls';
 
 let unsubs: (() => void)[] = [];
 
@@ -37,6 +38,8 @@ export function startSession(token: string) {
   // a bot joining or leaving changes which commands the picker may offer
   for (const n of ['MEMBER_ADD', 'MEMBER_REMOVE'] as const) unsubs.push(gw.on(n, (d: any) => { const bot = d.user?.bot ?? useData.getState().users[d.userId]?.bot; if (bot) void queryClient.invalidateQueries({ queryKey: ['commands', d.guildId] }); }));
   unsubs.push(gw.on('GUILD_MEMBERS_CHUNK', (d) => useData.getState().putMembers(d.guildId, d.members)));
+  unsubs.push(gw.on('READY', (d) => useCalls.getState().setAll(d.calls ?? [])));
+  unsubs.push(gw.on('CALL_RING', wireCallEvents.ring), gw.on('CALL_RING_END', wireCallEvents.end));
   unsubs.push(gw.on('MESSAGE_CREATE', onMessageCreate));
   unsubs.push(gw.on('MESSAGE_UPDATE', (m) => { useMessages.getState().update(m); settleForMessage(m); }));
   unsubs.push(gw.on('MESSAGE_DELETE', (d) => useMessages.getState().remove(d.channelId, d.id)));
@@ -101,7 +104,7 @@ function refreshPoll(channelId: string, messageId: string) {
 export function endSession(reset = true) {
   unsubs.forEach((u) => u()); unsubs = [];
   getGateway().disconnect();
-  if (reset) { useData.getState().reset(); usePlatform.getState().reset(); useSocial.getState().reset(); useChannelActivities.getState().reset(); }
+  if (reset) { useData.getState().reset(); usePlatform.getState().reset(); useSocial.getState().reset(); useChannelActivities.getState().reset(); useCalls.getState().setAll([]); }
 }
 
 function onMessageCreate(m: Message) {
