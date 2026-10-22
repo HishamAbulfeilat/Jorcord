@@ -14,6 +14,7 @@ import { useStreamer, maskEmail } from '@/lib/streamer';
 import { profileGradient, isHex, headerBackground, isHexPair, type ThemePair } from '@/lib/profileTheme';
 import { api } from '@/lib/api';
 import { useData } from '@/stores/data';
+import { PasskeysPanel } from './PasskeysPanel';
 import { useUI, defaultKeybinds, toast, toastError, type Theme } from '@/stores/ui';
 import { SettingsLayout, H1, H3, SaveBar } from './SettingsLayout';
 import { Field, Row, Toggle, Spinner } from '@/components/ui/primitives';
@@ -128,6 +129,7 @@ function Security() {
       <div className="flex gap-2"><input className="field !w-40" placeholder="6-digit code" inputMode="numeric" value={code} onChange={(e) => setCode(e.target.value)} aria-label={t('Authentication code')} /><button className="btn btn-primary" disabled={code.length < 6} onClick={() => api.auth.mfaEnable(code).then((r) => { setRec(r.recoveryCodes ?? null); setSetup(null); setCode(''); toast('2FA enabled', 'success'); refresh(); }).catch(toastError)}>{t('Enable')}</button></div></div>
     ) : <button className="btn btn-primary btn-lg" onClick={() => api.auth.mfaSetup().then((r) => setSetup({ secret: r.secret, uri: r.uri ?? r.otpauthUrl, qr: r.qr })).catch(toastError)}>{t('Enable Authenticator App')}</button>}
     {rec && <div className="mt-3 rounded-lg bg-side p-4"><p className="mb-2 font-semibold text-header">{t('Recovery codes — save these now')}</p><pre className="font-mono text-sm">{rec.join('\n')}</pre></div>}
+    <PasskeysPanel />
     <H3>{t('Log in on another device')}</H3>
     <p className="mb-2 text-sm text-muted">{t('Open Jorcord on a computer or browser, then scan the QR code on its login page to sign it in without typing a password.')}</p>
     <button className="btn btn-secondary" onClick={() => setScanning(true)}>{t('Scan QR code')}</button>

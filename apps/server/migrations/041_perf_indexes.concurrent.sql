@@ -1,5 +1,7 @@
 -- Read-side indexes for hot list endpoints (channel messages, guild members, channel sidebar,
--- threads, reactions and the audit log). Safe to re-run: every statement is IF NOT EXISTS.
+-- threads, reactions and the audit log). Built CONCURRENTLY so a populated database takes no write lock
+-- (runner: src/db/migrate.ts, docs/OPERATIONS.md). Renamed from 041_perf_indexes.sql: a database that already applied
+-- the old name re-runs this file once as a no-op, because every statement is IF NOT EXISTS.
 
 -- messages: a user's recent messages page filters by author and needs global id order
 -- (messages_author_idx puts channel_id before id, so it cannot serve this order).

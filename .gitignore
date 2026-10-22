@@ -10,3 +10,19 @@ e2e/test-results-prod/
 
 # OpenCode state
 .omc/
+
+# Playwright / test output
+test-results/
+playwright-report/
+**/test-results/
+e2e/test-results-prod/
+
+# Keys and local secrets must never be committed
+*.pem
+*.key
+*.p12
+*.jks
+*.keystore
+.env.*
+!.env.*.example
+!.env.production

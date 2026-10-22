@@ -9,6 +9,7 @@ import { Spinner } from '@/components/ui/primitives';
 import { FIXED_SERVER, getServerUrl, isCapacitor, isNative } from '@/lib/server';
 import { setRemember } from '@/lib/authStorage';
 import { QrLogin } from '@/components/auth/QrLogin';
+import { startAuthentication, browserSupportsWebAuthn } from '@simplewebauthn/browser';
 import { t } from '@/i18n';
 
 export function Shell({ title, sub, children, footer }: { title: string; sub: string; children: React.ReactNode; footer: React.ReactNode }) {
@@ -36,12 +37,25 @@ export async function finishAuth(r: Awaited<ReturnType<typeof api.auth.login>>, 
 export function LoginPage() {
   const nav = useNavigate(); const [sp] = useSearchParams(); const next = sp.get('next') || '/channels/@me';
   const [email, setEmail] = useState(''); const [password, setPassword] = useState(''); const [totp, setTotp] = useState(''); const [mfa, setMfa] = useState(false); const [err, setErr] = useState(''); const [busy, setBusy] = useState(false); const [remember, setRem] = useState(true);
+  const [ticket, setTicket] = useState<string | null>(null); // set when the account also accepts a passkey as second factor
+  const passkeysOk = browserSupportsWebAuthn();
+  const passkeyFail = (ex: unknown) => { const x = ex as any; setErr(x?.name === 'NotAllowedError' || x?.name === 'AbortError' ? t('Passkey request was cancelled.') : x?.message || t('Passkey sign-in failed.')); setBusy(false); };
+  const passkeyLogin = async () => {
+    setBusy(true); setErr('');
+    try { const r = await api.auth.passkeyLoginVerify(await startAuthentication({ optionsJSON: await api.auth.passkeyLoginOptions() })); await finishAuth(r, remember); nav(next, { replace: true }); }
+    catch (ex) { passkeyFail(ex); }
+  };
+  const passkeyMfa = async () => {
+    if (!ticket) return; setBusy(true); setErr('');
+    try { const r = await api.auth.passkeyMfaVerify(ticket, await startAuthentication({ optionsJSON: await api.auth.passkeyMfaOptions(ticket) })); await finishAuth(r, remember); nav(next, { replace: true }); }
+    catch (ex) { passkeyFail(ex); }
+  };
   const submit = async (e: React.FormEvent) => {
     e.preventDefault(); setBusy(true); setErr('');
     try { const r = await api.auth.login({ email, password, totp: mfa ? totp : undefined }); await finishAuth(r, remember); nav(next, { replace: true }); }
     catch (ex) {
       const x = ex as ApiException;
-      if (x.code === 'MFA_REQUIRED' || (x.status === 401 && /mfa|totp|two/i.test(x.code + x.message))) { setMfa(true); setErr(totp ? 'Invalid authentication code.' : ''); }
+      if (x.code === 'MFA_REQUIRED' || (x.status === 401 && /mfa|totp|two/i.test(x.code + x.message))) { setMfa(true); setTicket(x.body?.mfaTicket ?? null); setErr(totp ? 'Invalid authentication code.' : ''); }
       else setErr(x.status === 0 ? x.message : x.message || 'Login or password is invalid.');
       setBusy(false);
     }
@@ -59,8 +73,10 @@ export function LoginPage() {
         {!mfa && <Link to="/forgot-password" className="mb-1 mt-2 inline-block text-sm text-[#00a8fc] underline">{t('Forgot your password?')}</Link>}
         {err && <p role="alert" className="mb-2 text-sm text-[#f23f43]">{err}</p>}
         <button disabled={busy || !email || !password || (mfa && totp.length < 6)} className="mt-4 flex h-11 w-full items-center justify-center rounded-[3px] bg-[#5865f2] font-medium text-white hover:bg-[#4752c4] disabled:opacity-60">{busy ? <Spinner className="text-white" /> : mfa ? t('Verify') : t('Log In')}</button>
-        {mfa && <button type="button" className="mt-3 text-sm text-[#00a8fc] underline" onClick={() => { setMfa(false); setTotp(''); }}>{t('Back')}</button>}
+        {mfa && ticket && passkeysOk && <button type="button" data-testid="passkey-mfa" disabled={busy} onClick={passkeyMfa} className="mt-3 flex h-11 w-full items-center justify-center rounded-[3px] bg-[#4e5058] font-medium text-white hover:bg-[#6d6f78] disabled:opacity-60">{t('Use a passkey instead')}</button>}
+        {mfa && <button type="button" className="mt-3 text-sm text-[#00a8fc] underline" onClick={() => { setMfa(false); setTotp(''); setTicket(null); }}>{t('Back')}</button>}
       </form>
+      {!mfa && passkeysOk && <button type="button" data-testid="passkey-login" disabled={busy} onClick={passkeyLogin} className="mt-3 flex h-11 w-full items-center justify-center rounded-[3px] bg-[#4e5058] font-medium text-white hover:bg-[#6d6f78] disabled:opacity-60">{t('Sign in with a passkey')}</button>}
       {!mfa && !isCapacitor() && <QrLogin onLogin={async (r) => { await finishAuth(r, remember); nav(next, { replace: true }); }} />}
     </Shell>
   );

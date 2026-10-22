@@ -4,7 +4,7 @@ import { startRegistration, browserSupportsWebAuthn } from '@simplewebauthn/brow
 import { KeyRound, Pencil, Trash2 } from 'lucide-react';
 import { api, type Passkey } from '@/lib/api';
 import { useData } from '@/stores/data';
-import { toast, toastError } from '@/stores/toast';
+import { toast, toastError } from '@/stores/ui';
 import { t } from '@/i18n';
 
 /** Settings > Security: list, add, rename and remove passkeys. Adding or removing needs the password (and the 2FA code when 2FA is on). */
