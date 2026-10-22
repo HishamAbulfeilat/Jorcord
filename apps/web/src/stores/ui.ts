@@ -12,7 +12,7 @@ export interface Prefs {
   desktopNotifications: boolean; notificationSounds: boolean; defaultNotify: 'all' | 'mentions' | 'none'; suppressEveryone: boolean;
   inputDevice: string; outputDevice: string; videoDevice: string; inputVolume: number; outputVolume: number;
   noiseSuppression: boolean; echoCancellation: boolean; autoGain: boolean; pushToTalk: boolean;
-  noiseEngine: 'browser' | 'rnnoise' | 'off'; voiceBitrate: number; musicMode: boolean; pttCode: string; vadMode: boolean; vadThreshold: number;
+  noiseEngine: 'browser' | 'rnnoise' | 'high' | 'off'; voiceBitrate: number; musicMode: boolean; pttCode: string; vadMode: boolean; vadThreshold: number;
   screenPreset: '720p30' | '1080p60' | '1440p60' | '4k60' | 'source'; cameraPreset: '720p30' | '1080p60' | '1440p60' | '4k60' | 'source'; screenHint: 'motion' | 'detail'; screenAudio: boolean; showVoiceStats: boolean;
   /** Camera capture: quality preset (auto steps 1080p -> 720p -> 480p) and requested frame rate. */
   videoQuality: CameraQuality; videoFps: CameraFrameRate;

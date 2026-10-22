@@ -9,11 +9,13 @@ export class ApiException extends Error {
   errorCode?: number;
   /** Field-level validation errors (`{ "answers.0.text": { _errors: [...] } }`). */
   errors?: FieldErrors;
+  /** The raw error body (extra fields such as `mfaTicket` / `methods` on MFA_REQUIRED). */
+  body?: Record<string, any>;
   /** 429 only: how long the server asked us to wait, in ms. */
   retryAfterMs?: number;
   constructor(status: number, body: Partial<ApiError>, retryAfter?: number) {
     super(status === 429 ? rateLimitMessage(retryAfter ?? retryAfterMs(body)) : body.message ?? `Request failed (${status})`);
-    this.status = status; this.code = body.code ?? 'UNKNOWN'; this.details = body.details; this.errorCode = body.errorCode; this.errors = body.errors;
+    this.status = status; this.code = body.code ?? 'UNKNOWN'; this.details = body.details; this.errorCode = body.errorCode; this.errors = body.errors; this.body = body as Record<string, any>;
     if (status === 429) this.retryAfterMs = retryAfter ?? retryAfterMs(body);
   }
   get rateLimited() { return this.status === 429; }

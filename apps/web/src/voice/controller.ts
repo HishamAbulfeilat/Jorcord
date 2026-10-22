@@ -12,12 +12,13 @@ import { playSound } from '@/lib/sound';
 import { callService } from '@/lib/native';
 import { CallRecorder, type RecordingRoom } from './callRecorder';
 import { t } from '@/i18n';
+import './noiseSetup';
 
 export function settingsFromPrefs(p: Prefs): Partial<VoiceSettings> {
   return {
     audio: {
       echoCancellation: p.echoCancellation, noiseSuppression: p.noiseSuppression, autoGainControl: p.autoGain,
-      noiseSuppressionMode: !p.noiseSuppression ? 'off' : p.noiseEngine === 'off' ? 'off' : p.noiseEngine,
+      noiseSuppressionMode: !p.noiseSuppression ? 'off' : p.noiseEngine,
       musicMode: p.musicMode, bitrateKbps: p.voiceBitrate, dtx: true, red: true,
       inputDeviceId: p.inputDevice !== 'default' ? p.inputDevice : undefined,
       outputDeviceId: p.outputDevice !== 'default' ? p.outputDevice : undefined,

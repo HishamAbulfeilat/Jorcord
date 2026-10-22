@@ -66,11 +66,11 @@ export default defineConfig({
         importScripts: ['push-sw.js'],
         navigateFallbackDenylist: [/^\/api/, /^\/gateway/, /^\/files/, new RegExp('^' + base.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(api|gateway|files)')],
         globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
-        // the 4.8 MB RNNoise/WASM chunk is only needed when someone enables noise suppression: cache it on first use instead of on install
-        globIgnores: ['**/noise_suppression-*.js'],
+        // the ~2 MB RNNoise/WASM worklet is only needed when someone enables noise suppression: cache it on first use instead of on install
+        globIgnores: ['**/NoiseSuppressorWorklet-*.js'],
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
         runtimeCaching: [
-          { urlPattern: ({ url }) => /\/assets\/noise_suppression-.*\.js$/.test(url.pathname), handler: 'CacheFirst', options: { cacheName: 'jorcord-noise', expiration: { maxEntries: 2 } } },
+          { urlPattern: ({ url }) => /\/assets\/NoiseSuppressorWorklet-.*\.js$/.test(url.pathname), handler: 'CacheFirst', options: { cacheName: 'jorcord-noise', expiration: { maxEntries: 2 } } },
           // avatars / attachments / emoji are content-addressed by id: serve from cache, bounded
           { urlPattern: ({ url, request }) => request.destination === 'image' && /^\/(api\/)?files\//.test(url.pathname), handler: 'StaleWhileRevalidate', options: { cacheName: 'jorcord-images', expiration: { maxEntries: 300, maxAgeSeconds: 30 * 24 * 3600 }, cacheableResponse: { statuses: [200] } } },
           { urlPattern: ({ url }) => url.origin === 'https://fonts.gstatic.com', handler: 'CacheFirst', options: { cacheName: 'jorcord-fonts', expiration: { maxEntries: 20 } } },

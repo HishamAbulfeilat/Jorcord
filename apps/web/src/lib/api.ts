@@ -23,6 +23,7 @@ export type InteractionInput =
   | { type: 4; channelId: Id; data: { id: Id; options: InteractionOptionValue[] } }
   | { type: 3; channelId: Id; messageId: Id; data: { customId: string; values?: string[] } }
   | { type: 5; channelId: Id; interactionId: Id; data: { customId: string; components: ModalSubmitRow[] } };
+export interface Passkey { id: Id; name: string; createdAt: string; lastUsedAt: string | null; deviceType: string | null; backedUp: boolean; transports: string[] }
 export interface PushDevice { id: Id; platform: 'web' | 'android' | 'ios' | 'desktop'; createdAt: string | null; lastUsedAt: string | null; current?: boolean }
 export type PushRegistration = { platform: 'web' | 'desktop'; subscription: { endpoint: string; expirationTime?: number | null; keys: { p256dh: string; auth: string } } } | { platform: 'android' | 'ios'; token: string };
 export interface GuildNotify { muted: boolean; mutedUntil: string | null; suppressEveryone: boolean; suppressRoles: boolean; level: 'all' | 'mentions' | 'none' | null }
@@ -45,6 +46,16 @@ export const api = {
     register: (b: { email: string; username: string; password: string; displayName?: string }) => send<AuthResult>({ method: 'POST', path: '/auth/register', body: b, auth: false }),
     login: (b: { email: string; password: string; totp?: string }) => send<AuthResult>({ method: 'POST', path: '/auth/login', body: b, auth: false }),
     logout: () => send({ method: 'POST', path: '/auth/logout' }),
+    /** WebAuthn passkeys. The *Options calls return the JSON for @simplewebauthn/browser. */
+    passkeys: () => send<Passkey[]>({ method: 'GET', path: '/auth/passkeys' }),
+    passkeyRegisterOptions: (b: { password: string; totp?: string }) => send<any>({ method: 'POST', path: '/auth/passkeys/register/options', body: b }),
+    passkeyRegisterVerify: (response: unknown, name?: string) => send<Passkey>({ method: 'POST', path: '/auth/passkeys/register/verify', body: { response, name } }),
+    passkeyRename: (id: string, name: string) => send<Passkey>({ method: 'PATCH', path: `/auth/passkeys/${id}`, body: { name } }),
+    passkeyDelete: (id: string, b: { password: string; totp?: string }) => send({ method: 'DELETE', path: `/auth/passkeys/${id}`, body: b }),
+    passkeyLoginOptions: () => send<any>({ method: 'POST', path: '/auth/passkey/login/options', body: {}, auth: false }),
+    passkeyLoginVerify: (response: unknown) => send<AuthResult>({ method: 'POST', path: '/auth/passkey/login/verify', body: { response }, auth: false }),
+    passkeyMfaOptions: (ticket: string) => send<any>({ method: 'POST', path: '/auth/passkey/mfa/options', body: { ticket }, auth: false }),
+    passkeyMfaVerify: (ticket: string, response: unknown) => send<AuthResult>({ method: 'POST', path: '/auth/passkey/mfa/verify', body: { ticket, response }, auth: false }),
     sessions: () => send<any[]>({ method: 'GET', path: '/auth/sessions' }).then((x) => arr<any>(x)),
     revokeSession: (id: string) => send({ method: 'POST', path: '/auth/sessions', body: { sessionId: id } }),
     /** QR-code login. Waiting device: create + poll. Signed-in device: scan, then confirm or decline. */

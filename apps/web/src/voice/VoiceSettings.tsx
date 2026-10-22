@@ -1,11 +1,20 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { CAMERA_FRAME_RATES, STREAM_PRESETS, cameraPlan, type CameraFrameRate, type CameraQuality } from '@jorcord/voice';
 import { LIMITS } from '@jorcord/shared';
 import { Toggle, Row, Modal } from '@/components/ui/primitives';
-import { useUI } from '@/stores/ui';
+import { useUI, type Prefs } from '@/stores/ui';
+import { noiseStatusText } from './noiseStatus';
+import { getVoiceClient } from './controller';
 import { cx } from '@/lib/format';
 import { SelfViewVideo } from './tiles';
 import { isCanvasFilterSupported } from './cameraEffects';
+
+function NoiseStatus({ mode, musicMode }: { mode: Prefs['noiseEngine']; musicMode: boolean }) {
+  const c = getVoiceClient();
+  const fallback = useSyncExternalStore(c.subscribe, () => c.getSnapshot().noise.fallback);
+  const st = noiseStatusText(mode, { musicMode, fallback });
+  return <p className={cx('mt-1 text-sm', st.tone === 'warn' ? 'text-warn' : 'text-muted')} role={st.tone === 'warn' ? 'status' : undefined} data-testid="noise-status">{st.text}</p>;
+}
 
 const H3 = ({ children }: { children: React.ReactNode }) => <h3 className="section-title mb-2 mt-5">{children}</h3>;
 const Field = ({ label, children }: { label: string; children: React.ReactNode }) => <label className="mb-4 block"><span className="label">{label}</span>{children}</label>;
@@ -125,9 +134,10 @@ export function VoiceSettingsForm({ compact }: { compact?: boolean }) {
 
       <H3>Audio processing</H3>
       <Field label="Noise suppression">
-        <select className="field" aria-label="Noise suppression" value={!p.noiseSuppression ? 'off' : p.noiseEngine} onChange={(e) => { const v = e.target.value as 'browser' | 'rnnoise' | 'off'; set('noiseSuppression', v !== 'off'); set('noiseEngine', v === 'off' ? p.noiseEngine : v); }}>
-          <option value="off">None</option><option value="browser">Standard (browser)</option><option value="rnnoise">High (RNNoise)</option>
+        <select className="field" aria-label="Noise suppression" value={!p.noiseSuppression ? 'off' : p.noiseEngine} onChange={(e) => { const v = e.target.value as Prefs['noiseEngine']; set('noiseSuppression', v !== 'off'); set('noiseEngine', v); }}>
+          <option value="off">Off</option><option value="browser">Browser built-in</option><option value="rnnoise">Standard (RNNoise)</option><option value="high">High (RNNoise + browser)</option>
         </select>
+        <NoiseStatus mode={!p.noiseSuppression ? 'off' : p.noiseEngine} musicMode={p.musicMode} />
       </Field>
       <Row title="Echo Cancellation"><Toggle label="Echo cancellation" checked={p.echoCancellation} onChange={(v) => set('echoCancellation', v)} /></Row>
       <Row title="Automatic Gain Control"><Toggle label="Automatic gain control" checked={p.autoGain} onChange={(v) => set('autoGain', v)} /></Row>
