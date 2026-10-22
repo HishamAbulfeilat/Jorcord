@@ -19,6 +19,10 @@ export interface Config {
   callRingMs: number;
   /** Grace period between asking to delete an account and its erasure (logging in again cancels it). */
   accountDeletionGraceMs: number;
+  /** Longest shared clip in seconds (CLIP_MAX_SECONDS, default LIMITS.maxClipSeconds = 120, at most LIMITS.maxClipSecondsCeiling). */
+  clipMaxSeconds: number;
+  /** Server-wide cap on viewers of one Go Live stream (STREAM_MAX_VIEWERS, default 99). A streamer can pick a lower limit per stream. */
+  streamMaxViewers: number;
   accessTtlSec: number; refreshTtlSec: number;
   /** `url` is what clients connect to (handed out in voice tokens); `apiUrl` is how this server reaches LiveKit's RoomService. */
   livekit: { url: string; apiUrl: string; apiKey: string; apiSecret: string };
@@ -53,6 +57,12 @@ export interface PushConfig {
 export const DEFAULT_CORS_ORIGINS = [
   'capacitor://localhost', 'https://localhost', 'http://localhost', 'tauri://localhost', 'http://tauri.localhost', 'https://tauri.localhost', 'http://localhost:5173',
 ];
+
+/** Integer from an env var, clamped to [min,max]; fallback when unset or not a number. */
+const clampInt = (v: string | undefined, fallback: number, min: number, max: number) => {
+  const n = Math.floor(Number(v));
+  return v === undefined || v.trim() === '' || !Number.isFinite(n) ? fallback : Math.min(max, Math.max(min, n));
+};
 
 const readMaybeFile = (inline: string | undefined, file: string | undefined): string | null => {
   if (inline?.trim()) return inline.trim();
@@ -101,7 +111,8 @@ export function loadConfig(overrides: Partial<Config> = {}, env: NodeJS.ProcessE
     rateLimit: env.RATE_LIMIT_ENABLED !== 'false',
     maxUploadBytes: Number(env.MAX_UPLOAD_BYTES || LIMITS.maxUploadBytes),
     heartbeatIntervalMs: Number(env.HEARTBEAT_INTERVAL_MS ?? 30_000),
-    resumeWindowMs: 5 * 60_000, voiceGraceMs: Number(env.VOICE_GRACE_MS ?? 20_000), callRingMs: Number(env.CALL_RING_MS ?? 30_000), accountDeletionGraceMs: Number(env.ACCOUNT_DELETION_GRACE_DAYS ?? 14) * 86_400_000, accessTtlSec: 15 * 60, refreshTtlSec: 30 * 24 * 3600,
+    resumeWindowMs: 5 * 60_000, voiceGraceMs: Number(env.VOICE_GRACE_MS ?? 20_000), callRingMs: Number(env.CALL_RING_MS ?? 30_000), accountDeletionGraceMs: Number(env.ACCOUNT_DELETION_GRACE_DAYS ?? 14) * 86_400_000,
+    clipMaxSeconds: clampInt(env.CLIP_MAX_SECONDS, LIMITS.maxClipSeconds, 5, LIMITS.maxClipSecondsCeiling), streamMaxViewers: clampInt(env.STREAM_MAX_VIEWERS, LIMITS.maxVoiceUsers, 1, 1000), accessTtlSec: 15 * 60, refreshTtlSec: 30 * 24 * 3600,
     livekit: {
       url: env.LIVEKIT_URL ?? 'ws://localhost:7880',
       apiUrl: env.LIVEKIT_API_URL ?? (env.LIVEKIT_URL && env.LIVEKIT_URL.trim().toLowerCase() !== 'auto' ? env.LIVEKIT_URL : 'ws://localhost:7880'),

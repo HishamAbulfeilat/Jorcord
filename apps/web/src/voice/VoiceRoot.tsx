@@ -4,6 +4,7 @@ import { api } from '@/lib/api';
 import { useUI } from '@/stores/ui';
 import { useData, findChannel } from '@/stores/data';
 import { LiveCaptionsRunner } from './Captions';
+import { MutedSpeakingHint } from './MutedHint';
 import { applyPrefs, currentVoiceChannel, getVoiceClient, leaveVoice } from './controller';
 
 /** Mounts the single VoiceClient for the signed-in session and keeps it in sync with prefs and the gateway. */
@@ -20,6 +21,7 @@ export function VoiceRoot({ children }: { children: ReactNode }) {
   return (
     <VoiceProvider client={client} fetchToken={(id) => api.voice.token(id)}>
       <LiveCaptionsRunner />
+      <MutedSpeakingHint />
       {children}
     </VoiceProvider>
   );

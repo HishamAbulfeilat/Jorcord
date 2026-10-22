@@ -2,11 +2,12 @@ import { cleanup, render, screen, act } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const m = vi.hoisted(() => ({ upload: vi.fn(), post: vi.fn(), list: vi.fn() }));
-vi.mock('@/lib/api', () => ({ api: { files: { upload: m.upload }, clips: { post: m.post, list: m.list, remove: vi.fn() } } }));
+const m = vi.hoisted(() => ({ upload: vi.fn(), post: vi.fn(), list: vi.fn(), limits: vi.fn() }));
+vi.mock('@/lib/api', () => ({ api: { files: { upload: m.upload }, clips: { post: m.post, list: m.list, remove: vi.fn(), limits: m.limits } } }));
 vi.mock('@/lib/session', () => ({ myChannelPerms: () => ~0n }));
 import { useClipUI } from '@/stores/clipui';
 import { useData } from '@/stores/data';
+import { setShareMaxSeconds, SHARE_MAX_SECONDS } from './clipBuffer';
 import { ClipPreviewModal, ClipsViewerModal, clipFileName, shareTargets } from './ClipModals';
 
 const clip = (durationSec: number) => ({ blob: new Blob(['x'.repeat(10)], { type: 'video/webm' }), durationSec, mimeType: 'video/webm', at: Date.UTC(2026, 0, 2, 3, 4, 5) });
@@ -15,6 +16,7 @@ beforeEach(() => {
   Object.values(m).forEach((f) => f.mockReset());
   (URL as any).createObjectURL = vi.fn(() => 'blob:x'); (URL as any).revokeObjectURL = vi.fn();
   useData.setState({ me: { id: 'me' }, guilds } as never);
+  m.limits.mockRejectedValue(new Error('offline')); setShareMaxSeconds(SHARE_MAX_SECONDS);
 });
 afterEach(cleanup);
 const wrap = (el: React.ReactElement) => <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>{el}</QueryClientProvider>;
@@ -32,12 +34,28 @@ describe('clip preview', () => {
     await vi.waitFor(() => expect(m.post).toHaveBeenCalledWith('c1', { attachmentId: 'att1', durationSeconds: 13, content: undefined }));
     expect((m.upload.mock.calls[0]![0] as File).type).toBe('video/webm'); expect(close).toHaveBeenCalled(); expect(useClipUI.getState().clip).toBeNull();
   });
-  it('blocks sharing above the 30 s API limit but still allows download', () => {
-    act(() => useClipUI.setState({ clip: clip(55) }));
+  it('shares 1 and 2 minute clips (the API cap is 120 s)', () => {
+    for (const d of [55, 119]) {
+      act(() => useClipUI.setState({ clip: clip(d) }));
+      const { unmount } = render(wrap(<ClipPreviewModal close={vi.fn()} />));
+      expect((screen.getByRole('button', { name: /Share to clips channel/ }) as HTMLButtonElement).disabled).toBe(false);
+      expect(screen.queryByTestId('clip-too-long')).toBeNull(); unmount();
+    }
+  });
+  it('blocks sharing above the API limit but still allows download', () => {
+    act(() => useClipUI.setState({ clip: clip(125) }));
     render(wrap(<ClipPreviewModal close={vi.fn()} />));
     expect((screen.getByRole('button', { name: /Share to clips channel/ }) as HTMLButtonElement).disabled).toBe(true);
-    expect(screen.getByTestId('clip-too-long').textContent).toMatch(/at most 30 seconds/);
+    expect(screen.getByTestId('clip-too-long').textContent).toMatch(/at most 120 seconds/);
     expect(screen.getByRole('link', { name: /Download/ }).getAttribute('download')).toMatch(/\.webm$/);
+  });
+  it('uses the cap the server reports', async () => {
+    m.limits.mockResolvedValue({ maxSeconds: 30, maxBytes: 1 });
+    const mod = await import('./clipLimits'); // fresh module state is not needed: the first successful read wins
+    act(() => useClipUI.setState({ clip: clip(55) }));
+    render(wrap(<ClipPreviewModal close={vi.fn()} />));
+    await act(async () => { await mod.loadClipLimits(); });
+    await vi.waitFor(() => expect(screen.getByTestId('clip-too-long').textContent).toMatch(/at most 30 seconds/));
   });
   it('explains when there is no clips channel', () => {
     useData.setState({ guilds: { g1: { ...guilds.g1, channels: { c2: guilds.g1.channels.c2 } } } } as never);

@@ -16,6 +16,7 @@ const LABELS: Record<string, string> = {
   AUTOMOD_TEST: 'AutoMod test hit', MEMBER_WARN: 'warned a member', BAN_APPEAL_CREATE: 'received a ban appeal', BAN_APPEAL_APPROVE: 'approved a ban appeal', BAN_APPEAL_DENY: 'denied a ban appeal', MEMBER_WARN_DELETE: 'removed a warning', MEMBER_BULK_BAN: 'bulk banned members', MEMBER_BULK_KICK: 'bulk kicked members', MOD_NOTE_UPDATE: 'edited a mod note',
   LINKED_ROLE_CREATE: 'created a linked role', LINKED_ROLE_UPDATE: 'updated a linked role', LINKED_ROLE_DELETE: 'removed a linked role', BOOST_UPDATE: 'updated boost settings',
   POLL_END: 'ended a poll', APPLICATION_UPDATE: 'updated an application', APPLICATION_TOKEN_RESET: 'reset a bot token', FORUM_TAG_UPDATE: 'updated forum tags',
+  STAGE_BLOCK_SPEAKER: 'blocked a member from speaking on a stage', STAGE_UNBLOCK_SPEAKER: 'allowed a member to speak on a stage again', STREAM_VIEWER_KICK: 'removed a viewer from a stream',
 };
 export const humanize = (a: string) => a.replace(/_/g, ' ').toLowerCase().replace(/^./, (c) => c.toUpperCase());
 export const actionLabel = (action: string) => LABELS[action] ?? humanize(action).toLowerCase();

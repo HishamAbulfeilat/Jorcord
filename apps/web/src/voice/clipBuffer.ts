@@ -6,10 +6,15 @@
  * restarted when their lifetime is over: the older one always holds a complete, playable recording of the most recent
  * `lifetime/2 .. lifetime` seconds. Saving flushes it (requestData) without disturbing the buffer.
  */
+import { LIMITS } from '@jorcord/shared';
 export const CLIP_WINDOWS = [30, 60, 120] as const;
 export type ClipWindow = (typeof CLIP_WINDOWS)[number];
-/** The clips API accepts at most this many seconds per shared clip (apps/server routes/clips.ts MAX_CLIP_SECONDS). */
-export const SHARE_MAX_SECONDS = 30;
+/** Default cap of the clips API (LIMITS.maxClipSeconds; the operator can change it with CLIP_MAX_SECONDS, see `setShareMaxSeconds`). */
+export const SHARE_MAX_SECONDS = LIMITS.maxClipSeconds;
+let shareMax: number = SHARE_MAX_SECONDS;
+/** The cap this server enforces on shared clips (from GET /clips/limits once loaded). */
+export const getShareMax = (): number => shareMax;
+export function setShareMaxSeconds(n: unknown): void { if (typeof n === 'number' && Number.isFinite(n) && n >= 5) shareMax = Math.floor(n); }
 /** Bitrate cap so two encoders on a 1080p screen share stay reasonable and a 2-minute buffer stays in memory (~15-30 MB each). */
 export const CLIP_VIDEO_BPS = 2_500_000;
 export const MIN_CLIP_SECONDS = 2;
@@ -33,8 +38,8 @@ export function clipRecordingSupported(g: any = globalThis): boolean {
 export function pickClipMime(isSupported: (m: string) => boolean, mimes = MIMES): string | null {
   return mimes.find((m) => { try { return isSupported(m); } catch { return false; } }) ?? null;
 }
-/** Seconds each recorder lives. The 30 s option stays under the 30 s server limit for shared clips. */
-export const lifetimeFor = (windowSec: number): number => (windowSec <= SHARE_MAX_SECONDS ? SHARE_MAX_SECONDS - 1 : windowSec);
+/** Seconds each recorder lives. A window equal to the server cap records 1 s less so the saved clip never exceeds it. */
+export const lifetimeFor = (windowSec: number, max: number = shareMax): number => (windowSec <= max ? Math.min(windowSec, max - 1) : windowSec);
 
 interface Slot { rec: RecorderLike; chunks: Blob[]; startedAt: number }
 export interface SavedClip { blob: Blob; durationSec: number; mimeType: string; at: number }
@@ -134,5 +139,5 @@ export class ClipBuffer {
 }
 
 /** Duration to claim when sharing: whole seconds, never above the API limit. */
-export const shareDurationSeconds = (durationSec: number): number => Math.min(SHARE_MAX_SECONDS, Math.max(1, Math.ceil(durationSec)));
-export const canShareClip = (durationSec: number): boolean => durationSec <= SHARE_MAX_SECONDS + 0.01;
+export const shareDurationSeconds = (durationSec: number, max: number = shareMax): number => Math.min(max, Math.max(1, Math.ceil(durationSec)));
+export const canShareClip = (durationSec: number, max: number = shareMax): boolean => durationSec <= max + 0.01;

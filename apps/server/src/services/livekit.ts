@@ -9,11 +9,20 @@ export interface LiveKitControl {
   /** Apply what the participant is currently allowed to do. Revoking a permission also stops their live tracks. */
   setPermissions(room: string, identity: string, p: { canSpeak: boolean; canStream: boolean; canSubscribe: boolean }): Promise<void>;
   remove(room: string, identity: string): Promise<void>;
+  /**
+   * Set participant attributes from the server (e.g. `jv.priority`). Jorcord's tokens do not carry canUpdateOwnMetadata, so only
+   * the server can write them: that is what makes priority speaker unspoofable for apps that read the attribute.
+   */
+  setAttributes(room: string, identity: string, attributes: Record<string, string>): Promise<void>;
+  /** Stop `viewer` receiving the screen-share tracks of `publisher` (a kicked Go Live viewer). */
+  unsubscribeScreen(room: string, viewer: string, publisher: string): Promise<void>;
 }
 
 export class NullLiveKitControl implements LiveKitControl {
   async setPermissions() { /* disabled */ }
   async remove() { /* disabled */ }
+  async setAttributes() { /* disabled */ }
+  async unsubscribeScreen() { /* disabled */ }
 }
 
 export class RoomServiceControl implements LiveKitControl {
@@ -38,6 +47,16 @@ export class RoomServiceControl implements LiveKitControl {
     }
   }
   async remove(room: string, identity: string) { await this.safe('removeParticipant', () => this.client.removeParticipant(room, identity)); }
+  async setAttributes(room: string, identity: string, attributes: Record<string, string>) {
+    await this.safe('setAttributes', () => this.client.updateParticipant(room, identity, { attributes }));
+  }
+  async unsubscribeScreen(room: string, viewer: string, publisher: string) {
+    await this.safe('unsubscribeScreen', async () => {
+      const info = await this.client.getParticipant(room, publisher);
+      const sids = info.tracks.filter((t) => t.source === TrackSource.SCREEN_SHARE || t.source === TrackSource.SCREEN_SHARE_AUDIO).map((t) => t.sid);
+      if (sids.length) await this.client.updateSubscriptions(room, viewer, sids, false);
+    });
+  }
 }
 
 export function createLiveKitControl(cfg: Config, log: { warn: (o: object, m: string) => void }): LiveKitControl {

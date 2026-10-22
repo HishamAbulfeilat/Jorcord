@@ -1,7 +1,7 @@
 /** Typed REST client written against docs/CONTRACT.md. All calls go through the swappable transport. */
 import type {
   Activity, Attachment, AuditEntry, AutoModRule, Channel, Emoji, Guild, GuildFull, Invite, Member, Message, MessageEdit, Relationship, ReadState, Role, SelfUser, Sticker, User, VoiceToken, VoiceRecording, Id, Presence, OverwriteDTO,
-  AllowedMentions, GuildIntegration, WelcomeScreen,
+  AllowedMentions, GuildIntegration, WelcomeScreen, VoiceState, StageQueueEntry, StageBlock, StreamInfo,
   Reminder, ScheduledMessage, ModView, ModWarning, ModNote, BulkModerationFilter, BulkModerationResult, PruneResult, BoostSummary, LinkedRoleView, LinkedCriterion, RoleMetadataApp, DirectoryApp, DirectoryCategory, SoundboardSound, Connection, PublicConnection, GifFavorite, GuildTemplate, GuildWidgetSettings, GuildInsights, ChannelFollow, Onboarding, OnboardingResponse, GuildSafety, SafetyPreset, Application, ApplicationCommand, CommandPermissionOverwrite, CommandOptionChoice, CreatePoll, ForumTag, InteractionOptionValue, ModalSubmitRow, OAuthAuthorizePreview, OAuthAuthorizeResult, ScheduledEvent, StageInstance, Report, RecurrenceRule, ChannelActivity, ChannelActivityKind,
 } from '@jorcord/shared';
 import { send } from './transport';
@@ -349,7 +349,9 @@ export const api = {
   },
   clips: {
     list: (channelId: Id, before?: Id) => send<ClipMessage[]>({ method: 'GET', path: `/channels/${channelId}/clips`, query: { limit: 24, ...(before ? { before } : {}) } }),
-    /** Post an uploaded video as a clip (clips channels only; at most 30 s). */
+    /** What the server accepts for a shared clip (the cap is CLIP_MAX_SECONDS, 120 s by default). */
+    limits: () => send<{ maxSeconds: number; maxBytes: number }>({ method: 'GET', path: '/clips/limits' }),
+    /** Post an uploaded video as a clip (clips channels only; at most `limits().maxSeconds`, 120 s by default). */
     post: (channelId: Id, b: { attachmentId: Id; durationSeconds: number; content?: string }) => send<ClipMessage>({ method: 'POST', path: `/channels/${channelId}/clips`, body: b }),
     remove: (channelId: Id, clipId: Id) => send({ method: 'DELETE', path: `/channels/${channelId}/clips/${clipId}` }),
   },
@@ -376,12 +378,25 @@ export const api = {
     moderate: (guildId: Id, userId: Id, b: { mute?: boolean; deaf?: boolean }) => send({ method: 'PATCH', path: `/guilds/${guildId}/voice-states/${userId}`, body: b }),
     move: (guildId: Id, userId: Id, channelId: Id) => send({ method: 'POST', path: `/guilds/${guildId}/voice-states/${userId}/move`, body: { channelId } }),
     disconnect: (guildId: Id, userId: Id) => send({ method: 'DELETE', path: `/guilds/${guildId}/voice-states/${userId}` }),
-    /** Stage: ask (or stop asking) to speak. */
-    stageRequest: (channelId: Id, on: boolean) => send({ method: on ? 'PUT' : 'DELETE', path: `/channels/${channelId}/stage/request` }),
+    /** Stage: ask (or stop asking) to speak. `anonymous` hides who is asking from everybody but moderators. The answer carries my place in the queue. */
+    stageRequest: (channelId: Id, on: boolean, o: { anonymous?: boolean } = {}) => send<VoiceState & { handPosition: number | null; anonymous: boolean }>({ method: on ? 'PUT' : 'DELETE', path: `/channels/${channelId}/stage/request`, ...(on && o.anonymous ? { body: { anonymous: true } } : {}) }),
+    /** Stage: the raised-hand queue with identities (moderators, MUTE_MEMBERS). */
+    stageQueue: (channelId: Id) => send<StageQueueEntry[]>({ method: 'GET', path: `/channels/${channelId}/stage/queue` }),
+    /** Stage: members barred from speaking; block / unblock one (moderators). */
+    stageBlocked: (channelId: Id) => send<StageBlock[]>({ method: 'GET', path: `/channels/${channelId}/stage/blocked` }),
+    stageBlock: (channelId: Id, userId: Id, on: boolean, reason?: string) => send<StageBlock | void>({ method: on ? 'PUT' : 'DELETE', path: `/channels/${channelId}/stage/blocked/${userId}`, ...(on && reason ? { body: { reason } } : {}) }),
     /** Stage: invite a member to speak (on) or move them back to the audience (off). `@me` for self. */
     stageSpeaker: (channelId: Id, userId: Id | '@me', on: boolean) => send({ method: on ? 'PUT' : 'DELETE', path: `/channels/${channelId}/stage/speakers/${userId}` }),
-    /** Priority speaker: others are ducked while you talk (requires PRIORITY_SPEAKER). The client sets the LiveKit attribute after this succeeds. */
-    prioritySpeaker: (channelId: Id, on: boolean) => send<{ channelId: Id; prioritySpeaker: boolean }>({ method: on ? 'PUT' : 'DELETE', path: `/channels/${channelId}/voice/priority-speaker` }),
+    /** Priority speaker: others are ducked while you talk (requires PRIORITY_SPEAKER). The server stores it in your voice state and broadcasts it. */
+    prioritySpeaker: (channelId: Id, on: boolean) => send<{ channelId: Id; prioritySpeaker: boolean; voiceState: VoiceState | null }>({ method: on ? 'PUT' : 'DELETE', path: `/channels/${channelId}/voice/priority-speaker` }),
+    /** Go Live: streams in the channel and who watches them (`kicked` for your own stream / moderators). */
+    streams: (channelId: Id) => send<StreamInfo[]>({ method: 'GET', path: `/channels/${channelId}/voice/streams` }),
+    /** Go Live: cap the audience of my stream (null = server maximum). */
+    streamLimit: (channelId: Id, viewerLimit: number | null) => send<VoiceState>({ method: 'PUT', path: `/channels/${channelId}/voice/stream`, body: { viewerLimit } }),
+    /** Go Live: start / stop watching a stream (409 STREAM_FULL, 403 STREAM_VIEWER_KICKED). */
+    streamWatch: (channelId: Id, streamerId: Id, on: boolean) => send<VoiceState>({ method: on ? 'PUT' : 'DELETE', path: `/channels/${channelId}/voice/stream/${streamerId}/watch` }),
+    /** Go Live: remove a viewer from a stream until it ends / let them back in. */
+    streamKick: (channelId: Id, streamerId: Id, userId: Id, on: boolean) => send({ method: 'DELETE', path: `/channels/${channelId}/voice/stream/${streamerId}/${on ? 'viewers' : 'kicks'}/${userId}` }),
     /** Start the server-owned recording indicator for a voice channel (RECORD_VOICE or MANAGE_CHANNELS). */
     recordingStart: (channelId: Id) => send<{ channelId: Id; recording: VoiceRecording }>({ method: 'POST', path: `/channels/${channelId}/voice/recording/start` }),
     /** Stop the recording and, when a take was uploaded, post it in the channel's text chat. */

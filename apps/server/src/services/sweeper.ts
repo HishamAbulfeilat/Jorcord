@@ -1,7 +1,8 @@
 import type { Ctx } from '../ctx';
 import { finalizeDuePolls } from './polls';
 import { sweepEvents } from './scheduled';
-import { endEmptyStages } from './stage';
+import { endEmptyStages, sweepHandQueue } from './stage';
+import { sweepPrioritySpeakers } from './voice';
 import { channelsDTO } from './serializers';
 import { fireDueReminders } from './reminders';
 import { syncGuild } from './linkedroles';
@@ -58,6 +59,8 @@ export async function runSweeps(ctx: Ctx) {
   await step('polls', () => finalizeDuePolls(ctx));
   await step('events', () => sweepEvents(ctx));
   await step('stages', () => endEmptyStages(ctx));
+  await step('stage-hands', () => sweepHandQueue(ctx));
+  await step('priority-speakers', () => sweepPrioritySpeakers(ctx));
   await step('threads', () => archiveIdleThreads(ctx));
   await step('statuses', () => expireStatuses(ctx));
   await step('reminders', () => fireDueReminders(ctx));

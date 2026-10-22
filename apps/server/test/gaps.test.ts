@@ -575,10 +575,11 @@ describe('issues reported by the web/e2e work', () => {
     await wB.waitEvent('PRESENCE_UPDATE', (d) => d.userId === a.id && d.presence === 'online');
     wA.close(); wB.close();
   });
-  it('voice tokens allow updating own metadata (priority speaker / attributes)', async () => {
+  it('voice tokens do not let clients write their own attributes: priority speaker is set by the server', async () => {
     const { members: [bob], voice } = await guildWith('meta');
     const claims: any = decodeJwt((await api.req('POST', '/voice/token', bob!.token, { channelId: voice.id })).body.token);
-    expect(claims.video.canUpdateOwnMetadata).toBe(true);
+    expect(claims.video.canUpdateOwnMetadata).toBeFalsy(); // otherwise anyone could write `jv.priority` and duck the room
+    expect(claims.attributes).toEqual({ 'jv.priority': '0' });
   });
   it('keeps voice state through a brief gateway reconnect (grace period) and clears it afterwards', async () => {
     const g = await startServer({ voiceGraceMs: 500 }); const a = new Api(g);

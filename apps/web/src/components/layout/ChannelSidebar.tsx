@@ -1,6 +1,6 @@
 import { useMemo, useRef } from 'react';
 import { useRovingTabindex } from '@/lib/hooks';
-import { ListChecks, CalendarDays, ChevronDown, ChevronRight, Hash, Image as ImageIcon, Megaphone, MessagesSquare, Plus, Radio, UserPlus, Volume2, Settings, X, Lock, Volume1, Video, VolumeX, MicOff } from 'lucide-react';
+import { ListChecks, CalendarDays, ChevronDown, ChevronRight, Hash, Image as ImageIcon, Megaphone, MessagesSquare, Plus, Radio, UserPlus, Volume2, Settings, X, Lock, Volume1, Video, VolumeX, MicOff, Crown, Eye } from 'lucide-react';
 import { useVoiceSnapshot } from '@jorcord/voice/react';
 import { joinVoice } from '@/voice/controller';
 import { voiceUserMenu } from '@/voice/menu';
@@ -77,7 +77,9 @@ export function VoiceMembers({ channelId }: { channelId: string }) {
             <span className={cx('rounded-full', speaking && 'shadow-[0_0_0_2px_rgb(var(--success))]')} style={{ lineHeight: 0 }}><Avatar user={u} size={20} /></span>
             <span className="truncate">{displayName(u)}</span>
             <span className="ms-auto flex items-center gap-1 text-muted">
+              {v.prioritySpeaker && <Crown size={14} className="text-warn" data-testid="vs-priority" aria-label={t('Priority speaker')} />}
               {v.streaming && <span data-testid="vs-live" className="rounded bg-danger px-1 text-[10px] font-bold uppercase leading-4 text-white">{t('Live')}</span>}
+              {v.streaming && states.some((x) => x.watching === v.userId) && <span data-testid="vs-viewers" className="flex items-center gap-0.5 text-[11px]" title={t('Watching')}><Eye size={12} aria-hidden />{states.filter((x) => x.watching === v.userId).length}</span>}
               {v.video && <Video size={14} aria-label={t('Camera on')} />}
               {v.serverDeaf ? <VolumeX size={14} className="text-danger" data-testid="vs-server-deaf" aria-label={t('Server Deafened')} />
                 : v.selfDeaf ? <VolumeX size={14} data-testid="vs-self-deaf" aria-label={t('Deafened')} />

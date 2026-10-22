@@ -15,6 +15,10 @@ export class FakeLiveKit {
   removed: { room: string; identity: string }[] = [];
   async setPermissions(room: string, identity: string, p: { canSpeak: boolean; canStream: boolean; canSubscribe: boolean }) { this.perms.push({ room, identity, ...p }); }
   async remove(room: string, identity: string) { this.removed.push({ room, identity }); }
+  attributes: { room: string; identity: string; attributes: Record<string, string> }[] = [];
+  async setAttributes(room: string, identity: string, attributes: Record<string, string>) { this.attributes.push({ room, identity, attributes }); }
+  unsubscribed: { room: string; viewer: string; publisher: string }[] = [];
+  async unsubscribeScreen(room: string, viewer: string, publisher: string) { this.unsubscribed.push({ room, viewer, publisher }); }
 }
 
 /**

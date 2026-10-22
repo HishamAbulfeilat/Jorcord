@@ -165,6 +165,10 @@ export function VoiceSettingsForm({ compact }: { compact?: boolean }) {
       <Row title="Music Mode" desc="Stereo, no processing, higher bitrate."><Toggle label="Music mode" checked={p.musicMode} onChange={(v) => set('musicMode', v)} /></Row>
       <Field label={`Voice bitrate — ${p.voiceBitrate} kbps`}><input type="range" aria-label="Voice bitrate" min={8} max={LIMITS.audio.bitrateKbps} step={2} value={p.voiceBitrate} onChange={(e) => set('voiceBitrate', Number(e.target.value))} className="w-full accent-brand" /></Field>
 
+      <Row title={t('Warn me when I speak while muted')} desc={t('Shows “You are muted” when your microphone hears you talking while you are muted. The audio is only measured on this device and never leaves it. Turning this off stops listening to the muted microphone.')}>
+        <Toggle label={t('Warn me when I speak while muted')} checked={p.mutedSpeakingHint} onChange={(v) => set('mutedSpeakingHint', v)} />
+      </Row>
+
       <H3>{t('Live captions')}</H3>
       <CaptionSettings />
 

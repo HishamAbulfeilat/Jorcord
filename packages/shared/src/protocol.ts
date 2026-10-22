@@ -1,7 +1,7 @@
 /** Gateway protocol: JSON over WebSocket at /gateway. Opcode model mirrors Discord's. */
 import type { Application, ApplicationCommand, Interaction, Modal, ScheduledEvent, ScheduledMessage, StageInstance, CommandOptionChoice } from './platform';
 import type { Activity, ChannelActivity, GifFavorite, SoundboardSound } from './parity';
-import type { Channel, Guild, Id, Invite, Member, Message, Presence, ReadState, Relationship, Reminder, Role, SelfUser, User, VoiceState, VoiceRecording, Emoji, Sticker } from './types';
+import type { Channel, Guild, Id, Invite, Member, Message, Presence, ReadState, Relationship, Reminder, Role, SelfUser, User, VoiceState, VoiceRecording, StageQueueEntry, Emoji, Sticker } from './types';
 
 export const Op = { DISPATCH: 0, HEARTBEAT: 1, IDENTIFY: 2, PRESENCE_UPDATE: 3, VOICE_STATE_UPDATE: 4, RESUME: 6, RECONNECT: 7, REQUEST_MEMBERS: 8, TYPING: 9, HELLO: 10, HEARTBEAT_ACK: 11 } as const;
 
@@ -49,6 +49,12 @@ export interface Events {
   RELATIONSHIP_ADD: Relationship; RELATIONSHIP_REMOVE: { userId: Id };
   READ_STATE_UPDATE: ReadState;
   VOICE_STATE_UPDATE: VoiceState;
+  /** Stage: the raised-hand queue of a stage channel changed (first come, first served). Anonymous hands have `userId: null`; moderators fetch identities with GET /channels/:id/stage/queue. */
+  STAGE_QUEUE_UPDATE: { channelId: Id; queue: StageQueueEntry[] };
+  /** To the member whose hand it is (all their sessions): they are (no longer) in the stage queue. `position` is 1-based. */
+  STAGE_HAND_UPDATE: { channelId: Id; raised: boolean; anonymous: boolean; position: number | null };
+  /** Go Live: the streamer or a moderator removed a viewer from a stream (turning someone away because the stream is full does not send this). */
+  STREAM_VIEWER_KICKED: { channelId: Id; streamerId: Id; userId: Id; /** false = the viewer was let back in */ kicked: boolean };
   /** To a DM / group-DM member: someone started a call. Ring until CALL_RING_END, the user answers (joins voice) or `expiresAt`. */
   CALL_RING: CallRing;
   /** To the same user (all sessions) and the caller: the ring is over. `answered` = joined on some device, `declined` = they declined, `timeout` = 30 s passed, `cancelled` = the caller hung up first. */

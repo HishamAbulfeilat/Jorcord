@@ -10,6 +10,7 @@ import { useMenuTrigger } from '@/components/ui/ContextMenu';
 import { useVoiceUI } from '@/stores/voiceui';
 import { SelfViewPainter, effectsEnabled, isCanvasFilterSupported } from './cameraEffects';
 import { cx } from '@/lib/format';
+import { StreamAudience, useStreamGate } from './StreamAudience';
 
 export function useVoiceUser(identity: string) {
   return useData((s) => s.users[identity]);
@@ -98,7 +99,7 @@ export function ParticipantTile({ p, size = 'lg', focused, onClick, showStats }:
             </span>
           </div>}
       <NamePill p={p} extra={p.handRaised ? <Hand size={13} className="text-warn" aria-label="Hand raised" /> : null} />
-      {p.priority && <Crown size={14} className="absolute end-2 top-2 text-warn" />}
+      {p.priority && <Crown size={14} aria-label="Priority speaker" role="img" data-testid="priority-badge" className="absolute start-2 top-2 z-[5] text-warn" />}
       <span data-testid="tile-netbars" className={cx('pointer-events-none absolute end-2 top-2 z-[5] transition-opacity', showStats ? 'opacity-100' : 'opacity-0 group-hover:opacity-100')}><NetBars quality={p.quality} /></span>
       {showStats && present && <StatsPanel identity={p.identity} source="camera" sent={p.isLocal} />}
     </div>
@@ -115,26 +116,39 @@ export function ScreenTile({ p, size = 'lg', focused, onClick }: { p: Participan
   const stats = useUI((s) => s.prefs.showVoiceStats); const setPref = useUI((s) => s.setPref);
   const [watching, setWatching] = useState(true);
   const [q, setQ] = useState<ViewerQuality>('auto');
+  // the server counts me as a viewer and may turn me away (stream full / removed by the streamer)
+  const channelId = useVoiceUI((st) => st.connectedChannelId);
+  const { gate, limit, retry } = useStreamGate(channelId, p.identity, !p.isLocal && watching && p.screenOn);
+  const refused = !p.isLocal && (gate === 'full' || gate === 'kicked');
   const box = useRef<HTMLDivElement>(null);
   const sm = size === 'sm';
   useEffect(() => { if (!p.isLocal) client.setViewerQuality(p.identity, 'screen', q); }, [client, p.identity, p.isLocal, q, p.screenOn]);
+  useEffect(() => {
+    if (p.isLocal) return;
+    if (refused) client.setWatching(p.identity, 'screen', false);
+    else if (gate === 'ok' && watching) client.setWatching(p.identity, 'screen', true);
+  }, [client, p.identity, p.isLocal, refused, gate, watching]);
   const label = p.isLocal ? 'Your screen' : `${p.name}'s screen`;
   void snap;
   return (
     <div ref={box} data-tile={`${p.identity}:screen`} data-testid="screen-tile" role={onClick ? 'button' : undefined} tabIndex={onClick ? 0 : undefined} onClick={onClick}
       aria-label={label}
       className={cx('group relative min-h-0 min-w-0 overflow-hidden rounded-lg bg-black', onClick && 'cursor-pointer', focused && !sm && 'shadow-[inset_0_0_0_2px_rgb(var(--brand))]', sm ? 'aspect-video h-full shrink-0' : 'h-full w-full')}>
-      {present && watching
+      {present && watching && !refused
         ? <video ref={ref} autoPlay playsInline muted className="h-full w-full object-contain" />
-        : <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-[#1e1f22] text-muted">
+        : <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-[#1e1f22] px-3 text-center text-muted">
             <Monitor size={sm ? 24 : 48} />
-            {!sm && (watching ? <span className="text-sm">Loading stream…</span> :
+            {refused && !sm && (gate === 'full'
+              ? <><span role="status" data-testid="stream-full" className="text-sm">{limit ? `This stream is full (limit ${limit}).` : 'This stream is full.'}</span><button className="btn btn-secondary" onClick={(e) => { e.stopPropagation(); retry(); }}>Try again</button></>
+              : <span role="status" data-testid="stream-kicked" className="text-sm">The streamer removed you from this stream.</span>)}
+            {!sm && !refused && (watching ? <span className="text-sm">Loading stream…</span> :
               <button className="btn btn-primary" onClick={(e) => { e.stopPropagation(); setWatching(true); client.setWatching(p.identity, 'screen', true); }}><Eye size={16} />Watch Stream</button>)}
           </div>}
       <span className="pointer-events-none absolute start-2 top-2 z-[5] flex items-center gap-1.5">
         <span className="rounded bg-danger px-1.5 py-0.5 text-[11px] font-bold uppercase tracking-wide text-white">Live</span>
         {!sm && <span className="rounded bg-black/65 px-2 py-0.5 text-[13px] font-semibold text-white">{label}</span>}
       </span>
+      {!sm && channelId && <div className="absolute start-2 top-9 z-[7]"><StreamAudience streamerId={p.identity} /></div>}
       {sm && <span className="pointer-events-none absolute bottom-1 start-1 z-[5] max-w-[90%] truncate rounded bg-black/65 px-1.5 text-xs font-semibold text-white">{label}</span>}
       {!sm && (
         <div className="absolute inset-x-0 bottom-0 z-[6] flex flex-wrap items-center justify-end gap-2 bg-gradient-to-t from-black/70 to-transparent p-2 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100 max-md:opacity-100" onClick={(e) => e.stopPropagation()}>

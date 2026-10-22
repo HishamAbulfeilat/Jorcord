@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { ClipBuffer, lifetimeFor, pickClipMime, shareDurationSeconds, canShareClip, SHARE_MAX_SECONDS, type RecorderLike } from './clipBuffer';
+import { ClipBuffer, lifetimeFor, pickClipMime, shareDurationSeconds, canShareClip, getShareMax, setShareMaxSeconds, SHARE_MAX_SECONDS, type RecorderLike } from './clipBuffer';
 
 class FakeRec implements RecorderLike {
   state = 'inactive'; mimeType = 'video/webm'; ondataavailable: any = null; onerror: any = null; onstop: any = null; stopped = false; id: number;
@@ -45,10 +45,21 @@ describe('ClipBuffer', () => {
     const p = buf.save(); sec(2); await expect(p).rejects.toThrow(/No video data/);
     buf.dispose(); vi.useRealTimers();
   });
-  it('the 30 s window records < 30 s so the API limit holds; 1 and 2 minute windows use their full length', () => {
-    expect(lifetimeFor(30)).toBeLessThan(SHARE_MAX_SECONDS); expect(lifetimeFor(60)).toBe(60); expect(lifetimeFor(120)).toBe(120);
-    expect(shareDurationSeconds(29.2)).toBe(30); expect(shareDurationSeconds(45)).toBe(30); expect(shareDurationSeconds(0.2)).toBe(1);
-    expect(canShareClip(29.5)).toBe(true); expect(canShareClip(31)).toBe(false);
+  it('the server cap is 120 s: all three recorder windows can be shared, the 2 minute one records 1 s less', () => {
+    expect(SHARE_MAX_SECONDS).toBe(120); expect(getShareMax()).toBe(120);
+    expect(lifetimeFor(30)).toBe(30); expect(lifetimeFor(60)).toBe(60); expect(lifetimeFor(120)).toBeLessThan(120);
+    expect(shareDurationSeconds(29.2)).toBe(30); expect(shareDurationSeconds(45)).toBe(45); expect(shareDurationSeconds(0.2)).toBe(1); expect(shareDurationSeconds(500)).toBe(120);
+    expect(canShareClip(29.5)).toBe(true); expect(canShareClip(60)).toBe(true); expect(canShareClip(119.9)).toBe(true); expect(canShareClip(121)).toBe(false);
+  });
+  it('follows a lower or higher cap from the server and ignores nonsense', () => {
+    try {
+      setShareMaxSeconds(30);
+      expect(getShareMax()).toBe(30); expect(lifetimeFor(30)).toBe(29); expect(lifetimeFor(60)).toBe(60);
+      expect(canShareClip(45)).toBe(false); expect(shareDurationSeconds(45)).toBe(30);
+      setShareMaxSeconds('x'); setShareMaxSeconds(NaN); setShareMaxSeconds(1); setShareMaxSeconds(undefined);
+      expect(getShareMax()).toBe(30);
+      setShareMaxSeconds(300.7); expect(getShareMax()).toBe(300); expect(lifetimeFor(120)).toBe(120);
+    } finally { setShareMaxSeconds(SHARE_MAX_SECONDS); }
   });
   it('after the source ends the last seconds stay saveable but nothing new starts', async () => {
     const { buf } = setup(30); buf.start(); sec(12); FakeRec.all[0]!.emit();

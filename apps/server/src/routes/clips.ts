@@ -10,8 +10,12 @@ import { createMessage } from '../services/messages';
 import { channelAccess, need } from '../services/perms';
 import { messagesDTO } from '../services/serializers';
 
-/** A clip is a single video attachment no longer than 30 seconds. */
-export const MAX_CLIP_SECONDS = 30;
+/** A clip is a single video attachment no longer than `ctx.config.clipMaxSeconds` (default 120 s, CLIP_MAX_SECONDS). */
+export const MAX_CLIP_SECONDS = LIMITS.maxClipSeconds;
+/** Slack for container rounding / the unknown length of a WebM's final cluster. */
+const DURATION_SLACK_SECONDS = 0.5;
+/** How much of the end of a WebM file is scanned for the last cluster timecode. */
+const WEBM_TAIL_BYTES = 4 * 1024 * 1024;
 /** Largest clip file (also bounded by the server-wide upload limit). */
 export const MAX_CLIP_BYTES = 100 * 1024 * 1024;
 const CLIP_TYPES = new Set(['video/mp4', 'video/webm']);
@@ -46,13 +50,76 @@ export function mp4Duration(b: Buffer): number | null {
   } catch { return null; }
 }
 
+// ---- WebM (EBML) duration ----
+const ID_SEGMENT = 0x18538067, ID_INFO = 0x1549a966, ID_CLUSTER = 0x1f43b675, ID_TIMECODE_SCALE = 0x2ad7b1, ID_DURATION = 0x4489, ID_TIMECODE = 0xe7;
+
+/** Reads an EBML element id (marker bits kept) or size (marker stripped; `null` value = unknown size). */
+function vint(b: Buffer, o: number, id: boolean): { len: number; value: number | null } | null {
+  if (o >= b.length) return null;
+  const first = b[o]!;
+  let len = 1; while (len <= 8 && !(first & (0x80 >> (len - 1)))) len++;
+  if (len > 8 || (id && len > 4) || o + len > b.length) return null;
+  let value = id ? first : first & (0xff >> len);
+  let allOnes = (first & (0xff >> len)) === (0xff >> len);
+  for (let i = 1; i < len; i++) { value = value * 256 + b[o + i]!; if (b[o + i] !== 0xff) allOnes = false; }
+  return { len, value: !id && allOnes ? null : value };
+}
+const uint = (b: Buffer, o: number, n: number) => { let v = 0; for (let i = 0; i < n; i++) v = v * 256 + b[o + i]!; return v; };
+
+/** TimecodeScale (ns per tick, default 1 ms) and Duration (in ticks, when the muxer wrote one) from the Info element near the start of a WebM. */
+export function webmInfo(b: Buffer): { scaleNs: number; durationSeconds: number | null } {
+  let scale = 1_000_000, ticks: number | null = null;
+  const walk = (start: number, end: number, depth: number) => {
+    let o = start;
+    while (o < end) {
+      const id = vint(b, o, true); if (!id) return;
+      const size = vint(b, o + id.len, false); if (!size) return;
+      const body = o + id.len + size.len, stop = size.value === null ? end : Math.min(end, body + size.value);
+      if (id.value === ID_CLUSTER) return; // everything we need precedes the first cluster
+      if (depth === 0 && id.value === ID_SEGMENT) walk(body, stop, 1);
+      else if (depth === 1 && id.value === ID_INFO) walk(body, stop, 2);
+      else if (depth === 2 && id.value === ID_TIMECODE_SCALE && size.value && size.value <= 8) scale = uint(b, body, size.value);
+      else if (depth === 2 && id.value === ID_DURATION && (size.value === 4 || size.value === 8) && body + size.value <= b.length) ticks = size.value === 4 ? b.readFloatBE(body) : b.readDoubleBE(body);
+      if (size.value === null) return;
+      o = stop;
+    }
+  };
+  walk(0, b.length, 0);
+  return { scaleNs: scale > 0 ? scale : 1_000_000, durationSeconds: ticks !== null && Number.isFinite(ticks) && ticks > 0 ? (ticks * scale) / 1e9 : null };
+}
+
+/** Largest cluster timecode (ticks) found in `tail`: a Cluster id, its size, then the Timecode element. A lower bound of the media length. */
+export function lastClusterTimecode(tail: Buffer): number | null {
+  let best: number | null = null;
+  for (let i = tail.indexOf(Buffer.from([0x1f, 0x43, 0xb6, 0x75])); i !== -1; i = tail.indexOf(Buffer.from([0x1f, 0x43, 0xb6, 0x75]), i + 1)) {
+    const size = vint(tail, i + 4, false); if (!size) continue;
+    const tc = i + 4 + size.len;
+    if (tail[tc] !== ID_TIMECODE) continue;
+    const len = vint(tail, tc + 1, false);
+    if (!len || len.value === null || len.value < 1 || len.value > 6 || tc + 1 + len.len + len.value > tail.length) continue;
+    const v = uint(tail, tc + 1 + len.len, len.value);
+    if (best === null || v > best) best = v;
+  }
+  return best;
+}
+
+/** Best known length (seconds) of a WebM from its head and tail bytes; null when the muxer left nothing to read. */
+export function webmDuration(head: Buffer, tail: Buffer): number | null {
+  const info = webmInfo(head);
+  const tc = lastClusterTimecode(tail);
+  const fromClusters = tc === null ? null : (tc * info.scaleNs) / 1e9;
+  if (info.durationSeconds === null && fromClusters === null) return null;
+  return Math.max(info.durationSeconds ?? 0, fromClusters ?? 0);
+}
+
 const clipBody = z.object({
   /** The uploaded file id to post (exactly one video). */
   attachmentId: idSchema.optional(),
   attachments: z.array(idSchema).max(1).optional(),
   content: z.string().max(LIMITS.maxMessageLength).optional(),
-  durationSeconds: z.coerce.number().positive().max(MAX_CLIP_SECONDS).optional(),
-  duration: z.coerce.number().positive().max(MAX_CLIP_SECONDS).optional(),
+  // the real cap is ctx.config.clipMaxSeconds (checked in the handler with a precise message); this only bounds garbage
+  durationSeconds: z.coerce.number().positive().max(LIMITS.maxClipSecondsCeiling).optional(),
+  duration: z.coerce.number().positive().max(LIMITS.maxClipSecondsCeiling).optional(),
 }).strict();
 
 const listQuery = z.object({ before: idSchema.optional(), limit: z.coerce.number().optional() });
@@ -67,7 +134,19 @@ function requireClipsChannel(channel: any) {
   if (!channel.guild_id || !channel.is_clips_channel) throw badRequest('This channel is not a clips channel');
 }
 
+async function readRange(ctx: Ctx, key: string, start: number, end: number): Promise<Buffer> {
+  const chunks: Buffer[] = [];
+  try { for await (const c of ctx.storage.get(key, { start, end })) chunks.push(c as Buffer); } catch { return Buffer.alloc(0); }
+  return Buffer.concat(chunks);
+}
+
 export function clipRoutes(app: FastifyInstance, ctx: Ctx) {
+  const maxSeconds = () => ctx.config.clipMaxSeconds;
+  const tooLong = () => new ApiError(400, 'CLIP_TOO_LONG', `Clips can be at most ${maxSeconds()} seconds`, { maxSeconds: maxSeconds() });
+
+  /** What the server accepts, so the recorder can tell which windows can be shared. */
+  app.get('/clips/limits', async () => ({ maxSeconds: maxSeconds(), maxBytes: Math.min(MAX_CLIP_BYTES, ctx.config.maxUploadBytes) }));
+
   app.post('/channels/:id/clips', async (req, reply) => {
     const { id } = parse(z.object({ id: idSchema }), req.params);
     const b = parse(clipBody, req.body);
@@ -78,6 +157,7 @@ export function clipRoutes(app: FastifyInstance, ctx: Ctx) {
     const ids = [...(b.attachments ?? []), ...(b.attachmentId ? [b.attachmentId] : [])];
     if (ids.length !== 1) throw badRequest('Provide exactly one video attachment');
     let durationSeconds = b.durationSeconds ?? b.duration ?? null;
+    if (durationSeconds !== null && durationSeconds > maxSeconds() + DURATION_SLACK_SECONDS) throw tooLong(); // before claiming the upload
     const attachments = await claimAttachments(ctx, req.userId, ids);
     let messageId: string | null = null;
     try {
@@ -88,11 +168,20 @@ export function clipRoutes(app: FastifyInstance, ctx: Ctx) {
       const head = await ctx.storage.head(key, 1024 * 1024).catch(() => Buffer.alloc(0));
       const kind = sniffVideo(head);
       if (!kind || kind !== f.contentType) throw badRequest('The file is not a valid MP4 or WebM video');
-      const real = kind === 'video/mp4' ? mp4Duration(head) : null; // the client's claim is checked against the container when it can be read
-      if (real !== null && real > MAX_CLIP_SECONDS + 0.5) throw badRequest(`Clips can be at most ${MAX_CLIP_SECONDS} seconds`);
-      if (durationSeconds === null && real !== null) durationSeconds = Math.min(MAX_CLIP_SECONDS, real);
+      // The client's claim is checked against the container when it can be read: MP4 mvhd, or for WebM (MediaRecorder writes
+      // no Duration) the Info element plus the timecode of the last cluster at the end of the file.
+      let real: number | null;
+      if (kind === 'video/mp4') real = mp4Duration(head);
+      else {
+        const tailStart = Math.max(0, f.size - WEBM_TAIL_BYTES);
+        const tail = f.size <= head.length ? head : await readRange(ctx, key, tailStart, f.size - 1);
+        real = webmDuration(head, tail);
+      }
+      if (real !== null && real > maxSeconds() + DURATION_SLACK_SECONDS) throw tooLong();
+      // a claim below what the container proves is corrected upwards, so a clip cannot dodge the cap by under-reporting
+      if (real !== null && (durationSeconds === null || durationSeconds < real)) durationSeconds = Math.min(maxSeconds(), real);
       if (durationSeconds === null) throw badRequest('durationSeconds is required');
-      durationSeconds = Math.max(1, Math.ceil(durationSeconds));
+      durationSeconds = Math.min(maxSeconds(), Math.max(1, Math.ceil(durationSeconds)));
       const message = await createMessage(ctx, {
         channel: a.channel, authorId: req.userId, content: b.content ?? '', attachments,
         senderPerms: a.perms, memberRoleIds: a.gp?.memberRoleIds,

@@ -10,7 +10,9 @@ import { createMessage } from '../services/messages';
 import { channelAccess, guildAccess, guildPerms, loadGuildPerm, need, needOutrankMember } from '../services/perms';
 import { startVoiceRecording, stopVoiceRecording } from '../services/recordings';
 import { declineRing } from '../services/calls';
-import { VOICE_TYPES, disconnectMember, moveMember, requestToSpeak, setServerVoiceFlags, setSuppressed } from '../services/voice';
+import { VOICE_TYPES, disconnectMember, moveMember, publishVoice, requestToSpeak, setPrioritySpeaker, setServerVoiceFlags, setSuppressed } from '../services/voice';
+import { blockDTO, listBlocks, listHandQueue, lowerHand, publishHandQueue } from '../services/stage';
+import { kickViewer, listStreams, readmitViewer, setStreamLimit, stopWatching, watchStream } from '../services/streams';
 
 const memberParams = z.object({ id: idSchema, userId: idSchema });
 
@@ -102,9 +104,10 @@ export function voiceRoutes(app: FastifyInstance, ctx: Ctx) {
 
   app.put('/channels/:id/stage/request', async (req) => {
     const { id } = parse(stageParams, req.params);
+    const b = parse(z.object({ anonymous: z.boolean().optional() }).strict(), req.body ?? {});
     const a = await stageAccess(req.userId, id);
     need(a.perms, Perm.REQUEST_TO_SPEAK);
-    return requestToSpeak(ctx, req.userId, id, true);
+    return requestToSpeak(ctx, req.userId, id, true, { anonymous: b.anonymous });
   });
   app.delete('/channels/:id/stage/request', async (req) => {
     const { id } = parse(stageParams, req.params);
@@ -112,14 +115,54 @@ export function voiceRoutes(app: FastifyInstance, ctx: Ctx) {
     return requestToSpeak(ctx, req.userId, id, false);
   });
 
-  /** The raised-hand queue: suppressed members who asked to speak, ordered by when they raised their hand. */
+  /**
+   * The raised-hand queue, first come first served and persisted (a member who reconnects within two minutes keeps their place).
+   * Moderators only (MUTE_MEMBERS): they see who is asking, including anonymous hands. Everyone else learns the order from
+   * STAGE_QUEUE_UPDATE (anonymous hands without identity) and their own position from STAGE_HAND_UPDATE / the request response.
+   */
   app.get('/channels/:id/stage/queue', async (req) => {
     const { id } = parse(stageParams, req.params);
-    await stageAccess(req.userId, id);
-    return (await ctx.voice.inChannel(id))
-      .filter((s) => s.suppress && s.requestToSpeakAt)
-      .sort((a, b) => String(a.requestToSpeakAt).localeCompare(String(b.requestToSpeakAt)))
-      .map((s) => ({ userId: s.userId, requestToSpeakAt: s.requestToSpeakAt }));
+    const a = await stageAccess(req.userId, id);
+    need(a.perms, Perm.MUTE_MEMBERS);
+    return listHandQueue(ctx, id);
+  });
+
+  /** Members barred from asking to speak / speaking on this stage (cleared when the stage ends). */
+  app.get('/channels/:id/stage/blocked', async (req) => {
+    const { id } = parse(stageParams, req.params);
+    const a = await stageAccess(req.userId, id);
+    need(a.perms, Perm.MUTE_MEMBERS);
+    return listBlocks(ctx, id);
+  });
+  app.put('/channels/:id/stage/blocked/:userId', async (req) => {
+    const p = parse(z.object({ id: idSchema, userId: idSchema }), req.params);
+    const b = parse(z.object({ reason: z.string().trim().max(200).optional() }).strict(), req.body ?? {});
+    const a = await stageAccess(req.userId, p.id);
+    need(a.perms, Perm.MUTE_MEMBERS);
+    if (p.userId === req.userId) throw badRequest('You cannot block yourself');
+    const target = await loadGuildPerm(ctx, a.channel.guild_id, p.userId);
+    if (!target) throw notFound('Member');
+    needOutrankMember(a.gp!, target);
+    const [row] = await ctx.db.query(
+      `INSERT INTO stage_speaker_blocks (channel_id, user_id, blocked_by, reason) VALUES ($1,$2,$3,$4)
+       ON CONFLICT (channel_id, user_id) DO UPDATE SET blocked_by = EXCLUDED.blocked_by, reason = EXCLUDED.reason RETURNING *`, [p.id, p.userId, req.userId, b.reason || null]);
+    // take away what they already have: a raised hand and a seat among the speakers
+    const hadHand = await lowerHand(ctx, p.id, p.userId);
+    const st = await ctx.voice.get(p.userId);
+    if (st?.channelId === p.id && !st.suppress) await setSuppressed(ctx, p.userId, p.id, true);
+    else if (st?.channelId === p.id && st.requestToSpeakAt) { const next = { ...st, requestToSpeakAt: null }; await ctx.voice.set(next); await publishVoice(ctx, p.id, next); }
+    if (hadHand) await publishHandQueue(ctx, p.id, p.userId);
+    await audit(ctx, a.channel.guild_id, req.userId, 'STAGE_BLOCK_SPEAKER', p.userId, { channelId: p.id, reason: b.reason || null });
+    return blockDTO(row);
+  });
+  app.delete('/channels/:id/stage/blocked/:userId', async (req, reply) => {
+    const p = parse(z.object({ id: idSchema, userId: idSchema }), req.params);
+    const a = await stageAccess(req.userId, p.id);
+    need(a.perms, Perm.MUTE_MEMBERS);
+    const gone = (await ctx.db.query('DELETE FROM stage_speaker_blocks WHERE channel_id = $1 AND user_id = $2 RETURNING 1', [p.id, p.userId])).length > 0;
+    if (!gone) throw notFound('Block');
+    await audit(ctx, a.channel.guild_id, req.userId, 'STAGE_UNBLOCK_SPEAKER', p.userId, { channelId: p.id });
+    return reply.code(204).send();
   });
 
   /** Invite to speak. `@me` lets a moderator step onto the stage themselves. */
@@ -149,10 +192,11 @@ export function voiceRoutes(app: FastifyInstance, ctx: Ctx) {
 
   // ---------- priority speaker ----------
   /**
-   * Priority speaker: while the member talks, everyone else is ducked. The ducking itself is a LiveKit participant
-   * attribute set by the client (it needs the `canUpdateOwnMetadata` token grant); this endpoint is the authorization
-   * gate, so a member may only enable it where they hold PRIORITY_SPEAKER, and only while connected to the channel.
-   * Allowing it to be turned off never needs the permission.
+   * Priority speaker: while the member talks, everyone else is ducked by the clients. The server owns the flag: it is kept in the
+   * member's voice state (VoiceState.prioritySpeaker, broadcast) and written to the LiveKit attribute `jv.priority` by the
+   * server (tokens carry no canUpdateOwnMetadata). A member may enable it only where they hold PRIORITY_SPEAKER, only while
+   * connected to the channel and only while they may speak; it is dropped again when that stops being true (role change,
+   * server mute, stage suppression, leaving or moving). Turning it off never needs the permission.
    */
   const priorityAccess = async (userId: string, channelId: string) => {
     const a = await channelAccess(ctx, userId, channelId);
@@ -163,14 +207,77 @@ export function voiceRoutes(app: FastifyInstance, ctx: Ctx) {
     const { id } = parse(stageParams, req.params);
     const a = await priorityAccess(req.userId, id);
     need(a.perms, Perm.PRIORITY_SPEAKER);
-    const st = await ctx.voice.get(req.userId);
-    if (!st?.channelId || st.channelId !== id) throw badRequest('Join the channel before enabling priority speaker');
-    return { channelId: id, prioritySpeaker: true };
+    const voiceState = await setPrioritySpeaker(ctx, req.userId, a.channel, a.perms, true);
+    return { channelId: id, prioritySpeaker: true, voiceState };
   });
   app.delete('/channels/:id/voice/priority-speaker', async (req) => {
     const { id } = parse(stageParams, req.params);
-    await priorityAccess(req.userId, id);
-    return { channelId: id, prioritySpeaker: false };
+    const a = await priorityAccess(req.userId, id);
+    const voiceState = await setPrioritySpeaker(ctx, req.userId, a.channel, a.perms, false);
+    return { channelId: id, prioritySpeaker: false, voiceState };
+  });
+
+  // ---------- Go Live: viewers, audience cap, kicking ----------
+  /** Callers must be connected to the channel; stream info (including who watches) is visible to everyone in it. */
+  const streamAccess = async (userId: string, channelId: string) => {
+    const a = await channelAccess(ctx, userId, channelId);
+    if (!VOICE_TYPES.includes(a.channel.type)) throw badRequest('Not a voice channel');
+    const st = await ctx.voice.get(userId);
+    if (!st?.channelId || st.channelId !== channelId) throw badRequest('Join the voice channel first');
+    return a;
+  };
+  const streamerParam = z.union([idSchema, z.literal('@me')]);
+  const streamerOf = (p: string, me: string) => (p === '@me' ? me : p);
+
+  /** Streams running in the channel and who watches them. `kicked` is added for your own stream, and for every stream if you hold MOVE_MEMBERS. */
+  app.get('/channels/:id/voice/streams', async (req) => {
+    const { id } = parse(stageParams, req.params);
+    const a = await streamAccess(req.userId, id);
+    const mod = has(a.perms, Perm.MOVE_MEMBERS);
+    return listStreams(ctx, id, (streamer) => mod || streamer === req.userId);
+  });
+  /** The streamer picks the audience cap of their stream (1..STREAM_MAX_VIEWERS, null = as many as the server allows). */
+  app.put('/channels/:id/voice/stream', async (req) => {
+    const { id } = parse(stageParams, req.params);
+    const b = parse(z.object({ viewerLimit: z.number().int().min(1).nullable() }).strict(), req.body);
+    const a = await streamAccess(req.userId, id);
+    need(a.perms, Perm.STREAM);
+    return setStreamLimit(ctx, req.userId, id, b.viewerLimit);
+  });
+  /** Start watching a stream. 409 STREAM_FULL when the cap is reached, 403 STREAM_VIEWER_KICKED when you were removed from it. */
+  app.put('/channels/:id/voice/stream/:streamerId/watch', async (req) => {
+    const p = parse(z.object({ id: idSchema, streamerId: streamerParam }), req.params);
+    await streamAccess(req.userId, p.id);
+    return watchStream(ctx, req.userId, p.id, streamerOf(p.streamerId, req.userId));
+  });
+  app.delete('/channels/:id/voice/stream/:streamerId/watch', async (req) => {
+    const p = parse(z.object({ id: idSchema, streamerId: streamerParam }), req.params);
+    await streamAccess(req.userId, p.id);
+    return stopWatching(ctx, req.userId, p.id);
+  });
+  /** Remove a viewer from a stream until it ends. The streamer may always; anyone else needs MOVE_MEMBERS and to outrank the viewer. */
+  app.delete('/channels/:id/voice/stream/:streamerId/viewers/:userId', async (req, reply) => {
+    const p = parse(z.object({ id: idSchema, streamerId: streamerParam, userId: idSchema }), req.params);
+    const a = await streamAccess(req.userId, p.id);
+    const streamerId = streamerOf(p.streamerId, req.userId);
+    if (streamerId !== req.userId) {
+      if (!a.channel.guild_id) throw forbidden('Only the streamer can remove viewers');
+      need(a.perms, Perm.MOVE_MEMBERS);
+      const target = await loadGuildPerm(ctx, a.channel.guild_id, p.userId);
+      if (target) needOutrankMember(a.gp!, target);
+    }
+    await kickViewer(ctx, p.id, streamerId, p.userId, req.userId);
+    if (streamerId !== req.userId && a.channel.guild_id) await audit(ctx, a.channel.guild_id, req.userId, 'STREAM_VIEWER_KICK', p.userId, { channelId: p.id, streamerId });
+    return reply.code(204).send();
+  });
+  /** Let a removed viewer back in. */
+  app.delete('/channels/:id/voice/stream/:streamerId/kicks/:userId', async (req, reply) => {
+    const p = parse(z.object({ id: idSchema, streamerId: streamerParam, userId: idSchema }), req.params);
+    const a = await streamAccess(req.userId, p.id);
+    const streamerId = streamerOf(p.streamerId, req.userId);
+    if (streamerId !== req.userId) need(a.perms, Perm.MOVE_MEMBERS);
+    if (!(await readmitViewer(ctx, p.id, streamerId, p.userId))) throw notFound('Kick');
+    return reply.code(204).send();
   });
 
   // ---------- voice recording (with a visible, server-enforced indicator) ----------

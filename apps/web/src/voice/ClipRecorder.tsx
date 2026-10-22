@@ -8,7 +8,8 @@ import { toastError, useUI } from '@/stores/ui';
 import { useClipUI } from '@/stores/clipui';
 import { cx } from '@/lib/format';
 import { t } from '@/i18n';
-import { CLIP_WINDOWS, SHARE_MAX_SECONDS, type ClipWindow } from './clipBuffer';
+import { CLIP_WINDOWS, getShareMax, type ClipWindow } from './clipBuffer';
+import { loadClipLimits } from './clipLimits';
 import { clipAvailableSec, clipsSupported, saveClip, startClipBuffer, stopClipBuffer } from './clips';
 
 const label = (w: number) => (w === 60 ? '1 min' : w === 120 ? '2 min' : `${w} s`);
@@ -23,6 +24,7 @@ export function ClipButton() {
   const sourceOn = source === 'screen' ? snap.screenOn : snap.cameraOn;
   const windowSec = (ui.buffering ? ui.windowSec : prefs.clipWindow) as ClipWindow;
 
+  useEffect(() => { if (open) void loadClipLimits().then(() => tick((n) => n + 1)); }, [open]);
   useEffect(() => {
     if (!open) return;
     const down = (e: MouseEvent) => { if (box.current && !box.current.contains(e.target as Node)) setOpen(false); };
@@ -70,7 +72,7 @@ export function ClipButton() {
                 <label key={w} className={cx('flex-1 cursor-pointer rounded border-2 px-2 py-1 text-center', windowSec === w ? 'border-brand' : 'border-divider')}>
                   <input type="radio" className="sr-only" name="clip-window" checked={windowSec === w} onChange={() => { setPref('clipWindow', w); useClipUI.getState().patch({ windowSec: w }); }} aria-label={label(w)} />{label(w)}</label>))}
               </div>
-              {windowSec > SHARE_MAX_SECONDS && <p className="mt-1 text-xs text-muted">{t('Longer clips can be downloaded; sharing to a clips channel is limited to {n} seconds.').replace('{n}', String(SHARE_MAX_SECONDS))}</p>}
+              {windowSec > getShareMax() && <p className="mt-1 text-xs text-muted">{t('Longer clips can be downloaded; sharing to a clips channel is limited to {n} seconds.').replace('{n}', String(getShareMax()))}</p>}
             </fieldset>
             {!ui.buffering
               ? <button className="btn btn-primary w-full" disabled={!sourceOn} onClick={start}>{t('Start recording buffer')}</button>

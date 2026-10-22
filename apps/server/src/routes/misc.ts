@@ -10,7 +10,7 @@ import { limitOrThrow } from '../lib/ratelimit';
 import { isInlineType, saveUpload } from '../services/files';
 import { unfurl } from '../services/unfurl';
 import { channelAccess } from '../services/perms';
-import { VOICE_TYPES, clearVoiceState, loadModeration, voiceCaps } from '../services/voice';
+import { PRIORITY_ATTR, VOICE_TYPES, clearVoiceState, holdsPriority, loadModeration, voiceCaps } from '../services/voice';
 
 export function fileRoutes(app: FastifyInstance, ctx: Ctx) {
   // Standard sticker packs: public (an <img> tag cannot send a bearer token), immutable, generated from @jorcord/shared.
@@ -130,8 +130,10 @@ export function miscRoutes(app: FastifyInstance, ctx: Ctx) {
     const mod = already ? { mute: prev!.serverMute, deaf: prev!.serverDeaf } : await loadModeration(ctx, a.channel.guild_id ?? null, req.userId);
     const caps = voiceCaps(a.channel, a.perms, { serverMute: mod.mute, serverDeaf: mod.deaf, suppress: a.channel.type === 'stage' && (already ? prev!.suppress : !has(a.perms, Perm.MUTE_MEMBERS)) });
     const sources = [...(caps.canSpeak ? [TrackSource.MICROPHONE] : []), ...(caps.canStream ? [TrackSource.CAMERA, TrackSource.SCREEN_SHARE, TrackSource.SCREEN_SHARE_AUDIO] : [])];
-    const at = new AccessToken(ctx.config.livekit.apiKey, ctx.config.livekit.apiSecret, { identity: req.userId, name: u.display_name ?? u.username, ttl: '10m', metadata: JSON.stringify({ userId: req.userId }) });
-    at.addGrant({ roomJoin: true, room: channelId, canSubscribe: caps.canSubscribe, canPublish: sources.length > 0, canPublishSources: sources, canPublishData: true, canUpdateOwnMetadata: true });
+    // `jv.priority` is written by the server only (no canUpdateOwnMetadata): a re-join keeps priority speaker while it is still held
+    const priority = already && holdsPriority(prev!.prioritySpeaker, a.perms, caps);
+    const at = new AccessToken(ctx.config.livekit.apiKey, ctx.config.livekit.apiSecret, { identity: req.userId, name: u.display_name ?? u.username, ttl: '10m', metadata: JSON.stringify({ userId: req.userId }), attributes: { [PRIORITY_ATTR]: priority ? '1' : '0' } });
+    at.addGrant({ roomJoin: true, room: channelId, canSubscribe: caps.canSubscribe, canPublish: sources.length > 0, canPublishSources: sources, canPublishData: true });
     const out: VoiceToken = { token: await at.toJwt(), url: resolveLivekitUrl(ctx.config.livekit.url, req, ctx.config.publicUrl), room: channelId };
     return out;
   });

@@ -25,6 +25,7 @@ import { setRateLimitNotifier } from './transport';
 import { toast } from '@/stores/ui';
 import { emitOverlayToast } from './overlay';
 import { useCalls, wireCallEvents } from '@/stores/calls';
+import { useLiveVoice } from '@/stores/livevoice';
 
 let unsubs: (() => void)[] = [];
 
@@ -75,6 +76,14 @@ export function startSession(token: string) {
   unsubs.push(gw.on('GUILD_SCHEDULED_EVENT_DELETE', (e) => usePlatform.getState().removeEvent(e)));
   unsubs.push(gw.on('GUILD_SCHEDULED_EVENT_USER_ADD', (d) => usePlatform.getState().eventInterest(d.guildId, d.guildScheduledEventId, 1, d.userId === meId())));
   unsubs.push(gw.on('GUILD_SCHEDULED_EVENT_USER_REMOVE', (d) => usePlatform.getState().eventInterest(d.guildId, d.guildScheduledEventId, -1, d.userId === meId())));
+  // stage raised-hand queue, my place in it, and Go Live viewer kicks
+  unsubs.push(gw.on('READY', () => useLiveVoice.getState().reset()));
+  unsubs.push(gw.on('STAGE_QUEUE_UPDATE', (d) => useLiveVoice.getState().setQueue(d.channelId, d.queue)));
+  unsubs.push(gw.on('STAGE_HAND_UPDATE', (d) => useLiveVoice.getState().setHand(d.channelId, { raised: d.raised, anonymous: d.anonymous, position: d.position })));
+  unsubs.push(gw.on('STREAM_VIEWER_KICKED', (d) => {
+    useLiveVoice.getState().kick(d.channelId, d.streamerId, d.userId, d.kicked);
+    if (d.userId === meId() && d.kicked) toast(`You were removed from ${displayName(useData.getState().users[d.streamerId] ?? { username: 'the streamer' } as never)}'s stream.`, 'info');
+  }));
   unsubs.push(gw.on('STAGE_INSTANCE_CREATE', (s) => usePlatform.getState().setStage(s)));
   unsubs.push(gw.on('STAGE_INSTANCE_UPDATE', (s) => usePlatform.getState().setStage(s)));
   unsubs.push(gw.on('STAGE_INSTANCE_DELETE', (s) => usePlatform.getState().removeStage(s.channelId)));

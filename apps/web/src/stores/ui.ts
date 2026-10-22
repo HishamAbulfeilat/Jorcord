@@ -29,6 +29,8 @@ export interface Prefs {
   clipWindow: 30 | 60 | 120; clipAutoBuffer: boolean;
   /** Live captions of my own speech (Web Speech API, local to this browser) and the recognition language ('' = browser language). */
   captions: boolean; captionsLang: string;
+  /** Show a "you are muted" hint when the mic picks up speech while I am muted (the audio is only measured on this device). */
+  mutedSpeakingHint: boolean;
   soundboardMuted: boolean; soundboardMutedUsers: Record<Id, boolean>; soundboardVolume: number;
   /** Desktop game detection: report "Playing <game>" and the games the user has registered. */
   gameActivity: boolean; registeredGames: RegisteredGame[];
@@ -64,7 +66,7 @@ export const defaultPrefs: Prefs = {
   keybinds: defaultKeybinds,
   streamerMode: false, streamerAuto: true, streamerHidePersonal: true, streamerHideInvites: true, streamerNoSounds: true, streamerNoNotifications: true,
   mutedChannels: {}, mutedGuilds: {}, collapsedCategories: {},
-  hideMutedChannels: {}, userVolumes: {}, userMuted: {}, clipWindow: 30, clipAutoBuffer: false, captions: false, captionsLang: '', soundboardMuted: false, soundboardMutedUsers: {}, soundboardVolume: 100,
+  hideMutedChannels: {}, userVolumes: {}, userMuted: {}, clipWindow: 30, clipAutoBuffer: false, captions: false, captionsLang: '', mutedSpeakingHint: true, soundboardMuted: false, soundboardMutedUsers: {}, soundboardVolume: 100,
   gameActivity: true, registeredGames: [],
   overlayEnabled: false, overlayLocked: false, overlayCorner: 'top-right',
   idleMinutes: 10, trustedLinkDomains: [],

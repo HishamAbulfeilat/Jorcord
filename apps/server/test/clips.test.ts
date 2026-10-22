@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Perm } from '@jorcord/shared';
 import { Api, startServer, type Client, type TestEnv } from './helpers';
+import { lastClusterTimecode, webmDuration, webmInfo } from '../src/routes/clips';
 
 let env: TestEnv, api: Api;
 beforeAll(async () => { env = await startServer(); api = new Api(env); });
@@ -21,6 +22,20 @@ const mp4 = (seconds?: number) => {
   if (seconds === undefined) return Buffer.concat([ftyp, Buffer.alloc(64, 2)]);
   const mvhd = Buffer.alloc(100); mvhd.writeUInt32BE(1000, 12); mvhd.writeUInt32BE(Math.round(seconds * 1000), 16);
   return Buffer.concat([ftyp, box('moov', box('mvhd', mvhd))]);
+};
+const ebml = (id: number[], body: Buffer) => { const h = Buffer.from([...id, 0x80 | body.length]); return Buffer.concat([h, body]); };
+/**
+ * A minimal WebM like MediaRecorder writes it: EBML header, a Segment of unknown size, an Info element (TimecodeScale 1 ms, and a
+ * Duration only when `durationMs` is given) and clusters with unknown size whose timecodes are `clusterMs`.
+ */
+const webm = (clusterMs: number[], durationMs?: number) => {
+  const head = ebml([0x1a, 0x45, 0xdf, 0xa3], Buffer.from([0x42, 0x86, 0x81, 0x01]));
+  const scale = Buffer.from([0x2a, 0xd7, 0xb1, 0x83, 0x0f, 0x42, 0x40]);
+  const dur = Buffer.alloc(11); if (durationMs !== undefined) { dur.set([0x44, 0x89, 0x88], 0); dur.writeDoubleBE(durationMs, 3); }
+  const info = ebml([0x15, 0x49, 0xa9, 0x66], durationMs === undefined ? scale : Buffer.concat([scale, dur]));
+  const seg = Buffer.from([0x18, 0x53, 0x80, 0x67, 0x01, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff]);
+  const clusters = clusterMs.map((ms) => { const t = Buffer.alloc(4); t.writeUInt32BE(ms); return Buffer.concat([Buffer.from([0x1f, 0x43, 0xb6, 0x75, 0x01, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xe7, 0x84]), t, Buffer.alloc(40, 7)]); });
+  return Buffer.concat([head, seg, info, ...clusters]);
 };
 const uploadVideo = async (user: Client, bytes: Buffer = mp4(), type = 'video/mp4') => {
   const p = mpart('clip.mp4', bytes, type);
@@ -82,15 +97,75 @@ describe('clips', () => {
     expect(list2.body.map((c: any) => c.id)).toEqual([posted2.body.id]);
   });
 
-  it('rejects non-video uploads and clips longer than 30 seconds', async () => {
+  it('rejects non-video uploads and clips longer than the cap (120 s by default)', async () => {
     const { member, general } = await setup();
     const image = await api.req('POST', '/uploads', member.token, mpart('x.png', Buffer.alloc(64, 2), 'image/png').payload as any, mpart('x.png', Buffer.alloc(64, 2), 'image/png').headers);
     expect((await postClip(member, general.id, { attachmentId: image.body.id })).status).toBe(400);
 
     const up = await uploadVideo(member);
-    expect((await postClip(member, general.id, { attachmentId: up.body.id, durationSeconds: 31 })).status).toBe(400);
-    // the rejected upload stays claimable
-    expect((await postClip(member, general.id, { attachmentId: up.body.id, durationSeconds: 30 })).status).toBe(201);
+    const tooLong = await postClip(member, general.id, { attachmentId: up.body.id, durationSeconds: 121 });
+    expect(tooLong.status).toBe(400);
+    expect(tooLong.body).toMatchObject({ code: 'CLIP_TOO_LONG', details: { maxSeconds: 120 } });
+    expect((await postClip(member, general.id, { attachmentId: up.body.id, durationSeconds: 9999 })).status).toBe(400);
+    // the rejected upload stays claimable, and the 1 and 2 minute recorder windows fit
+    const one = await postClip(member, general.id, { attachmentId: up.body.id, durationSeconds: 60 });
+    expect(one.status).toBe(201); expect(one.body.durationSeconds).toBe(60);
+    const up2 = await uploadVideo(member);
+    const two = await postClip(member, general.id, { attachmentId: up2.body.id, durationSeconds: 120 });
+    expect(two.status).toBe(201); expect(two.body.durationSeconds).toBe(120);
+  });
+
+  it('exposes the cap and lets the operator change it', async () => {
+    const { member } = await setup();
+    expect((await api.req('GET', '/clips/limits', member.token)).body).toEqual({ maxSeconds: 120, maxBytes: 100 * 1024 * 1024 });
+    expect((await api.req('GET', '/clips/limits', null)).status).toBe(401);
+    const strict = await startServer({ clipMaxSeconds: 30 });
+    try {
+      const sapi = new Api(strict);
+      const owner = await sapi.register('sco');
+      const guild = (await sapi.req('POST', '/guilds', owner.token, { name: 'Strict' })).body;
+      const ch = guild.channels.find((c: any) => c.name === 'general');
+      await sapi.req('PATCH', `/channels/${ch.id}`, owner.token, { isClipsChannel: true });
+      expect((await sapi.req('GET', '/clips/limits', owner.token)).body.maxSeconds).toBe(30);
+      const p = mpart('c.mp4', mp4(), 'video/mp4');
+      const up = await sapi.req('POST', '/uploads', owner.token, p.payload as any, p.headers);
+      expect((await sapi.req('POST', `/channels/${ch.id}/clips`, owner.token, { attachmentId: up.body.id, durationSeconds: 31 })).body.code).toBe('CLIP_TOO_LONG');
+      expect((await sapi.req('POST', `/channels/${ch.id}/clips`, owner.token, { attachmentId: up.body.id, durationSeconds: 30 })).status).toBe(201);
+    } finally { await strict.close(); }
+  });
+
+  it('verifies the duration of a WebM from its cluster timecodes and Info duration', async () => {
+    const { member, general } = await setup();
+    // MediaRecorder writes no Duration: the last cluster says it is ~110 s although the client claims 5 s -> corrected, not rejected
+    const ok = await uploadVideo(member, webm([0, 55_000, 110_000]), 'video/webm');
+    const posted = await postClip(member, general.id, { attachmentId: ok.body.id, durationSeconds: 5 });
+    expect(posted.status).toBe(201); expect(posted.body.durationSeconds).toBe(110);
+    // ~150 s of media cannot be shared as a 10 s clip
+    const long = await uploadVideo(member, webm([0, 75_000, 150_000]), 'video/webm');
+    const refused = await postClip(member, general.id, { attachmentId: long.body.id, durationSeconds: 10 });
+    expect(refused.status).toBe(400); expect(refused.body.code).toBe('CLIP_TOO_LONG');
+    // an Info Duration is honoured too
+    const declared = await uploadVideo(member, webm([0], 130_000), 'video/webm');
+    expect((await postClip(member, general.id, { attachmentId: declared.body.id, durationSeconds: 10 })).status).toBe(400);
+    // nothing to read: the claim is trusted
+    const bare = await uploadVideo(member, webm([]), 'video/webm');
+    const trusted = await postClip(member, general.id, { attachmentId: bare.body.id, durationSeconds: 100 });
+    expect(trusted.status).toBe(201); expect(trusted.body.durationSeconds).toBe(100);
+    // the duration is taken from the file when the client omits it
+    const noClaim = await uploadVideo(member, webm([0, 20_000]), 'video/webm');
+    const r = await api.req('POST', `/channels/${general.id}/clips`, member.token, { attachmentId: noClaim.body.id });
+    expect(r.status).toBe(201); expect(r.body.durationSeconds).toBe(20);
+  });
+
+  it('parses WebM timing without being fooled by junk', () => {
+    expect(webmInfo(webm([0], 90_000))).toEqual({ scaleNs: 1_000_000, durationSeconds: 90 });
+    expect(webmInfo(webm([0])).durationSeconds).toBeNull();
+    expect(webmInfo(Buffer.from('not a webm'))).toEqual({ scaleNs: 1_000_000, durationSeconds: null });
+    expect(lastClusterTimecode(webm([1000, 3000, 2000]))).toBe(3000);
+    expect(lastClusterTimecode(Buffer.from([0x1f, 0x43, 0xb6, 0x75, 0x81]))).toBeNull(); // truncated
+    expect(lastClusterTimecode(Buffer.alloc(100, 0xff))).toBeNull();
+    expect(webmDuration(webm([0]), webm([0, 42_000]))).toBe(42);
+    expect(webmDuration(webm([0]), Buffer.alloc(10))).toBeNull();
   });
 
   it('only works in a channel configured as a clips channel', async () => {
@@ -117,8 +192,8 @@ describe('clips', () => {
     expect((await postClip(member, general.id, { attachmentId: mismatch.body.id, durationSeconds: 5 })).status).toBe(400);
     const quicktime = await uploadVideo(member, mp4(), 'video/quicktime');
     expect((await postClip(member, general.id, { attachmentId: quicktime.body.id, durationSeconds: 5 })).status).toBe(400);
-    // the container says 90 s although the client claims 10 s
-    const long = await uploadVideo(member, mp4(90));
+    // the container says 150 s although the client claims 10 s
+    const long = await uploadVideo(member, mp4(150));
     expect((await postClip(member, general.id, { attachmentId: long.body.id, durationSeconds: 10 })).status).toBe(400);
     // the duration is read from the container when the client omits it
     const short = await uploadVideo(member, mp4(12.4));

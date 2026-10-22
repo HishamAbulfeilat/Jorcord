@@ -43,6 +43,7 @@ Strongly recommended; the server runs without them but with degraded guarantees.
 | `SEARCH_MODE` | `auto` (default), `fts`, `ilike`. |
 | `TENOR_API_KEY`, `GIPHY_API_KEY` | GIF search proxies (optional). |
 | `HEARTBEAT_INTERVAL_MS`, `VOICE_GRACE_MS`, `SWEEP_INTERVAL_MS` | Lifecycle timing knobs. |
+| `CLIP_MAX_SECONDS`, `STREAM_MAX_VIEWERS` | Longest shared clip (default 120 s, max 600) and the server-wide cap of viewers per Go Live stream (default 99). |
 
 ## 3. Push notification environment variables (optional)
 

@@ -15,6 +15,10 @@ export const LIMITS = {
   maxSoundsPerServer: 48,
   maxSoundBytes: 1024 * 1024,
   maxVoiceUsers: 99,
+  /** Longest clip (seconds) the clips API accepts by default. The server can lower or raise it with CLIP_MAX_SECONDS (GET /clips/limits). */
+  maxClipSeconds: 120,
+  /** Hard ceiling for CLIP_MAX_SECONDS. */
+  maxClipSecondsCeiling: 600,
   /** A media channel only accepts posts whose attachments include one of these content-type prefixes (Discord's media-only rule). */
   mediaPostTypes: ['image/', 'video/'],
   stream: { maxWidth: 3840, maxHeight: 2160, maxFps: 60, maxBitrateKbps: 40000 },

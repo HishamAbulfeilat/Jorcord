@@ -8,6 +8,7 @@ import { getGateway } from '@/lib/gateway';
 import { useData, findChannel } from '@/stores/data';
 import { useUI, type Prefs } from '@/stores/ui';
 import { useVoiceUI, voiceHooks } from '@/stores/voiceui';
+import { useLiveVoice } from '@/stores/livevoice';
 import { playSound } from '@/lib/sound';
 import { callService } from '@/lib/native';
 import { CallRecorder, type RecordingRoom } from './callRecorder';
@@ -30,6 +31,7 @@ export function settingsFromPrefs(p: Prefs): Partial<VoiceSettings> {
     cameraPreset: p.cameraPreset as StreamPresetId, screenPreset: p.screenPreset as StreamPresetId,
     cameraQuality: p.videoQuality, cameraFps: p.videoFps,
     screenHint: p.screenHint, screenAudio: p.screenAudio,
+    mutedSpeakingHint: p.mutedSpeakingHint,
   };
 }
 
@@ -108,6 +110,7 @@ function bindClient(c: VoiceClient) {
     const conn = s.status === 'connected' ? 'connected' : s.status === 'connecting' ? 'connecting' : s.status === 'reconnecting' ? 'reconnecting' : ui.conn === 'connecting' && s.status === 'idle' ? 'connecting' : s.status === 'idle' || s.status === 'disconnected' ? (wantChannel ? 'reconnecting' : 'idle') : 'idle';
     if (conn === 'reconnecting' && s.status === 'reconnecting' && ui.connectingSince === null) ui.patch({ connectingSince: Date.now() });
     if (ui.streaming !== s.screenOn) ui.patch({ streaming: s.screenOn });
+    if (ui.speakingWhileMuted !== s.speakingWhileMuted) ui.patch({ speakingWhileMuted: s.speakingWhileMuted });
     if (s.status === 'connected' || s.status === 'reconnecting') {
       if (ui.selfMute !== s.muted || ui.selfDeaf !== s.deafened || ui.conn !== conn) ui.patch({ selfMute: s.muted, selfDeaf: s.deafened, conn });
     }
@@ -116,10 +119,14 @@ function bindClient(c: VoiceClient) {
       if (key !== lastSent) { lastSent = key; sendVoiceState(wantChannel, s); }
     }
     if (prevStatus !== s.status) {
+      if (s.status === 'connected') { syncPrioritySpeakers(c, wantChannel, useData.getState().voiceStates); syncStreamAudience(c, wantChannel); }
       if (s.status === 'connected' && prevStatus !== 'reconnecting') playSound('join');
       prevStatus = s.status;
     }
   });
+  // priority speakers come from the server's voice states, not from participant attributes anyone could write
+  useData.subscribe((st, prev) => { if (st.voiceStates !== prev.voiceStates) { syncPrioritySpeakers(c, wantChannel, st.voiceStates); syncStreamAudience(c, wantChannel); } });
+  useLiveVoice.subscribe((st, prev) => { if (st.kicked !== prev.kicked) syncStreamAudience(c, wantChannel); });
   // After a gateway reconnect with a fresh session, the server forgot our voice state: re-announce.
   getGateway().on('READY', () => { lastSent = ''; const s = c.getSnapshot(); if (wantChannel && s.status === 'connected') { lastSent = `${wantChannel}|${s.muted}|${s.deafened}|${s.cameraOn}|${s.screenOn}`; sendVoiceState(wantChannel, s); } });
   // Server-driven changes to MY voice state: moved by a moderator, or disconnected.
@@ -333,7 +340,7 @@ export async function leaveVoice() {
   wantChannel = null; lastSent = '';
   const ui = useVoiceUI.getState();
   ui.patch({ conn: 'idle', joiningChannelId: null, connectingSince: null, failure: null }); ui.setConnected(null); ui.setFocus(null);
-  if (ch) { sendVoiceState(null, undefined); callService.stop(); }
+  if (ch) { sendVoiceState(null, undefined); callService.stop(); useLiveVoice.getState().clearChannel(ch); }
   if (c) { try { await c.disconnect(); } catch { /* ignore */ } }
   if (ch) playSound('leave');
 }
@@ -354,6 +361,7 @@ export function applyPrefs(p: Prefs) {
   if (s.pttCode !== cur.pttCode) client.setPttKey(s.pttCode!);
   syncGlobalPtt(p);
   if (s.vadThreshold !== cur.vadThreshold) client.setVadThreshold(s.vadThreshold!);
+  if (s.mutedSpeakingHint !== cur.mutedSpeakingHint) client.setMutedSpeakingHint(!!s.mutedSpeakingHint);
   if (s.cameraQuality !== cur.cameraQuality || s.cameraFps !== cur.cameraFps) {
     void client.setCameraSettings({ quality: s.cameraQuality, fps: s.cameraFps }).catch(() => {});
   }
@@ -368,16 +376,33 @@ export function startScreenShare(o: { preset: StreamPresetId; hint: ContentHint;
 }
 
 /**
- * Priority speaker: the server authorises it (PRIORITY_SPEAKER, only while connected to the channel); only then does the
- * client set the LiveKit attribute that ducks everyone else. Off is always allowed.
+ * Priority speaker: the server authorises it (PRIORITY_SPEAKER, only while connected and able to speak), stores it in my voice state
+ * and broadcasts it; every client then ducks the others from the voice states (see `syncPrioritySpeakers`). Off is always allowed.
  */
 export function setPrioritySpeaker(on: boolean) {
-  const c = getVoiceClient();
   const ch = wantChannel ?? useVoiceUI.getState().connectedChannelId;
   if (!ch) return;
   void api.voice.prioritySpeaker(ch, on)
-    .then(() => c.setPrioritySpeaker(on))
+    .then((r) => { if (r.voiceState) useData.getState().apply('VOICE_STATE_UPDATE', r.voiceState); })
     .catch((e) => useUI.getState().toast(e?.message || 'Could not change priority speaker', 'error'));
+}
+
+/**
+ * Go Live, streamer side: once I cap my audience or have removed someone, only the viewers the server accepted may receive my
+ * screen share (the media-level half of the cap and of "remove viewer"). Without either, everyone in the call may watch.
+ */
+export function syncStreamAudience(c: VoiceClient, channelId: string | null) {
+  const me = useData.getState().me?.id; const states = useData.getState().voiceStates;
+  const mine = me ? states[me] : undefined;
+  if (!channelId || !me || !mine?.streaming || mine.channelId !== channelId) { c.setStreamAudience(null); return; }
+  const kicked = useLiveVoice.getState().kicked[`${channelId}:${me}`] ?? [];
+  if (mine.streamViewerLimit == null && !kicked.length) { c.setStreamAudience(null); return; }
+  c.setStreamAudience(Object.values(states).filter((v) => v.channelId === channelId && v.watching === me && !kicked.includes(v.userId)).map((v) => v.userId));
+}
+
+/** Tell the client which participants the server says hold priority speaker (their identity is their user id). */
+export function syncPrioritySpeakers(c: VoiceClient, channelId: string | null, states: Record<string, { channelId: string | null; prioritySpeaker?: boolean }>) {
+  c.setPrioritySpeakers(channelId ? Object.entries(states).filter(([, v]) => v.channelId === channelId && v.prioritySpeaker).map(([id]) => id) : []);
 }
 
 /** Test/debug surface (Playwright asserts on this). Not part of the public UI. */
@@ -389,7 +414,7 @@ function debugApi(c: VoiceClient) {
   };
   return {
     client: c, room,
-    state: () => { const s = c.getSnapshot(); return { status: s.status, channelId: s.channelId, muted: s.muted, deafened: s.deafened, cameraOn: s.cameraOn, screenOn: s.screenOn, error: s.error?.code ?? null, participants: s.participants.map((p) => ({ identity: p.identity, name: p.name, isLocal: p.isLocal, speaking: p.speaking, micMuted: p.micMuted, cameraOn: p.cameraOn, screenOn: p.screenOn })) }; },
+    state: () => { const s = c.getSnapshot(); return { status: s.status, channelId: s.channelId, muted: s.muted, deafened: s.deafened, cameraOn: s.cameraOn, screenOn: s.screenOn, speakingWhileMuted: s.speakingWhileMuted, error: s.error?.code ?? null, participants: s.participants.map((p) => ({ identity: p.identity, name: p.name, isLocal: p.isLocal, speaking: p.speaking, micMuted: p.micMuted, cameraOn: p.cameraOn, screenOn: p.screenOn, priority: p.priority })) }; },
     /** noise suppression as applied to the published mic (e2e): the setting, the processor on the track, and any fallback. */
     noise: () => { const mic: any = room.localParticipant.getTrackPublication('microphone' as any)?.track; return { ...c.getSnapshot().noise, processor: mic?.getProcessor?.()?.name ?? null }; },
     setNoise: (m: Prefs['noiseEngine']) => { const st = useUI.getState(); st.setPref('noiseSuppression', m !== 'off'); st.setPref('noiseEngine', m); },

@@ -11,7 +11,8 @@ import { mapVoiceError, type VoiceError } from './errors';
 import { mapConnectionQuality, type NetworkQuality, type StreamStats } from './network';
 import { createRnnoiseProcessor, type NoiseFallbackReason } from './noise';
 import { createPushToTalk, type PttOptions } from './ptt';
-import { effectiveVolume, clampUserVolume } from './priority';
+import { effectiveVolume, clampUserVolume, isPriorityIdentity, DuckGate } from './priority';
+import { MicMonitor, MutedSpeakingDetector, MUTED_HINT_VISIBLE_MS } from './mutedSpeaking';
 import { AudioBoost } from './boost';
 import {
   cameraPlan, detectSupportedVideoCodecs, isScalableCodec, normalizeCameraFps, pickCodec, recommendBitrateKbps, selectPreset, simulcastLayers,
@@ -52,12 +53,14 @@ export interface VoiceSettings {
   screenHint: Exclude<ContentHint, 'text'> | 'text';
   screenAudio: boolean;
   codec: VideoCodecName | 'auto';
+  /** Detect speech into a muted mic and raise `speakingWhileMuted` (the app shows a "you are muted" hint). Listens locally only. */
+  mutedSpeakingHint: boolean;
 }
 
 export const DEFAULT_SETTINGS: VoiceSettings = {
   audio: DEFAULT_AUDIO, inputMode: 'open', pttCode: 'Backquote', pttReleaseMs: 200, vadThreshold: 0.03,
   cameraPreset: '720p30', cameraQuality: 'auto', cameraFps: 30,
-  screenPreset: '1080p60', screenHint: 'motion', screenAudio: true, codec: 'auto',
+  screenPreset: '1080p60', screenHint: 'motion', screenAudio: true, codec: 'auto', mutedSpeakingHint: true,
 };
 
 export interface VoiceSnapshot {
@@ -77,6 +80,8 @@ export interface VoiceSnapshot {
   screenResumeNeeded: boolean;
   /** Noise suppression as actually applied to the published mic track (differs from the setting after a fallback). */
   noise: { active: AudioSettings['noiseSuppressionMode']; fallback: NoiseFallbackReason | null };
+  /** True for a few seconds after speech was detected on the muted mic (see `VoiceSettings.mutedSpeakingHint`). */
+  speakingWhileMuted: boolean;
 }
 
 export interface VoiceClientOptions {
@@ -89,6 +94,8 @@ export interface VoiceClientOptions {
   getToken?: (channelId: string) => Promise<Pick<VoiceToken, 'token' | 'url'>>;
   /** Fired after an automatic rejoin succeeded (the app re-announces its gateway voice state). */
   onReconnected?: () => void;
+  /** Fired each time speech is detected on the muted mic (rate limited), in addition to the `speakingWhileMuted` snapshot flag. */
+  onSpeakingWhileMuted?: () => void;
   /** Fired when the session drops and the client starts recovering. */
   onConnectionLost?: (reason: LossReason) => void;
   /** Join timeout (signalling + ICE). Default 15s. */
@@ -108,6 +115,16 @@ export class VoiceClient {
   private speaking = initialSpeaking;
   private userVolumes = new Map<string, number>();
   private userMuted = new Set<string>();
+  /** Server-confirmed priority speakers (userIds); null = fall back to the advisory `jv.priority` attribute. */
+  private prioritySet: Set<string> | null = null;
+  private duckGate = new DuckGate();
+  /** Go Live: identities that may receive my screen share (null = everyone). */
+  private audience: Set<string> | null = null;
+  private audienceSent = false;
+  private mutedMonitor = new MicMonitor();
+  private mutedDetector = new MutedSpeakingDetector();
+  private mutedHintUntil = 0;
+  private mutedMonitorBusy = false;
   private boostAudio = new AudioBoost({ outputDeviceId: () => this.snap?.settings.audio.outputDeviceId });
   private selfMuted = false;
   private preDeafenMuted = false;
@@ -173,6 +190,7 @@ export class VoiceClient {
       reconnect: { phase: 'idle', attempt: 0, maxAttempts: this.rc.maxAttempts, nextRetryAt: null, reason: null },
       connection: null, serverUrl: null, serverVersion: null, screenResumeNeeded: false,
       noise: { active: settings.audio.noiseSuppression ? settings.audio.noiseSuppressionMode : 'off', fallback: null },
+      speakingWhileMuted: false,
     };
     this.bindRoom();
     this.bindWindow();
@@ -262,6 +280,7 @@ export class VoiceClient {
     this.ensureAudioHost();
     await this.refreshDevices();
     this.emit({ status: 'connected', audioBlocked: !this.room.canPlaybackAudio });
+    this.audienceSent = false; this.applyAudience();
     try { await this.applyMicState(true); } catch (e) { this.fail(e, 'media'); }
   }
 
@@ -272,6 +291,7 @@ export class VoiceClient {
     this.statsTimer = undefined; this.connPrev = undefined;
     this.stopPtt?.(); this.stopPtt = undefined;
     this.teardownGate();
+    this.mutedMonitor.stop(); this.mutedDetector.rearm(); this.mutedHintUntil = 0;
     this.rnnoiseAttached = false;
     this.boostAudio.releaseAll();
   }
@@ -551,6 +571,43 @@ export class VoiceClient {
   }
   private vadHeldUntil = 0;
 
+  // "Speaking while muted": a private clone of the mic is metered while muted; the audio never leaves the device.
+  setMutedSpeakingHint(on: boolean) {
+    if (this.snap.settings.mutedSpeakingHint === on) return;
+    this.snap = { ...this.snap, settings: { ...this.snap.settings, mutedSpeakingHint: on } };
+    if (!on) { this.mutedMonitor.stop(); this.mutedHintUntil = 0; this.mutedDetector.rearm(); }
+    this.emit(on ? {} : { speakingWhileMuted: false });
+  }
+  /** Mute state changes re-arm the hint so the first mumble after muting is reported. */
+  private mutedTick(now: number) {
+    const want = this.snap.settings.mutedSpeakingHint && this.selfMuted && !this.snap.deafened && this.snap.status === 'connected' && this.room.localParticipant.permissions?.canPublish !== false;
+    if (!want) {
+      if (this.mutedMonitor.active) { this.mutedMonitor.stop(); this.mutedDetector.rearm(); }
+      if (this.snap.speakingWhileMuted) this.emit({ speakingWhileMuted: false });
+      return;
+    }
+    const pubTrack = this.room.localParticipant.getTrackPublication(Track.Source.Microphone)?.track?.mediaStreamTrack;
+    if (pubTrack && this.mutedMonitor.sourceId !== pubTrack.id) { this.mutedMonitor.start(pubTrack); }
+    else if (!pubTrack && !this.mutedMonitor.active && !this.mutedMonitorBusy && typeof navigator !== 'undefined' && navigator.mediaDevices?.getUserMedia) {
+      // joined muted: no published mic yet, so open one only for the meter (the browser shows its mic indicator, as for any open mic)
+      this.mutedMonitorBusy = true;
+      void navigator.mediaDevices.getUserMedia({ audio: resolveAudio(this.snap.settings.audio).capture })
+        .then((st) => {
+          const t = st.getAudioTracks()[0];
+          if (!t) return;
+          if (this.selfMuted && this.snap.settings.mutedSpeakingHint && this.snap.status === 'connected') this.mutedMonitor.start(t, true); else t.stop();
+        })
+        .catch(() => { /* no mic permission: nothing to hint about */ })
+        .finally(() => { this.mutedMonitorBusy = false; });
+    }
+    if (!this.mutedMonitor.active) return;
+    if (this.mutedDetector.feed(now, this.mutedMonitor.level(), true)) {
+      this.mutedHintUntil = now + MUTED_HINT_VISIBLE_MS;
+      this.emit({ speakingWhileMuted: true });
+      try { this.opts.onSpeakingWhileMuted?.(); } catch { /* app callback */ }
+    } else if (this.snap.speakingWhileMuted && now > this.mutedHintUntil) this.emit({ speakingWhileMuted: false });
+  }
+
   async setInputDevice(deviceId: string) { await this.room.switchActiveDevice('audioinput', deviceId, true); await this.setAudioDeviceState({ inputDeviceId: deviceId }); }
   async setOutputDevice(deviceId: string) {
     try { await this.room.switchActiveDevice('audiooutput', deviceId); } catch (e) { this.fail(e); }
@@ -581,11 +638,23 @@ export class VoiceClient {
     this.applyVolumes(); this.emit();
   }
 
-  private isPriority(p: Participant) { return p.attributes?.[ATTR_PRIORITY] === '1'; }
+  private isPriority(p: Participant) { return isPriorityIdentity(p.identity, p.attributes?.[ATTR_PRIORITY], this.prioritySet); }
+  /**
+   * Tell the client who the server says holds priority speaker (identities = user ids). Once set, the list is authoritative and the
+   * participant attribute is ignored, so a member cannot duck the room by writing the attribute themselves. Pass null to go back.
+   */
+  setPrioritySpeakers(identities: Iterable<string> | null) {
+    const next = identities ? new Set(identities) : null;
+    const same = (!next && !this.prioritySet) || (!!next && !!this.prioritySet && next.size === this.prioritySet.size && [...next].every((i) => this.prioritySet!.has(i)));
+    if (same) return;
+    this.prioritySet = next;
+    this.applyVolumes(); this.emit();
+  }
   private applyVolumes() {
     const remotes = Array.from(this.room.remoteParticipants.values());
-    const prioActive = remotes.some((p) => this.isPriority(p) && p.isSpeaking) ||
+    const talking = remotes.some((p) => this.isPriority(p) && p.isSpeaking) ||
       (this.isPriority(this.room.localParticipant) && this.room.localParticipant.isSpeaking);
+    const prioActive = this.duckGate.update(Date.now(), talking);
     const selfIsPriority = this.isPriority(this.room.localParticipant);
     const live = new Set<string>();
     for (const p of remotes) {
@@ -602,7 +671,10 @@ export class VoiceClient {
     this.boostAudio.retain(live);
   }
 
-  /** Requires PRIORITY_SPEAKER permission (enforced by the app; the attribute is advisory). */
+  /**
+   * Sets the advisory `jv.priority` attribute (needs the `canUpdateOwnMetadata` grant, which Jorcord's token does not give out:
+   * the server sets the attribute itself after checking PRIORITY_SPEAKER). Only useful for apps that mint their own tokens.
+   */
   async setPrioritySpeaker(on: boolean) { await this.room.localParticipant.setAttributes({ [ATTR_PRIORITY]: on ? '1' : '0' }); }
   /** Stage: raise/lower hand (request to speak). */
   async setHandRaised(on: boolean) { await this.room.localParticipant.setAttributes({ [ATTR_HAND]: on ? '1' : '0' }); }
@@ -744,6 +816,35 @@ export class VoiceClient {
     if (t) t.mediaStreamTrack.contentHint = hint;
   }
 
+  /**
+   * Go Live audience control for the streamer. With a list, only those participants may subscribe to my screen share (and its
+   * audio); camera and microphone stay open to everybody. This is what makes a viewer cap or a kick real at the media level: the
+   * app passes the viewers the server accepted (`watching` in the voice states). Pass null to allow everyone again.
+   */
+  setStreamAudience(identities: Iterable<string> | null) {
+    this.audience = identities ? new Set(identities) : null;
+    this.applyAudience();
+  }
+  private applyAudience() {
+    if (this.room.state !== ConnectionState.Connected) return;
+    const lp = this.room.localParticipant;
+    try {
+      if (!this.audience) {
+        if (this.audienceSent) { lp.setTrackSubscriptionPermissions(true); this.audienceSent = false; }
+        return;
+      }
+      const screen: string[] = [], rest: string[] = [];
+      for (const pub of lp.trackPublications.values()) {
+        if (!pub.trackSid) continue;
+        (pub.source === Track.Source.ScreenShare || pub.source === Track.Source.ScreenShareAudio ? screen : rest).push(pub.trackSid);
+      }
+      // participants left out of the list get nothing at all, so every remote is listed
+      const perms = Array.from(this.room.remoteParticipants.values()).map((p) => ({ participantIdentity: p.identity, allowAll: false, allowedTrackSids: this.audience!.has(p.identity) ? [...rest, ...screen] : rest }));
+      lp.setTrackSubscriptionPermissions(false, perms);
+      this.audienceSent = true;
+    } catch { /* best effort: the server also unsubscribes kicked viewers */ }
+  }
+
   // ---- viewer side ----
   /** Viewer picks a quality for a remote video; 'auto' lets adaptiveStream decide. */
   setViewerQuality(identity: string, source: StreamSource, q: ViewerQuality) {
@@ -834,6 +935,7 @@ export class VoiceClient {
       this.speaking = speakingReducer(this.speaking, { type: 'levels', now, levels, threshold: 0.02 });
       this.speaking = speakingReducer(this.speaking, { type: 'tick', now });
       this.gateTick(now);
+      this.mutedTick(now);
       this.applyVolumes();
       this.emit();
     }, 100);
@@ -842,11 +944,11 @@ export class VoiceClient {
   private bindRoom() {
     const r = this.room;
     const touch = () => this.emit();
-    r.on(RoomEvent.ParticipantConnected, touch)
+    r.on(RoomEvent.ParticipantConnected, () => { this.applyAudience(); touch(); })
       .on(RoomEvent.ParticipantDisconnected, (p) => { this.speaking = speakingReducer(this.speaking, { type: 'remove', id: p.identity }); touch(); })
       .on(RoomEvent.TrackMuted, touch).on(RoomEvent.TrackUnmuted, touch)
       .on(RoomEvent.TrackPublished, touch).on(RoomEvent.TrackUnpublished, touch)
-      .on(RoomEvent.LocalTrackPublished, touch)
+      .on(RoomEvent.LocalTrackPublished, () => { this.applyAudience(); touch(); })
       .on(RoomEvent.LocalTrackUnpublished, (pub: LocalTrackPublication) => {
         // stopped while healthy (browser "Stop sharing" button, device unplugged) = the user's intent changed; a drop is not
         const healthy = !this.leaving && this.rc.phase === 'connected' && this.room.state === ConnectionState.Connected;
@@ -869,7 +971,7 @@ export class VoiceClient {
       .on(RoomEvent.ConnectionQualityChanged, (q, p) => { if (p.isLocal) this.emit({ networkQuality: mapConnectionQuality(q) }); else touch(); })
       .on(RoomEvent.Reconnecting, () => this.rcDispatch({ type: 'resuming' }))
       .on(RoomEvent.SignalReconnecting, () => this.rcDispatch({ type: 'resuming' }))
-      .on(RoomEvent.Reconnected, () => { this.rcDispatch({ type: 'connected' }); this.applyVolumes(); this.connPrev = undefined; })
+      .on(RoomEvent.Reconnected, () => { this.rcDispatch({ type: 'connected' }); this.applyVolumes(); this.applyAudience(); this.connPrev = undefined; })
       .on(RoomEvent.Disconnected, (reason) => {
         // only a live session counts as "lost"; join attempts report their own failure
         if (this.leaving || (this.rc.phase !== 'connected' && this.rc.phase !== 'resuming')) return;

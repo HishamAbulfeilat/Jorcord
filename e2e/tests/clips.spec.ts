@@ -55,23 +55,25 @@ test('record the last 30 s of my camera, preview it, share it to the clips chann
   await expect.poll(() => card.locator('video').evaluate((v: HTMLVideoElement) => v.readyState), { timeout: 15_000 }).toBeGreaterThanOrEqual(1);
 });
 
-test('longer windows can be downloaded but not shared (API limit 30 s); stopping the buffer frees it', async () => {
+test('the 1 and 2 minute windows can be shared too (API cap 120 s); stopping the buffer frees it', async () => {
   await A.page.keyboard.press('Escape');
   await A.page.getByRole('navigation', { name: 'Channels' }).getByRole('button', { name: 'General', exact: true }).click();
   await A.page.getByTestId('clip-button').click();
   const pop = A.page.getByTestId('clip-popover');
   await pop.getByRole('button', { name: 'Stop' }).click();
   await pop.getByRole('radio', { name: '1 min' }).check({ force: true });
-  await expect(pop).toContainText('limited to 30 seconds');
+  await expect(pop).not.toContainText('limited to'); // the server cap is 120 s: no sharing limit note for the 1 minute window
   await pop.getByRole('button', { name: 'Start recording buffer' }).click();
   await expect(pop.getByRole('button', { name: 'Save clip' })).toBeEnabled({ timeout: 15_000 });
   await A.page.waitForTimeout(2500);
   await pop.getByRole('button', { name: 'Save clip' }).click();
   const dlg = A.page.getByRole('dialog').filter({ hasText: 'Your clip' });
   await expect(dlg.getByTestId('clip-preview')).toBeVisible();
-  // a 60 s window that only has a few seconds is still shareable; the guard applies to clips above 30 s (unit-tested)
+  // shared from the 1 minute window; the guard for clips above the cap is unit-tested
   await expect(dlg.getByRole('button', { name: 'Share to clips channel' })).toBeEnabled();
-  await dlg.getByRole('button', { name: 'Discard' }).click();
+  await dlg.getByRole('button', { name: 'Share to clips channel' }).click();
+  await expect.poll(async () => (await rest<any[]>(A.page, 'GET', `/channels/${clipsId}/clips`)).length).toBe(2);
+  expect((await rest<{ maxSeconds: number }>(A.page, 'GET', '/clips/limits')).maxSeconds).toBe(120);
   await A.page.getByTestId('clip-button').click();
   await A.page.getByTestId('clip-popover').getByRole('button', { name: 'Stop' }).click();
   await expect(A.page.getByTestId('clip-popover').getByRole('button', { name: 'Start recording buffer' })).toBeVisible();

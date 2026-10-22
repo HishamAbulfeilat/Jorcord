@@ -25,8 +25,8 @@ Checklist items are grouped by feature. Each row lists the files involved and an
 
 ## Stage channels
 
-- [ ] **Blocked / anonymous speakers on stage** (invite attendee who then views without identity or raised-hand queue ordering). `services/stage.ts` has request-to-speak and speaker promote/demote but no queue-order persistence beyond `requestToSpeakAt`.
-  Files: apps/server/src/services/stage.ts, apps/server/src/routes/voice.ts. Size: S.
+- [x] **Blocked / anonymous speakers on stage and raised-hand queue ordering.** The queue is persisted (`stage_hand_queue`, migration 058; first come first served, kept for 120 s while the member is away, moderators read it with identities from `GET /channels/:id/stage/queue`), hands can be anonymous, and moderators can block a member from speaking (`stage_speaker_blocks`; a host/member block also refuses the hand). `STAGE_QUEUE_UPDATE` / `STAGE_HAND_UPDATE` events; web `voice/StageQueue.tsx`.
+  Files: apps/server/src/services/stage.ts, apps/server/src/routes/voice.ts, apps/web/src/voice/StageQueue.tsx. Size: S.
 
 ## Super reactions
 
@@ -40,8 +40,8 @@ Checklist items are grouped by feature. Each row lists the files involved and an
 
 ## Go Live / streaming extras
 
-- [ ] **"Go Live" viewers overlay + viewer limit / kicked-viewer edge cases.** Quality presets exist (`voice/controls.tsx`, `voice/tiles.tsx`) but there is no viewer list, no viewer cap and no "everyone can watch" invitation model.
-  Files: apps/web/src/voice/Room.tsx, apps/web/src/voice/tiles.tsx, apps/server/src/services/voice.ts. Size: M.
+- [x] **"Go Live" viewers overlay + viewer limit / kicked-viewer edge cases.** `GET /channels/:id/voice/streams`, per-stream viewer cap (`PUT /channels/:id/voice/stream`, bounded by `STREAM_MAX_VIEWERS`), watch / stop watching with `STREAM_FULL` and `STREAM_VIEWER_KICKED` refusals, and kicking viewers (streamer or MOVE_MEMBERS; migration 059), enforced in LiveKit by the streamer's subscription permissions. Web: "who is watching" overlay with the viewer list, limit picker and remove/allow-again buttons (`voice/StreamAudience.tsx`). There is still no "everyone can watch" invitation model.
+  Files: apps/server/src/services/streams.ts, apps/server/src/routes/voice.ts, apps/web/src/voice/StreamAudience.tsx, apps/web/src/voice/tiles.tsx. Size: M.
 
 ## Activities / embedded apps
 

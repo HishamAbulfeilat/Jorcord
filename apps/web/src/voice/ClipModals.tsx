@@ -10,7 +10,8 @@ import { api, type ClipMessage } from '@/lib/api';
 import { fileUrl, fmtBytes } from '@/lib/format';
 import { myChannelPerms } from '@/lib/session';
 import { t } from '@/i18n';
-import { canShareClip, shareDurationSeconds, SHARE_MAX_SECONDS } from './clipBuffer';
+import { canShareClip, getShareMax, shareDurationSeconds } from './clipBuffer';
+import { loadClipLimits } from './clipLimits';
 
 /** Clips channels I may post to, across my servers. */
 export function shareTargets(): { id: string; label: string }[] {
@@ -41,6 +42,7 @@ export function ClipPreviewModal({ close }: { close: () => void }) {
   useEffect(() => () => { if (url) URL.revokeObjectURL(url); }, [url]);
   const video = useRef<HTMLVideoElement>(null); useMeasuredDuration(video);
   const targets = useMemo(shareTargets, []);
+  const [, bump] = useState(0); useEffect(() => { void loadClipLimits().then(() => bump((n) => n + 1)); }, []); // the server's cap decides what can be shared
   const [target, setTarget] = useState(targets[0]?.id ?? ''); const [caption, setCaption] = useState(''); const [busy, setBusy] = useState(false);
   if (!clip) return <Modal title={t('Clip')} onClose={close}><p className="text-muted">{t('No clip to show.')}</p></Modal>;
   const shareable = canShareClip(clip.durationSec);
@@ -60,7 +62,7 @@ export function ClipPreviewModal({ close }: { close: () => void }) {
         <button className="btn btn-primary inline-flex items-center gap-2" disabled={busy || !shareable || !target} onClick={() => void share()}><Share2 size={16} />{busy ? t('Sharing…') : t('Share to clips channel')}</button></>}>
       <video ref={video} src={url} controls playsInline data-testid="clip-preview" className="aspect-video w-full rounded-lg bg-black" />
       <p className="mt-2 text-sm text-muted" data-testid="clip-meta">{Math.round(clip.durationSec)} s · {fmtBytes(clip.blob.size)}</p>
-      {!shareable && <p role="note" className="mt-2 text-sm text-warn" data-testid="clip-too-long">{t('Clips shared to a channel can be at most {n} seconds. Download this one, or save a 30 second clip to share it.').replace('{n}', String(SHARE_MAX_SECONDS))}</p>}
+      {!shareable && <p role="note" className="mt-2 text-sm text-warn" data-testid="clip-too-long">{t('Clips shared to a channel can be at most {n} seconds. Download this one, or save a shorter clip to share it.').replace('{n}', String(getShareMax()))}</p>}
       {shareable && targets.length === 0 && <p role="note" className="mt-2 text-sm text-muted" data-testid="clip-no-channel">{t('None of your servers has a clips channel you can post in. A server admin can mark a text channel as a clips channel in its settings.')}</p>}
       {shareable && targets.length > 0 && (
         <div className="mt-3 grid gap-3">

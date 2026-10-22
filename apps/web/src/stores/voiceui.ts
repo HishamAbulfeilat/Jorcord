@@ -18,18 +18,20 @@ interface VoiceUIState {
   setFocus(k: string | null): void;
   /** Local screen share is live (mirrors the client; used by streamer mode). */
   streaming: boolean;
+  /** Speech was just detected on my muted mic (mirrors the client; drives the "you are muted" hint). */
+  speakingWhileMuted: boolean;
   /** "Go Live" quality popover, opened from several entry points. `barMounted` = the channel's control bar renders it, else the dock does. */
   sharePop: boolean; barMounted: boolean; setSharePop(v: boolean): void; setBarMounted(v: boolean): void;
   toggleMute(): void; toggleDeaf(): void;
   setConnected(id: string | null): void;
-  patch(p: Partial<Pick<VoiceUIState, 'selfMute' | 'selfDeaf' | 'conn' | 'joiningChannelId' | 'streaming' | 'failure' | 'connectingSince'>>): void;
+  patch(p: Partial<Pick<VoiceUIState, 'selfMute' | 'selfDeaf' | 'conn' | 'joiningChannelId' | 'streaming' | 'failure' | 'connectingSince' | 'speakingWhileMuted'>>): void;
 }
 
 /** Actions (set by src/voice/controller) that forward to the live client when connected. */
 export const voiceHooks: { toggleMute?: () => void; toggleDeaf?: () => void } = {};
 
 export const useVoiceUI = create<VoiceUIState>((set, get) => ({
-  selfMute: false, selfDeaf: false, connectedChannelId: null, conn: 'idle', failure: null, connectingSince: null, joiningChannelId: null, focus: null, streaming: false, sharePop: false, barMounted: false,
+  selfMute: false, selfDeaf: false, connectedChannelId: null, conn: 'idle', failure: null, connectingSince: null, joiningChannelId: null, focus: null, streaming: false, speakingWhileMuted: false, sharePop: false, barMounted: false,
   setSharePop: (sharePop) => set({ sharePop }), setBarMounted: (barMounted) => set({ barMounted }),
   setFocus: (focus) => set({ focus }),
   toggleMute: () => { if (get().conn !== 'idle' && voiceHooks.toggleMute) voiceHooks.toggleMute(); else set((s) => ({ selfMute: s.selfDeaf ? false : !s.selfMute, selfDeaf: s.selfDeaf ? false : s.selfDeaf })); },

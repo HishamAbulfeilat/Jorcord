@@ -13,16 +13,16 @@ The file currently lists 13 original checklist rows plus the rows added for Comp
 | 3 | Forum default sort order / layout | done | migration `034_forum_defaults.sql`; `routes/channels.ts` L128 (`defaultSortOrder`, `defaultForumLayout`); `test/parity-forum-defaults.test.ts`; `ForumView.tsx` |
 | 4 | Forum default reaction emoji | done | `routes/channels.ts` L128/L137 (custom emoji must belong to the server); covered in `test/sec-review-2026-10.test.ts` and `parity-forum-defaults.test.ts` |
 | 5 | `THREAD_DELETE` gateway event | done | `gateway/intents.ts` L11 mapping; `routes/channels.ts` L184-186 emits for the thread and each child thread; web `stores/data.ts` L153 drops the thread |
-| 6 | Blocked / anonymous speakers, raised-hand queue ordering | missing | `services/stage.ts` has request-to-speak and promote/demote only; no persisted queue order and no anonymous viewing. Correctly unticked in DISCORD-GAPS.md |
+| 6 | Blocked / anonymous speakers, raised-hand queue ordering | done (update) | Persisted queue in migration `058_stage_queue.sql`, `services/stage.ts` (`raiseHand`, `listHandQueue`, `speakerBlockReason`, `sweepHandQueue`), routes in `routes/voice.ts` (`/stage/queue` moderators only, `/stage/blocked`), web `voice/StageQueue.tsx`; tests `test/stage-queue.test.ts`, web `voice/stageQueue.test.tsx`, e2e `voice-extras.spec.ts` |
 | 7 | Super (burst) reactions | done | migration `035_burst_reactions.sql`; `routes/messages.ts` L44-45 (`burst`, `burstColor`), daily quota in `services/messages.ts`; `test/burst-reactions.test.ts` (server and web) |
 | 8 | Poll answer voters endpoint, remove vote | done | `routes/polls.ts` L64 (`GET .../answers/:answerId`), `DELETE .../votes/@me`, `POST .../expire` L82; `web/src/lib/polls.ts`; `test/hardening.test.ts` covers vote events |
-| 9 | Go Live viewer overlay / viewer cap | missing | no viewer list or cap in `services/voice.ts`; only quality presets in `web/src/voice/tiles.tsx` / `controls.tsx`. Correctly unticked |
+| 9 | Go Live viewer overlay / viewer cap | done (update) | `services/streams.ts`, `routes/voice.ts` (`/voice/streams`, `/voice/stream`, `.../watch`, `.../viewers/:userId`), migration `059_stream_viewer_kicks.sql`, `VoiceClient.setStreamAudience`; web `voice/StreamAudience.tsx`; tests `test/golive-viewers.test.ts`, web `voice/streamAudience.test.tsx`, voice `test/prioritySpeaker.test.ts`, e2e `voice-extras.spec.ts` |
 | 10 | Shared voice-channel activities (Watch Together, Tic-Tac-Toe) | done | migration `042_channel_activities.sql`; `routes/activities.ts`, `services/tictactoe.ts` (server-validated moves); web `voice/WatchTogether.tsx`, `voice/TicTacToe.tsx`; `test/parity-channel-activities.test.ts`. Third-party embedded apps / Embedded App SDK are not built (stated in the file) |
 | 11 | Scheduled-event recurrence | done | migration `036_recurrence.sql`; `routes/events.ts`; `services/scheduled.ts` (`nextOccurrences`); `test/platform.test.ts` "recurrence"; web `lib/events.ts` |
-| 12 | Message clips | done | Server: migration `040_clips.sql`, `routes/clips.ts` (clips channel only, magic-byte sniff, 30 s / 100 MB, rate limit), `test/clips.test.ts`. Web (landed since the first audit): `voice/clipBuffer.ts` + `voice/ClipRecorder.tsx` rolling buffer, `voice/ClipModals.tsx` preview/share, clips viewer button in `chat/ChatView.tsx`; tests `clipBuffer.test.ts`, `clipModals.test.tsx` |
+| 12 | Message clips | done | Server: migration `040_clips.sql` (+ `057_clip_duration.sql`), `routes/clips.ts` (clips channel only, magic-byte sniff, configurable cap `CLIP_MAX_SECONDS` default 120 s with MP4/WebM duration verification, 100 MB, rate limit), `test/clips.test.ts`. Web (landed since the first audit): `voice/clipBuffer.ts` + `voice/ClipRecorder.tsx` rolling buffer, `voice/ClipModals.tsx` preview/share, clips viewer button in `chat/ChatView.tsx`; tests `clipBuffer.test.ts`, `clipModals.test.tsx` |
 | 13 | Poll voter member filters, multi-select vote events | done | `routes/polls.ts` (`?type=members|bots`), `services/polls.ts` `finalizePoll` emits `MESSAGE_UPDATE`; `test/hardening.test.ts` |
 
-Summary: 11 done, 0 partial, 2 missing (stage anonymous speakers / queue order, Go Live viewer overlay and cap).
+Summary: 13 done. Update after this audit: the two items that were missing (stage anonymous speakers / queue order, Go Live viewer overlay and cap) are implemented (rows 6 and 9), and the clips cap is now 120 s so the 1 and 2 minute windows can be shared (row 12).
 
 ## 2. Master plan Phase A (section 8)
 
@@ -70,4 +70,4 @@ Verified by `pnpm -r typecheck`, server tests (69 files, 476 passed), web tests 
 2. Add `PIN_MESSAGES`, `BYPASS_SLOWMODE`, `USE_EXTERNAL_STICKERS` permission bits with a migration that ORs them into existing roles where appropriate.
 3. Desktop: native file dialogs, lock/unlock/suspend events, clipboard images, move other accounts' tokens into the keychain, and a run on real Windows/macOS/Linux desktops (see section 4).
 4. A test that walks `AuditActionType` and asserts each action has an emitter or is marked reserved.
-5. Stage anonymous speakers / persisted raised-hand order; Go Live viewer cap.
+5. (Done) Stage anonymous speakers / persisted raised-hand order; Go Live viewer cap.

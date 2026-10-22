@@ -22,10 +22,13 @@ Suggested fix: after a join (`POST /invites/:code`, member add) call `hub.broadc
 `MESSAGE_CREATE`. It converges because the server event overwrites the local value, but the badge can briefly show 2. Not blocking; documented so the
 two do not drift (the client could just wait for `READ_STATE_UPDATE`).
 
-## 4. (Resolved: `canUpdateOwnMetadata: true` is granted; stream caps stay client-side) LiveKit token grants (`POST /voice/token`)
+## 4. (Resolved differently: the server sets `jv.priority` itself and tokens do NOT grant `canUpdateOwnMetadata`; stream caps stay client-side) LiveKit token grants (`POST /voice/token`)
 * The grant lacks `canUpdateOwnMetadata`. The client library (`@jorcord/voice`) sets participant *attributes* for "priority speaker" and the legacy hand-raise;
   LiveKit rejects `setAttributes` without that grant. The web client now uses the REST stage API for hand raise, but priority speaker (`PRIORITY_SPEAKER`)
   cannot work until `canUpdateOwnMetadata: true` is added to `addGrant`.
+  **Update:** granting it would let any member write `jv.priority` and duck the whole room, so priority speaker is now server-owned instead:
+  `PUT /channels/:id/voice/priority-speaker` checks `PRIORITY_SPEAKER`, stores `VoiceState.prioritySpeaker` (broadcast) and writes the LiveKit
+  attribute through RoomService; the web client ducks from the voice states. The hand-raise attribute is not used by the web client.
 * `caps.canStream` is true for non-stage voice channels whenever `Perm.STREAM` is set, which is fine, but there is no cap on stream resolution/bitrate at
   token level (`LIMITS.stream` is only enforced client-side). Consider `canPublishSources` + a LiveKit egress/room limit if this must be enforced.
 

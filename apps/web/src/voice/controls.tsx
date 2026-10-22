@@ -7,6 +7,9 @@ import { Toggle } from '@/components/ui/primitives';
 import { Tip } from '@/components/ui/Tooltip';
 import { useUI } from '@/stores/ui';
 import { useVoiceUI } from '@/stores/voiceui';
+import { useData } from '@/stores/data';
+import { api } from '@/lib/api';
+import { VIEWER_LIMIT_CHOICES, limitLabel } from './StreamAudience';
 import { myChannelPerms } from '@/lib/session';
 import { cx } from '@/lib/format';
 import { isDmChannel, leaveVoice, setPrioritySpeaker, startScreenShare } from './controller';
@@ -28,6 +31,12 @@ function RoundBtn({ label, active, danger, onClick, children, disabled, pressed,
   );
 }
 
+/** Go Live: the audience cap is set on the server first (it is part of my voice state), then the screen share starts. */
+async function startStream(channelId: string | null, viewerLimit: number | null, o: Parameters<typeof startScreenShare>[0]) {
+  if (channelId && viewerLimit !== null) await api.voice.streamLimit(channelId, viewerLimit).catch(() => useUI.getState().toast(t('Could not set the viewer limit.'), 'error'));
+  await startScreenShare(o);
+}
+
 export function ScreenSharePopover({ onClose }: { onClose: () => void }) {
   const snap = useVoiceSnapshot(); const client = useVoiceClient();
   const prefs = useUI((s) => s.prefs); const setPref = useUI((s) => s.setPref);
@@ -35,6 +44,8 @@ export function ScreenSharePopover({ onClose }: { onClose: () => void }) {
   const [preset, setPreset] = useState<StreamPresetId>(prefs.screenPreset as StreamPresetId);
   const [hint, setHint] = useState<'motion' | 'detail'>(prefs.screenHint);
   const [audio, setAudio] = useState(prefs.screenAudio);
+  const [viewerLimit, setViewerLimit] = useState<number | null>(null);
+  const channelId = useVoiceUI((st) => st.connectedChannelId);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) onClose(); };
@@ -62,9 +73,16 @@ export function ScreenSharePopover({ onClose }: { onClose: () => void }) {
           <option value="motion">Motion (games, video)</option><option value="detail">Detail (text, slides)</option>
         </select>
       </div>
+      {!live && channelId && (
+        <div className="mt-3 flex items-center justify-between gap-2 text-sm text-header">
+          <label htmlFor="shareviewers">{t('Viewer limit')}</label>
+          <select id="shareviewers" className="field !min-h-0 !w-auto py-1" value={viewerLimit ?? ''} onChange={(e) => setViewerLimit(e.target.value === '' ? null : Number(e.target.value))}>
+            {VIEWER_LIMIT_CHOICES.map((c) => <option key={c ?? 'none'} value={c ?? ''}>{limitLabel(c)}</option>)}
+          </select>
+        </div>)}
       <div className="mt-3 flex items-center justify-between text-sm text-header"><span>{t('Share audio')}</span><Toggle label={t('Share audio')} checked={audio} onChange={(v) => { setAudio(v); setPref('screenAudio', v); }} /></div>
       {!live
-        ? <button className="btn btn-primary btn-lg mt-3 w-full" onClick={() => { onClose(); void startScreenShare({ preset, hint, audio }); }}>{t('Go Live')}</button>
+        ? <button className="btn btn-primary btn-lg mt-3 w-full" onClick={() => { onClose(); void startStream(channelId, viewerLimit, { preset, hint, audio }); }}>{t('Go Live')}</button>
         : <button className="btn btn-danger btn-lg mt-3 w-full" onClick={() => { onClose(); void client.stopScreenShare(); }}>{t('Stop Streaming')}</button>}
     </div>
   );
@@ -85,7 +103,8 @@ export function ControlBar({ onSettings, className }: { onSettings: () => void; 
   const canPublish = snap.participants.find((p) => p.isLocal)?.canPublish !== false;
   const muted = selfMute || selfDeaf;
   const channelId = useVoiceUI((s) => s.connectedChannelId);
-  const priority = !!snap.participants.find((p) => p.isLocal)?.priority;
+  const meId = useData((s) => s.me?.id); const priority = useData((s) => !!(meId && s.voiceStates[meId]?.prioritySpeaker)); // the server's word, not a participant attribute
+  const speakingMuted = useVoiceUI((s) => s.speakingWhileMuted);
   const canPriority = snap.status === 'connected' && !!channelId && !isDmChannel(channelId) && (myChannelPerms(channelId) & Perm.PRIORITY_SPEAKER) !== 0n;
   void stage;
   return (
@@ -102,7 +121,7 @@ export function ControlBar({ onSettings, className }: { onSettings: () => void; 
       )}
       <RecordButton />
       <ClipButton />
-      <RoundBtn label={muted ? 'Unmute' : 'Mute'} pressed={muted} active={false} className={muted ? '!bg-danger/20 !text-danger' : ''} onClick={toggleMute} disabled={!canPublish && !muted}>{muted ? <MicOff size={22} /> : <Mic size={22} />}</RoundBtn>
+      <RoundBtn label={muted ? 'Unmute' : 'Mute'} pressed={muted} active={false} className={cx(muted ? '!bg-danger/20 !text-danger' : '', muted && speakingMuted && 'animate-pulse ring-2 ring-danger')} onClick={toggleMute} disabled={!canPublish && !muted}>{muted ? <MicOff size={22} /> : <Mic size={22} />}</RoundBtn>
       <RoundBtn label={selfDeaf ? 'Undeafen' : 'Deafen'} pressed={selfDeaf} className={selfDeaf ? '!bg-danger/20 !text-danger' : ''} onClick={toggleDeaf}>{selfDeaf ? <VolumeX size={22} /> : <Headphones size={22} />}</RoundBtn>
       {canPriority && (
         <RoundBtn label={priority ? 'Disable Priority Speaker' : 'Enable Priority Speaker'} active={priority} pressed={priority} onClick={() => setPrioritySpeaker(!priority)}><Crown size={22} /></RoundBtn>

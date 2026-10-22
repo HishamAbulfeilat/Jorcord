@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { useEffect, useState } from 'react';
-import { AlertTriangle, Hand, Loader2, Mic, MonitorUp, Volume2 } from 'lucide-react';
+import { AlertTriangle, Ban, Crown, Hand, Loader2, Mic, MonitorUp, Volume2 } from 'lucide-react';
 import { useAudioUnlock, useVoiceClient, useVoiceSnapshot } from '@jorcord/voice/react';
 import type { ParticipantView } from '@jorcord/voice';
 import { useUI } from '@/stores/ui';
@@ -16,6 +16,7 @@ import { NetBars, ParticipantTile, ScreenTile } from './tiles';
 import { TroubleshootPanel } from './Troubleshoot';
 import { retryVoice, startScreenShare } from './controller';
 import { RecordingIndicator } from './Recording';
+import { RaiseHand, StageBlockedList, StageHands, useStageBlocks, useStageQueue } from './StageQueue';
 import type { VoiceFailure } from '@/stores/voiceui';
 import { t } from '@/i18n';
 
@@ -35,12 +36,25 @@ function ReconnectBanner() {
   );
 }
 
+/** While a priority speaker talks the other voices are ducked for everyone else: say so, so the quieter room is not mistaken for a fault. */
+function PriorityBanner() {
+  const snap = useVoiceSnapshot();
+  const talker = snap.participants.find((p) => p.priority && p.speaking);
+  if (!talker) return null;
+  return (
+    <div role="status" data-testid="priority-ducking" className="flex items-center justify-center gap-2 bg-warn px-3 py-1 text-sm font-semibold text-black">
+      <Crown size={14} aria-hidden />{talker.isLocal ? t('You are speaking with priority: others are quieter for everyone else.') : `${talker.name} ${t('is speaking with priority: other voices are quieter.')}`}
+    </div>
+  );
+}
+
 export function VoiceBanners() {
   const snap = useVoiceSnapshot(); const client = useVoiceClient(); const { blocked, unlock } = useAudioUnlock();
   const reconnecting = snap.status === 'reconnecting';
   return (
     <>
       <RecordingIndicator />
+      <PriorityBanner />
       {reconnecting && <ReconnectBanner />}
       {snap.screenResumeNeeded && snap.status === 'connected' && (
         <div role="status" data-testid="voice-screen-resume" className="flex items-center justify-center gap-3 bg-brand/90 px-3 py-1.5 text-sm text-white">
@@ -142,7 +156,8 @@ export function StageSurface({ channelId }: { channelId: string }) {
   const suppressed = (id: string) => states[id]?.suppress ?? false;
   const speakers = people.filter((p) => !suppressed(p.identity));
   const audience = people.filter((p) => suppressed(p.identity));
-  const hands = audience.filter((p) => states[p.identity]?.requestToSpeakAt).sort((a, b) => String(states[a.identity]?.requestToSpeakAt).localeCompare(String(states[b.identity]?.requestToSpeakAt)));
+  const queue = useStageQueue(channelId, canModerate); const { blocks, refresh: refreshBlocks } = useStageBlocks(channelId, canModerate);
+  const names = Object.fromEntries(people.map((p) => [p.identity, p.name]));
   const me = people.find((p) => p.isLocal);
   const iAmAudience = !!me && suppressed(me.identity);
   const myHand = !!(meId && states[meId]?.requestToSpeakAt);
@@ -158,14 +173,8 @@ export function StageSurface({ channelId }: { channelId: string }) {
           : <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`, gridAutoRows: mobile ? '160px' : '200px' }}>{speakers.map((p) => <ParticipantTile key={p.identity} p={p} />)}</div>}
       </section>
       {streams.length > 0 && <section aria-label={t('Streams')} className="grid gap-2" style={{ gridAutoRows: mobile ? '200px' : '320px' }}>{streams.map((p) => <ScreenTile key={p.identity} p={p} />)}</section>}
-      {hands.length > 0 && (
-        <section aria-label={t('Requests to speak')}>
-          <h3 className="section-title mb-2">Requests to speak — {hands.length}</h3>
-          <ul className="grid gap-1">{hands.map((p) => (
-            <li key={p.identity} className="flex items-center gap-2 rounded bg-side px-3 py-2 text-sm text-header"><Hand size={16} className="text-warn" /><span className="min-w-0 flex-1 truncate">{p.name}</span>
-              {canModerate && <button className="btn btn-primary" onClick={() => run(api.voice.stageSpeaker(channelId, p.identity, true))}>{t('Invite to Speak')}</button>}</li>))}</ul>
-        </section>
-      )}
+      <StageHands channelId={channelId} mod={canModerate} entries={queue} names={names} onBlocked={refreshBlocks} />
+      {canModerate && <StageBlockedList channelId={channelId} blocks={blocks} refresh={refreshBlocks} />}
       <section aria-label={t('Audience')}>
         <h3 className="section-title mb-2">Audience — {audience.length}</h3>
         <ul className="flex flex-wrap gap-2">
@@ -175,13 +184,11 @@ export function StageSurface({ channelId }: { channelId: string }) {
         </ul>
       </section>
       {canModerate && speakers.some((p) => !p.isLocal) && (
-        <section aria-label={t('Moderate speakers')} className="flex flex-wrap gap-2">{speakers.filter((p) => !p.isLocal).map((p) => <button key={p.identity} className="btn btn-secondary" onClick={() => run(api.voice.stageSpeaker(channelId, p.identity, false))}>Move {p.name} to Audience</button>)}</section>
+        <section aria-label={t('Moderate speakers')} className="flex flex-wrap gap-2">{speakers.filter((p) => !p.isLocal).map((p) => <span key={p.identity} className="flex gap-1">
+          <button className="btn btn-secondary" onClick={() => run(api.voice.stageSpeaker(channelId, p.identity, false))}>Move {p.name} to Audience</button>
+          <button className="btn btn-secondary" aria-label={`${t('Block')} ${p.name} ${t('from speaking')}`} title={t('Block from speaking')} onClick={() => run(api.voice.stageBlock(channelId, p.identity, true).then(refreshBlocks))}><Ban size={14} /></button></span>)}</section>
       )}
-      {iAmAudience && (
-        <button className={cx('btn btn-lg w-full max-w-xs self-center', myHand ? 'btn-secondary' : 'btn-primary')} onClick={() => run(api.voice.stageRequest(channelId, !myHand))}>
-          <Hand size={16} />{myHand ? 'Lower Hand' : 'Request to Speak'}
-        </button>
-      )}
+      {iAmAudience && <RaiseHand channelId={channelId} myHand={myHand} />}
       {me && !iAmAudience && <div className="flex flex-col items-center gap-2 text-sm text-muted"><p className="flex items-center gap-2"><Mic size={14} />{t('You are a speaker.')}</p>{(
         <button className="btn btn-secondary" onClick={() => run(api.voice.stageSpeaker(channelId, '@me', false))}>{t('Move to Audience')}</button>)}</div>}
     </div>
