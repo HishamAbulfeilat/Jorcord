@@ -13,6 +13,7 @@ import { callService } from '@/lib/native';
 import { CallRecorder, type RecordingRoom } from './callRecorder';
 import { t } from '@/i18n';
 import './noiseSetup';
+import { audioMapsForClient } from './userAudio';
 
 export function settingsFromPrefs(p: Prefs): Partial<VoiceSettings> {
   return {
@@ -70,6 +71,7 @@ export function getVoiceClient(): VoiceClient {
       onDisconnected: (why) => (why === 'error' ? giveUp() : scheduleReconcile()),
     });
     bindClient(client);
+    { const ua = audioMapsForClient(useUI.getState().prefs); client.syncUserAudio(ua.volumes, ua.muted); }
     (window as any).__jorcordVoice = debugApi(client);
   }
   return client;
@@ -335,6 +337,7 @@ export function applyPrefs(p: Prefs) {
   if (Object.keys(patch).length) void client.setAudioSettings(patch).catch(() => {});
   if (a.inputDeviceId !== ca.inputDeviceId && a.inputDeviceId) void client.setInputDevice(a.inputDeviceId).catch(() => {});
   if (a.outputDeviceId !== ca.outputDeviceId && a.outputDeviceId) void client.setOutputDevice(a.outputDeviceId).catch(() => {});
+  const ua = audioMapsForClient(p); client.syncUserAudio(ua.volumes, ua.muted);
   if (s.inputMode !== cur.inputMode) client.setInputMode(s.inputMode!);
   if (s.pttCode !== cur.pttCode) client.setPttKey(s.pttCode!);
   if (s.vadThreshold !== cur.vadThreshold) client.setVadThreshold(s.vadThreshold!);

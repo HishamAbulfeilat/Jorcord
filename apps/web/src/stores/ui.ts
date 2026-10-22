@@ -23,6 +23,8 @@ export interface Prefs {
   mutedChannels: Record<Id, boolean>; mutedGuilds: Record<Id, boolean>; collapsedCategories: Record<Id, boolean>;
   /** Soundboard: silence everything / one person's sounds (local), and playback gain 0-100. */
   /** "Hide Muted Channels" per server. */ hideMutedChannels: Record<Id, boolean>;
+  /** Local listening volume (percent, 0-200) and local mute per person, applied to their mic and screen-share audio. Defaults omitted. */
+  userVolumes: Record<Id, number>; userMuted: Record<Id, boolean>;
   soundboardMuted: boolean; soundboardMutedUsers: Record<Id, boolean>; soundboardVolume: number;
   /** Desktop game detection: report "Playing <game>" and the games the user has registered. */
   gameActivity: boolean; registeredGames: RegisteredGame[];
@@ -54,7 +56,7 @@ export const defaultPrefs: Prefs = {
   keybinds: defaultKeybinds,
   streamerMode: false, streamerAuto: true, streamerHidePersonal: true, streamerHideInvites: true, streamerNoSounds: true, streamerNoNotifications: true,
   mutedChannels: {}, mutedGuilds: {}, collapsedCategories: {},
-  hideMutedChannels: {}, soundboardMuted: false, soundboardMutedUsers: {}, soundboardVolume: 100,
+  hideMutedChannels: {}, userVolumes: {}, userMuted: {}, soundboardMuted: false, soundboardMutedUsers: {}, soundboardVolume: 100,
   gameActivity: true, registeredGames: [],
   overlayEnabled: false, overlayLocked: false, overlayCorner: 'top-right',
 };
@@ -78,7 +80,9 @@ export type ModalSpec =
   | { kind: 'customize'; guildId: Id } | { kind: 'followChannel'; channelId: Id }| { kind: 'forward'; message: Message } | { kind: 'report'; messageId: Id; guildId: Id; channelId: Id } | { kind: 'modView'; guildId: Id; userId: Id } | { kind: 'inbox'; tab?: 'mentions' | 'saved' | 'reminders' } | { kind: 'screening'; guildId: Id } | { kind: 'threadSettings'; channelId: Id } | { kind: 'stage'; channelId: Id; mode: 'start' | 'edit' }
   | { kind: 'gifPicker'; title?: string; onPick: (url: string) => void };
 export type SettingsSpec = { kind: 'user'; tab?: string } | { kind: 'guild'; guildId: Id; tab?: string } | null;
-export interface MenuItem { label?: string; icon?: any; onClick?: () => void; danger?: boolean; separator?: boolean; checked?: boolean; disabled?: boolean; hint?: string; children?: MenuItem[] }
+export interface MenuItem { label?: string; icon?: any; onClick?: () => void; danger?: boolean; separator?: boolean; checked?: boolean; disabled?: boolean; hint?: string; children?: MenuItem[];
+  /** Inline slider row (keyboard: Left/Right adjust, Up/Down leave). */
+  slider?: { value: number; min: number; max: number; step?: number; label: string; format?: (v: number) => string; onChange: (v: number) => void } }
 export interface Toast { id: number; kind: 'info' | 'success' | 'error'; text: string }
 export type Popout = { kind: 'user'; userId: Id; guildId?: Id; rect: DOMRect } | { kind: 'emoji'; rect: DOMRect; onPick: (e: { char?: string; name: string; id?: Id; animated?: boolean; gif?: string; sticker?: Id; burst?: boolean; burstColor?: string }) => void; guildId?: Id; stickers?: boolean; allowBurst?: boolean; gifOnly?: boolean } | null;
 

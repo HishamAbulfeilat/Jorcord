@@ -34,7 +34,7 @@ export function ContextMenuHost() {
   useEffect(() => {
     if (!menu) return;
     const prev = document.activeElement as HTMLElement | null;
-    const items = () => [...(ref.current?.querySelectorAll<HTMLElement>('[role=menuitem]:not([disabled])') ?? [])];
+    const items = () => [...(ref.current?.querySelectorAll<HTMLElement>('[role=menuitem]:not([disabled]), input[type=range]') ?? [])];
     requestAnimationFrame(() => { if (!ref.current?.contains(document.activeElement)) items()[0]?.focus({ preventScroll: true }); });
     const k = (e: KeyboardEvent) => {
       if (e.key === 'Escape') { close(); return; }
@@ -44,6 +44,7 @@ export function ContextMenuHost() {
       const go = (j: number) => { e.preventDefault(); e.stopPropagation(); list[(j + list.length) % list.length]?.focus(); };
       const rtl = document.dir === 'rtl';
       if (e.key === 'ArrowDown') go(i + 1); else if (e.key === 'ArrowUp') go(i < 0 ? -1 : i - 1);
+      else if ((e.key === 'Home' || e.key === 'End') && (document.activeElement as HTMLInputElement | null)?.type === 'range') return; // slider: jump to min / max
       else if (e.key === 'Home') go(0); else if (e.key === 'End') go(list.length - 1);
       else if (e.key === (rtl ? 'ArrowLeft' : 'ArrowRight') && (document.activeElement as HTMLElement | null)?.getAttribute('aria-haspopup') === 'menu') { e.preventDefault(); (document.activeElement as HTMLElement).click(); requestAnimationFrame(() => (document.activeElement as HTMLElement | null)?.parentElement?.querySelector<HTMLElement>('[role=menuitem] ~ div [role=menuitem], div [role=menuitem]')?.focus()); }
     };
@@ -66,6 +67,7 @@ export function ContextMenuHost() {
 function Item({ it, mobile, close, openedAt }: { it: MenuItem; mobile: boolean; close: () => void; openedAt: number }) {
   const [sub, setSub] = useState(false);
   if (it.separator) return <div role="separator" className="my-1 h-px bg-divider" />;
+  if (it.slider) return <SliderRow s={it.slider} icon={it.icon} mobile={mobile} />;
   const Icon = it.icon;
   return (
     <div className="relative" onMouseEnter={() => it.children && setSub(true)} onMouseLeave={() => setSub(false)}>
@@ -80,6 +82,22 @@ function Item({ it, mobile, close, openedAt }: { it: MenuItem; mobile: boolean; 
           {it.children.map((c, i) => <Item key={i} it={c} mobile={mobile} close={close} openedAt={openedAt} />)}
         </div>
       )}
+    </div>
+  );
+}
+
+/** Inline slider row. Local state so dragging is live even though the menu items are built once. */
+function SliderRow({ s, icon: Icon, mobile }: { s: NonNullable<MenuItem['slider']>; icon?: any; mobile: boolean }) {
+  const [v, setV] = useState(s.value);
+  const text = s.format ? s.format(v) : String(v);
+  return (
+    <div className={cx('px-2 py-1.5', mobile && 'min-h-[44px]')}>
+      <label className="flex items-center justify-between gap-2 text-sm font-medium text-interactive">
+        <span className="flex items-center gap-2">{Icon && <Icon size={16} className="shrink-0" />}{s.label}</span>
+        <output className="tabular-nums text-xs opacity-80" aria-hidden>{text}</output>
+      </label>
+      <input type="range" aria-label={s.label} aria-valuetext={text} min={s.min} max={s.max} step={s.step ?? 1} value={v} className="mt-1 w-full accent-brand"
+        onChange={(e) => { const n = Number(e.target.value); setV(n); s.onChange(n); }} />
     </div>
   );
 }

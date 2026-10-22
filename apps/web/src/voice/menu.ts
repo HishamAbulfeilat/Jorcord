@@ -7,9 +7,9 @@ import { api } from '@/lib/api';
 import { can } from '@/lib/perms';
 import { myChannelPerms } from '@/lib/session';
 import { userMenu } from '@/lib/menus';
-import { getVoiceClient } from './controller';
 import { useUI } from '@/stores/ui';
 import { t } from '@/i18n';
+import { userPercent, isUserMuted, withUserVolume, withUserMuted } from './userAudio';
 
 /** Context menu for a person in a voice channel: local volume, server-side moderation, then the usual user menu. */
 export function voiceUserMenu(userId: string, channelId: string): MenuItem[] {
@@ -17,8 +17,15 @@ export function voiceUserMenu(userId: string, channelId: string): MenuItem[] {
   const guildId = ch?.guildId ?? null; const items: MenuItem[] = [];
   const st = s.voiceStates[userId];
   if (userId !== me) {
-    const client = getVoiceClient(); const cur = Math.round(client.getUserVolume(userId) * 100);
-    items.push({ label: `User Volume (${cur}%)`, icon: Volume2, children: [0, 25, 50, 100, 150, 200].map((v) => ({ label: `${v}%`, checked: v === cur, onClick: () => client.setUserVolume(userId, v / 100) })) });
+    const ui = useUI.getState(); const pr = ui.prefs; const pct = userPercent(pr, userId); const muted = isUserMuted(pr, userId);
+    items.push(
+      { label: t('User Volume'), icon: Volume2, slider: { value: muted ? 0 : pct, min: 0, max: 200, step: 5, label: t('User Volume'), format: (v) => `${v}%`, onChange: (v) => {
+        const cur = useUI.getState().prefs;
+        if (isUserMuted(cur, userId) && v > 0) useUI.getState().setPref('userMuted', withUserMuted(cur, userId, false));
+        useUI.getState().setPref('userVolumes', withUserVolume(useUI.getState().prefs, userId, v));
+      } } },
+      { label: muted ? t('Unmute (just for me)') : t('Mute (just for me)'), icon: VolumeX, checked: muted, onClick: () => useUI.getState().setPref('userMuted', withUserMuted(useUI.getState().prefs, userId, !muted)) },
+    );
   }
   if (userId !== me) {
     const sm = !!useUI.getState().prefs.soundboardMutedUsers[userId];

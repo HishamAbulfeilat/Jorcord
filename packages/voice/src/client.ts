@@ -11,7 +11,8 @@ import { mapVoiceError, type VoiceError } from './errors';
 import { mapConnectionQuality, type NetworkQuality, type StreamStats } from './network';
 import { createRnnoiseProcessor, type NoiseFallbackReason } from './noise';
 import { createPushToTalk } from './ptt';
-import { effectiveVolume } from './priority';
+import { effectiveVolume, clampUserVolume } from './priority';
+import { AudioBoost } from './boost';
 import {
   cameraPlan, detectSupportedVideoCodecs, isScalableCodec, normalizeCameraFps, pickCodec, recommendBitrateKbps, selectPreset, simulcastLayers,
   viewerQualityToDimensions, type CameraEncoding, type CameraQuality, type ContentHint, type StreamPresetId, type VideoCodecName, type ViewerQuality,
@@ -31,7 +32,7 @@ export type StreamSource = 'camera' | 'screen';
 export interface ParticipantView {
   identity: string; userId: string; name: string; isLocal: boolean;
   speaking: boolean; level: number; micMuted: boolean; cameraOn: boolean; screenOn: boolean; screenAudioOn: boolean;
-  quality: NetworkQuality; volume: number; priority: boolean; handRaised: boolean;
+  quality: NetworkQuality; volume: number; /** Locally muted by this listener (their volume setting is kept). */ localMuted: boolean; priority: boolean; handRaised: boolean;
   /** LiveKit publish permission: stage speaker / allowed to talk. */
   canPublish: boolean; metadata: string | undefined;
 }
@@ -106,6 +107,8 @@ export class VoiceClient {
   private snap: VoiceSnapshot;
   private speaking = initialSpeaking;
   private userVolumes = new Map<string, number>();
+  private userMuted = new Set<string>();
+  private boostAudio = new AudioBoost({ outputDeviceId: () => this.snap?.settings.audio.outputDeviceId });
   private selfMuted = false;
   private preDeafenMuted = false;
   private pttActive = false;
@@ -269,6 +272,7 @@ export class VoiceClient {
     this.stopPtt?.(); this.stopPtt = undefined;
     this.teardownGate();
     this.rnnoiseAttached = false;
+    this.boostAudio.releaseAll();
   }
 
   /** User leave. Cancels any recovery in progress and forgets camera/screen intent. */
@@ -555,12 +559,24 @@ export class VoiceClient {
     this.emit();
   }
 
-  /** Per-user volume 0..2 (1 = 100%). Persisted by the app if desired via getUserVolume. */
+  /** Per-user volume 0..2 (1 = 100%). The app persists it and replays it with syncUserAudio(). */
   setUserVolume(identity: string, volume: number) {
-    this.userVolumes.set(identity, Math.max(0, Math.min(2, volume)));
+    this.userVolumes.set(identity, clampUserVolume(volume));
     this.applyVolumes(); this.emit();
   }
   getUserVolume(identity: string) { return this.userVolumes.get(identity) ?? 1; }
+  /** Local-only mute of one participant (mic + screen-share audio); the volume setting is kept for when they are unmuted. */
+  setUserMuted(identity: string, muted: boolean) {
+    if (muted) this.userMuted.add(identity); else this.userMuted.delete(identity);
+    this.applyVolumes(); this.emit();
+  }
+  isUserMuted(identity: string) { return this.userMuted.has(identity); }
+  /** Replace all per-user audio settings at once (volumes 0..2, muted flags), e.g. from persisted preferences. */
+  syncUserAudio(volumes: Record<string, number>, muted: Record<string, boolean>) {
+    this.userVolumes = new Map(Object.entries(volumes).map(([k, v]) => [k, clampUserVolume(v)]));
+    this.userMuted = new Set(Object.entries(muted).filter(([, m]) => m).map(([k]) => k));
+    this.applyVolumes(); this.emit();
+  }
 
   private isPriority(p: Participant) { return p.attributes?.[ATTR_PRIORITY] === '1'; }
   private applyVolumes() {
@@ -568,12 +584,19 @@ export class VoiceClient {
     const prioActive = remotes.some((p) => this.isPriority(p) && p.isSpeaking) ||
       (this.isPriority(this.room.localParticipant) && this.room.localParticipant.isSpeaking);
     const selfIsPriority = this.isPriority(this.room.localParticipant);
+    const live = new Set<string>();
     for (const p of remotes) {
-      const base = this.snap.deafened ? 0 : this.getUserVolume(p.identity);
+      const base = this.snap.deafened || this.userMuted.has(p.identity) ? 0 : this.getUserVolume(p.identity);
       const v = this.snap.deafened ? 0 : effectiveVolume(base, { isPrioritySpeakerActive: prioActive, selfIsPriority, targetIsPriority: this.isPriority(p) });
-      p.setVolume(v, Track.Source.Microphone);
-      p.setVolume(v, Track.Source.ScreenShareAudio);
+      for (const src of [Track.Source.Microphone, Track.Source.ScreenShareAudio] as const) {
+        const key = `${p.identity}:${src}`;
+        const mst = p.getTrackPublication(src)?.track?.mediaStreamTrack;
+        // > 100 %: element silent + Web Audio gain; otherwise plain element volume (never above 1: that throws)
+        if (v > 1 && mst && this.boostAudio.boost(key, mst, v)) { p.setVolume(0, src); live.add(key); }
+        else { this.boostAudio.release(key); p.setVolume(Math.min(1, v), src); }
+      }
     }
+    this.boostAudio.retain(live);
   }
 
   /** Requires PRIORITY_SPEAKER permission (enforced by the app; the attribute is advisory). */
@@ -861,7 +884,7 @@ export class VoiceClient {
         cameraOn: !!p.getTrackPublication(Track.Source.Camera) && !p.getTrackPublication(Track.Source.Camera)!.isMuted,
         screenOn: !!p.getTrackPublication(Track.Source.ScreenShare),
         screenAudioOn: !!p.getTrackPublication(Track.Source.ScreenShareAudio),
-        quality: mapConnectionQuality(p.connectionQuality), volume: local ? 1 : this.getUserVolume(p.identity),
+        quality: mapConnectionQuality(p.connectionQuality), volume: local ? 1 : this.getUserVolume(p.identity), localMuted: !local && this.userMuted.has(p.identity),
         priority: this.isPriority(p), handRaised: p.attributes?.[ATTR_HAND] === '1',
         canPublish: p.permissions?.canPublish !== false, metadata: p.metadata,
       };
