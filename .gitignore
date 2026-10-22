@@ -26,3 +26,4 @@ e2e/test-results-prod/
 .env.*
 !.env.*.example
 !.env.production
+.claude/worktrees/
