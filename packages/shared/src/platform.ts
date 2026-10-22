@@ -87,7 +87,8 @@ export const InteractionType = { PING: 1, APPLICATION_COMMAND: 2, MESSAGE_COMPON
 export const InteractionCallbackType = { PONG: 1, CHANNEL_MESSAGE_WITH_SOURCE: 4, DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE: 5, DEFERRED_UPDATE_MESSAGE: 6, UPDATE_MESSAGE: 7, APPLICATION_COMMAND_AUTOCOMPLETE_RESULT: 8, MODAL: 9 } as const;
 export const INTERACTION_TOKEN_TTL_MS = 15 * 60_000;
 export const INTERACTION_ACK_DEADLINE_MS = 3000;
-export const MessageFlags = { CROSSPOSTED: 1 << 0, IS_CROSSPOST: 1 << 1, SUPPRESS_EMBEDS: 1 << 2, EPHEMERAL: 1 << 6, LOADING: 1 << 7, SUPPRESS_NOTIFICATIONS: 1 << 12 } as const;
+export const MessageFlags = { CROSSPOSTED: 1 << 0, IS_CROSSPOST: 1 << 1, SUPPRESS_EMBEDS: 1 << 2, EPHEMERAL: 1 << 6, LOADING: 1 << 7, SUPPRESS_NOTIFICATIONS: 1 << 12,
+  /** Components V2: the message is built only from top-level layout components (no content, embeds, stickers or poll). Set once, never cleared. */ IS_COMPONENTS_V2: 1 << 15 } as const;
 export interface InteractionOptionValue { name: string; type: number; value?: string | number | boolean; options?: InteractionOptionValue[]; focused?: boolean }
 export interface Interaction {
   id: Id; applicationId: Id; type: number; token: string; version: 1; guildId: Id | null; channelId: Id | null; user: User; member?: unknown;
@@ -101,7 +102,13 @@ export interface Interaction {
 export interface ModalSubmitRow { type: 1; components: { type: 4; customId: string; value: string }[] }
 
 // ---------- message components ----------
-export const ComponentType = { ACTION_ROW: 1, BUTTON: 2, STRING_SELECT: 3, TEXT_INPUT: 4, USER_SELECT: 5, ROLE_SELECT: 6, MENTIONABLE_SELECT: 7, CHANNEL_SELECT: 8 } as const;
+export const ComponentType = {
+  ACTION_ROW: 1, BUTTON: 2, STRING_SELECT: 3, TEXT_INPUT: 4, USER_SELECT: 5, ROLE_SELECT: 6, MENTIONABLE_SELECT: 7, CHANNEL_SELECT: 8,
+  // Components V2 (layout): numbers match Discord's
+  SECTION: 9, TEXT_DISPLAY: 10, THUMBNAIL: 11, MEDIA_GALLERY: 12, FILE: 13, SEPARATOR: 14, CONTAINER: 17,
+} as const;
+/** Limits for Components V2 messages. */
+export const COMPONENTS_V2_LIMITS = { topLevel: 10, total: 40, textTotal: 4000, containerChildren: 10, sectionTexts: 3, galleryItems: 10, description: 1024 } as const;
 export const ButtonStyle = { PRIMARY: 1, SECONDARY: 2, SUCCESS: 3, DANGER: 4, LINK: 5 } as const;
 export interface SelectOption { label: string; value: string; description?: string; emoji?: string; default?: boolean }
 export interface Component {
@@ -110,7 +117,13 @@ export interface Component {
   // text input (modals only)
   textStyle?: 1 | 2; minLength?: number; maxLength?: number; required?: boolean; value?: string;
   components?: Component[];
+  // Components V2: text display `content`; section `accessory` (thumbnail or button); thumbnail / file `media`; media gallery `items`;
+  // separator `divider` + `spacing` (1 small, 2 large); container `accentColor` (0xRRGGBB) and `spoiler`
+  content?: string; accessory?: Component; media?: MediaRef; items?: MediaGalleryItem[]; divider?: boolean; spacing?: 1 | 2; accentColor?: number | null; spoiler?: boolean; description?: string | null;
 }
+/** An http(s) URL, or `attachment://<filename>` pointing at a file attached to the same message. */
+export interface MediaRef { url: string }
+export interface MediaGalleryItem { media: MediaRef; description?: string | null; spoiler?: boolean }
 export interface Modal { customId: string; title: string; components: Component[] }
 
 // ---------- polls ----------

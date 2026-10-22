@@ -19,7 +19,7 @@ import { runSystemInteraction } from './sysbots';
 import { memberDTO, messageDTO, userDTO } from './serializers';
 
 const MAX_FOLLOWUPS = 10;
-const ALLOWED_RESPONSE_FLAGS = MessageFlags.EPHEMERAL | MessageFlags.SUPPRESS_EMBEDS;
+const ALLOWED_RESPONSE_FLAGS = MessageFlags.EPHEMERAL | MessageFlags.SUPPRESS_EMBEDS | MessageFlags.IS_COMPONENTS_V2;
 
 // ------------------------------------------------------------------ endpoint verification & delivery
 async function signedPost(ctx: Ctx, app: any, url: string, payload: object) {
@@ -236,7 +236,9 @@ const callbackSchema = z.object({ type: z.number().int(), data: z.unknown().opti
 function parseMessageData(raw: unknown, needsBody: boolean) {
   const d = messageData.parse(raw ?? {});
   if ((d.flags ?? 0) & ~ALLOWED_RESPONSE_FLAGS) throw badRequest('Unsupported message flags');
-  const components = d.components !== undefined ? parseComponents(d.components) : undefined;
+  const v2 = ((d.flags ?? 0) & MessageFlags.IS_COMPONENTS_V2) !== 0;
+  if (v2 && (d.content?.length || d.components === undefined)) throw badRequest('A Components V2 response is made of components only (no content)');
+  const components = d.components !== undefined ? parseComponents(d.components, { v2 }) : undefined;
   if (needsBody && !d.content?.length && !components?.length) throw badRequest('A response needs content or components');
   return { content: d.content, components, flags: d.flags ?? 0 };
 }
@@ -334,6 +336,7 @@ export async function applyCallback(ctx: Ctx, row: any, raw: unknown): Promise<{
 async function editMessage(ctx: Ctx, row: any, app: any, messageId: string, d: { content?: string; components?: Component[]; flags: number }, componentSource = false): Promise<Message> {
   const [m] = await ctx.db.query('SELECT * FROM messages WHERE id = $1 AND channel_id = $2 AND application_id = $3', [messageId, row.channel_id, app.id]);
   if (m && (componentSource || m.interaction?.id === row.id)) {
+    if ((d.components !== undefined || d.content !== undefined) && ((d.flags & MessageFlags.IS_COMPONENTS_V2) !== 0) !== ((m.flags & MessageFlags.IS_COMPONENTS_V2) !== 0)) throw badRequest('The IS_COMPONENTS_V2 flag cannot be added to or removed from an existing message');
     const sets = ['edited_at = now()'], vals: unknown[] = [m.id];
     if (d.content !== undefined) { vals.push(d.content); sets.push(`content = $${vals.length}`); }
     if (d.components !== undefined) { vals.push(JSON.stringify(d.components)); sets.push(`components = $${vals.length}::jsonb`); }

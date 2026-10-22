@@ -24,6 +24,7 @@ import { useNav } from '@/lib/nav';
 import { useIsMobile } from '@/lib/hooks';
 import { Tip } from '@/components/ui/Tooltip';
 import { boostAnnouncement } from '@/lib/boosts';
+import { ComponentsV2, isComponentsV2 } from './ComponentsV2';
 import { EphemeralNotice, InteractionHeader, MessageComponents, PollResultBody, PollView, ThinkingBody, isLoadingMsg } from './MessageExtras';
 import { isEphemeral } from '@/stores/messages';
 
@@ -148,7 +149,7 @@ export const MessageItem = memo(function MessageItem({ m, grouped, highlighted, 
       {m.crosspost && <div className="mt-0.5 flex items-center gap-1 text-[11px] font-medium text-muted" data-testid="crosspost-origin"><Megaphone size={11} aria-hidden />{t('Followed from')} {m.crosspost.guildName} · #{m.crosspost.channelName}</div>}
       {m.pinned && <div className="mt-0.5 flex items-center gap-1 text-[11px] font-medium text-muted" data-testid="pinned-mark"><Pin size={11} aria-hidden />{t('Pinned')}</div>}
       {m.poll && <PollView m={m} />}
-      {!!m.components?.length && !isLoadingMsg(m) && <MessageComponents m={m} />}
+      {!!m.components?.length && !isLoadingMsg(m) && (isComponentsV2(m) ? <ComponentsV2 m={m} /> : <MessageComponents m={m} />)}
       {ephemeral && <EphemeralNotice m={m} />}
       {!ephemeral && <ReactionBar m={m} />}
       {m.threadId && <button onClick={() => nav.go(m.guildId, m.threadId)} className="mt-1 flex items-center gap-1.5 rounded border border-divider bg-side px-2 py-1 text-sm text-link hover:underline"><MessagesSquare size={14} />View thread</button>}

@@ -1,12 +1,12 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { LIMITS, Perm, has, snowflake, snowflakeTime, type ForwardSnapshot } from '@jorcord/shared';
+import { LIMITS, MessageFlags, Perm, has, snowflake, snowflakeTime, type ForwardSnapshot } from '@jorcord/shared';
 import type { Ctx } from '../ctx';
 import { checkVerification } from '../services/safety';
 import { ApiError, badRequest, forbidden, notFound } from '../errors';
 import { idSchema, iso, limitParam, parse } from '../lib/ids';
 import { limitOrThrow } from '../lib/ratelimit';
-import { parseComponents } from '../lib/components';
+import { assertAttachmentRefs, parseComponents } from '../lib/components';
 import { parseEmbeds } from '../lib/embeds';
 import { buildPoll } from '../services/polls';
 import { claimAttachments, deleteAttachmentFiles, saveUpload } from '../services/files';
@@ -137,11 +137,14 @@ export function messageRoutes(app: FastifyInstance, ctx: Ctx) {
     } else body = parse(sendBody, req.body);
     if (body.attachments?.length) need(a.perms, Perm.ATTACH_FILES);
     if (body.replyTo) need(a.perms, Perm.READ_MESSAGE_HISTORY);
-    if ((body.flags ?? 0) & ~(4 | (1 << 12))) throw badRequest('Unsupported message flags'); // SUPPRESS_EMBEDS | SUPPRESS_NOTIFICATIONS (@silent)
+    // SUPPRESS_EMBEDS | SUPPRESS_NOTIFICATIONS (@silent); bots may also set IS_COMPONENTS_V2
+    if ((body.flags ?? 0) & ~(MessageFlags.SUPPRESS_EMBEDS | MessageFlags.SUPPRESS_NOTIFICATIONS | (req.isBot ? MessageFlags.IS_COMPONENTS_V2 : 0))) throw badRequest('Unsupported message flags');
+    const v2 = ((body.flags ?? 0) & MessageFlags.IS_COMPONENTS_V2) !== 0;
+    if (v2 && (body.content?.trim() || body.embeds !== undefined || body.poll !== undefined || body.stickerIds?.length || body.forward || body.components === undefined)) throw badRequest('A Components V2 message is made of components only: no content, embeds, stickers, poll or forward');
     let components;
     if (body.components !== undefined) {
       if (!req.isBot) throw new ApiError(403, 'USER_FORBIDDEN', 'Only bots can send components').num(20002);
-      components = parseComponents(body.components);
+      components = parseComponents(body.components, { v2 });
     }
     let embeds;
     if (body.embeds !== undefined) embeds = parseEmbeds(body.embeds, req.isBot); // enforces the bots-only rule itself
@@ -162,6 +165,7 @@ export function messageRoutes(app: FastifyInstance, ctx: Ctx) {
     try {
       // Voice messages are audio attachments: the sender needs SEND_VOICE_MESSAGES (like Discord does).
       if (attachments.some((at) => at.contentType.startsWith('audio/'))) need(a.perms, Perm.SEND_VOICE_MESSAGES);
+      if (v2 && components) assertAttachmentRefs(components, attachments.map((at) => at.filename));
       const msg = await createMessage(ctx, { channel: a.channel, authorId: req.userId, content: body.content ?? '', replyTo: body.replyTo, attachments, stickerIds: body.stickerIds, senderPerms: a.perms, memberRoleIds: a.gp?.memberRoleIds,
         components, embeds, flags: body.flags, applicationId: req.applicationId, poll: pollInput?.poll, pollExpiry: pollInput?.expiry, forward, allowedMentions: body.allowedMentions });
       if (a.channel.type === 'thread') await joinThread(ctx, a.channel, req.userId).catch(() => {}); // posting in a thread follows it
@@ -183,9 +187,13 @@ export function messageRoutes(app: FastifyInstance, ctx: Ctx) {
     if (m.author_id !== req.userId || m.webhook_id || !['default', 'reply'].includes(m.type)) throw forbidden('You can only edit your own messages');
     if (m.forward) throw badRequest('Forwarded messages cannot be edited');
     if (a.gp?.timedOut) throw forbidden('You cannot edit messages while timed out or before accepting the server rules');
+    const isV2 = ((m.flags ?? 0) & MessageFlags.IS_COMPONENTS_V2) !== 0;
+    if (isV2 && b.content !== undefined) throw badRequest('A Components V2 message has no content to edit');
     if (b.components !== undefined) {
       if (!req.isBot || m.application_id !== req.applicationId) throw new ApiError(403, 'USER_FORBIDDEN', 'Only the owning bot can edit components').num(20002);
-      await ctx.db.query('UPDATE messages SET components = $2::jsonb, edited_at = now() WHERE id = $1', [p.mid, JSON.stringify(parseComponents(b.components))]);
+      const next = parseComponents(b.components, { v2: isV2 });
+      if (isV2) assertAttachmentRefs(next, ((m.attachments ?? []) as { filename: string }[]).map((x) => x.filename));
+      await ctx.db.query('UPDATE messages SET components = $2::jsonb, edited_at = now() WHERE id = $1', [p.mid, JSON.stringify(next)]);
     }
     if (b.content !== undefined) {
       const ment = await parseMentions(ctx, a.channel, b.content, a.perms);

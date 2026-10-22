@@ -40,6 +40,7 @@ export const AVATAR_DECORATIONS: CosmeticItem[] = [
 export const PROFILE_EFFECTS: CosmeticItem[] = [
   { id: 'sparkles', name: 'Sparkles' }, { id: 'snowfall', name: 'Snowfall' }, { id: 'confetti', name: 'Confetti' },
   { id: 'rain', name: 'Rainfall' }, { id: 'fireflies', name: 'Fireflies' }, { id: 'bubbles', name: 'Bubbles' },
+  { id: 'embers', name: 'Embers' }, { id: 'petals', name: 'Blossom Petals' }, { id: 'starfield', name: 'Starfield' }, { id: 'northern', name: 'Northern Lights' },
 ];
 export const NAME_PLATES: CosmeticItem[] = [
   { id: 'sunrise', name: 'Sunrise' }, { id: 'ocean', name: 'Ocean' }, { id: 'forest', name: 'Forest' },

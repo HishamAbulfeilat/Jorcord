@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Intents, Perm } from '@jorcord/shared';
 import { Api, startServer, type TestEnv } from '../../../apps/server/test/helpers';
-import { Bot, Rest, RestError } from '../src/index';
+import { Bot, Rest, RestError, actionRow, button, container, mediaGallery, section, separator, textDisplay, thumbnail, v2, MessageFlags } from '../src/index';
 
 let env: TestEnv, api: Api, base: string;
 beforeAll(async () => { env = await startServer(); api = new Api(env); base = `http://127.0.0.1:${env.port}`; });
@@ -90,6 +90,24 @@ describe('bot-sdk against a running server', () => {
     await api.req('POST', `/channels/${general.id}/messages`, user.token, { content: 'after' });
     await until(() => seen.includes('after'));
     bot.destroy();
+  });
+
+  it('sends Components V2 layouts built with the helpers, and V2 replies to interactions', async () => {
+    const { general, user, app } = await install();
+    const rest = new Rest(base, app.token);
+    const body = v2([container([
+      section(['## Release', 'notes'], thumbnail('https://example.com/a.png', { description: 'logo' })), separator({ spacing: 2 }),
+      mediaGallery(['https://example.com/1.png', { media: { url: 'https://example.com/2.png' }, spoiler: true }]),
+      actionRow([button({ label: 'Docs', url: 'https://example.com' }), button({ label: 'Go', customId: 'go' })]),
+    ], { accentColor: 0x5865f2 }), textDisplay('footer')]);
+    expect(body.flags).toBe(MessageFlags.IS_COMPONENTS_V2);
+    const sent = await rest.sendMessage(general.id, body);
+    expect(sent.flags & MessageFlags.IS_COMPONENTS_V2).toBeTruthy(); expect(sent.components[0].components[0].accessory.type).toBe(11);
+    const rejected = await rest.sendMessage(general.id, { ...body, content: 'mixed' }).catch((e) => e);
+    expect(rejected).toBeInstanceOf(RestError); expect(rejected.status).toBe(400);
+    const bot = new Bot({ token: app.token, baseUrl: base, intents: Intents.GUILDS });
+    bot.command('card', (ix) => ix.reply(v2([textDisplay('hello from v2')], MessageFlags.EPHEMERAL)));
+    await bot.login(); bot.destroy(); void user;
   });
 
   it('fails login fast on a bad token and on intents the owner has not enabled', async () => {

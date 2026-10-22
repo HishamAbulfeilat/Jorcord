@@ -4,8 +4,25 @@
  *   - Bot:  gateway client (heartbeat, resume, backoff reconnect), slash command registration, interaction handlers
  * Needs a runtime with global `fetch` and `WebSocket` (Node 22+, Bun, Deno, browsers).
  */
-import { Intents, InteractionCallbackType as CB, InteractionType as IT, MessageFlags, Op, type ApplicationCommand, type EventName, type Events, type Interaction } from '@jorcord/shared';
+import { ComponentType as CT, Intents, InteractionCallbackType as CB, InteractionType as IT, MessageFlags, Op, type ApplicationCommand, type Component, type MediaGalleryItem, type EventName, type Events, type Interaction } from '@jorcord/shared';
 export { Intents, MessageFlags };
+
+/**
+ * Components V2 builders. A V2 message is made only of layout components and carries the IS_COMPONENTS_V2 flag (no `content`, embeds or stickers):
+ *   await rest.sendMessage(channelId, v2([container([section(['## Hi', 'body'], thumbnail('https://…/a.png'))], { accentColor: 0x5865f2 })]));
+ */
+export const textDisplay = (content: string): Component => ({ type: CT.TEXT_DISPLAY, content });
+export const thumbnail = (url: string, o: { description?: string; spoiler?: boolean } = {}): Component => ({ type: CT.THUMBNAIL, media: { url }, ...o });
+export const section = (texts: (string | Component)[], accessory: Component): Component => ({ type: CT.SECTION, components: texts.map((t) => (typeof t === 'string' ? textDisplay(t) : t)), accessory });
+export const mediaGallery = (items: (string | MediaGalleryItem)[]): Component => ({ type: CT.MEDIA_GALLERY, items: items.map((i) => (typeof i === 'string' ? { media: { url: i } } : i)) });
+/** `attachment://<filename>` of a file sent with the same message. */
+export const file = (attachmentUrl: string, o: { spoiler?: boolean } = {}): Component => ({ type: CT.FILE, media: { url: attachmentUrl }, ...o });
+export const separator = (o: { divider?: boolean; spacing?: 1 | 2 } = {}): Component => ({ type: CT.SEPARATOR, ...o });
+export const container = (components: Component[], o: { accentColor?: number | null; spoiler?: boolean } = {}): Component => ({ type: CT.CONTAINER, components, ...o });
+export const actionRow = (components: Component[]): Component => ({ type: CT.ACTION_ROW, components });
+export const button = (o: { label?: string; emoji?: string; style?: 1 | 2 | 3 | 4 | 5; customId?: string; url?: string; disabled?: boolean }): Component => ({ type: CT.BUTTON, style: o.url ? 5 : 1, ...o });
+/** Wrap layout components into a message body with the V2 flag set (ephemeral: add `MessageFlags.EPHEMERAL` to `flags`). */
+export const v2 = (components: Component[], extraFlags = 0): { flags: number; components: Component[] } => ({ flags: MessageFlags.IS_COMPONENTS_V2 | extraFlags, components });
 
 export class RestError extends Error {
   constructor(public status: number, public body: any, public path: string) { super(`${status} ${body?.code ?? ''} ${body?.message ?? ''} (${path})`.trim()); }
@@ -32,7 +49,7 @@ export class Rest {
   put = <T = any>(path: string, body?: unknown) => this.request<T>('PUT', path, body ?? {});
   patch = <T = any>(path: string, body?: unknown) => this.request<T>('PATCH', path, body ?? {});
   delete = <T = any>(path: string) => this.request<T>('DELETE', path);
-  sendMessage(channelId: string, content: string | { content?: string; components?: unknown[]; poll?: unknown }) {
+  sendMessage(channelId: string, content: string | { content?: string; components?: unknown[]; poll?: unknown; flags?: number }) {
     return this.post(`/channels/${channelId}/messages`, typeof content === 'string' ? { content } : content);
   }
 }
@@ -59,16 +76,16 @@ export class InteractionContext {
   /** Value of a top-level slash command option. */
   option<T extends string | number | boolean = string>(name: string): T | undefined { return this.raw.data?.options?.find((o) => o.name === name)?.value as T | undefined; }
   private cb(type: number, data?: unknown) { return this.rest.request('POST', `/interactions/${this.raw.id}/${this.raw.token}/callback`, { type, ...(data ? { data } : {}) }, { auth: false }); }
-  private msg(m: string | { content?: string; components?: unknown[] }, ephemeral?: boolean) { return { ...(typeof m === 'string' ? { content: m } : m), ...(ephemeral ? { flags: MessageFlags.EPHEMERAL } : {}) }; }
-  reply(m: string | { content?: string; components?: unknown[] }, o: { ephemeral?: boolean } = {}) { return this.cb(CB.CHANNEL_MESSAGE_WITH_SOURCE, this.msg(m, o.ephemeral)); }
+  private msg(m: string | { content?: string; components?: unknown[]; flags?: number }, ephemeral?: boolean) { const body = typeof m === 'string' ? { content: m } : m; return ephemeral ? { ...body, flags: (body.flags ?? 0) | MessageFlags.EPHEMERAL } : body; }
+  reply(m: string | { content?: string; components?: unknown[]; flags?: number }, o: { ephemeral?: boolean } = {}) { return this.cb(CB.CHANNEL_MESSAGE_WITH_SOURCE, this.msg(m, o.ephemeral)); }
   defer(o: { ephemeral?: boolean } = {}) { return this.cb(CB.DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE, o.ephemeral ? { flags: MessageFlags.EPHEMERAL } : undefined); }
   /** Component interactions: edit the message the component sits on. */
-  update(m: string | { content?: string; components?: unknown[] }) { return this.cb(CB.UPDATE_MESSAGE, this.msg(m)); }
+  update(m: string | { content?: string; components?: unknown[]; flags?: number }) { return this.cb(CB.UPDATE_MESSAGE, this.msg(m)); }
   deferUpdate() { return this.cb(CB.DEFERRED_UPDATE_MESSAGE); }
   showModal(modal: unknown) { return this.cb(CB.MODAL, modal); }
   autocomplete(choices: { name: string; value: string | number }[]) { return this.cb(CB.APPLICATION_COMMAND_AUTOCOMPLETE_RESULT, { choices }); }
-  followUp(m: string | { content?: string; components?: unknown[] }, o: { ephemeral?: boolean } = {}) { return this.rest.request('POST', `/interactions/${this.raw.id}/${this.raw.token}/messages`, this.msg(m, o.ephemeral), { auth: false }); }
-  editReply(m: string | { content?: string; components?: unknown[] }) { return this.rest.request('PATCH', `/interactions/${this.raw.id}/${this.raw.token}/messages/@original`, typeof m === 'string' ? { content: m } : m, { auth: false }); }
+  followUp(m: string | { content?: string; components?: unknown[]; flags?: number }, o: { ephemeral?: boolean } = {}) { return this.rest.request('POST', `/interactions/${this.raw.id}/${this.raw.token}/messages`, this.msg(m, o.ephemeral), { auth: false }); }
+  editReply(m: string | { content?: string; components?: unknown[]; flags?: number }) { return this.rest.request('PATCH', `/interactions/${this.raw.id}/${this.raw.token}/messages/@original`, typeof m === 'string' ? { content: m } : m, { auth: false }); }
 }
 
 type Listener<K extends EventName> = (d: Events[K]) => void | Promise<void>;

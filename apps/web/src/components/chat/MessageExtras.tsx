@@ -62,7 +62,7 @@ const BTN: Record<number, string> = {
   [ButtonStyle.LINK]: 'bg-[rgb(var(--active))] text-normal hover:bg-[rgb(var(--divider))]',
 };
 
-function ButtonView({ m, c }: { m: Message; c: Component }) {
+export function ButtonView({ m, c }: { m: Message; c: Component }) {
   const busy = usePlatform((s) => !!(c.customId && s.busy[`${m.id}:${c.customId}`]));
   const style = c.style ?? ButtonStyle.PRIMARY; const link = style === ButtonStyle.LINK;
   const cls = cx('inline-flex min-h-[32px] items-center justify-center gap-1.5 rounded-[3px] px-4 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50', BTN[style] ?? BTN[ButtonStyle.PRIMARY]);
@@ -90,7 +90,7 @@ export function useSelectOptions(m: Pick<Message, 'guildId' | 'channelId'>, c: C
   }, [c, g, dm, m.guildId, m.channelId]);
 }
 
-function SelectView({ m, c }: { m: Message; c: Component }) {
+export function SelectView({ m, c }: { m: Message; c: Component }) {
   const opts = useSelectOptions(m, c);
   const min = c.minValues ?? 1; const max = Math.max(1, c.maxValues ?? 1); const multi = max > 1;
   const busy = usePlatform((s) => !!(c.customId && s.busy[`${m.id}:${c.customId}`]));

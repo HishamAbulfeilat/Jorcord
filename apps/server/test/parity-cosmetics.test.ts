@@ -22,6 +22,15 @@ describe('cosmetics', () => {
     wb.close();
   });
 
+  it('every catalog avatar decoration and profile effect is accepted; ids from the other lists are not', async () => {
+    const { AVATAR_DECORATIONS, PROFILE_EFFECTS } = await import('@jorcord/shared');
+    const a = await api.register('fx');
+    for (const d of AVATAR_DECORATIONS) expect((await api.req('PATCH', '/users/@me', a.token, { avatarDecoration: d.id })).body.avatarDecoration).toBe(d.id);
+    for (const e of PROFILE_EFFECTS) expect((await api.req('PATCH', '/users/@me', a.token, { profileEffect: e.id })).body.profileEffect).toBe(e.id);
+    expect((await api.req('PATCH', '/users/@me', a.token, { profileEffect: 'neon' })).status).toBe(400); // a decoration id is not an effect
+    expect((await api.req('PATCH', '/users/@me', a.token, { profileEffect: null })).body.profileEffect).toBeNull();
+  });
+
   it('server tags: owner sets tag+badge, members wear it, edits propagate, leaving drops it', async () => {
     const owner = await api.register('o'), m = await api.register('m'), out = await api.register('out');
     const guild = (await api.req('POST', '/guilds', owner.token, { name: 'Tagged' })).body;

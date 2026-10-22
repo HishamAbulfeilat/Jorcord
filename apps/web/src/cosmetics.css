@@ -31,3 +31,10 @@
 .plate-nebula { background: linear-gradient(90deg, #b06bff55, #ff5fd244 70%, transparent); }
 .plate-gold { background: linear-gradient(90deg, #ffd86a66, #c9962b44 70%, transparent); }
 .plate-mono { background: linear-gradient(90deg, #ffffff22, #ffffff0d 70%, transparent); }
+
+/* More profile effects (original CSS art). */
+@keyframes fx-sweep { to { background-position: -200% 0; } }
+.fx-embers { background-image: radial-gradient(2px 2px at 25px 100px, #ff9a3c, transparent), radial-gradient(3px 3px at 80px 80px, #ff5d1f, transparent), radial-gradient(2px 2px at 140px 110px, #ffd24a, transparent), radial-gradient(2px 2px at 110px 40px, #ff7a2c, transparent); background-size: 180px 120px; filter: drop-shadow(0 0 2px #ff6a00); animation: fx-rise 6s linear infinite; }
+.fx-petals { background-image: radial-gradient(4px 2px at 30px 20px, #ffb7d5, transparent), radial-gradient(4px 2px at 100px 60px, #ff8fbf, transparent), radial-gradient(3px 2px at 150px 100px, #ffd1e6, transparent), radial-gradient(4px 2px at 70px 105px, #ffb7d5, transparent); background-size: 180px 120px; animation: fx-drift 9s linear infinite; }
+.fx-starfield { background-image: radial-gradient(1px 1px at 15px 20px, #fff, transparent), radial-gradient(1.5px 1.5px at 70px 55px, #cfe0ff, transparent), radial-gradient(1px 1px at 120px 90px, #fff, transparent), radial-gradient(1.5px 1.5px at 160px 30px, #ffe9b0, transparent), radial-gradient(1px 1px at 40px 100px, #fff, transparent); background-size: 180px 120px; animation: fx-twinkle 3.2s ease-in-out infinite; }
+.fx-northern { background-image: linear-gradient(105deg, transparent 20%, #57f28744 35%, #5865f255 50%, #eb459e33 65%, transparent 80%); background-size: 200% 100%; animation: fx-sweep 7s linear infinite; }
