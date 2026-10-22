@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { snowflake } from '@jorcord/shared';
 import type { Ctx } from '../ctx';
-import { ApiError, notFound } from '../errors';
+import { ApiError, forbidden, notFound } from '../errors';
 import { issueTokens } from '../auth';
 import { randomToken, safeEqual, sha256 } from '../lib/crypto';
 import { idSchema, iso, parse } from '../lib/ids';
@@ -52,16 +52,20 @@ export function remoteAuthPublicRoutes(app: FastifyInstance, ctx: Ctx) {
 /** Signed-in device (the phone): look at a scanned code, then approve or decline it. */
 export function remoteAuthRoutes(app: FastifyInstance, ctx: Ctx) {
   app.post('/auth/remote/scan', async (req) => {
+    if (req.isBot) throw forbidden('Bots cannot approve QR logins');
     limitOrThrow(ctx.rl, `remote-scan:${req.userId}`, 20, 5 * 60_000, ctx.config.rateLimit);
     const b = parse(z.object({ id: idSchema, scanSecret: secretSchema }).strict(), req.body);
     const r = await liveRow(ctx, b.id, 'scan_hash', b.scanSecret);
     if (r.status === 'approved' || r.status === 'denied') throw gone();
     if (r.status === 'scanned' && r.user_id !== req.userId) throw new ApiError(409, 'REMOTE_AUTH_TAKEN', 'This QR code was already scanned');
-    await ctx.db.query(`UPDATE remote_auth SET status = 'scanned', user_id = $2 WHERE id = $1 AND status IN ('pending','scanned')`, [b.id, req.userId]);
+    // one atomic claim: a code first scanned by A can never be re-pointed at B by a racing request
+    const claimed = await ctx.db.query(`UPDATE remote_auth SET status = 'scanned', user_id = $2 WHERE id = $1 AND (status = 'pending' OR (status = 'scanned' AND user_id = $2)) AND expires_at > now() RETURNING id`, [b.id, req.userId]);
+    if (!claimed.length) throw new ApiError(409, 'REMOTE_AUTH_TAKEN', 'This QR code was already scanned');
     return { id: r.id, device: { userAgent: r.user_agent, ip: r.ip, createdAt: iso(r.created_at) }, expiresAt: iso(r.expires_at) };
   });
 
   app.post('/auth/remote/confirm', async (req, reply) => {
+    if (req.isBot) throw forbidden('Bots cannot approve QR logins');
     limitOrThrow(ctx.rl, `remote-confirm:${req.userId}`, 20, 5 * 60_000, ctx.config.rateLimit);
     const b = parse(z.object({ id: idSchema, scanSecret: secretSchema, approve: z.boolean() }).strict(), req.body);
     const r = await liveRow(ctx, b.id, 'scan_hash', b.scanSecret);

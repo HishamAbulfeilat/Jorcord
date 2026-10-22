@@ -134,6 +134,13 @@ export function channelRoutes(app: FastifyInstance, ctx: Ctx) {
       if ((b.locked !== undefined || (ch.locked && b.archived === false)) && !has(a.perms, Perm.MANAGE_THREADS)) throw forbidden('Missing permissions').num(50083);
       if (b.appliedTags !== undefined) b.appliedTags = await checkAppliedTags(ch.parent_id, b.appliedTags, has(a.perms, Perm.MANAGE_THREADS), ch.applied_tags ?? []);
     }
+    if (typeof b.defaultReactionEmoji === 'string') { // a custom default must be one of THIS server's emoji; it is added automatically to every post
+      const custom = b.defaultReactionEmoji.match(/^(\w{2,32}):(\d{1,20})$/);
+      if (custom) {
+        const [em] = await ctx.db.query('SELECT 1 AS x FROM emojis WHERE id = $1 AND name = $2 AND guild_id = $3', [custom[2], custom[1], ch.guild_id]);
+        if (!em) throw badRequest('Unknown custom emoji');
+      } else if (/[\u0000-\u001f<>:]/.test(b.defaultReactionEmoji)) throw badRequest('Invalid emoji');
+    }
     if (b.availableTags !== undefined) b.availableTags = await normaliseTags(id, ch.available_tags ?? [], b.availableTags);
     if (b.parentId !== undefined) await validateParent(ch.guild_id, b.parentId, ch.type);
     const col: Record<string, string> = { name: 'name', topic: 'topic', nsfw: 'nsfw', slowmode: 'slowmode', bitrate: 'bitrate', userLimit: 'user_limit', parentId: 'parent_id', position: 'position', archived: 'archived',
@@ -392,6 +399,7 @@ export function channelRoutes(app: FastifyInstance, ctx: Ctx) {
   app.post('/channels/:id/forum/posts', async (req, reply) => {
     const { id } = parse(z.object({ id: idSchema }), req.params);
     const b = parse(z.object({ name: z.string().trim().min(1).max(100), content: z.string().min(1).optional(), appliedTags: z.array(idSchema).max(5).optional(), autoArchiveDuration: archiveDuration.optional(), attachments: z.array(idSchema).max(10).optional() }).strict(), req.body);
+    limitOrThrow(ctx.rl, `forum-post:${req.userId}`, 10, 60_000, ctx.config.rateLimit);
     const a = await channelAccess(ctx, req.userId, id);
     const isMedia = a.channel.type === 'media';
     if (a.channel.type !== 'forum' && !isMedia) throw badRequest('Not a forum channel');

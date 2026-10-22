@@ -68,11 +68,12 @@ export function resolveBurstColor(color?: string | null): string {
  * Rows are never deleted, so taking a burst back does not refund the allowance. Throws 429 when exhausted.
  */
 export async function consumeBurstQuota(ctx: Ctx, userId: string): Promise<void> {
-  const [c] = await ctx.db.query("SELECT count(*)::int AS n FROM burst_reaction_usage WHERE user_id = $1 AND created_at > now() - interval '1 day'", [userId]);
-  if (c.n >= LIMITS.burstReactionsPerDay) {
-    throw new ApiError(429, 'BURST_LIMIT', `You can send ${LIMITS.burstReactionsPerDay} burst reactions per day`, { limit: LIMITS.burstReactionsPerDay });
-  }
-  await ctx.db.query('INSERT INTO burst_reaction_usage (id, user_id) VALUES ($1, $2)', [snowflake(), userId]);
+  // check-and-insert in one statement so concurrent requests cannot all pass a separate count
+  const ok = await ctx.db.query(
+    `INSERT INTO burst_reaction_usage (id, user_id)
+     SELECT $1, $2 WHERE (SELECT count(*) FROM burst_reaction_usage WHERE user_id = $2 AND created_at > now() - interval '1 day') < $3 RETURNING id`,
+    [snowflake(), userId, LIMITS.burstReactionsPerDay]);
+  if (!ok.length) throw new ApiError(429, 'BURST_LIMIT', `You can send ${LIMITS.burstReactionsPerDay} burst reactions per day`, { limit: LIMITS.burstReactionsPerDay });
 }
 
 export async function createMessage(ctx: Ctx, m: NewMessage): Promise<Message> {

@@ -120,6 +120,13 @@ export function adminRoutes(app: FastifyInstance, ctx: Ctx) {
     gate(req);
     const { id: cid } = parse(id, req.params);
     const { before, limit } = parse(z.object({ before: idSchema.optional(), limit: z.coerce.number().int().min(1).max(100).default(50) }), req.query);
+    // Private conversations need the re-authenticated, time-boxed god mode and leave an audit row (guild channels stay read-only without it).
+    const [ch] = await ctx.db.query('SELECT guild_id FROM channels WHERE id = $1', [cid]);
+    if (!ch) throw notFound('Channel');
+    if (!ch.guild_id) {
+      if (!godModeUntil(ctx, req.userId)) throw badRequest('Turn on god mode to read direct messages');
+      await adminAudit(ctx, req.userId, 'READ_DM', `/admin/channels/${cid}/messages`, 200);
+    }
     const rows = await ctx.db.query(`SELECT m.id, m.content, m.edited_at AS "editedAt", m.author_id AS "authorId", u.username AS "authorName",
         jsonb_array_length(m.attachments) AS attachments
       FROM messages m LEFT JOIN users u ON u.id = m.author_id

@@ -198,10 +198,10 @@ export function voiceRoutes(app: FastifyInstance, ctx: Ctx) {
     const a = await recordingAccess(req.userId, id);
     await requireInChannel(req.userId, id);
     const { attachments: uploaded } = parse(z.object({ attachments: z.array(idSchema).max(10).optional() }).strict(), req.body);
+    if (uploaded?.length) need(a.perms, Perm.SEND_MESSAGES, Perm.ATTACH_FILES); // before stopping: a refused post must not half-apply
     const recording = await stopVoiceRecording(ctx, id, req.userId);
     await audit(ctx, a.channel.guild_id, req.userId, 'VOICE_RECORDING_STOP', id, { recordingId: recording.id });
     if (!uploaded?.length) return { channelId: id, recording: null };
-    need(a.perms, Perm.SEND_MESSAGES, Perm.ATTACH_FILES);
     const attachments = await claimAttachments(ctx, req.userId, uploaded);
     try {
       if (attachments.some((at) => at.contentType.startsWith('audio/'))) need(a.perms, Perm.SEND_VOICE_MESSAGES);

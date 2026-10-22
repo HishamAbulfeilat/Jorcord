@@ -100,7 +100,7 @@ describe('clips', () => {
     expect((await postClip(member, plain.id, { attachmentId: up.body.id, durationSeconds: 5 })).status).toBe(400);
     expect((await api.req('GET', `/channels/${plain.id}/clips`, member.token)).status).toBe(400);
     // the rejected upload is released, and a DM is never a clips channel
-    const dm = (await api.req('POST', '/users/@me/channels', member.token, { recipientId: owner.id })).body;
+    const dm = (await api.req('POST', '/users/@me/channels', member.token, { recipientIds: [owner.id] })).body;
     expect((await postClip(member, dm.id, { attachmentId: up.body.id, durationSeconds: 5 })).status).toBe(400);
     const ok = await api.req('PATCH', `/channels/${plain.id}`, owner.token, { isClipsChannel: true });
     expect(ok.status).toBe(200);

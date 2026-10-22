@@ -20,7 +20,7 @@ describe('non-transactional index migrations', () => {
       writeFileSync(join(dir, '002_idx.concurrent.sql'), 'CREATE INDEX CONCURRENTLY IF NOT EXISTS t_a ON t (a);\nCREATE INDEX CONCURRENTLY IF NOT EXISTS t_b ON t (a, a);');
       const calls: string[] = [];
       const db: Db = {
-        kind: 'pg', async query(sql) { calls.push(`Q ${sql.slice(0, 20)}`); return sql.startsWith('SELECT name') ? [] : sql.includes('indisvalid') ? [{ x: 1 }] : []; },
+        kind: 'pg', async query<T = any>(sql: string): Promise<T[]> { calls.push(`Q ${sql.slice(0, 20)}`); return (sql.startsWith('SELECT name') ? [] : sql.includes('indisvalid') ? [{ x: 1 }] : []) as T[]; },
         async exec(sql) { calls.push(`E ${sql.split('\n')[0]!.slice(0, 40)}`); }, async tx() { throw new Error('no tx'); }, withLock: (_k, fn) => fn(), close: async () => {},
       };
       await migrate(db, dir);
