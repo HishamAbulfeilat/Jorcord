@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Camera, CameraOff, ChevronUp, Clapperboard, Crown, Headphones, Mic, MicOff, MonitorUp, MonitorX, PhoneOff, Settings, Activity, VolumeX } from 'lucide-react';
+import { Captions as CaptionsIcon, Camera, CameraOff, ChevronUp, Clapperboard, Crown, Headphones, Mic, MicOff, MonitorUp, MonitorX, PhoneOff, Settings, Activity, VolumeX } from 'lucide-react';
 import { STREAM_PRESETS, type StreamPresetId } from '@jorcord/voice';
 import { useVoiceClient, useVoiceSnapshot } from '@jorcord/voice/react';
 import { Perm } from '@jorcord/shared';
@@ -13,6 +13,7 @@ import { isDmChannel, leaveVoice, setPrioritySpeaker, startScreenShare } from '.
 import { WatchTogetherPopover } from './WatchTogether';
 import { RecordButton } from './Recording';
 import { ClipButton } from './ClipRecorder';
+import { captionsSupported } from './captions';
 import { t } from '@/i18n';
 
 function RoundBtn({ label, active, danger, onClick, children, disabled, pressed, className }: { label: string; active?: boolean; danger?: boolean; onClick?: () => void; children: React.ReactNode; disabled?: boolean; pressed?: boolean; className?: string }) {
@@ -72,7 +73,7 @@ export function ScreenSharePopover({ onClose }: { onClose: () => void }) {
 export function ControlBar({ onSettings, className }: { onSettings: () => void; className?: string }) {
   const snap = useVoiceSnapshot(); const client = useVoiceClient();
   const selfMute = useVoiceUI((s) => s.selfMute); const selfDeaf = useVoiceUI((s) => s.selfDeaf); const toggleMute = useVoiceUI((s) => s.toggleMute); const toggleDeaf = useVoiceUI((s) => s.toggleDeaf);
-  const showStats = useUI((s) => s.prefs.showVoiceStats); const setPref = useUI((s) => s.setPref);
+  const showStats = useUI((s) => s.prefs.showVoiceStats); const captionsOn = useUI((s) => s.prefs.captions); const setPref = useUI((s) => s.setPref);
   const [pop, setPopLocal] = useState(false);
   const [activitiesOpen, setActivitiesOpen] = useState(false);
   const globalPop = useVoiceUI((s) => s.sharePop); const setGlobalPop = useVoiceUI((s) => s.setSharePop); const setBarMounted = useVoiceUI((s) => s.setBarMounted);
@@ -112,6 +113,7 @@ export function ControlBar({ onSettings, className }: { onSettings: () => void; 
           {activitiesOpen && <WatchTogetherPopover channelId={channelId} onClose={() => setActivitiesOpen(false)} />}
         </div>
       )}
+      {captionsSupported() && <RoundBtn label={captionsOn ? t('Hide live captions') : t('Show live captions')} pressed={captionsOn} active={captionsOn} onClick={() => setPref('captions', !captionsOn)}><CaptionsIcon size={22} /></RoundBtn>}
       <RoundBtn label={t('Voice Settings')} onClick={onSettings}><Settings size={22} /></RoundBtn>
       <RoundBtn label={showStats ? 'Hide Connection Stats' : 'Show Connection Stats'} pressed={showStats} active={showStats} onClick={() => setPref('showVoiceStats', !showStats)} ><Activity size={22} /></RoundBtn>
       <RoundBtn label={t('Disconnect')} danger onClick={() => void leaveVoice()}><PhoneOff size={22} /></RoundBtn>

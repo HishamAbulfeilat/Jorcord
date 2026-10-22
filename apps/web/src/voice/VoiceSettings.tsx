@@ -4,6 +4,8 @@ import { LIMITS } from '@jorcord/shared';
 import { Toggle, Row, Modal } from '@/components/ui/primitives';
 import { useUI, type Prefs } from '@/stores/ui';
 import { noiseStatusText } from './noiseStatus';
+import { captionsSupported } from './captions';
+import { t } from '@/i18n';
 import { getVoiceClient } from './controller';
 import { cx } from '@/lib/format';
 import { SelfViewVideo } from './tiles';
@@ -14,6 +16,23 @@ function NoiseStatus({ mode, musicMode }: { mode: Prefs['noiseEngine']; musicMod
   const fallback = useSyncExternalStore(c.subscribe, () => c.getSnapshot().noise.fallback);
   const st = noiseStatusText(mode, { musicMode, fallback });
   return <p className={cx('mt-1 text-sm', st.tone === 'warn' ? 'text-warn' : 'text-muted')} role={st.tone === 'warn' ? 'status' : undefined} data-testid="noise-status">{st.text}</p>;
+}
+
+const CAPTION_LANGS: [string, string][] = [['', 'Browser language'], ['en-US', 'English (US)'], ['en-GB', 'English (UK)'], ['es-ES', 'Español'], ['fr-FR', 'Français'], ['de-DE', 'Deutsch'], ['tr-TR', 'Türkçe'], ['ar-SA', 'العربية']];
+function CaptionSettings() {
+  const p = useUI((s) => s.prefs); const set = useUI((s) => s.setPref); const supported = captionsSupported();
+  return (
+    <>
+      <Row title={t('Show live captions')} desc={t('Captions of your own speech, shown to you only, using your browser’s speech recognition. Chrome and Edge may send your microphone audio to their speech service; Jorcord never receives it. It listens only while you are in a call and unmuted.')}>
+        <Toggle label={t('Show live captions')} checked={p.captions && supported} disabled={!supported} onChange={(v) => set('captions', v)} />
+      </Row>
+      {!supported && <p role="status" data-testid="captions-unsupported" className="mb-3 text-sm text-muted">{t('Live captions are not supported by this browser. Try Chrome, Edge or Safari.')}</p>}
+      {supported && p.captions && (
+        <Field label={t('Caption language')}>
+          <select className="field" aria-label={t('Caption language')} value={p.captionsLang} onChange={(e) => set('captionsLang', e.target.value)}>{CAPTION_LANGS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
+        </Field>)}
+    </>
+  );
 }
 
 const H3 = ({ children }: { children: React.ReactNode }) => <h3 className="section-title mb-2 mt-5">{children}</h3>;
@@ -143,6 +162,9 @@ export function VoiceSettingsForm({ compact }: { compact?: boolean }) {
       <Row title="Automatic Gain Control"><Toggle label="Automatic gain control" checked={p.autoGain} onChange={(v) => set('autoGain', v)} /></Row>
       <Row title="Music Mode" desc="Stereo, no processing, higher bitrate."><Toggle label="Music mode" checked={p.musicMode} onChange={(v) => set('musicMode', v)} /></Row>
       <Field label={`Voice bitrate — ${p.voiceBitrate} kbps`}><input type="range" aria-label="Voice bitrate" min={8} max={LIMITS.audio.bitrateKbps} step={2} value={p.voiceBitrate} onChange={(e) => set('voiceBitrate', Number(e.target.value))} className="w-full accent-brand" /></Field>
+
+      <H3>{t('Live captions')}</H3>
+      <CaptionSettings />
 
       <H3>Camera & streaming</H3>
       <div className={cx('grid gap-x-6', !compact && 'sm:grid-cols-2')}>

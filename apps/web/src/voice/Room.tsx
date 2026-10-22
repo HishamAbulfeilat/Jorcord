@@ -79,12 +79,15 @@ export function ConnectionStatus() {
 }
 
 /** The call surface: participant grid, or a spotlighted stream with a filmstrip. */
+import { CaptionsOverlay } from './Captions';
+
 export function CallSurface(props: { compact?: boolean; tall?: boolean }) {
   const showStats = useUI((s) => s.prefs.showVoiceStats);
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       {showStats && <ConnectionStatus />}
       <CallSurfaceBody {...props} />
+      <CaptionsOverlay />
     </div>
   );
 }

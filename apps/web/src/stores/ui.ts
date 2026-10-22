@@ -27,6 +27,8 @@ export interface Prefs {
   userVolumes: Record<Id, number>; userMuted: Record<Id, boolean>;
   /** Clip recorder: how much to keep (30/60/120 s) and whether to start the rolling buffer by itself when a stream starts (off: recording is opt-in). */
   clipWindow: 30 | 60 | 120; clipAutoBuffer: boolean;
+  /** Live captions of my own speech (Web Speech API, local to this browser) and the recognition language ('' = browser language). */
+  captions: boolean; captionsLang: string;
   soundboardMuted: boolean; soundboardMutedUsers: Record<Id, boolean>; soundboardVolume: number;
   /** Desktop game detection: report "Playing <game>" and the games the user has registered. */
   gameActivity: boolean; registeredGames: RegisteredGame[];
@@ -58,7 +60,7 @@ export const defaultPrefs: Prefs = {
   keybinds: defaultKeybinds,
   streamerMode: false, streamerAuto: true, streamerHidePersonal: true, streamerHideInvites: true, streamerNoSounds: true, streamerNoNotifications: true,
   mutedChannels: {}, mutedGuilds: {}, collapsedCategories: {},
-  hideMutedChannels: {}, userVolumes: {}, userMuted: {}, clipWindow: 30, clipAutoBuffer: false, soundboardMuted: false, soundboardMutedUsers: {}, soundboardVolume: 100,
+  hideMutedChannels: {}, userVolumes: {}, userMuted: {}, clipWindow: 30, clipAutoBuffer: false, captions: false, captionsLang: '', soundboardMuted: false, soundboardMutedUsers: {}, soundboardVolume: 100,
   gameActivity: true, registeredGames: [],
   overlayEnabled: false, overlayLocked: false, overlayCorner: 'top-right',
 };
