@@ -3,6 +3,8 @@
  * Capacitor plugins are reached through the native bridge (`Capacitor.Plugins.*`) so this bundle needs no @capacitor/* dependency.
  */
 import { capPlugin, getServerUrl, isCapacitor, isTauri, nativePlatform } from './server';
+import { invokeFn, secureStore } from './secureStore';
+export { secureStore };
 import { parseDeepLink, routeFor, type DeepLink } from './deeplink';
 import { normalizeServerUrl } from './server';
 import { switchServer } from './serverSwitch';
@@ -87,6 +89,36 @@ export const desktop = {
     return invoke('list_running_games', { userGames });
   },
 };
+
+/**
+ * Clipboard: the native plugin on desktop (works without a user gesture and in webviews that block `navigator.clipboard`), the async clipboard API
+ * in the browser. Both return false / null instead of throwing.
+ */
+export const clipboard = {
+  async writeText(text: string): Promise<boolean> {
+    if (isTauri()) { try { await tauri().clipboardManager?.writeText?.(text); if (tauri().clipboardManager?.writeText) return true; } catch { /* fall through to the web API */ } }
+    try { await navigator.clipboard.writeText(text); return true; } catch { return false; }
+  },
+  async readText(): Promise<string | null> {
+    if (isTauri()) { try { const v = await tauri().clipboardManager?.readText?.(); if (typeof v === 'string') return v; } catch { /* */ } }
+    try { return await navigator.clipboard.readText(); } catch { return null; }
+  },
+};
+
+/** Seconds since the last keyboard / mouse input system-wide (Windows, macOS), or null when the platform cannot say. */
+export async function systemIdleSeconds(): Promise<number | null> {
+  const inv = invokeFn(); if (!isTauri() || !inv) return null;
+  try { const v = await inv('idle_seconds'); return typeof v === 'number' ? v : null; } catch { return null; }
+}
+
+/** Desktop wake-from-sleep notification (`jorcord://power`). Returns the unsubscribe. */
+export function onPowerEvent(fn: (kind: 'resume') => void): () => void {
+  if (!isTauri()) return () => {};
+  let off: (() => void) | null = null; let dead = false;
+  void Promise.resolve(tauri().event?.listen?.('jorcord://power', (e: { payload: unknown }) => { if (e.payload === 'resume') fn('resume'); }))
+    .then((un: any) => { if (typeof un === 'function') { if (dead) un(); else off = un; } }).catch(() => {});
+  return () => { dead = true; off?.(); };
+}
 
 let coldStartHandled = false;
 /** Register every wrapper listener. Returns the cleanup. */

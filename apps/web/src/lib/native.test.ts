@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { handleBack, applyDeepLink, desktop } from './native';
+import { handleBack, applyDeepLink, desktop, clipboard, systemIdleSeconds } from './native';
 import { useUI } from '@/stores/ui';
 import { getServerUrl, setServerUrl } from './server';
 import { urlBase64ToUint8Array } from './push';
@@ -78,5 +78,24 @@ describe('desktop helpers (Tauri only)', () => {
   it('reports no update when the app is up to date', async () => {
     w.__TAURI__ = { updater: { check: () => Promise.resolve(null) } };
     await expect(desktop.checkUpdate()).resolves.toBeNull();
+  });
+});
+
+describe('clipboard and idle bridge', () => {
+  const w = window as any;
+  afterEach(() => { delete w.__TAURI__; vi.unstubAllGlobals(); });
+  it('uses the native clipboard plugin on desktop', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined); w.__TAURI__ = { clipboardManager: { writeText, readText: () => Promise.resolve('hi') } };
+    expect(await clipboard.writeText('x')).toBe(true); expect(writeText).toHaveBeenCalledWith('x');
+    expect(await clipboard.readText()).toBe('hi');
+  });
+  it('falls back to the web clipboard API in a browser', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined); vi.stubGlobal('navigator', { clipboard: { writeText } });
+    expect(await clipboard.writeText('y')).toBe(true); expect(writeText).toHaveBeenCalledWith('y');
+  });
+  it('reports system idle seconds through the idle_seconds command, null elsewhere', async () => {
+    expect(await systemIdleSeconds()).toBeNull();
+    w.__TAURI__ = { core: { invoke: (c: string) => Promise.resolve(c === 'idle_seconds' ? 42 : null) } };
+    expect(await systemIdleSeconds()).toBe(42);
   });
 });

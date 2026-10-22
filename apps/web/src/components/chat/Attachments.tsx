@@ -4,6 +4,7 @@ import type { Attachment, Embed } from '@jorcord/shared';
 import { fileUrl, fmtBytes, isAudio, isImage, isVideo } from '@/lib/format';
 import { fmtVoiceDuration, VOICE_BARS, waveformPeaks } from '@/lib/voiceMsg';
 import { useUI } from '@/stores/ui';
+import { guardFile, guardLink } from '@/lib/links';
 import { t } from '@/i18n';
 
 function fit(w: number | null, h: number | null, maxW = 400, maxH = 300) {
@@ -43,7 +44,7 @@ export function AttachmentView({ a }: { a: Attachment }) {
   if (isAudio(a.contentType)) {
     return (
       <div className="w-[min(100%,400px)] rounded-md border border-divider bg-side p-3">
-        <div className="mb-2 flex items-center gap-2 text-sm"><Music size={18} className="text-muted" /><a href={url} download className="truncate font-medium">{a.filename}</a><span className="text-xs text-muted">{fmtBytes(a.size)}</span></div>
+        <div className="mb-2 flex items-center gap-2 text-sm"><Music size={18} className="text-muted" /><a href={url} download className="truncate font-medium" onClick={(e) => guardFile(e, url, a.filename, true)}>{a.filename}</a><span className="text-xs text-muted">{fmtBytes(a.size)}</span></div>
         <VoicePlayer src={url} />
       </div>
     );
@@ -52,8 +53,8 @@ export function AttachmentView({ a }: { a: Attachment }) {
   return (
     <div className="flex w-[min(100%,400px)] items-center gap-3 rounded-md border border-divider bg-side p-3">
       <Icon size={32} className="shrink-0 text-muted" />
-      <div className="min-w-0 flex-1"><a href={url} target="_blank" rel="noopener noreferrer" className="block truncate text-sm font-medium">{a.filename}</a><span className="text-xs text-muted">{fmtBytes(a.size)}</span></div>
-      <a href={url} download={a.filename} aria-label={`Download ${a.filename}`} className="text-interactive hover:text-header"><Download size={20} /></a>
+      <div className="min-w-0 flex-1"><a href={url} target="_blank" rel="noopener noreferrer" className="block truncate text-sm font-medium" onClick={(e) => guardFile(e, url, a.filename, false)}>{a.filename}</a><span className="text-xs text-muted">{fmtBytes(a.size)}</span></div>
+      <a href={url} download={a.filename} aria-label={`Download ${a.filename}`} className="text-interactive hover:text-header" onClick={(e) => guardFile(e, url, a.filename, true)}><Download size={20} /></a>
     </div>
   );
 }
@@ -147,7 +148,7 @@ export function EmbedView({ e }: { e: Embed }) {
         <div className="min-w-0 flex-1">
           {e.siteName && <div className="mb-1 text-xs text-muted">{e.siteName}</div>}
           {e.author && <div className="mb-1 text-sm font-semibold text-header">{e.author}</div>}
-          {e.title && (e.url ? <a href={e.url} target="_blank" rel="noopener noreferrer nofollow" className="mb-1 block font-semibold">{e.title}</a> : <div className="mb-1 font-semibold text-header">{e.title}</div>)}
+          {e.title && (e.url ? <a href={e.url} target="_blank" rel="noopener noreferrer nofollow" className="mb-1 block font-semibold" onClick={(ev) => guardLink(ev, e.url!)}>{e.title}</a> : <div className="mb-1 font-semibold text-header">{e.title}</div>)}
           {e.description && <div className="line-clamp-6 whitespace-pre-wrap break-words text-sm text-normal">{e.description}</div>}
           {e.fields && e.fields.length > 0 && <div className="mt-2 grid grid-cols-3 gap-2">{e.fields.map((f, i) => <div key={i} className={f.inline ? '' : 'col-span-3'}><div className="text-sm font-semibold text-header">{f.name}</div><div className="whitespace-pre-wrap text-sm">{f.value}</div></div>)}</div>}
           {e.image && <img src={e.image} alt="" loading="lazy" onClick={() => openModal({ kind: 'image', url: e.image! })} className="mt-3 max-h-[300px] w-full cursor-zoom-in rounded object-cover" />}

@@ -180,6 +180,109 @@ fn overlay_apply(app: AppHandle, spec: OverlaySpec) -> Result<(), String> {
     Ok(())
 }
 
+/* ------------------------------------------------------------------ keychain, idle, power */
+
+const KEYCHAIN_SERVICE: &str = "app.jorcord.desktop";
+
+/// Names the web app may store: a short fixed allow-list so a compromised page cannot use the keychain as general storage.
+fn keychain_entry(name: &str) -> Result<keyring::Entry, String> {
+    if !matches!(name, "auth" | "accounts") {
+        return Err("unknown keychain slot".into());
+    }
+    keyring::Entry::new(KEYCHAIN_SERVICE, name).map_err(|e| e.to_string())
+}
+
+/// Store a secret in the OS keychain. The web app falls back to web storage when this errors (no keychain service, locked, ...).
+#[tauri::command]
+fn secure_set(name: String, value: String) -> Result<(), String> {
+    keychain_entry(&name)?.set_password(&value).map_err(|e| e.to_string())
+}
+
+/// Read a secret; `None` when nothing is stored.
+#[tauri::command]
+fn secure_get(name: String) -> Result<Option<String>, String> {
+    match keychain_entry(&name)?.get_password() {
+        Ok(v) => Ok(Some(v)),
+        Err(keyring::Error::NoEntry) => Ok(None),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+/// Delete a secret. Idempotent.
+#[tauri::command]
+fn secure_delete(name: String) -> Result<(), String> {
+    match keychain_entry(&name)?.delete_credential() {
+        Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+/// Seconds since the last keyboard or mouse input anywhere on the system, or `None` where the OS offers no cheap way (Linux: the web app then
+/// falls back to its own in-window activity tracking).
+#[tauri::command]
+fn idle_seconds() -> Option<u64> {
+    system_idle_seconds()
+}
+
+#[cfg(target_os = "windows")]
+fn system_idle_seconds() -> Option<u64> {
+    #[repr(C)]
+    struct LastInputInfo {
+        cb_size: u32,
+        dw_time: u32,
+    }
+    #[link(name = "user32")]
+    extern "system" {
+        fn GetLastInputInfo(plii: *mut LastInputInfo) -> i32;
+    }
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn GetTickCount() -> u32;
+    }
+    let mut info = LastInputInfo { cb_size: std::mem::size_of::<LastInputInfo>() as u32, dw_time: 0 };
+    // SAFETY: `info` is a valid, correctly sized LASTINPUTINFO and outlives the call.
+    unsafe {
+        if GetLastInputInfo(&mut info) == 0 {
+            return None;
+        }
+        Some(u64::from(GetTickCount().wrapping_sub(info.dw_time)) / 1000)
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn system_idle_seconds() -> Option<u64> {
+    #[link(name = "CoreGraphics", kind = "framework")]
+    extern "C" {
+        // state 1 = kCGEventSourceStateCombinedSessionState, event type u32::MAX = kCGAnyInputEventType
+        fn CGEventSourceSecondsSinceLastEventType(state: i32, event_type: u32) -> f64;
+    }
+    // SAFETY: plain C call with scalar arguments.
+    let s = unsafe { CGEventSourceSecondsSinceLastEventType(1, u32::MAX) };
+    if s.is_finite() && s >= 0.0 { Some(s as u64) } else { None }
+}
+
+#[cfg(not(any(target_os = "windows", target_os = "macos")))]
+fn system_idle_seconds() -> Option<u64> {
+    None
+}
+
+/// Resume-from-sleep detection without OS hooks: a ticker whose wall-clock gap is far larger than its sleep means the machine was suspended.
+/// Emits `jorcord://power` with `"resume"` so the web app can reconnect and refresh presence. (Suspend itself cannot be observed before it happens.)
+fn watch_power(app: AppHandle) {
+    std::thread::spawn(move || {
+        const TICK: std::time::Duration = std::time::Duration::from_secs(5);
+        let mut last = std::time::SystemTime::now();
+        loop {
+            std::thread::sleep(TICK);
+            let now = std::time::SystemTime::now();
+            if now.duration_since(last).map(|d| d > TICK * 3).unwrap_or(false) {
+                let _ = app.emit("jorcord://power", "resume");
+            }
+            last = now;
+        }
+    });
+}
+
 pub fn run() {
     let mut builder = tauri::Builder::default();
 
@@ -205,6 +308,7 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_deep_link::init())
         // Auto-start is opt-in: the web app calls the autostart plugin enable()/disable() from settings.
@@ -214,6 +318,7 @@ pub fn run() {
         ))
         .setup(|app| {
             let handle = app.handle().clone();
+            watch_power(handle.clone());
 
             #[cfg(any(target_os = "linux", all(debug_assertions, windows)))]
             {
@@ -270,7 +375,7 @@ pub fn run() {
                 }
             }
         })
-        .invoke_handler(tauri::generate_handler![list_running_games, overlay_apply])
+        .invoke_handler(tauri::generate_handler![list_running_games, overlay_apply, secure_set, secure_get, secure_delete, idle_seconds])
         .run(tauri::generate_context!())
         .expect("error while running Jorcord");
 }

@@ -11,9 +11,11 @@ import './index.css';
 import './cosmetics.css';
 
 import { queryClient as qc } from './lib/queryClient';
-import { isNative } from './lib/server';
+import { isNative, isTauri } from './lib/server';
 import { setLocale } from './i18n';
 import { useUI } from './stores/ui';
+import { useAuth } from './stores/auth';
+import { hydrateSecureAuth, loadAuth } from './lib/authStorage';
 
 setLocale(useUI.getState().prefs.language);
 // Wrappers bundle their assets already (docs/WRAPPER_WEB_NEEDS.md section 7): no PWA service worker there.
@@ -26,9 +28,13 @@ if (isOverlayWindow()) {
     <React.StrictMode><ErrorBoundary><OverlayApp /></ErrorBoundary></React.StrictMode>,
   );
 } else {
-  ReactDOM.createRoot(document.getElementById('root')!).render(
+  const render = () => ReactDOM.createRoot(document.getElementById('root')!).render(
     <React.StrictMode>
       <QueryClientProvider client={qc}><BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, '')}><ErrorBoundary><App /></ErrorBoundary></BrowserRouter></QueryClientProvider>
     </React.StrictMode>,
   );
+  // Desktop: the login tokens live in the OS keychain, which is async; load them into the auth store before the first render. Any failure renders anyway.
+  if (isTauri()) {
+    void hydrateSecureAuth().then((on) => { if (on) { const a = loadAuth(); useAuth.setState({ access: a.access ?? null, refresh: a.refresh ?? null }); } }).catch(() => {}).finally(render);
+  } else render();
 }

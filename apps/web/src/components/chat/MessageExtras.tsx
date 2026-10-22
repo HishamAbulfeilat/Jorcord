@@ -1,4 +1,5 @@
 /** Rendering for the platform-pass message features: interaction headers, ephemeral notices, "thinking" placeholders, components, polls. */
+import { guardLink } from '@/lib/links';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { BarChart3, Check, ChevronDown, ExternalLink, EyeOff, Loader2 } from 'lucide-react';
 import { ButtonStyle, ComponentType as CT, MessageFlags, Perm } from '@jorcord/shared';
@@ -66,7 +67,7 @@ function ButtonView({ m, c }: { m: Message; c: Component }) {
   const style = c.style ?? ButtonStyle.PRIMARY; const link = style === ButtonStyle.LINK;
   const cls = cx('inline-flex min-h-[32px] items-center justify-center gap-1.5 rounded-[3px] px-4 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50', BTN[style] ?? BTN[ButtonStyle.PRIMARY]);
   const body = <>{c.emoji && <span aria-hidden>{c.emoji}</span>}{c.label}{link && <ExternalLink size={14} aria-hidden />}{busy && <Loader2 size={14} className="animate-spin" aria-hidden />}</>;
-  if (link) return <a href={c.url} target="_blank" rel="noopener noreferrer nofollow" aria-disabled={c.disabled} className={cx(cls, c.disabled && 'pointer-events-none opacity-50')} data-component="button">{body}</a>;
+  if (link) return <a href={c.url} target="_blank" rel="noopener noreferrer nofollow" aria-disabled={c.disabled} className={cx(cls, c.disabled && 'pointer-events-none opacity-50')} data-component="button" onClick={(e) => guardLink(e, c.url!)}>{body}</a>;
   return <button type="button" disabled={c.disabled || busy} onClick={() => void pressComponent(m, c)} className={cls} data-component="button" data-custom-id={c.customId} aria-label={c.label || c.customId}>{body}</button>;
 }
 

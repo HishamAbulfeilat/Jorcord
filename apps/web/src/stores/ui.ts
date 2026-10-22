@@ -34,6 +34,10 @@ export interface Prefs {
   gameActivity: boolean; registeredGames: RegisteredGame[];
   /** Desktop in-game overlay: a second always-on-top window mirroring the current voice call. */
   overlayEnabled: boolean; overlayLocked: boolean; overlayCorner: OverlayCorner;
+  /** Go idle after this many minutes without input (0 = never). Only moves me from online to idle and back; DND and invisible are never touched. */
+  idleMinutes: number;
+  /** Link domains I chose to open without the external-link confirmation (synced with my account settings). */
+  trustedLinkDomains: string[];
 }
 /** A game the user registered from the Running Games settings tab. */
 export interface RegisteredGame { name: string; executables: string[] }
@@ -63,6 +67,7 @@ export const defaultPrefs: Prefs = {
   hideMutedChannels: {}, userVolumes: {}, userMuted: {}, clipWindow: 30, clipAutoBuffer: false, captions: false, captionsLang: '', soundboardMuted: false, soundboardMutedUsers: {}, soundboardVolume: 100,
   gameActivity: true, registeredGames: [],
   overlayEnabled: false, overlayLocked: false, overlayCorner: 'top-right',
+  idleMinutes: 10, trustedLinkDomains: [],
 };
 
 export type RightPanel = 'members' | 'search' | 'pins' | 'threads' | 'reports' | null;
@@ -82,6 +87,7 @@ export type ModalSpec =
   | { kind: 'createPoll'; channelId: Id } | { kind: 'pollVoters'; channelId: Id; messageId: Id; answerId?: number }
   | { kind: 'events'; guildId: Id } | { kind: 'eventEditor'; guildId: Id; eventId?: Id; channelId?: Id }
   | { kind: 'customize'; guildId: Id } | { kind: 'followChannel'; channelId: Id }| { kind: 'forward'; message: Message } | { kind: 'report'; messageId: Id; guildId: Id; channelId: Id } | { kind: 'modView'; guildId: Id; userId: Id } | { kind: 'inbox'; tab?: 'mentions' | 'saved' | 'reminders' } | { kind: 'screening'; guildId: Id } | { kind: 'threadSettings'; channelId: Id } | { kind: 'stage'; channelId: Id; mode: 'start' | 'edit' }
+  | { kind: 'externalLink'; url: string } | { kind: 'riskyFile'; url: string; filename: string; download: boolean }
   | { kind: 'gifPicker'; title?: string; onPick: (url: string) => void };
 export type SettingsSpec = { kind: 'user'; tab?: string } | { kind: 'guild'; guildId: Id; tab?: string } | null;
 export interface MenuItem { label?: string; icon?: any; onClick?: () => void; danger?: boolean; separator?: boolean; checked?: boolean; disabled?: boolean; hint?: string; children?: MenuItem[];

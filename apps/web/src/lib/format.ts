@@ -2,6 +2,7 @@ import { snowflakeTime } from '@jorcord/shared';
 import type { Channel, Member, User } from '@jorcord/shared';
 import { getLocaleTag } from '@/i18n';
 import { apiBase, publicOrigin, serverPath } from './server';
+import { clipboard } from './native';
 
 export const fileUrl = (p: string | null | undefined): string | null => {
   if (!p) return null;
@@ -40,7 +41,7 @@ export const isTextual = (c: Pick<Channel, 'type'>) => ['text', 'announcement', 
 export const dmName = (c: Channel, meId?: string) => c.name || (c.recipients ?? []).filter((r) => r.id !== meId).map((r) => r.displayName || r.username).join(', ') || 'Unknown';
 export const cx = (...a: (string | false | null | undefined)[]) => a.filter(Boolean).join(' ');
 export const clamp = (n: number, a: number, b: number) => Math.min(b, Math.max(a, n));
-export const copyText = async (t: string) => { try { await navigator.clipboard.writeText(t); return true; } catch { return false; } };
+export const copyText = (t: string) => clipboard.writeText(t);
 export function debounce<A extends unknown[]>(fn: (...a: A) => void, ms: number) { let t: ReturnType<typeof setTimeout>; return (...a: A) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
 export const isImage = (ct: string) => ct.startsWith('image/');
 export const isVideo = (ct: string) => ct.startsWith('video/');

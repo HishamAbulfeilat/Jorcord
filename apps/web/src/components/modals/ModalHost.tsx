@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { ExternalLinkModal, RiskyFileModal } from './LinkGuard';
 import { createPortal } from 'react-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Check, Copy, Gamepad2, GraduationCap, Hash, Heart, Image as ImageIcon, Megaphone, MessagesSquare, Mic, Plus, Radio, Users, X, Upload, Globe, Palette, Volume2 } from 'lucide-react';
@@ -253,6 +254,8 @@ function ModalBody({ m, close }: { m: ModalSpec; close: () => void }) {
     case 'invite': return <InviteModal close={close} guildId={m.guildId} channelId={m.channelId} />;
     case 'profile': return <Modal onClose={close} width={380} padded={false}><ProfileCard userId={m.userId} guildId={m.guildId} /></Modal>;
     case 'confirm': return <Simple {...m} close={close} />;
+    case 'externalLink': return <ExternalLinkModal url={m.url} close={close} />;
+    case 'riskyFile': return <RiskyFileModal url={m.url} filename={m.filename} download={m.download} close={close} />;
     case 'prompt': return <Prompt {...m} close={close} />;
     case 'image': return <ImageLightbox url={m.url} name={m.name} close={close} />;
     case 'createThread': return <CreateThread channelId={m.channelId} messageId={m.messageId} suggested={m.suggested} close={close} />;

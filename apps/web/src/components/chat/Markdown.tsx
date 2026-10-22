@@ -1,4 +1,5 @@
 import { getServerUrl } from '@/lib/server';
+import { guardLink } from '@/lib/links';
 import { apiBase } from '@/lib/server';
 import { memo, useEffect, useState, type ReactNode } from 'react';
 import { parseMarkdown, isJumbo, formatTimestamp, type MdNode } from '@/lib/markdown';
@@ -60,7 +61,7 @@ function Node({ n, ctx }: { n: MdNode; ctx: Ctx }) {
     case 'list': { const L = n.ordered ? 'ol' : 'ul'; return <L>{n.items.map((it, i) => <li key={i}><Nodes ns={it} ctx={ctx} /></li>)}</L>; }
     case 'link': {
       const internal = n.href.startsWith(location.origin) || (!!getServerUrl() && n.href.startsWith(getServerUrl()));
-      return <a href={n.href} target={internal ? undefined : '_blank'} rel="noopener noreferrer nofollow ugc" title={n.masked ? n.href : undefined} onClick={(e) => e.stopPropagation()}><Nodes ns={n.c} ctx={ctx} /></a>;
+      return <a href={n.href} target={internal ? undefined : '_blank'} rel="noopener noreferrer nofollow ugc" title={n.masked ? n.href : undefined} onClick={(e) => { if (internal) e.stopPropagation(); else guardLink(e, n.href); }}><Nodes ns={n.c} ctx={ctx} /></a>;
     }
     case 'user': return <User id={n.id} guildId={ctx.guildId} />;
     case 'role': { const r = guild?.roles[n.id]; return <span className="mention" style={r?.color ? { color: intToHex(r.color), background: intToHex(r.color) + '33' } : undefined}>@{r?.name ?? 'deleted-role'}</span>; }
