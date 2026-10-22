@@ -6,7 +6,7 @@ import { useUI } from '@/stores/ui';
 import { useNav, useRouteIds } from '@/lib/nav';
 import { Avatar } from '@/components/ui/Avatar';
 import { Badge } from '@/components/ui/primitives';
-import { cx, dmName, compareId } from '@/lib/format';
+import { cx, dmName, compareId, fileUrl } from '@/lib/format';
 import { dmMenu } from '@/lib/menus';
 import { useMenuTrigger } from '@/components/ui/ContextMenu';
 import { api } from '@/lib/api';
@@ -23,7 +23,7 @@ function DmRow({ c, quiet }: { c: Channel; quiet?: boolean }) {
   return (
     <li className="group relative mx-2" {...trig}>
       <button aria-current={active ? 'page' : undefined} onClick={() => nav.go('@me', c.id)} className={cx('touch flex w-full items-center gap-3 rounded px-2 text-start md:min-h-[42px]', active ? 'bg-active text-header' : 'hover:bg-hover', unread && !active ? 'text-header' : 'text-muted hover:text-interactive-hover')}>
-        {c.type === 'group_dm' ? <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand text-white"><Users size={16} /></span> : <Avatar user={other} size={32} presence />}
+        {c.type === 'group_dm' ? <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-brand text-white">{c.icon ? <img src={fileUrl(c.icon) ?? c.icon} alt="" className="h-full w-full object-cover" /> : <Users size={16} />}</span> : <Avatar user={other} size={32} presence />}
         <span className="min-w-0 flex-1 leading-tight">
           <span className={cx('block truncate text-[16px]', unread ? 'font-semibold' : 'font-medium')}>{dmName(c, me?.id)}</span>
           {(c.type === 'group_dm' || custom) && <span className="block truncate text-xs text-muted">{c.type === 'group_dm' ? `${(c.recipients?.length ?? 0) + 1} Members` : custom}</span>}

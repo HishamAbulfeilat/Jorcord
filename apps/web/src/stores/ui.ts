@@ -12,7 +12,7 @@ export interface Prefs {
   desktopNotifications: boolean; notificationSounds: boolean; defaultNotify: 'all' | 'mentions' | 'none'; suppressEveryone: boolean;
   inputDevice: string; outputDevice: string; videoDevice: string; inputVolume: number; outputVolume: number;
   noiseSuppression: boolean; echoCancellation: boolean; autoGain: boolean; pushToTalk: boolean;
-  noiseEngine: 'browser' | 'rnnoise' | 'high' | 'off'; voiceBitrate: number; musicMode: boolean; pttCode: string; vadMode: boolean; vadThreshold: number;
+  noiseEngine: 'browser' | 'rnnoise' | 'high' | 'off'; voiceBitrate: number; musicMode: boolean; pttCode: string; pttGlobal: boolean; vadMode: boolean; vadThreshold: number;
   screenPreset: '720p30' | '1080p60' | '1440p60' | '4k60' | 'source'; cameraPreset: '720p30' | '1080p60' | '1440p60' | '4k60' | 'source'; screenHint: 'motion' | 'detail'; screenAudio: boolean; showVoiceStats: boolean;
   /** Camera capture: quality preset (auto steps 1080p -> 720p -> 480p) and requested frame rate. */
   videoQuality: CameraQuality; videoFps: CameraFrameRate;
@@ -57,7 +57,7 @@ export const defaultPrefs: Prefs = {
   theme: 'dark', density: 'cozy', fontScale: 1, reducedMotion: false, saturation: 1, showEmbeds: true, autoplayGifs: true, twentyFourHour: false, language: detectLanguage(), highContrast: false,
   desktopNotifications: false, notificationSounds: true, defaultNotify: 'mentions', suppressEveryone: false,
   inputDevice: 'default', outputDevice: 'default', videoDevice: 'default', inputVolume: 100, outputVolume: 100, noiseSuppression: true, echoCancellation: true, autoGain: true, pushToTalk: false,
-  noiseEngine: 'browser', voiceBitrate: 64, musicMode: false, pttCode: 'Backquote', vadMode: false, vadThreshold: 0.03,
+  noiseEngine: 'browser', voiceBitrate: 64, musicMode: false, pttCode: 'Backquote', pttGlobal: false, vadMode: false, vadThreshold: 0.03,
   screenPreset: '1080p60', cameraPreset: '720p30', screenHint: 'motion', screenAudio: true, showVoiceStats: true,
   videoQuality: 'auto', videoFps: 30,
   mirrorSelfView: true, cameraBlur: false, cameraAutoAdjust: false,
@@ -77,7 +77,7 @@ export type ModalSpec =
   | { kind: 'invite'; guildId: Id; channelId?: Id } | { kind: 'profile'; userId: Id; guildId?: Id }
   | { kind: 'confirm'; title: string; body: string; confirmLabel?: string; danger?: boolean; onConfirm: () => void | Promise<void> }
   | { kind: 'image'; url: string; name?: string } | { kind: 'createThread'; channelId: Id; messageId: Id; suggested?: string }
-  | { kind: 'newDm'; addTo?: Id } | { kind: 'voiceSettings' } | { kind: 'createForumPost'; channelId: Id } | { kind: 'shortcuts' } | { kind: 'clipPreview' } | { kind: 'clipsViewer'; channelId: Id }
+  | { kind: 'newDm'; addTo?: Id } | { kind: 'groupDm'; channelId: Id } | { kind: 'voiceSettings' } | { kind: 'createForumPost'; channelId: Id } | { kind: 'shortcuts' } | { kind: 'clipPreview' } | { kind: 'clipsViewer'; channelId: Id }
   | { kind: 'channelSettings'; channelId: Id } | { kind: 'reactors'; channelId: Id; messageId: Id; emoji: string; emojiId: Id | null; burst?: boolean }
   | { kind: 'prompt'; title: string; label: string; initial?: string; onSubmit: (v: string) => void | Promise<void> }
   | { kind: 'leaveGuild'; guildId: Id }

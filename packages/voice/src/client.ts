@@ -10,7 +10,7 @@ import { DEFAULT_AUDIO, resolveAudio, type AudioSettings } from './audio';
 import { mapVoiceError, type VoiceError } from './errors';
 import { mapConnectionQuality, type NetworkQuality, type StreamStats } from './network';
 import { createRnnoiseProcessor, type NoiseFallbackReason } from './noise';
-import { createPushToTalk } from './ptt';
+import { createPushToTalk, type PttOptions } from './ptt';
 import { effectiveVolume, clampUserVolume } from './priority';
 import { AudioBoost } from './boost';
 import {
@@ -113,6 +113,7 @@ export class VoiceClient {
   private preDeafenMuted = false;
   private pttActive = false;
   private stopPtt: (() => void) | undefined;
+  private pttGlobalSource: PttOptions['globalSource'];
   private pollTimer: ReturnType<typeof setInterval> | undefined;
   private audioHost: HTMLElement | undefined;
   private statsPrev = new Map<string, StatsSample>();
@@ -512,11 +513,13 @@ export class VoiceClient {
     this.snap = { ...this.snap, settings: { ...this.snap.settings, pttCode: code } };
     this.setupPtt(); this.emit();
   }
+  /** Desktop: a press/release source that works while the window is unfocused (global hotkey). Pass undefined to go back to window-only keys. */
+  setGlobalPttSource(src: PttOptions['globalSource']) { this.pttGlobalSource = src; this.setupPtt(); }
   private setupPtt() {
     this.stopPtt?.(); this.stopPtt = undefined; this.pttActive = false;
     if (this.snap.settings.inputMode !== 'ptt') return;
     this.stopPtt = createPushToTalk({
-      code: this.snap.settings.pttCode, releaseDelayMs: this.snap.settings.pttReleaseMs,
+      code: this.snap.settings.pttCode, releaseDelayMs: this.snap.settings.pttReleaseMs, globalSource: this.pttGlobalSource,
       onChange: (a) => { this.pttActive = a; void this.applyMicState().catch(() => {}); },
     });
   }

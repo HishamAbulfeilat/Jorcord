@@ -10,6 +10,7 @@ import { getVoiceClient } from './controller';
 import { cx } from '@/lib/format';
 import { SelfViewVideo } from './tiles';
 import { isCanvasFilterSupported } from './cameraEffects';
+import { isTauri } from '@/lib/server';
 
 function NoiseStatus({ mode, musicMode }: { mode: Prefs['noiseEngine']; musicMode: boolean }) {
   const c = getVoiceClient();
@@ -148,6 +149,7 @@ export function VoiceSettingsForm({ compact }: { compact?: boolean }) {
             <input type="radio" className="accent-brand" name="inputmode" checked={mode === v} onChange={() => setMode(v)} aria-label={l} /><span><span className="block font-medium text-header">{l}</span><span className="block text-sm text-muted">{d}</span></span>
           </label>))}
       </div>
+      {mode === 'ptt' && isTauri() && <Row title="Global shortcut" desc="Keep push-to-talk working while Jorcord is in the background, for example in a game. The key is captured system-wide, so other apps will not receive it."><Toggle label="Global push-to-talk" checked={p.pttGlobal} onChange={(v) => set('pttGlobal', v)} /></Row>}
       {mode === 'ptt' && <Row title="Shortcut" desc="Hold this key to talk (works while Jorcord is focused)."><button className={cx('min-w-[110px] rounded bg-rail px-3 py-1.5 font-mono text-sm', rec ? 'text-danger ring-2 ring-danger' : 'text-header')} onClick={() => setRec(true)}>{rec ? 'Press a key…' : p.pttCode}</button></Row>}
       {mode === 'vad' && <Field label="Input sensitivity"><input type="range" aria-label="Input sensitivity" min={5} max={200} value={Math.round(p.vadThreshold * 1000)} onChange={(e) => set('vadThreshold', Number(e.target.value) / 1000)} className="w-full accent-brand" /></Field>}
 

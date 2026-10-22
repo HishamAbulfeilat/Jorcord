@@ -413,6 +413,7 @@ export const api = {
     user: (id: string) => send<any>({ method: 'GET', path: `/admin/users/${id}` }),
     disable: (id: string) => send({ method: 'POST', path: `/admin/users/${id}/disable` }),
     enable: (id: string) => send({ method: 'POST', path: `/admin/users/${id}/enable` }),
+    setFlags: (id: string, flags: number) => send<{ ok: true; publicFlags: number }>({ method: 'PATCH', path: `/admin/users/${id}/flags`, body: { flags } }),
     guilds: (q = '', offset = 0) => send<any[]>({ method: 'GET', path: '/admin/guilds', query: { ...(q ? { q } : {}), offset: String(offset) } }),
     guild: (id: string) => send<any>({ method: 'GET', path: `/admin/guilds/${id}` }),
     messages: (channelId: string, before?: string) => send<any[]>({ method: 'GET', path: `/admin/channels/${channelId}/messages`, query: before ? { before } : undefined }),

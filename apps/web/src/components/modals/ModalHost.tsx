@@ -25,6 +25,7 @@ import { t } from '@/i18n';
 // Every modal module loads only when its kind is opened, so the chat shell does not ship
 // the settings, event, report, moderation and picker code up front.
 const ChannelSettings = lazyNamed(() => import('@/components/settings/ChannelSettings'), 'ChannelSettings');
+const GroupDmModal = lazyNamed(() => import('./GroupDmModal'), 'GroupDmModal');
 const ModViewModal = lazyNamed(() => import('./ModView'), 'ModViewModal');
 const ProfileCard = lazyNamed(() => import('./Profile'), 'ProfileCard');
 const CustomizeModal = lazyNamed(() => import('./OnboardingModals'), 'CustomizeModal');
@@ -263,6 +264,7 @@ function ModalBody({ m, close }: { m: ModalSpec; close: () => void }) {
     case 'createThread': return <CreateThread channelId={m.channelId} messageId={m.messageId} suggested={m.suggested} close={close} />;
     case 'createForumPost': return <ForumPost channelId={m.channelId} close={close} />;
     case 'newDm': return <NewDm close={close} addTo={m.addTo} />;
+    case 'groupDm': return <Lazy><GroupDmModal channelId={m.channelId} close={close} /></Lazy>;
     case 'shortcuts': return <ShortcutsModal close={close} />;
     case 'customStatus': return <CustomStatusModal close={close} />;
     case 'folder': return <FolderModal folderId={m.folderId} close={close} />;

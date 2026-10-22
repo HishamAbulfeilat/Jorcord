@@ -159,4 +159,25 @@ describe('errors/priority/ptt', () => {
     expect(calls).toEqual([true, false]);
     off();
   });
+  it('push-to-talk global source: works unfocused, honours the release delay, ignores blur, cleans up', async () => {
+    const h: Record<string, (e: any) => void> = {};
+    const target: any = { addEventListener: (k: string, f: any) => (h[k] = f), removeEventListener: () => {} };
+    let emit: (d: boolean) => void = () => {}; let unsubscribed = false;
+    const calls: boolean[] = [];
+    const off = createPushToTalk({ code: 'KeyV', releaseDelayMs: 20, onChange: (a) => calls.push(a), target, globalSource: (e) => { emit = e; return () => { unsubscribed = true; }; } });
+    emit(true); emit(true);
+    expect(calls).toEqual([true]);
+    h.blur!({}); // a background window must not drop a held global key
+    expect(calls).toEqual([true]);
+    emit(false);
+    expect(calls).toEqual([true]);
+    await new Promise((r) => setTimeout(r, 40));
+    expect(calls).toEqual([true, false]);
+    emit(true); emit(false); emit(true); // re-press inside the release window cancels the pending release
+    await new Promise((r) => setTimeout(r, 40));
+    expect(calls).toEqual([true, false, true]);
+    off();
+    expect(unsubscribed).toBe(true);
+    expect(calls).toEqual([true, false, true, false]);
+  });
 });

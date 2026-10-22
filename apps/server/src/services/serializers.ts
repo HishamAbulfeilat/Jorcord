@@ -1,4 +1,4 @@
-import { boostLevelFor, snowflakeTime } from '@jorcord/shared';
+import { UserFlags, boostLevelFor, snowflakeTime } from '@jorcord/shared';
 import type { Activity, Attachment, Channel, Component, Embed, Guild, Member, Message, OverwriteDTO, Poll, Reaction, Role, SelfUser, User } from '@jorcord/shared';
 import type { Ctx } from '../ctx';
 import { iso } from '../lib/ids';
@@ -24,6 +24,7 @@ export function userDTO(ctx: Ctx, r: any): User {
     accentColor: r.accent_color ?? null, bio: r.bio ?? null, pronouns: r.pronouns ?? null, bot: !!r.bot,
     createdAt: iso(r.created_at)!, customStatus: liveStatus(r.custom_status), themeColors: r.theme_colors ?? null,
     avatarDecoration: r.avatar_decoration ?? null, profileEffect: r.profile_effect ?? null, namePlate: r.name_plate ?? null, serverTag: r.server_tag ?? null, presence: ctx.hub.publicPresence(r.id, r.presence),
+    publicFlags: (r.public_flags ?? 0) | (ctx.config.superAdminId && r.id === ctx.config.superAdminId ? UserFlags.STAFF : 0),
   };
 }
 export function selfUserDTO(ctx: Ctx, r: any): SelfUser {

@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { LIMITS, MessageFlags, Perm, has, snowflake, snowflakeTime, type ForwardSnapshot } from '@jorcord/shared';
+import { LIMITS, MessageFlags, Perm, STANDARD_STICKER_ID_RE, has, snowflake, snowflakeTime, type ForwardSnapshot } from '@jorcord/shared';
 import type { Ctx } from '../ctx';
 import { checkVerification } from '../services/safety';
 import { ApiError, badRequest, forbidden, notFound } from '../errors';
@@ -24,7 +24,7 @@ const cm = z.object({ id: idSchema });
 const mm = z.object({ id: idSchema, mid: idSchema });
 const sendBody = z.object({
   content: z.string().max(LIMITS.maxMessageLength * 2).optional(), replyTo: idSchema.nullable().optional(),
-  attachments: z.array(idSchema).max(10).optional(), stickerIds: z.array(idSchema).max(3).optional(),
+  attachments: z.array(idSchema).max(10).optional(), stickerIds: z.array(z.union([idSchema, z.string().regex(STANDARD_STICKER_ID_RE)])).max(3).optional(),
   /** Bots only: action rows of buttons / select menus (validated by lib/components). */
   components: z.unknown().optional(),
   /** Bots only: sender-sent rich embeds (validated by lib/embeds). */

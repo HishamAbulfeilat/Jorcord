@@ -10,6 +10,7 @@ import { cx, displayName, fileUrl, idColor, fmtStamp } from '@/lib/format';
 import { intToHex, effectivePerms } from '@/lib/perms';
 import { openDmWith, userMenu } from '@/lib/menus';
 import { useMenuTrigger } from '@/components/ui/ContextMenu';
+import { UserBadges } from '@/components/ui/UserBadges';
 import { Markdown } from '@/components/chat/Markdown';
 import { RoleIcon } from '@/components/ui/RoleIcon';
 import { headerBackground, bodyBackground, isHexPair, isHex } from '@/lib/profileTheme';
@@ -72,6 +73,7 @@ export function ProfileCard({ userId, guildId, compact }: { userId: string; guil
         <div className="rounded-lg bg-[rgb(var(--rail)/0.5)] p-3">
           <div className={cx("text-xl font-bold leading-6 text-header", plateClass(u.namePlate), u.namePlate && "px-2 py-1 -mx-1")}>{displayName(u, member)} <ServerTagBadge tag={u.serverTag} className="align-middle" /></div>
           <div className="text-sm text-normal">{u.username}{prof.pronouns && <span className="text-muted"> • {prof.pronouns}</span>}</div>
+          <UserBadges flags={u.publicFlags} className="mt-2" />
           {(u.customStatus?.text || u.customStatus?.emoji) && <div className="mt-2 text-sm text-normal" data-testid="profile-status">{u.customStatus.emoji} {u.customStatus.text}</div>}
           {!compact && presence && <div className="mt-1 text-xs text-muted">{t(PRESENCE_LABEL[presence] ?? 'Offline')}</div>}
           <hr className="my-3 border-divider" />

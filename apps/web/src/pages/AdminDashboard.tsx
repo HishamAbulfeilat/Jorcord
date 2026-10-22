@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Ban, CheckCircle2, Flag, Hash, LayoutDashboard, LogIn, ScrollText, Server, ShieldAlert, Users, Zap } from 'lucide-react';
 import { api } from '@/lib/api';
 import { toast, toastError } from '@/stores/ui';
+import { USER_BADGES, UserFlags, hasUserFlag } from '@jorcord/shared';
 
 type Tab = 'overview' | 'users' | 'servers' | 'reports' | 'audit';
 const fmt = (d?: string | null) => (d ? new Date(d).toLocaleString() : '—');
@@ -116,6 +117,15 @@ function UserDetail({ id, onBack }: { id: string; onBack: () => void }) {
       <button type="button" onClick={() => void toggle()} className={cx('btn mb-6 flex items-center gap-2', u.disabledAt ? 'btn-primary' : 'btn-danger')}>
         {u.disabledAt ? <><CheckCircle2 size={16} /> Enable account</> : <><Ban size={16} /> Disable account</>}
       </button>
+      <h2 className="mb-2 font-semibold">Badges</h2>
+      <div className="mb-6 flex flex-wrap gap-x-4 gap-y-1 text-sm" role="group" aria-label="Badges">
+        {USER_BADGES.map((b) => (
+          <label key={b.flag} className="flex items-center gap-1.5"><input type="checkbox" checked={hasUserFlag(u.publicFlags, b.flag)} onChange={(e) => {
+            const next = e.target.checked ? (u.publicFlags | UserFlags[b.flag]) : (u.publicFlags & ~UserFlags[b.flag]);
+            api.admin.setFlags(id, next).then(() => qc.invalidateQueries({ queryKey: ['admin', 'user', id] })).catch(toastError);
+          }} />{b.label}</label>
+        ))}
+      </div>
       <h2 className="mb-2 font-semibold">Servers ({u.guilds.length})</h2>
       <ul className="mb-6 text-sm">{u.guilds.map((g: any) => <li key={g.id}>{g.name}{g.owner && <span className="ml-1 text-muted">(owner)</span>} <span className="text-muted">· joined {fmt(g.joinedAt)}</span></li>)}</ul>
       <h2 className="mb-2 font-semibold">Active sessions ({u.sessions.length})</h2>

@@ -9,7 +9,7 @@ import { api } from '@/lib/api';
 import { cx } from '@/lib/format';
 import { useDebounced } from '@/lib/hooks';
 import { Spinner } from '@/components/ui/primitives';
-import { LIMITS } from '@jorcord/shared';
+import { LIMITS, STANDARD_STICKER_PACKS } from '@jorcord/shared';
 import { effectivePerms } from '@/lib/perms';
 import { canUseEmoji } from '@/lib/emojiRoles';
 
@@ -122,12 +122,15 @@ export function EmojiPicker({ onPick, guildId, allowGif = false, allowSticker = 
 }
 function StickerGrid({ guildId, q, onPick }: { guildId?: string; q: string; onPick: (s: { id: string; name: string }) => void }) {
   const stickers = useData((s) => (guildId ? s.guilds[guildId]?.stickers : undefined)) ?? [];
-  const list = stickers.filter((s) => s.name.toLowerCase().includes(q.toLowerCase()));
+  const match = (s: { name: string }) => s.name.toLowerCase().includes(q.toLowerCase());
+  const list = stickers.filter(match);
+  const Cell = (s: { id: string; name: string; url: string }) => <button key={s.id} role="gridcell" aria-label={s.name} title={s.name} onClick={() => onPick(s)} className="flex aspect-square items-center justify-center rounded-lg p-1 hover:bg-hover"><img src={fileUrl(s.url) ?? s.url} alt={s.name} className="max-h-full max-w-full object-contain" loading="lazy" /></button>;
   return (
     <div className="scroller min-h-0 flex-1 p-2" role="grid" aria-label={t('Stickers')}>
-      {!guildId && <p className="p-4 text-center text-sm text-muted">{t('Stickers can be sent in servers.')}</p>}
+      {guildId && <h3 className="py-1 text-xs font-bold uppercase tracking-wide text-muted">{t('This server')}</h3>}
       {guildId && !stickers.length && <p className="p-4 text-center text-sm text-muted">{t('This server has no stickers yet. Add some in Server Settings.')}</p>}
-      <div className="grid grid-cols-3 gap-2">{list.map((s) => <button key={s.id} role="gridcell" aria-label={s.name} title={s.name} onClick={() => onPick(s)} className="flex aspect-square items-center justify-center rounded-lg p-1 hover:bg-hover"><img src={fileUrl(s.url) ?? s.url} alt={s.name} className="max-h-full max-w-full object-contain" loading="lazy" /></button>)}</div>
+      {guildId && <div className="grid grid-cols-3 gap-2">{list.map(Cell)}</div>}
+      {STANDARD_STICKER_PACKS.map((p) => { const hits = p.stickers.filter(match); return hits.length ? <section key={p.id} aria-label={p.name}><h3 className="py-1 pt-3 text-xs font-bold uppercase tracking-wide text-muted">{p.name}</h3><div className="grid grid-cols-3 gap-2">{hits.map(Cell)}</div></section> : null; })}
     </div>
   );
 }

@@ -6,3 +6,5 @@ export * from './types';
 export * from './platform';
 export * from './parity';
 export * from './parity2';
+export * from './userFlags';
+export * from './stickers';

@@ -120,7 +120,7 @@ export function channelRoutes(app: FastifyInstance, ctx: Ctx) {
       if (ch.owner_id !== req.userId) need(a.perms, Perm.MANAGE_THREADS);
       allowed = z.object({ name: chanFields.name, archived: z.boolean(), slowmode: chanFields.slowmode, autoArchiveDuration: archiveDuration, locked: z.boolean(), appliedTags: z.array(idSchema).max(5) }).partial().strict();
     } else if (ch.type === 'group_dm') {
-      allowed = z.object({ name: chanFields.name.nullable() }).partial().strict();
+      allowed = z.object({ name: chanFields.name.nullable(), icon: assetUrl.nullable(), ownerId: idSchema }).partial().strict();
     } else if (ch.type === 'dm') throw forbidden('Cannot edit a DM');
     else {
       need(a.perms, Perm.MANAGE_CHANNELS);
@@ -134,6 +134,11 @@ export function channelRoutes(app: FastifyInstance, ctx: Ctx) {
       if ((b.locked !== undefined || (ch.locked && b.archived === false)) && !has(a.perms, Perm.MANAGE_THREADS)) throw forbidden('Missing permissions').num(50083);
       if (b.appliedTags !== undefined) b.appliedTags = await checkAppliedTags(ch.parent_id, b.appliedTags, has(a.perms, Perm.MANAGE_THREADS), ch.applied_tags ?? []);
     }
+    if (ch.type === 'group_dm' && b.ownerId !== undefined && b.ownerId !== ch.owner_id) { // ownership transfer: current owner -> another participant
+      if (ch.owner_id !== req.userId) throw forbidden('Only the group owner can transfer ownership', 'NOT_OWNER');
+      const [part] = await ctx.db.query('SELECT 1 AS x FROM dm_participants WHERE channel_id = $1 AND user_id = $2', [id, b.ownerId]);
+      if (!part) throw badRequest('The new owner must be a participant of the group');
+    }
     if (typeof b.defaultReactionEmoji === 'string') { // a custom default must be one of THIS server's emoji; it is added automatically to every post
       const custom = b.defaultReactionEmoji.match(/^(\w{2,32}):(\d{1,20})$/);
       if (custom) {
@@ -143,7 +148,7 @@ export function channelRoutes(app: FastifyInstance, ctx: Ctx) {
     }
     if (b.availableTags !== undefined) b.availableTags = await normaliseTags(id, ch.available_tags ?? [], b.availableTags);
     if (b.parentId !== undefined) await validateParent(ch.guild_id, b.parentId, ch.type);
-    const col: Record<string, string> = { name: 'name', topic: 'topic', nsfw: 'nsfw', slowmode: 'slowmode', bitrate: 'bitrate', userLimit: 'user_limit', parentId: 'parent_id', position: 'position', archived: 'archived',
+    const col: Record<string, string> = { icon: 'icon', ownerId: 'owner_id', name: 'name', topic: 'topic', nsfw: 'nsfw', slowmode: 'slowmode', bitrate: 'bitrate', userLimit: 'user_limit', parentId: 'parent_id', position: 'position', archived: 'archived',
       requireTag: 'require_tag', defaultAutoArchiveDuration: 'default_auto_archive', autoArchiveDuration: 'auto_archive_minutes', locked: 'locked', availableTags: 'available_tags', appliedTags: 'applied_tags', defaultSortOrder: 'default_sort_order', defaultForumLayout: 'default_forum_layout', defaultReactionEmoji: 'default_reaction_emoji', isClipsChannel: 'is_clips_channel' };
     const sets: string[] = [], vals: unknown[] = [id];
     for (const [k, v] of Object.entries(b)) { if (!col[k]) continue; vals.push(k === 'availableTags' || k === 'appliedTags' ? JSON.stringify(v) : v); sets.push(`${col[k]} = $${vals.length}${k === 'availableTags' || k === 'appliedTags' ? '::jsonb' : ''}`); }

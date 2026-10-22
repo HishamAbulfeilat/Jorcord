@@ -13,6 +13,7 @@ import { useMenuTrigger } from '@/components/ui/ContextMenu';
 import { Logo } from '@/components/ui/Logo';
 import { t } from '@/i18n';
 import { ActivityLine } from '@/components/ui/ActivityLine';
+import { ActiveNow } from './ActiveNow';
 
 type Tab = 'online' | 'all' | 'pending' | 'blocked' | 'add';
 
@@ -90,7 +91,7 @@ export function FriendsHome() {
         <button aria-label={t('Inbox')} onClick={() => open({ kind: 'inbox' })} className="flex h-9 w-9 items-center justify-center text-interactive hover:text-header md:h-8 md:w-8"><Inbox size={22} /></button>
       </header>
       {tab === 'add' ? <div className="scroller min-h-0 flex-1"><AddFriend /></div> : (
-        <div className="scroller min-h-0 flex-1 p-4 md:px-8 md:py-4">
+        <div className="flex min-h-0 flex-1"><div className="scroller min-h-0 flex-1 p-4 md:px-8 md:py-4">
           <div className="mb-4 flex items-center rounded bg-rail px-2"><input value={q} onChange={(e) => setQ(e.target.value)} aria-label={t('Search friends')} placeholder={t('Search')} className="h-9 flex-1 bg-transparent outline-none placeholder:text-muted" /><Search size={16} className="text-muted" /></div>
           {list.length > 0 && <h2 className="section-title mb-2">{label} — {list.length}</h2>}
           <ul>{list.map((r) => <FriendRow key={r.user.id} r={r} />)}</ul>
@@ -100,6 +101,7 @@ export function FriendsHome() {
             </Empty>
           )}
         </div>
+        <ActiveNow /></div>
       )}
     </div>
   );

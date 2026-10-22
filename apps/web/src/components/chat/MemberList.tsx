@@ -92,6 +92,7 @@ export function DmMemberPanel({ channelId }: { channelId: string }) {
         <li key={u.id} className="group relative"><button onClick={(e) => open({ kind: 'user', userId: u.id, rect: e.currentTarget.getBoundingClientRect() })} className="touch mx-2 flex w-[calc(100%-16px)] items-center gap-3 rounded px-2 text-start hover:bg-hover md:min-h-[42px]"><Avatar user={u} size={32} presence /><span className="truncate font-medium text-interactive">{displayName(u)}</span></button>{c.type === 'group_dm' && u.id !== me?.id && c.ownerId === me?.id && <button aria-label={`Remove ${displayName(u)}`} onClick={() => api.channels.removeRecipient(channelId, u.id).catch(toastError)} className="absolute end-3 top-1/2 hidden -translate-y-1/2 text-interactive hover:text-danger group-hover:block"><X size={16} /></button>}</li>
       ))}</ul>
       {c.type === 'group_dm' && <button className="btn btn-secondary mx-4 mt-3 w-[calc(100%-32px)]" onClick={() => useUI.getState().openModal({ kind: 'newDm', addTo: channelId })}>{t('Add Friends')}</button>}
+      {c.type === 'group_dm' && <button className="btn btn-secondary mx-4 mt-2 w-[calc(100%-32px)]" onClick={() => useUI.getState().openModal({ kind: 'groupDm', channelId })}>{t('Group Settings')}</button>}
     </aside>
   );
 }

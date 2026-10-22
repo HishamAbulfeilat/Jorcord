@@ -2,7 +2,7 @@ import { resolveLivekitUrl } from './voice-livekit';
 import type { FastifyInstance } from 'fastify';
 import { AccessToken, TrackSource, WebhookReceiver } from 'livekit-server-sdk';
 import { z } from 'zod';
-import { LIMITS, Perm, has, type VoiceToken } from '@jorcord/shared';
+import { LIMITS, Perm, STANDARD_STICKER_PACKS, has, standardStickerSvg, type VoiceToken } from '@jorcord/shared';
 import type { Ctx } from '../ctx';
 import { ApiError, badRequest, forbidden, notFound } from '../errors';
 import { idSchema, parse } from '../lib/ids';
@@ -13,6 +13,15 @@ import { channelAccess } from '../services/perms';
 import { VOICE_TYPES, clearVoiceState, loadModeration, voiceCaps } from '../services/voice';
 
 export function fileRoutes(app: FastifyInstance, ctx: Ctx) {
+  // Standard sticker packs: public (an <img> tag cannot send a bearer token), immutable, generated from @jorcord/shared.
+  app.get('/stickers/standard', async (_req, reply) => { reply.header('cache-control', 'public, max-age=3600'); return STANDARD_STICKER_PACKS; });
+  app.get('/stickers/standard/:file', async (req, reply) => {
+    const { file } = parse(z.object({ file: z.string().regex(/^std_[a-z0-9]{1,24}\.svg$/) }), req.params);
+    const svg = standardStickerSvg(file.slice(0, -4));
+    if (!svg) throw notFound('Sticker');
+    reply.headers({ 'content-type': 'image/svg+xml; charset=utf-8', 'cache-control': 'public, max-age=31536000, immutable', 'x-content-type-options': 'nosniff', 'content-security-policy': "default-src 'none'; sandbox", 'cross-origin-resource-policy': 'cross-origin' });
+    return svg;
+  });
   // Public, unguessable-key download endpoint with range support.
   app.get('/files/:key/:filename', async (req, reply) => {
     const { key } = parse(z.object({ key: z.string().regex(/^[a-f0-9]{48}$/), filename: z.string().max(600) }), req.params);

@@ -14,6 +14,7 @@ import { CallRecorder, type RecordingRoom } from './callRecorder';
 import { t } from '@/i18n';
 import './noiseSetup';
 import { audioMapsForClient } from './userAudio';
+import { tauriPttSource } from '@/lib/globalPtt';
 
 export function settingsFromPrefs(p: Prefs): Partial<VoiceSettings> {
   return {
@@ -55,6 +56,16 @@ let callRecorder: CallRecorder | null = null;
 let recordingChannel: string | null = null;
 let stoppingRecording: Promise<void> | null = null;
 
+/** Desktop only: register/unregister the OS-wide push-to-talk hotkey when the pref or the key changes. */
+let globalPttKey = '';
+function syncGlobalPtt(p: Prefs) {
+  if (!client) return;
+  const key = p.pushToTalk && p.pttGlobal ? p.pttCode : '';
+  if (key === globalPttKey) return;
+  globalPttKey = key;
+  client.setGlobalPttSource(key ? tauriPttSource(key) : undefined);
+}
+
 export function getVoiceClient(): VoiceClient {
   if (!client) {
     client = new VoiceClient({
@@ -71,6 +82,7 @@ export function getVoiceClient(): VoiceClient {
       onDisconnected: (why) => (why === 'error' ? giveUp() : scheduleReconcile()),
     });
     bindClient(client);
+    syncGlobalPtt(useUI.getState().prefs);
     { const ua = audioMapsForClient(useUI.getState().prefs); client.syncUserAudio(ua.volumes, ua.muted); }
     (window as any).__jorcordVoice = debugApi(client);
   }
@@ -340,6 +352,7 @@ export function applyPrefs(p: Prefs) {
   const ua = audioMapsForClient(p); client.syncUserAudio(ua.volumes, ua.muted);
   if (s.inputMode !== cur.inputMode) client.setInputMode(s.inputMode!);
   if (s.pttCode !== cur.pttCode) client.setPttKey(s.pttCode!);
+  syncGlobalPtt(p);
   if (s.vadThreshold !== cur.vadThreshold) client.setVadThreshold(s.vadThreshold!);
   if (s.cameraQuality !== cur.cameraQuality || s.cameraFps !== cur.cameraFps) {
     void client.setCameraSettings({ quality: s.cameraQuality, fps: s.cameraFps }).catch(() => {});

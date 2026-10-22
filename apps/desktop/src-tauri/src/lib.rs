@@ -1,5 +1,5 @@
 use std::collections::BTreeSet;
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock};
 use serde::{Deserialize, Serialize};
 use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System, UpdateKind};
 use tauri::{
@@ -8,7 +8,7 @@ use tauri::{
     AppHandle, Emitter, Manager, PhysicalPosition, WebviewWindow, WindowEvent,
 };
 use tauri_plugin_autostart::MacosLauncher;
-use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
+use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
 /* ------------------------------------------------------------------ game detection */
 
@@ -144,6 +144,33 @@ fn position_overlay(win: &WebviewWindow, corner: &str) {
     let _ = win.set_position(PhysicalPosition::new(x, y));
 }
 
+/* ------------------------------------------------------------------ global push-to-talk */
+
+/// The OS-wide push-to-talk hotkey, when the web app asked for one. The shortcut plugin has a single handler for every
+/// hotkey, so the handler compares against this to tell push-to-talk apart from the overlay toggle.
+static PTT_SHORTCUT: Mutex<Option<Shortcut>> = Mutex::new(None);
+
+fn is_ptt(shortcut: &Shortcut) -> bool {
+    PTT_SHORTCUT.lock().ok().and_then(|g| g.as_ref().map(|s| s.id() == shortcut.id())).unwrap_or(false)
+}
+
+/// Register (or, with `None`, clear) the global push-to-talk key. `accelerator` is a `KeyboardEvent.code` such as
+/// `KeyV`, `Backquote` or `F5` (optionally with modifiers, e.g. `Shift+KeyV`). Press and release are forwarded to the web app
+/// as the `jorcord://ptt` event with a boolean payload. An unsupported key (e.g. Wayland without a portal) returns an error and the
+/// web app keeps using its window-level key listener.
+#[tauri::command]
+fn ptt_register(app: AppHandle, accelerator: Option<String>) -> Result<(), String> {
+    let shortcuts = app.global_shortcut();
+    if let Some(old) = PTT_SHORTCUT.lock().map_err(|e| e.to_string())?.take() {
+        let _ = shortcuts.unregister(old);
+    }
+    let Some(accel) = accelerator else { return Ok(()) };
+    let shortcut: Shortcut = accel.parse().map_err(|e| format!("invalid push-to-talk key {accel}: {e}"))?;
+    shortcuts.register(shortcut.clone()).map_err(|e| format!("could not register {accel}: {e}"))?;
+    *PTT_SHORTCUT.lock().map_err(|e| e.to_string())? = Some(shortcut);
+    Ok(())
+}
+
 /// Global shortcut: show the overlay if hidden, hide it if shown.
 fn toggle_overlay(app: &AppHandle) {
     if let Some(win) = app.get_webview_window("overlay") {
@@ -161,6 +188,9 @@ fn toggle_overlay(app: &AppHandle) {
 fn overlay_apply(app: AppHandle, spec: OverlaySpec) -> Result<(), String> {
     let shortcuts = app.global_shortcut();
     let _ = shortcuts.unregister_all();
+    if let Some(ptt) = PTT_SHORTCUT.lock().ok().and_then(|g| g.clone()) {
+        let _ = shortcuts.register(ptt); // unregister_all dropped push-to-talk too
+    }
     if spec.enabled {
         if let Some(accel) = spec.shortcut.as_deref() {
             // An unsupported accelerator (e.g. Wayland without a portal) must not break the settings toggle.
@@ -297,8 +327,11 @@ pub fn run() {
     builder
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
-                .with_handler(|app, _shortcut, event| {
-                    if event.state() == ShortcutState::Pressed {
+                .with_handler(|app, shortcut, event| {
+                    if is_ptt(shortcut) {
+                        // push-to-talk: hold = talk. The web app owns the release delay and the mic gate.
+                        let _ = app.emit("jorcord://ptt", event.state() == ShortcutState::Pressed);
+                    } else if event.state() == ShortcutState::Pressed {
                         toggle_overlay(app);
                     }
                 })
@@ -375,7 +408,7 @@ pub fn run() {
                 }
             }
         })
-        .invoke_handler(tauri::generate_handler![list_running_games, overlay_apply, secure_set, secure_get, secure_delete, idle_seconds])
+        .invoke_handler(tauri::generate_handler![list_running_games, overlay_apply, secure_set, secure_get, secure_delete, idle_seconds, ptt_register])
         .run(tauri::generate_context!())
         .expect("error while running Jorcord");
 }

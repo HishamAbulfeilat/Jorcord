@@ -1,13 +1,13 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import { snowflakeTime } from '@jorcord/shared';
+import { ALL_USER_FLAGS, snowflakeTime } from '@jorcord/shared';
 import type { Ctx } from '../ctx';
 import { badRequest, notFound, unauthorized } from '../errors';
 import { verifyPassword } from '../lib/crypto';
 import { verifyTotp } from '../lib/totp';
 import { adminAudit, godModeUntil, setGodMode, GOD_MODE_MS } from '../services/godmode';
 import { buildGuildFull } from '../services/guilds';
-import { memberDTO } from '../services/serializers';
+import { memberDTO, userDTO } from '../services/serializers';
 import { idSchema, parse } from '../lib/ids';
 
 /**
@@ -64,7 +64,7 @@ export function adminRoutes(app: FastifyInstance, ctx: Ctx) {
     gate(req);
     const { id: uid } = parse(id, req.params);
     const [u] = await ctx.db.query(`SELECT id, username, display_name AS "displayName", email, bot, verified, mfa_enabled AS "mfaEnabled",
-      created_at AS "createdAt", deleted_at AS "deletedAt", disabled_at AS "disabledAt" FROM users WHERE id = $1`, [uid]);
+      created_at AS "createdAt", deleted_at AS "deletedAt", disabled_at AS "disabledAt", public_flags AS "publicFlags" FROM users WHERE id = $1`, [uid]);
     if (!u) throw notFound('User');
     const guilds = await ctx.db.query(`SELECT g.id, g.name, g.owner_id = $1 AS owner, m.joined_at AS "joinedAt" FROM members m JOIN guilds g ON g.id = m.guild_id
       WHERE m.user_id = $1 ORDER BY m.joined_at DESC LIMIT 200`, [uid]);
@@ -91,6 +91,19 @@ export function adminRoutes(app: FastifyInstance, ctx: Ctx) {
     const [u] = await ctx.db.query('UPDATE users SET disabled_at = NULL WHERE id = $1 RETURNING id', [uid]);
     if (!u) throw notFound('User');
     return { ok: true };
+  });
+
+  /** Badges: replaces the user's public flag bitfield (unknown bits are rejected). The change is pushed to everyone who can see the user. */
+  app.patch('/admin/users/:id/flags', async (req) => {
+    gate(req);
+    const { id: uid } = parse(id, req.params);
+    const b = parse(z.object({ flags: z.number().int().min(0) }).strict(), req.body);
+    if ((b.flags & ~ALL_USER_FLAGS) !== 0) throw badRequest('Unknown flag bits');
+    const [row] = await ctx.db.query('UPDATE users SET public_flags = $2 WHERE id = $1 RETURNING *', [uid, b.flags]);
+    if (!row) throw notFound('User');
+    await adminAudit(ctx, req.userId, 'SET_USER_FLAGS', `/admin/users/${uid}/flags`, 200);
+    await ctx.hub.toPresenceAudience(uid, 'USER_UPDATE', userDTO(ctx, row));
+    return { ok: true, publicFlags: userDTO(ctx, row).publicFlags };
   });
 
   app.get('/admin/guilds', async (req) => {

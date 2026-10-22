@@ -14,6 +14,8 @@ export interface User {
   /** Cosmetics (ids from AVATAR_DECORATIONS / PROFILE_EFFECTS / NAME_PLATES) and the server tag the user wears. */
   avatarDecoration?: string | null; profileEffect?: string | null; namePlate?: string | null; serverTag?: ServerTag | null;
   presence?: Presence;
+  /** Badge bitfield (`UserFlags`); 0/absent = none. */
+  publicFlags?: number;
 }
 /** Private to the owner; enforced server-side. */
 export interface Privacy {

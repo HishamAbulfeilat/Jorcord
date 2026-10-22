@@ -1,7 +1,7 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { Megaphone, CornerUpLeft, Hash, LogIn, MoreHorizontal, Pencil, Pin, Reply, SmilePlus, Trash2, Rocket, Phone, MessagesSquare, AlertCircle, RotateCw } from 'lucide-react';
 import type { Message } from '@jorcord/shared';
-import { Perm } from '@jorcord/shared';
+import { Perm, isStandardStickerId, standardSticker } from '@jorcord/shared';
 import { Avatar } from '@/components/ui/Avatar';
 import { ServerTagBadge } from '@/components/ui/Cosmetics';
 import { Markdown } from './Markdown';
@@ -110,8 +110,11 @@ export const MessageItem = memo(function MessageItem({ m, grouped, highlighted, 
   const nav = useNav(); const mobile = useIsMobile();
   const ts = msgTime(m.id, m.createdAt);
   const allStickers = useData((s) => (m.stickerIds.length && m.guildId ? s.guilds[m.guildId]?.stickers : undefined));
-  const stickers = allStickers?.filter((x) => m.stickerIds.includes(x.id));
-  useEffect(() => { if (m.guildId && m.stickerIds.length && (stickers?.length ?? 0) < m.stickerIds.length) void refreshStickers(m.guildId); }, [m.guildId, m.stickerIds.length, stickers?.length]); // eslint-disable-line
+  const standard = m.stickerIds.map((id) => standardSticker(id)).filter((x): x is NonNullable<typeof x> => !!x);
+  const ownIds = m.stickerIds.filter((id) => !isStandardStickerId(id));
+  const own = allStickers?.filter((x) => ownIds.includes(x.id));
+  const stickers = m.stickerIds.length ? [...standard, ...(own ?? [])] : undefined;
+  useEffect(() => { if (m.guildId && ownIds.length && (own?.length ?? 0) < ownIds.length) void refreshStickers(m.guildId); }, [m.guildId, ownIds.length, own?.length]); // eslint-disable-line
   const mentioned = !!me && (m.mentions.includes(me.id) || m.mentionEveryone) && m.author.id !== me.id;
   const startEdit = () => setEditing(m.id);
   const ephemeral = isEphemeral(m);

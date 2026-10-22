@@ -1,4 +1,4 @@
-import { LIMITS, Perm, has, snowflake, type AllowedMentions, type Attachment, type Component, type Embed, type CrosspostOrigin, type ForwardSnapshot, type Message } from '@jorcord/shared';
+import { LIMITS, Perm, has, isStandardStickerId, snowflake, type AllowedMentions, type Attachment, type Component, type Embed, type CrosspostOrigin, type ForwardSnapshot, type Message } from '@jorcord/shared';
 import type { Ctx } from '../ctx';
 import { ApiError, badRequest, forbidden, notFound } from '../errors';
 import { checkAutomod } from './automod';
@@ -94,12 +94,14 @@ export async function createMessage(ctx: Ctx, m: NewMessage): Promise<Message> {
   }
   let stickerIds = m.stickerIds ?? [];
   if (stickerIds.length) {
+    const standard = stickerIds.filter(isStandardStickerId); // built-in packs work in servers and DMs alike
+    const own = stickerIds.filter((s) => !standard.includes(s));
     // The channel's own stickers are always usable. Stickers of another server need USE_EXTERNAL_STICKERS and membership of that server; anything else is dropped.
     const external = !!channel.guild_id && has(m.senderPerms, Perm.USE_EXTERNAL_STICKERS);
-    const ok = channel.guild_id
-      ? await ctx.db.query(`SELECT s.id FROM stickers s WHERE s.id = ANY($2::text[]) AND (s.guild_id = $1 OR ($3::boolean AND EXISTS (SELECT 1 FROM members mm WHERE mm.guild_id = s.guild_id AND mm.user_id = $4)))`, [channel.guild_id, stickerIds, external, m.authorId])
+    const ok = channel.guild_id && own.length
+      ? await ctx.db.query(`SELECT s.id FROM stickers s WHERE s.id = ANY($2::text[]) AND (s.guild_id = $1 OR ($3::boolean AND EXISTS (SELECT 1 FROM members mm WHERE mm.guild_id = s.guild_id AND mm.user_id = $4)))`, [channel.guild_id, own, external, m.authorId])
       : [];
-    stickerIds = ok.map((r) => r.id);
+    stickerIds = [...standard, ...ok.map((r) => r.id)];
   }
   const id = snowflake();
   const type = m.type ?? (m.replyTo ? 'reply' : 'default');

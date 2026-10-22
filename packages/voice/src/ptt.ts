@@ -5,6 +5,11 @@ export interface PttOptions {
   /** Ignore key presses while typing in inputs. Default true. */
   ignoreEditable?: boolean;
   onChange: (active: boolean) => void;
+  /**
+   * Extra press/release source that also works while the window is in the background (the desktop app's global hotkey).
+   * It receives an `emit(down)` callback and returns its unsubscribe function. While it is set, losing window focus no longer releases the key.
+   */
+  globalSource?: (emit: (down: boolean) => void) => () => void;
   target?: Pick<Window, 'addEventListener' | 'removeEventListener'>;
 }
 
@@ -32,7 +37,12 @@ export function createPushToTalk(o: PttOptions): () => void {
     if (o.releaseDelayMs) timer = setTimeout(() => set(false), o.releaseDelayMs);
     else set(false);
   };
-  const blur = () => set(false);
+  const blur = () => { if (!o.globalSource) set(false); };
+  const stopGlobal = o.globalSource?.((isDown) => {
+    if (isDown) { if (timer) { clearTimeout(timer); timer = undefined; } set(true); }
+    else if (o.releaseDelayMs) timer = setTimeout(() => set(false), o.releaseDelayMs);
+    else set(false);
+  });
   target.addEventListener('keydown', down);
   target.addEventListener('keyup', up);
   target.addEventListener('blur', blur);
@@ -40,6 +50,7 @@ export function createPushToTalk(o: PttOptions): () => void {
     target.removeEventListener('keydown', down);
     target.removeEventListener('keyup', up);
     target.removeEventListener('blur', blur);
+    stopGlobal?.();
     if (timer) clearTimeout(timer);
     set(false);
   };
