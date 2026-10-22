@@ -11,6 +11,7 @@ import { dropPushDevices } from '../services/pushDevices';
 import { idSchema, iso, parse } from '../lib/ids';
 import { limitOrThrow } from '../lib/ratelimit';
 import { consumeAuthToken, isAuthTokenUsable, sendPasswordChangedEmail, sendPasswordResetEmail, sendVerificationEmail } from '../services/authTokens';
+import { mfaTicketFor } from './passkeys';
 import { selfUserDTO } from '../services/serializers';
 
 
@@ -45,7 +46,10 @@ export function publicAuthRoutes(app: FastifyInstance, ctx: Ctx) {
     if (!row?.password_hash) { await dummyVerify(b.password); throw fail(); }
     if (!(await verifyPassword(row.password_hash, b.password))) throw fail();
     if (row.mfa_enabled) {
-      if (!b.totp) throw unauthorized('Two-factor code required', 'MFA_REQUIRED');
+      if (!b.totp) {
+        const ticket = await mfaTicketFor(ctx, row.id); // password was right: a passkey may stand in for the TOTP code
+        throw unauthorized('Two-factor code required', 'MFA_REQUIRED').with(ticket ? { methods: ['totp', 'passkey'], mfaTicket: ticket } : { methods: ['totp'] });
+      }
       if (!(await verifyTotp(ctx, row, b.totp))) throw fail();
     }
     return issueTokens(ctx, row, req);

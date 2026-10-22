@@ -10,5 +10,5 @@ export * from './ptt';
 export * from './mobile';
 export * from './priority';
 export * from './e2ee';
-export { createRnnoiseProcessor } from './noise';
+export { createRnnoiseProcessor, configureNoise, isRnnoiseSupported, NOISE_WORKLET_NAME, type NoiseFallbackReason, type RnnoiseResult } from './noise';
 export * from './client';

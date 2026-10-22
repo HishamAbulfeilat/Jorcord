@@ -1,11 +1,17 @@
 import { LIMITS } from '@jorcord/shared';
 
+export type NoiseMode = 'off' | 'browser' | 'rnnoise' | 'high';
+export const NOISE_MODES: NoiseMode[] = ['off', 'browser', 'rnnoise', 'high'];
+
 export interface AudioSettings {
   echoCancellation: boolean;
   noiseSuppression: boolean;
   autoGainControl: boolean;
-  /** 'browser' = built-in NS constraint, 'rnnoise' = @shiguredo/noise-suppression (mono only), 'off'. Overrides noiseSuppression. */
-  noiseSuppressionMode: 'browser' | 'rnnoise' | 'off';
+  /**
+   * 'off' = none, 'browser' = built-in NS constraint, 'rnnoise' = Standard (RNNoise WASM AudioWorklet, mono only),
+   * 'high' = RNNoise plus the browser's own suppression on the capture. Overrides noiseSuppression.
+   */
+  noiseSuppressionMode: NoiseMode;
   /** Music mode: stereo, no processing, high bitrate. */
   musicMode: boolean;
   bitrateKbps: number;
@@ -38,7 +44,7 @@ export interface ResolvedAudio {
 /** Pure: map user-facing settings -> getUserMedia constraints + Opus publish options. */
 export function resolveAudio(s: AudioSettings): ResolvedAudio {
   const stereo = s.musicMode;
-  const ns = s.noiseSuppressionMode === 'browser' && s.noiseSuppression;
+  const ns = (s.noiseSuppressionMode === 'browser' || s.noiseSuppressionMode === 'high') && s.noiseSuppression;
   return {
     capture: {
       echoCancellation: stereo ? false : s.echoCancellation,
@@ -56,6 +62,6 @@ export function resolveAudio(s: AudioSettings): ResolvedAudio {
       red: stereo ? false : s.red,
       forceStereo: stereo,
     },
-    useRnnoise: !stereo && s.noiseSuppressionMode === 'rnnoise',
+    useRnnoise: !stereo && s.noiseSuppression && (s.noiseSuppressionMode === 'rnnoise' || s.noiseSuppressionMode === 'high'),
   };
 }

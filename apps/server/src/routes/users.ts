@@ -134,6 +134,8 @@ export function userRoutes(app: FastifyInstance, ctx: Ctx) {
       await q.query('DELETE FROM dm_participants WHERE user_id = $1 AND channel_id IN (SELECT id FROM channels WHERE type = \'group_dm\')', [id]);
       await q.query('DELETE FROM auth_tokens WHERE user_id = $1', [id]);
       await q.query('DELETE FROM sessions WHERE user_id = $1', [id]);
+      await q.query('DELETE FROM user_passkeys WHERE user_id = $1', [id]);
+      await q.query('DELETE FROM webauthn_challenges WHERE user_id = $1', [id]);
       await q.query(`UPDATE users SET username = $2, display_name = 'Deleted User', email = NULL, password_hash = NULL, avatar = NULL, banner = NULL, accent_color = NULL,
         bio = NULL, pronouns = NULL, custom_status = NULL, settings = '{}'::jsonb, mfa_secret = NULL, mfa_enabled = false, verified = false, presence = 'offline', deleted_at = now() WHERE id = $1`, [id, `deleted_${id}`]);
     });

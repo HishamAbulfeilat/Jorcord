@@ -9,7 +9,7 @@ import type { VoiceToken } from '@jorcord/shared';
 import { DEFAULT_AUDIO, resolveAudio, type AudioSettings } from './audio';
 import { mapVoiceError, type VoiceError } from './errors';
 import { mapConnectionQuality, type NetworkQuality, type StreamStats } from './network';
-import { createRnnoiseProcessor } from './noise';
+import { createRnnoiseProcessor, type NoiseFallbackReason } from './noise';
 import { createPushToTalk } from './ptt';
 import { effectiveVolume } from './priority';
 import {
@@ -74,6 +74,8 @@ export interface VoiceSnapshot {
   serverUrl: string | null; serverVersion: string | null;
   /** Camera/screen were on before a drop. The camera is restored automatically; a screen share needs a user gesture. */
   screenResumeNeeded: boolean;
+  /** Noise suppression as actually applied to the published mic track (differs from the setting after a fallback). */
+  noise: { active: AudioSettings['noiseSuppressionMode']; fallback: NoiseFallbackReason | null };
 }
 
 export interface VoiceClientOptions {
@@ -166,6 +168,7 @@ export class VoiceClient {
       settings, activeCodec: null,
       reconnect: { phase: 'idle', attempt: 0, maxAttempts: this.rc.maxAttempts, nextRetryAt: null, reason: null },
       connection: null, serverUrl: null, serverVersion: null, screenResumeNeeded: false,
+      noise: { active: settings.audio.noiseSuppression ? settings.audio.noiseSuppressionMode : 'off', fallback: null },
     };
     this.bindRoom();
     this.bindWindow();
@@ -444,12 +447,25 @@ export class VoiceClient {
     const pub = this.room.localParticipant.getTrackPublication(Track.Source.Microphone);
     const track: any = pub?.track;
     if (!track) return;
-    if (resolveAudio(s).useRnnoise && !this.rnnoiseAttached) {
-      const proc = await createRnnoiseProcessor();
-      if (proc) { await track.setProcessor(proc); this.rnnoiseAttached = true; }
-    } else if (!resolveAudio(s).useRnnoise && this.rnnoiseAttached) {
+    const want = resolveAudio(s).useRnnoise;
+    const requested = s.noiseSuppression ? s.noiseSuppressionMode : 'off';
+    if (want && !this.rnnoiseAttached) {
+      const res = await createRnnoiseProcessor();
+      if (res.processor) {
+        try { await track.setProcessor(res.processor); this.rnnoiseAttached = true; this.emit({ noise: { active: requested, fallback: null } }); return; }
+        catch { await this.noiseFallback('start-failed', track); return; }
+      }
+      await this.noiseFallback(res.reason, track);
+    } else if (!want && this.rnnoiseAttached) {
       await track.stopProcessor?.(); this.rnnoiseAttached = false;
-    }
+      this.emit({ noise: { active: requested, fallback: null } });
+    } else if (!want) this.emit({ noise: { active: requested, fallback: null } });
+  }
+
+  /** RNNoise could not run: keep the mic working with the browser's built-in suppression and tell the UI why. */
+  private async noiseFallback(reason: NoiseFallbackReason, track: any) {
+    try { await track.mediaStreamTrack?.applyConstraints?.({ noiseSuppression: true }); } catch { /* best effort */ }
+    this.emit({ noise: { active: 'browser', fallback: reason } });
   }
 
   /** Update audio settings. Restarts the mic capture so constraints are re-applied. */

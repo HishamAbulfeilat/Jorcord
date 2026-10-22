@@ -291,7 +291,7 @@ export function VoiceSettingsPanel({ className }: { className?: string }) {
       {tg('noiseSuppression', 'Noise suppression (browser)')}
       <label className="jv-field">Noise suppression engine
         <select className="jv-select" value={a.noiseSuppressionMode} onChange={(e) => void client.setAudioSettings({ noiseSuppressionMode: e.target.value as any })}>
-          <option value="browser">Browser</option><option value="rnnoise">RNNoise (mono)</option><option value="off">Off</option>
+          <option value="off">Off</option><option value="browser">Browser built-in</option><option value="rnnoise">Standard (RNNoise)</option><option value="high">High (RNNoise + browser)</option>
         </select>
       </label>
       {tg('autoGainControl', 'Automatic gain control')}

@@ -16,7 +16,6 @@
   },
   "peerDependencies": { "react": ">=18" },
   "peerDependenciesMeta": { "react": { "optional": true } },
-  "optionalDependencies": { "@shiguredo/noise-suppression": "^2025.1.0" },
   "devDependencies": {
     "@types/node": "^22.9.0",
     "@types/react": "^18.3.12",
