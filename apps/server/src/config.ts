@@ -9,6 +9,8 @@ export interface Config {
   jwtSecret: string; databaseUrl: string | null; dataDir: string; redisUrl: string | null;
   /** Namespace for every Redis key / channel, so several Jorcord clusters can share one Redis. */
   redisPrefix: string;
+  /** WebAuthn relying party. Derived from PUBLIC_URL (host = RP ID, origin = expected origin); WEBAUTHN_RP_ID / WEBAUTHN_ORIGINS override. */
+  webauthn: { rpId: string; rpName: string; origins: string[] };
   corsOrigins: string[] | true; publicUrl: string; trustProxy: boolean; rateLimit: boolean;
   maxUploadBytes: number; heartbeatIntervalMs: number; resumeWindowMs: number;
   /** How long a user stays in voice after their last gateway socket drops (0 = clear immediately). */
@@ -85,6 +87,12 @@ export function loadConfig(overrides: Partial<Config> = {}, env: NodeJS.ProcessE
     host: env.HOST ?? '0.0.0.0', port: Number(env.PORT ?? 3000), logLevel: env.LOG_LEVEL ?? 'info',
     jwtSecret, databaseUrl: env.DATABASE_URL || null, dataDir, redisUrl: env.REDIS_URL || null, redisPrefix: env.REDIS_PREFIX || 'jorcord',
     corsOrigins, publicUrl,
+    webauthn: {
+      rpId: env.WEBAUTHN_RP_ID?.trim() || (() => { try { return new URL(publicUrl).hostname; } catch { return 'localhost'; } })(),
+      rpName: 'Jorcord',
+      origins: env.WEBAUTHN_ORIGINS?.trim() ? env.WEBAUTHN_ORIGINS.split(',').map((s) => s.trim()).filter(Boolean)
+        : [...(publicOrigin ? [publicOrigin] : []), ...(!isProd && publicOrigin && new URL(publicOrigin).hostname === 'localhost' ? ['http://localhost:5173'] : [])], // Vite dev server
+    },
     trustProxy: env.TRUST_PROXY === 'true',
     rateLimit: env.RATE_LIMIT_ENABLED !== 'false',
     maxUploadBytes: Number(env.MAX_UPLOAD_BYTES || LIMITS.maxUploadBytes),

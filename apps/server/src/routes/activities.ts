@@ -5,7 +5,8 @@ import type { Ctx } from '../ctx';
 import { ApiError, badRequest, forbidden, notFound } from '../errors';
 import { idSchema, iso, parse } from '../lib/ids';
 import { limitOrThrow } from '../lib/ratelimit';
-import { channelAccess } from '../services/perms';
+import { channelAccess, has, Perm } from '../services/perms';
+import { applyTttMove, initialTtt, readStored } from '../services/tictactoe';
 import { activitiesSchema, normalizeActivities } from '../services/activities';
 
 const activityDTO = (r: any): ChannelActivity => ({
@@ -19,8 +20,20 @@ const activityState = z.unknown().refine(
   `state must be at most ${ACTIVITY_STATE_MAX_BYTES} bytes`,
 );
 const activityKind = z.enum(['youtube', 'tictactoe']);
+/** Watch Together state is a closed shape: it is rendered into a player command, so it is not free-form. */
+const youtubeState = z.object({
+  videoId: z.string().regex(/^[A-Za-z0-9_-]{11}$/),
+  position: z.number().finite().min(0).max(86_400 * 7).optional(),
+  playing: z.boolean().optional(),
+}).strict();
 const activityParams = z.object({ id: idSchema });
 const channelParams = z.object({ id: idSchema });
+
+/** Being connected to the voice channel is what makes someone a participant (viewing the channel is not enough). */
+async function requireInCall(ctx: Ctx, userId: string, channelId: string) {
+  const vs = await ctx.voice.get(userId);
+  if (vs?.channelId !== channelId) throw forbidden('Join the voice channel to use its activities');
+}
 
 async function loadActivity(ctx: Ctx, id: string) {
   const [row] = await ctx.db.query('SELECT * FROM channel_activities WHERE id = $1', [id]);
@@ -36,8 +49,10 @@ async function loadActivity(ctx: Ctx, id: string) {
  *
  * Shared activities (Watch Together / games): every read and write resolves the channel through `channelAccess`, so a
  * caller without VIEW_CHANNEL gets the same 404 as a missing channel. Events go through `toChannel`, which only fan out
- * to members who can view it. Only the host may update Watch Together state or end a session; in a two-player game
- * either member in the call may publish a move, with turn order validated by the clients.
+ * to members who can view it. Starting or changing an activity requires being connected to that voice channel. Only the
+ * host may update Watch Together state; Tic-Tac-Toe moves are validated on the server (the host plays X, the first other
+ * participant in the call to move plays O, turn order and cell legality are enforced). The host, or a member with
+ * MANAGE_CHANNELS, may end a session.
  */
 export function activityRoutes(app: FastifyInstance, ctx: Ctx) {
   app.put('/users/@me/activities', async (req) => {
@@ -71,12 +86,16 @@ export function activityRoutes(app: FastifyInstance, ctx: Ctx) {
     const acc = await channelAccess(ctx, req.userId, id);
     if (acc.channel.type !== 'voice' && acc.channel.type !== 'stage') throw badRequest('Not a voice channel');
     limitOrThrow(ctx.rl, `activity-start:${req.userId}`, 10, 60_000, ctx.config.rateLimit);
+    await requireInCall(ctx, req.userId, id);
+    let initial: unknown;
+    if (b.kind === 'tictactoe') initial = initialTtt();
+    else initial = parse(youtubeState, b.state);
     const [existing] = await ctx.db.query('SELECT 1 AS x FROM channel_activities WHERE channel_id = $1 AND kind = $2', [id, b.kind]);
     if (existing) throw new ApiError(409, 'ACTIVITY_EXISTS', 'That activity is already running in this channel');
     const aid = snowflake();
     const [row] = await ctx.db.query(
       'INSERT INTO channel_activities (id, channel_id, guild_id, kind, host_id, state) VALUES ($1,$2,$3,$4,$5,$6::jsonb) RETURNING *',
-      [aid, id, acc.channel.guild_id ?? null, b.kind, req.userId, JSON.stringify(b.state ?? {})],
+      [aid, id, acc.channel.guild_id ?? null, b.kind, req.userId, JSON.stringify(initial)],
     );
     const dto = activityDTO(row);
     await ctx.hub.toChannel(id, 'ACTIVITY_START', dto);
@@ -95,11 +114,19 @@ export function activityRoutes(app: FastifyInstance, ctx: Ctx) {
     const b = parse(z.object({ state: activityState }).strict(), req.body);
     const row = await loadActivity(ctx, id);
     await channelAccess(ctx, req.userId, row.channel_id);
-    // Turn-based games are played by both members in the call, so any channel viewer may publish a move; the
-    // clients validate whose turn it is. Watch Together stays host-driven.
-    if (row.kind !== 'tictactoe' && row.host_id !== req.userId) throw forbidden('Only the host can change the activity');
     limitOrThrow(ctx.rl, `activity-update:${req.userId}`, 60, 60_000, ctx.config.rateLimit);
-    const [updated] = await ctx.db.query('UPDATE channel_activities SET state = $2::jsonb, updated_at = now() WHERE id = $1 RETURNING *', [id, JSON.stringify(b.state ?? {})]);
+    await requireInCall(ctx, req.userId, row.channel_id);
+    let nextState: unknown;
+    if (row.kind === 'tictactoe') nextState = applyTttMove(readStored(row.state), row.host_id, req.userId, b.state);
+    else {
+      if (row.host_id !== req.userId) throw forbidden('Only the host can change the activity');
+      nextState = parse(youtubeState, b.state);
+    }
+    // Compare-and-set on the previous state so two simultaneous moves cannot both apply.
+    const [updated] = await ctx.db.query(
+      'UPDATE channel_activities SET state = $3::jsonb, updated_at = now() WHERE id = $1 AND state = $2::jsonb RETURNING *',
+      [id, JSON.stringify(row.state ?? {}), JSON.stringify(nextState)]);
+    if (!updated) throw new ApiError(409, 'ACTIVITY_CONFLICT', 'The activity changed; try again');
     const dto = activityDTO(updated);
     await ctx.hub.toChannel(row.channel_id, 'ACTIVITY_UPDATE', dto);
     return dto;
@@ -108,8 +135,8 @@ export function activityRoutes(app: FastifyInstance, ctx: Ctx) {
   app.delete('/activities/:id', async (req, reply) => {
     const { id } = parse(activityParams, req.params);
     const row = await loadActivity(ctx, id);
-    await channelAccess(ctx, req.userId, row.channel_id);
-    if (row.host_id !== req.userId) throw forbidden('Only the host can end the activity');
+    const acc = await channelAccess(ctx, req.userId, row.channel_id);
+    if (row.host_id !== req.userId && !(acc.gp && has(acc.perms, Perm.MANAGE_CHANNELS))) throw forbidden('Only the host or a channel manager can end the activity');
     await ctx.db.query('DELETE FROM channel_activities WHERE id = $1', [id]);
     await ctx.hub.toChannel(row.channel_id, 'ACTIVITY_END', { id, channelId: row.channel_id, guildId: row.guild_id ?? null });
     return reply.code(204).send();
