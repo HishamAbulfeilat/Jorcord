@@ -15,7 +15,7 @@ Rank = order in which this pass implements items (R1 first). `-` = not planned i
 | R5 | Message reminders ("Remind me") + saved messages ("Saved for later") | DONE (`routes/social.ts`, `services/reminders.ts`, Inbox tabs) | 3 | no table/route |
 | R6 | Verification levels, raid protection, explicit-media filter, default notification level (Safety Setup) | DONE (`routes/safety.ts`, `services/safety.ts`, `SafetyTab.tsx`; media filter blurs instead of classifying) | 4 | `Guild` has none; screening only |
 | R7 | AutoMod: keyword presets, mention-spam limit, allow-list, exempt channels, timeout length, custom message | DONE (`services/automod.ts`, `lib/saferegex.ts`, `AutoModTab.tsx`; alert channel, safe-regex, 4 more triggers, multi-action, test mode) | 3 | 4 triggers, `exemptRoles` only (`routes/guilds.ts` automod, `services/messages.ts`) |
-| R8 | Avatar decorations, profile effects, name plates, server tag (guild tag beside name) | DONE (`services/cosmetics.ts`, `cosmetics.css`, `CosmeticsPicker.tsx`) | 4 | only accent/banner/`themeColors` (`profileTheme.ts`) |
+| R8 | Avatar decorations, profile effects, name plates, server tag (guild tag beside name) | DONE (`services/cosmetics.ts`, `cosmetics.css`, `CosmeticsPicker.tsx`; 8 decorations, 10 effects, all original CSS) | 4 | only accent/banner/`themeColors` (`profileTheme.ts`) |
 | R9 | Activities / rich presence (Playing X, Listening, Streaming, Competing) shown in member list, profile and friends "Now Playing" | DONE (`routes/activities.ts`, `ActivityLine.tsx`, bot-sdk `setActivity`) | 4 | `PRESENCE_UPDATE` has status+customStatus only |
 | R10 | Activity privacy (hide activity) DONE; Hide muted channels DONE (`channelHide.ts`), onboarding "Browse Channels" toggle DONE | 3 | no setting |
 | R11 | Announcement channels: follow + crosspost | DONE (`routes/follows.ts`, `FollowsList.tsx`, `FollowChannelModal`) | 3 | channel type exists, no routes |
@@ -30,6 +30,10 @@ Rank = order in which this pass implements items (R1 first). `-` = not planned i
 | R20 | Server boost levels page perks list | DONE (`routes/guilds.ts`, `services/boosts.ts`, `BoostTab.tsx`; levels 1-3, enforced emoji/sticker slots, progress, boosters, booster role, announcements) | 2 | boosts free/unlimited (`GuildSettings` boosts tab) |
 | R21 | Linked roles, app directory (Twitch/YouTube integrations skipped on purpose, see `PARITY.md`) | DONE (`routes/linkedroles.ts`, `services/linkedroles.ts`, `LinkedRolesTab.tsx`, `routes/directory.ts`, `AppDirectory.tsx`, Developer Portal listing; bot metadata API) | 1 | criteria: account/join age, messages, verified connection, app metadata |
 | R22 | Mod view / member safety flags, bulk-ban, prune, warnings, mod notes, mod-log CSV | DONE (`routes/modtools.ts`, `ModView.tsx`, `ModToolsTab.tsx`, composer `/warn`) | 2 | ban/kick/timeout were already done |
+| R23 | Scheduled message sends (compose now, post later, list and cancel) | DONE (migration `060_scheduled_messages.sql`, `routes/scheduledMessages.ts`, `services/scheduledMessages.ts`, `ScheduleModal.tsx`, Inbox > Scheduled) | 3 | text only; permissions, DM blocks and slowmode re-checked at send time |
+| R24 | Components V2 layout messages for bots | DONE (`lib/components.ts`, `chat/ComponentsV2.tsx`, bot-sdk builders) | 2 | webhook execute does not accept V2 |
+| R25 | External-link confirmation (trusted domains per user) and risky-file warning | DONE (`lib/links.ts`, `LinkGuard.tsx`, `LinkSafetyPanel.tsx`) | 3 | |
+| R26 | Desktop: native clipboard, keychain token storage, idle and wake presence | DONE, unverified at runtime (`apps/desktop/src-tauri/src/lib.rs`, `lib/native.ts`, `lib/idle.ts`) | 2 | `cargo check` on Linux only; Windows/macOS idle code and the real keychain not run |
 
 ## B. Already done (verified in this pass)
 

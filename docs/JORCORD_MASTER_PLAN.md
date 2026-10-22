@@ -58,24 +58,25 @@ REA is installed globally (`rea`, MCP server `rea`, skill `reverse-engineer-anyt
 
 ## 2. Current state snapshot (verified against the repo, 2026-10-22)
 
-Counts below were taken from the working tree (branch `claude/discord-clone-design-cdj43b`, root `package.json` version 1.3.0, tags up to `v1.3.0`); server tests: 64 test files, 438 passing. Section 4 and the section 8 phase list were written on 2026-10-10 and still show some rows as missing that are now done; this section and `docs/PARITY.md` section 3 are the current record.
+Counts below were taken from the working tree (branch `claude/discord-clone-design-cdj43b`, root `package.json` version 1.3.0, tags up to `v1.3.0`); server tests: 69 test files, 476 passing (7 skipped); web tests: 85 files, 485 passing. Section 4 and the section 8 phase list were written on 2026-10-10 and still show some rows as missing that are now done; this section and `docs/PARITY.md` section 3 are the current record.
 
-**Inventory:** 33 route files in `apps/server/src/routes` (about 330 route handlers), 44 migration files (`001`-`042`, plus `049_passkeys` and `050_ban_appeals` from the accounts work; `043`-`048` are intentionally unused; `041` is `041_perf_indexes.concurrent.sql`, see `docs/OPERATIONS.md`), services under `apps/server/src/services` (including `sysbots/`), packages `shared`, `voice` and `bot-sdk`, apps `server`, `web`, `desktop` (Tauri v2) and `mobile` (Capacitor).
+**Inventory:** 33 route files in `apps/server/src/routes` (about 330 route handlers), 44 migration files (`001`-`042`, plus `049_passkeys`, `050_ban_appeals`, `051_export_jobs` from the accounts work and `060_scheduled_messages`; `043`-`048` and `052`-`059` are reserved/unused here; `041` is `041_perf_indexes.concurrent.sql`, see `docs/OPERATIONS.md`), services under `apps/server/src/services` (including `sysbots/`), packages `shared`, `voice` and `bot-sdk`, apps `server`, `web`, `desktop` (Tauri v2) and `mobile` (Capacitor).
 
 **Done:**
 - Accounts and identity: register/login/refresh/logout, email verification and password reset (HTML mails), TOTP MFA, sessions/devices, QR-code login (migration 037, `routes/remoteauth.ts`), multi-account switching, data export, profiles with pronouns/bio/banner/accent/themes, per-guild profiles (033), connections (023), avatar decorations, profile effects, name plates, server tags (017).
 - Social: friends/blocks/read states, notes and mutuals, message requests and DM privacy (010), DMs and group DMs with ring, inbox/mentions, saved messages and reminders (012), GIF favorites (022), message forwarding (011), edit history (031).
 - Guilds and channels: guilds, text/voice/announcement/stage/forum/media/category/thread channels, roles and overwrites (Discord's algorithm), members/kick/ban/timeout, invites with preview/events/vanity, templates and widget/insights (021), onboarding and screening (006, 019), safety setup/raid protection/age gate (013, 018), boosts (025), discovery, linked roles and app directory (026), mod tools/warnings/notes/prune/bulk (027), reports (029), audit log.
-- Messaging: replies, edit, delete, bulk delete, pins, reactions and super reactions (035), polls, search with filters, unfurl, attachments, voice messages, forum posts with tags/sort/layout/default reaction (034), thread lifecycle, announcement follow/crosspost (020), allowed mentions (028), AutoMod v3 (014, 024).
+- Messaging: replies, edit, delete, bulk delete, pins, reactions and super reactions (035), polls, search with filters, unfurl, attachments, voice messages, forum posts with tags/sort/layout/default reaction (034), thread lifecycle, announcement follow/crosspost (020), allowed mentions (028), AutoMod v3 (014, 024), scheduled sends (060: compose later, list/cancel, sweeper worker), external-link and risky-file confirmation (`lib/links.ts`).
 - Voice: LiveKit voice/video/screen share, stage channels and instances, soundboard (015), voice moderation, priority speaker, server-side recording indicator (039), shared activities Watch Together and Tic-Tac-Toe (042), rich presence (016).
 - Events: scheduled events with recurrence (036).
-- Platform: applications/bot tokens/OAuth2 with PKCE (007), application commands, interactions (gateway and signed HTTP), components V1 and modals, gateway intents (008), built-in system bots Welcome/Moderation/Utility (038), rate-limit headers and buckets, numeric error codes, push (VAPID and mobile devices).
+- Platform: applications/bot tokens/OAuth2 with PKCE (007), application commands, interactions (gateway and signed HTTP), components V1 and modals, Components V2 layout messages (`IS_COMPONENTS_V2`, `lib/components.ts`, bot-sdk builders), gateway intents (008), built-in system bots Welcome/Moderation/Utility (038), rate-limit headers and buckets, numeric error codes, push (VAPID and mobile devices).
 - Operations: super-admin panel with re-authenticated, time-boxed god mode and `admin_audit` (030, 032), Docker compose, release workflow for desktop/mobile/web/server, fixed-server builds (`VITE_SERVER_URL`).
-- Clips: server side (040, `routes/clips.ts`); the web UI is in progress.
+- Clips: server side (040, `routes/clips.ts`) and the web recorder/viewer (`voice/ClipRecorder.tsx`, `voice/clipBuffer.ts`, `voice/ClipModals.tsx`; 30 s to 2 min rolling buffer).
+- Desktop native (Tauri v2): tray, badge, autostart, deep links, updater, game detection, overlay window, native clipboard plugin, OS-keychain token storage (`keyring`, web-storage fallback), system idle time and wake-from-sleep feeding automatic idle presence. `cargo check` passes on Linux; the Windows/macOS-only code paths are not compiled here.
 
-**In progress (other work streams, not on `main` yet):** passkeys (049), ban appeals (050), call ringing, clips web UI, voice/noise-suppression work in `packages/voice` and `apps/web/src/voice`.
+**In progress (other work streams, not on `main` yet):** passkeys (049), ban appeals (050), call ringing, voice/noise-suppression work in `packages/voice` and `apps/web/src/voice`.
 
-**Open:** Components V2, third-party embedded apps (Poker/Chess style), Go Live viewer limits and overlay, anonymous/blocked stage speakers, Discord wire-format compatibility layer (section 6.10), sharding/zlib on the gateway, private threads, role-restricted emoji, dedicated moderator-report side panel.
+**Open:** third-party embedded apps (Poker/Chess style), Go Live viewer limits and overlay, anonymous/blocked stage speakers, Discord wire-format compatibility layer (section 6.10), sharding/zlib on the gateway, private threads, role-restricted emoji, dedicated moderator-report side panel.
 
 ## 3. What the Discord desktop client contributes (summary of Appendix A)
 
@@ -96,8 +97,8 @@ Source tags: **DD** public docs, **RE** seen in local client analysis, **JP** Jo
 | Account deletion / disable, data export | partial | P2 | S | `DELETE /users/@me`, `/users/@me/export` exist; add grace period + owned-guild transfer rule |
 | Username uniqueness model (unique handle + display name) | partial | P2 | S | verify `routes/auth.ts` |
 | Profile: pronouns, bio, banner, accent, theme | done | - | - | JP |
-| Avatar decorations (cosmetic frames) | missing | P1 | M | `avatar_decoration_data` DD:resources/user; ship an original asset set |
-| Profile effects | missing | P2 | M | original animations |
+| Avatar decorations (cosmetic frames) | done | - | - | 8 original CSS rings: migration 017, `PATCH /users/@me`, `Avatar.tsx`, `CosmeticsPicker.tsx`, `cosmetics.css`; `parity-cosmetics.test.ts` |
+| Profile effects | done | - | - | 10 original CSS animations (`PROFILE_EFFECTS`), picker in Settings > Profile, shown on profile cards; `parity-cosmetics.test.ts`, `lib/cosmetics.test.ts` |
 | Server tags (clan tags next to username) | missing | P1 | S-M | `primary_guild` DD:resources/user |
 | Per-guild profile (avatar, banner, bio) | partial | P3 | S | |
 | Connections (Steam, GitHub, Twitch...) + linked roles | missing | P3 | L | DD:resources/application-role-connection-metadata |
@@ -152,10 +153,10 @@ Source tags: **DD** public docs, **RE** seen in local client analysis, **JP** Jo
 | Markdown, code blocks, spoilers, mentions, embeds (server unfurl) | done/partial | - | - | |
 | Client/bot-sent rich embeds (author, fields, footer, up to 10) | mostly done | P1 | S | bots send + webhook execute; `lib/embeds.ts` validation; tests `parity-embeds.test.ts` |
 | Message components v1 + modals | done | - | - | |
-| **Components V2** (container, section, text display, media gallery, file, separator, thumbnail) | missing | P1 | M | DD:components/reference |
-| Message flags (suppress embeds, ephemeral, silent, voice message, components v2) | partial | P1 | M | |
+| **Components V2** (container, section, text display, media gallery, file, separator, thumbnail) | done | - | - | bots only, flag `1<<15`; `lib/components.ts` (max 10 top-level / 40 total / 4000 text chars, `attachment://` refs checked), `chat/ComponentsV2.tsx`, bot-sdk `v2()`/`container()`... builders; `components-v2.test.ts`, `ComponentsV2.test.tsx`. Not built: select menus outside action rows, webhook execute support |
+| Message flags (suppress embeds, ephemeral, silent, voice message, components v2) | partial | P1 | M | suppress embeds, silent, ephemeral, loading and components v2 are handled; voice messages are audio attachments without a dedicated flag |
 | `allowed_mentions` | done | P1 | S | routes/messages strict body, badge filtering in `services/messages.ts`, shared `AllowedMentions` type, composer reply-ping toggle; tests `parity-messages-mentions.test.ts` |
-| Voice messages (record, waveform, playback) | missing | P1 | M | flag + attachment waveform; perm SEND_VOICE_MESSAGES |
+| Voice messages (record, waveform, playback) | done | - | - | `lib/voiceRecord.ts`, `lib/voiceMsg.ts`, `SEND_VOICE_MESSAGES`; `parity-voice-messages.test.ts` |
 | Message forwarding (snapshots) | missing | P2 | M | |
 | Message types (~40: thread starter, boost tiers, stage events, poll result, call...) | partial | P1 | M | system messages |
 | Stickers (guild + standard packs), emoji (role-restricted), GIF picker | partial | P2 | S-M | |
@@ -163,8 +164,8 @@ Source tags: **DD** public docs, **RE** seen in local client analysis, **JP** Jo
 | Search with filters (`from:`, `has:`, `mentions:`, `in:`, `before/after/during`, `pinned`) | partial | P1 | M | |
 | Link previews | done | - | - | |
 | Message "jump to" / unread divider / mark unread | verify | P2 | S | |
-| Edit history, scheduled sends | missing | P3 | M | |
-| Link/attachment safety (file-type warnings, external link confirm) | partial | P1 | S | RE: confirm-before-open external URLs |
+| Edit history, scheduled sends | done | - | - | edit history: migration 031; scheduled sends: migration 060, `routes/scheduledMessages.ts`, `services/scheduledMessages.ts` (permissions re-checked when sent, slowmode applied at send time), composer clock button, Inbox > Scheduled; `scheduled-messages.test.ts`. Text only (no attachments), 10 s to 30 days ahead, 25 pending per user |
+| Link/attachment safety (file-type warnings, external link confirm) | done | - | - | `lib/links.ts`, `modals/LinkGuard.tsx`; per-user trusted domains in prefs (`trustedLinkDomains`, synced with the account), risky-extension warning incl. `invoice.pdf.exe`; `links.test.ts` |
 
 ### 4.6 Roles and permissions
 | Feature | Status | Pri | Notes |
@@ -192,9 +193,9 @@ Source tags: **DD** public docs, **RE** seen in local client analysis, **JP** Jo
 | Spatial audio | missing | P3 | M | RE: `isSpatialAudioEnabled` |
 | **E2EE calls** (MLS-style) | missing | P2 | L | DD:topics/voice-connections "DAVE"; LiveKit E2EE (insertable streams) is the practical route |
 | Stage channels (request to speak, audience) | done | - | - | |
-| DM calls (ring, decline, video) | partial | P1 | S | |
+| DM calls (ring, decline, video) | done | - | - | `services/calls.ts`, `call-ring.test.ts`, `voice/IncomingCall.tsx` |
 | Region selection, ping/stats overlay | partial | P2 | S | |
-| Clips / replay buffer (last 30s-10min saved) | missing | P3 | L | RE: clip load/move/delete IPC, `setClipRecordUser`, replay connection |
+| Clips / replay buffer (last 30s-10min saved) | partial | P3 | L | server (040) and web recorder/viewer done with a 30 s / 1 min / 2 min buffer; no 10 min buffer, no trim UI |
 | Camera/mic device pickers, test mic, loopback | partial | P1 | S | |
 
 ### 4.8 Activities, rich presence, games
@@ -357,21 +358,21 @@ Create `packages/native` with `JorcordNative` types plus a web fallback, and Tau
 | app | version/arch/channel, relaunch, quit-and-install, open-on-startup get/set, preferred languages, system text direction | partial (autostart, updater) | P1 |
 | window | min size 320x180, bounds/maximized persist, minimize-to-tray, start-minimized, close-to-tray, taskbar buttons (mute/deafen), mouse coords, display count | partial | P1 |
 | tray | state icons (normal/unread/mention/in-call), quick actions | partial | P1 |
-| badge | unread/mention count on taskbar/dock | missing | P1 |
+| badge | unread/mention count on taskbar/dock | done (`setBadgeCount`) | P1 |
 | notifications | show/close/clear, permission state, click-to-focus channel | partial | P1 |
-| clipboard | copy/cut/paste incl. images | missing | P1 |
+| clipboard | copy/cut/paste incl. images | partial (text via `tauri-plugin-clipboard-manager`, `clipboard` in `lib/native.ts`; no image copy) | P1 |
 | files | open/save dialogs, show in folder, download to path, asset cache | missing | P1 |
-| secure storage | OS keychain for tokens (replaces localStorage tokens on desktop) | missing | P1 |
-| power | system idle time (auto-idle), lock/unlock/suspend/resume events, block display sleep during calls | missing | P1 |
+| secure storage | OS keychain for tokens (replaces localStorage tokens on desktop) | done for the active session (`keyring` crate, `secure_*` commands, `lib/authStorage.ts`, web-storage fallback; other accounts' tokens in `lib/accounts.ts` still use web storage) | P1 |
+| power | system idle time (auto-idle), lock/unlock/suspend/resume events, block display sleep during calls | partial (idle time on Windows/macOS, wake-from-sleep detection, `lib/idle.ts`; no lock/unlock/suspend events, no display-sleep block) | P1 |
 | shortcuts | global PTT / mute / deafen, keybind editor | missing | P1 |
 | capture | source picker (screens/windows), system-audio capture where possible | partial | P1 |
-| external links | confirm-before-open for untrusted hosts; origin lock for navigation | missing | P1 |
+| external links | confirm-before-open for untrusted hosts; origin lock for navigation | partial (confirm dialog done in the web app; no native navigation lock) | P1 |
 | updater | splash, progress, optional vs required, backoff, rollback-safe | partial | P1 |
 | spellcheck | languages, learned words | missing | P3 |
 | gpu / diagnostics | hardware-acceleration toggle (needs relaunch), system info, logs path, crash reports (local) | missing | P2 |
-| rpc/game detection | section 5.3 | missing | P2 |
-| clips | section 5.7 | missing | P3 |
-| overlay | **not planned** | - | - |
+| rpc/game detection | section 5.3 | partial (process-scan game detection `list_running_games`, registered games; no local RPC server) | P2 |
+| clips | section 5.7 | partial (web recorder, see section 4) | P3 |
+| overlay | always-on-top voice overlay window, no game injection | done (`overlay_apply`, `apps/web/src/overlay`) | - |
 
 Linux Wayland note: global shortcuts and screen capture need portals; document limits.
 

@@ -1,6 +1,6 @@
 # Discord gaps
 
-A checklist of Discord features and whether Jorcord has them. Last verified against the repo on 2026-10-22 (server migrations 001-042 plus 049/050, `apps/server/src/routes/*.ts`, `apps/web/src`, `packages/shared`). A ticked item names the code and test that prove it; an unticked item was checked and is still missing. Items this file once called missing (voice-message recording, forum defaults, super reactions, activities, recurrence, clips, poll voter filters) have since landed.
+A checklist of Discord features and whether Jorcord has them. Last verified against the repo on 2026-10-22 (server migrations 001-042 plus 049-051 and 060, `apps/server/src/routes/*.ts`, `apps/web/src`, `packages/shared`). A ticked item names the code and test that prove it; an unticked item was checked and is still missing. Items this file once called missing (voice-message recording, forum defaults, super reactions, activities, recurrence, clips, poll voter filters, Components V2, scheduled sends, profile effects, link safety, desktop clipboard/keychain/idle) have since landed.
 
 Checklist items are grouped by feature. Each row lists the files involved and an S/M/L size.
 
@@ -55,10 +55,35 @@ Checklist items are grouped by feature. Each row lists the files involved and an
 
 ## Message extras
 
-- [ ] **Message clips (in-app screen-recording clipping, clips channel auto-collect).** Server side is done: migration `040_clips.sql`, `isClipsChannel` on channels, `routes/clips.ts` (`POST/GET /channels/:id/clips`, `DELETE /channels/:id/clips/:clipId`; only in a clips channel, MP4/WebM sniffed by magic bytes, 30 s and 100 MB limits, 6 posts/min; `clips.test.ts`). Still open: the web clips UI (recorder, clips channel view) and the screen-recording capture itself.
-  Files: apps/server/src/routes/messages.ts, apps/server/src/services/messages.ts, apps/web/src/lib/menus.ts, apps/web/src/components/chat/MessageItem.tsx. Size: L.
+- [x] **Message clips (in-app screen-recording clipping, clips channel).** Server: migration `040_clips.sql`, `isClipsChannel` on channels, `routes/clips.ts` (`POST/GET /channels/:id/clips`, `DELETE /channels/:id/clips/:clipId`; only in a clips channel, MP4/WebM sniffed by magic bytes, 30 s and 100 MB limits, 6 posts/min; `clips.test.ts`). Web: rolling MediaRecorder buffer (30 s / 1 min / 2 min) in `voice/clipBuffer.ts` + `voice/ClipRecorder.tsx`, preview/download/share in `voice/ClipModals.tsx`, clips viewer button in `ChatView.tsx` (`clipBuffer.test.ts`, `clipModals.test.tsx`). Not built: a 10 min buffer and a trim editor.
+  Files: apps/server/src/routes/clips.ts, apps/web/src/voice/ClipRecorder.tsx, apps/web/src/voice/clipBuffer.ts, apps/web/src/voice/ClipModals.tsx. Size: L.
 
 ## Polls details
 
 - [x] **Poll answer-voter list with member filters and multi-select vote events.** `GET /channels/:id/polls/:mid/answers/:answerId?type=members|bots` (`routes/polls.ts`); `POST .../polls/:mid/expire` ends a poll early; `finalizePoll` emits `MESSAGE_UPDATE` (`services/polls.ts`); vote events are covered in `hardening.test.ts`.
   Files: apps/server/src/routes/polls.ts, apps/server/src/services/polls.ts, apps/web/src/components/chat/MessageExtras.tsx. Size: S.
+
+## Components V2
+
+- [x] **Components V2 layout messages** (container, section, text display, thumbnail, media gallery, file, separator). Bots set the `IS_COMPONENTS_V2` flag (`1 << 15`) and send layout components only (no content, embeds, stickers, poll). `lib/components.ts` validates structure and limits (10 top-level, 40 total, 4000 text characters, `attachment://` references must match an attachment); buttons inside containers and sections are pressable (`findComponent` is recursive); web `chat/ComponentsV2.tsx`; bot-sdk builders `v2()`, `container()`, `section()` ... (`components-v2.test.ts`, `ComponentsV2.test.tsx`, bot-sdk `integration.test.ts`). Not built: webhook execute with V2, select menus outside action rows.
+  Files: packages/shared/src/platform.ts, apps/server/src/lib/components.ts, apps/web/src/components/chat/ComponentsV2.tsx, packages/bot-sdk/src/index.ts. Size: M.
+
+## Scheduled sends
+
+- [x] **Schedule a message to send later.** Migration `060_scheduled_messages.sql`; `POST /channels/:id/scheduled-messages`, `GET/DELETE /users/@me/scheduled-messages`; the sweeper (`services/scheduledMessages.ts`) claims due rows atomically, re-checks channel permissions, DM blocks and slowmode at send time and records failures; gateway `SCHEDULED_MESSAGE_UPDATE`; web composer clock button, `ScheduleModal`, Inbox > Scheduled (`scheduled-messages.test.ts`, `ScheduleModal.test.tsx`). Limits: text only, 10 s to 30 days ahead, 25 pending per user; the send time is accurate to the sweep interval (10 s by default).
+  Files: apps/server/src/services/scheduledMessages.ts, apps/server/src/routes/scheduledMessages.ts, apps/web/src/components/modals/ScheduleModal.tsx. Size: M.
+
+## Cosmetics
+
+- [x] **Avatar decorations and profile effects.** Eight original CSS decorations and ten original CSS profile effects (no Discord assets); migration `017_cosmetics.sql`, ids validated against the shared catalog in `PATCH /users/@me`, broadcast on `USER_UPDATE`, drawn by `Avatar.tsx` everywhere avatars appear and by `ProfileEffect` on profile cards; picker in Settings > Profile (`CosmeticsPicker.tsx`); `parity-cosmetics.test.ts` (every catalog id round-trips), `lib/cosmetics.test.ts` (every id has CSS).
+  Files: packages/shared/src/parity.ts, apps/web/src/cosmetics.css, apps/web/src/components/settings/CosmeticsPicker.tsx. Size: M.
+
+## Link and file safety
+
+- [x] **External-link confirmation and risky-file warning.** Links to hosts other than this app/server ask first, with a "trust this domain" option stored in the account's preferences (`trustedLinkDomains`, managed in Privacy & Safety); executable/script/macro attachments (and names like `invoice.pdf.exe`) get a warning before open or download (`lib/links.ts`, `modals/LinkGuard.tsx`, `links.test.ts`). Applies to message links, embed titles, link buttons and attachment links.
+  Files: apps/web/src/lib/links.ts, apps/web/src/components/modals/LinkGuard.tsx, apps/web/src/components/settings/LinkSafetyPanel.tsx. Size: S.
+
+## Desktop native
+
+- [x] **Clipboard, OS-keychain token storage, idle and wake presence (Tauri).** `tauri-plugin-clipboard-manager`; `keyring` crate behind `secure_set/get/delete` (login tokens move into the keychain, web storage is the fallback); `idle_seconds` (Windows `GetLastInputInfo`, macOS CoreGraphics; Linux falls back to in-window activity) and a `jorcord://power` wake event drive automatic idle after N minutes (`lib/idle.ts`, setting in Privacy & Safety). `cargo check` passes on Linux; the Windows and macOS code and the real keychain were not run. Not built: native file dialogs, lock/unlock/suspend events, clipboard images.
+  Files: apps/desktop/src-tauri/src/lib.rs, apps/web/src/lib/native.ts, apps/web/src/lib/secureStore.ts, apps/web/src/lib/authStorage.ts, apps/web/src/lib/idle.ts. Size: L.
