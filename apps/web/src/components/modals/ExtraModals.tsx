@@ -115,7 +115,12 @@ export function OnboardingModal({ guildId, step: initial, close }: { guildId: st
   const rulesId = g?.guild.rulesChannelId ?? null;
   const [step, setStep] = useState<'welcome' | 'rules'>(initial ?? 'welcome'); const [agree, setAgree] = useState(done);
   const rules = useQuery({ queryKey: ['rules', rulesId], enabled: !!rulesId && step === 'rules', queryFn: () => api.messages.list(rulesId!, { limit: 30 }), retry: false });
-  const picks = useMemo(() => Object.values(g?.channels ?? {}).filter((c) => (c.type === 'text' || c.type === 'announcement' || c.type === 'forum' || c.type === 'media') && c.id !== rulesId).sort((a, b) => a.position - b.position).slice(0, 5), [g?.channels, rulesId]);
+  const ws = g?.guild.welcomeScreen?.enabled && g.guild.features.includes('COMMUNITY') ? g.guild.welcomeScreen : null;
+  // a community server's own welcome screen lists the channels its managers picked (with their descriptions); otherwise the first few text channels
+  const picks = useMemo(() => (ws
+    ? ws.channels.map((w) => g?.channels[w.channelId]).filter((c): c is NonNullable<typeof c> => !!c)
+    : Object.values(g?.channels ?? {}).filter((c) => (c.type === 'text' || c.type === 'announcement' || c.type === 'forum' || c.type === 'media') && c.id !== rulesId).sort((a, b) => a.position - b.position).slice(0, 5)), [g?.channels, rulesId, ws]);
+  const wsInfo = (id: string) => ws?.channels.find((w) => w.channelId === id);
   if (!g) return null;
   const gd = g.guild; const icon = fileUrl(gd.icon); const banner = fileUrl(gd.banner);
   const finish = () => { mark(guildId); try { sessionStorage.removeItem('jorcord.onb.' + guildId); } catch { /* */ } close(); if (picks[0]) nav.go(guildId, picks[0].id); };
@@ -127,8 +132,8 @@ export function OnboardingModal({ guildId, step: initial, close }: { guildId: st
         <div className="-mt-10 mb-3 flex h-20 w-20 items-center justify-center overflow-hidden rounded-[24px] border-[6px] border-[rgb(var(--modal))] bg-brand text-2xl font-bold text-white">{icon ? <img src={icon} alt="" className="h-full w-full object-cover" /> : initials(gd.name)}</div>
         <h2 id="onb-title" className="text-2xl font-extrabold text-header">{t('Welcome to {name}', { name: gd.name })}</h2>
         <p className="mt-1 flex items-center gap-1 text-sm text-muted"><Users size={14} />{t('{n} members', { n: g.memberCount })}</p>
-        {gd.description && <p className="mt-3 whitespace-pre-wrap text-normal">{gd.description}</p>}
-        {picks.length > 0 && (<><h3 className="section-title mb-2 mt-5">{t('Start here')}</h3><ul className="grid gap-1.5">{picks.map((c) => <li key={c.id}><button onClick={() => { nav.go(guildId, c.id); later(); }} className="flex w-full items-center gap-2 rounded-lg bg-modal-alt px-3 py-2 text-start hover:bg-hover"><ChannelIcon c={c} size={20} className="text-muted" /><span className="min-w-0 flex-1"><span className="block truncate font-semibold text-header">{c.name}</span>{c.topic && <span className="block truncate text-xs text-muted">{c.topic}</span>}</span></button></li>)}</ul></>)}
+        {(ws?.description || gd.description) && <p className="mt-3 whitespace-pre-wrap text-normal">{ws?.description || gd.description}</p>}
+        {picks.length > 0 && (<><h3 className="section-title mb-2 mt-5">{t('Start here')}</h3><ul className="grid gap-1.5">{picks.map((c) => <li key={c.id}><button onClick={() => { nav.go(guildId, c.id); later(); }} className="flex w-full items-center gap-2 rounded-lg bg-modal-alt px-3 py-2 text-start hover:bg-hover">{wsInfo(c.id)?.emoji ? <span aria-hidden className="w-5 text-center text-lg leading-5">{wsInfo(c.id)!.emoji}</span> : <ChannelIcon c={c} size={20} className="text-muted" />}<span className="min-w-0 flex-1"><span className="block truncate font-semibold text-header">{c.name}</span>{(wsInfo(c.id)?.description || c.topic) && <span className="block truncate text-xs text-muted">{wsInfo(c.id)?.description || c.topic}</span>}</span></button></li>)}</ul></>)}
       </div>
     </Modal>
   );

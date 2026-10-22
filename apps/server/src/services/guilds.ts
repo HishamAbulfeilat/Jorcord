@@ -1,8 +1,9 @@
 import { AuditActionType, DEFAULT_EVERYONE, Perm, has, snowflake, type Overwrite, type GuildFull } from '@jorcord/shared';
 import type { Ctx } from '../ctx';
 import type { Queryable } from '../db';
-import { notFound } from '../errors';
+import { badRequest, notFound } from '../errors';
 import { channelsDTO, GUILD_SELECT, guildDTO, membersDTO, roleDTO } from './serializers';
+import { deleteAttachmentFiles } from './files';
 import { loadGuildPerm, permsFor } from './perms';
 
 export async function audit(ctx: Ctx, guildId: string, actorId: string, action: string, targetId: string | null = null, changes: unknown = null, reason: string | null = null) {
@@ -91,4 +92,29 @@ export async function buildGuildFull(ctx: Ctx, guildId: string, userId: string):
     stickers: stickers.map((s) => ({ id: s.id, guildId: s.guild_id, name: s.name, url: s.url, format: s.format })),
     memberCount: cnt.n,
   };
+}
+
+/** Deletes a server with everything in it (messages, attachments) and tells its members. Shared by the owner's DELETE and by account deletion. */
+export async function deleteGuildCascade(ctx: Ctx, id: string) {
+  const members = (await ctx.db.query('SELECT user_id FROM members WHERE guild_id = $1', [id])).map((r) => r.user_id as string);
+  await ctx.db.query(`UPDATE users SET server_tag = NULL WHERE server_tag->>'guildId' = $1`, [id]);
+  const attachmentLists = (await ctx.db.query(`SELECT attachments FROM messages WHERE guild_id = $1 AND attachments <> '[]'::jsonb`, [id])).map((r) => r.attachments);
+  await ctx.db.tx(async (q) => {
+    await q.query('DELETE FROM messages WHERE guild_id = $1', [id]);
+    await q.query('DELETE FROM guilds WHERE id = $1', [id]);
+  });
+  await deleteAttachmentFiles(ctx, attachmentLists).catch((e) => ctx.log.warn({ err: e }, 'attachment cleanup failed'));
+  await ctx.pcache.invalidate({ k: 'guild', guildId: id });
+  await ctx.hub.toUsers(members, 'GUILD_DELETE', { id });
+}
+
+/** Hands a server to another human member. The previous owner stays a normal member. Callers authorise (owner + re-authentication). */
+export async function transferGuildOwnership(ctx: Ctx, guildId: string, newOwnerId: string, byUserId: string) {
+  const [m] = await ctx.db.query('SELECT 1 AS x FROM members m JOIN users u ON u.id = m.user_id WHERE m.guild_id = $1 AND m.user_id = $2 AND NOT u.bot AND u.deleted_at IS NULL', [guildId, newOwnerId]);
+  if (!m) throw badRequest('The new owner must be a (non-bot) member of the server');
+  await ctx.db.query('UPDATE guilds SET owner_id = $2 WHERE id = $1', [guildId, newOwnerId]);
+  await ctx.pcache.invalidate({ k: 'guild', guildId });
+  await audit(ctx, guildId, byUserId, 'GUILD_UPDATE', guildId, { ownerId: newOwnerId });
+  const [row] = await ctx.db.query(`${GUILD_SELECT} WHERE g.id = $1`, [guildId]);
+  if (row) await ctx.hub.toGuild(guildId, 'GUILD_UPDATE', guildDTO(row));
 }

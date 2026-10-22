@@ -9,6 +9,7 @@ import { fireDueBotReminders } from './sysbots';
 import { sweepUnattachedUploads } from './files';
 import { expireExports } from './dataExport';
 import { sendDueScheduledMessages } from './scheduledMessages';
+import { sweepAccountDeletions } from './accountDeletion';
 
 /** Thread auto-archive: no activity for `auto_archive_minutes` -> archived (THREAD_UPDATE). Atomic, so multi-node safe. */
 export async function archiveIdleThreads(ctx: Ctx) {
@@ -66,4 +67,5 @@ export async function runSweeps(ctx: Ctx) {
   await step('uploads', () => sweepUnattachedUploads(ctx));
   await step('exports', () => expireExports(ctx));
   await step('scheduled-messages', () => sendDueScheduledMessages(ctx));
+  await step('account-deletions', () => sweepAccountDeletions(ctx));
 }

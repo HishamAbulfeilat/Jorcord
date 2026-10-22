@@ -36,7 +36,7 @@ export function AppEffects() {
     }
     if (g.guild.features.includes('MEMBER_SCREENING')) return; // the server gates the rules now: the older, client-side welcome + rules screen would only repeat it
     if (g.guild.ownerId === me.id || onboarded[guildId]) return;
-    if (!g.guild.rulesChannelId && !g.guild.description) return;
+    if (!g.guild.rulesChannelId && !g.guild.description && !g.guild.welcomeScreen?.enabled) return;
     if (Date.now() - Date.parse(mem.joinedAt) > 7 * 86_400_000) return;
     try { if (sessionStorage.getItem('jorcord.onb.' + guildId)) return; } catch { /* */ }
     if (useUI.getState().modal) return;

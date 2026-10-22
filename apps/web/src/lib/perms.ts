@@ -1,4 +1,5 @@
 /** Permission-aware UI helpers. All gating here is cosmetic: the server enforces via computePermissions. */
+import type { CSSProperties } from 'react';
 import { ALL_PERMS, Perm, computePermissions, has, type Overwrite, type PermName } from '@jorcord/shared';
 import type { Channel, Guild, Member, Role, OverwriteDTO } from '@jorcord/shared';
 
@@ -64,16 +65,32 @@ export function canManageRole(guild: Pick<Guild, 'ownerId'>, roles: Role[], acto
 }
 export function canEditMessage(msg: { author: { id: string }; type: string }, meId: string) { return msg.author.id === meId && (msg.type === 'default' || msg.type === 'reply'); }
 export function canDeleteMessage(msg: { author: { id: string } }, meId: string, perms: bigint) { return msg.author.id === meId || has(perms, Perm.MANAGE_MESSAGES); }
-export const canPinMessage = (perms: bigint, isDm: boolean) => isDm || has(perms, Perm.MANAGE_MESSAGES);
+export const canPinMessage = (perms: bigint, isDm: boolean) => isDm || has(perms, Perm.PIN_MESSAGES);
 
 export const intToHex = (c: number) => '#' + (c >>> 0).toString(16).padStart(6, '0').slice(-6);
 export const hexToInt = (h: string) => parseInt(h.replace('#', ''), 16) || 0;
 
-export function roleColor(member: Pick<Member, 'roles'> | undefined, roles: Role[]): string | undefined {
+/** The member's coloured role with the highest position (the one that colours their name). */
+export function colourRole(member: Pick<Member, 'roles'> | undefined, roles: Role[]): Role | undefined {
   if (!member) return undefined;
   let best: Role | undefined;
   for (const r of roles) if (member.roles.includes(r.id) && r.color && (!best || r.position > best.position)) best = r;
+  return best;
+}
+export function roleColor(member: Pick<Member, 'roles'> | undefined, roles: Role[]): string | undefined {
+  const best = colourRole(member, roles);
   return best ? intToHex(best.color) : undefined;
+}
+/** Text style for a role colour: a plain colour, or a left-to-right gradient clipped to the text when the role has a secondary colour. */
+export function roleTextStyle(role: Pick<Role, 'color' | 'colorSecondary'> | undefined): CSSProperties | undefined {
+  if (!role || !role.color) return undefined;
+  const a = intToHex(role.color);
+  if (role.colorSecondary == null) return { color: a };
+  return { color: a, backgroundImage: `linear-gradient(90deg, ${a}, ${intToHex(role.colorSecondary)})`, WebkitBackgroundClip: 'text', backgroundClip: 'text', WebkitTextFillColor: 'transparent' };
+}
+/** Style for the name of a member in a server: their highest coloured role, gradient included. */
+export function roleNameStyle(member: Pick<Member, 'roles'> | undefined, roles: Role[]): CSSProperties | undefined {
+  return roleTextStyle(colourRole(member, roles));
 }
 
 /** The icon of the member's highest role that has one (shown beside their name, like Discord role icons). */
@@ -132,7 +149,10 @@ export const PERMISSION_META: PermMeta[] = [
   P('ADD_REACTIONS', 'Add Reactions', 'Add new reactions to a message.', 'Text'),
   P('USE_EXTERNAL_EMOJIS', 'Use External Emoji', 'Use emoji from other servers.', 'Text'),
   P('MENTION_EVERYONE', 'Mention @everyone, @here and All Roles', 'Notify everyone in the channel.', 'Text'),
-  P('MANAGE_MESSAGES', 'Manage Messages', 'Delete messages by other members or pin any message.', 'Text'),
+  P('MANAGE_MESSAGES', 'Manage Messages', 'Delete messages by other members and remove reactions.', 'Text'),
+  P('PIN_MESSAGES', 'Pin Messages', 'Pin and unpin messages in a channel.', 'Text'),
+  P('BYPASS_SLOWMODE', 'Bypass Slowmode', 'Send messages without waiting for the channel slowmode timer.', 'Text'),
+  P('USE_EXTERNAL_STICKERS', 'Use External Stickers', 'Use stickers from other servers you are in.', 'Text'),
   P('MANAGE_THREADS', 'Manage Threads', 'Rename, delete, close and enable slow mode for threads.', 'Text'),
   P('READ_MESSAGE_HISTORY', 'Read Message History', 'Read messages sent previously in channels.', 'Text'),
   P('SEND_TTS', 'Send Text-to-Speech Messages', 'Send messages using text-to-speech.', 'Text'),
@@ -149,6 +169,7 @@ export const PERMISSION_META: PermMeta[] = [
   P('MUTE_MEMBERS', 'Mute Members', 'Mute other members in voice.', 'Voice'),
   P('DEAFEN_MEMBERS', 'Deafen Members', 'Deafen other members in voice.', 'Voice'),
   P('MOVE_MEMBERS', 'Move Members', 'Move members between voice channels.', 'Voice'),
+  P('RECORD_VOICE', 'Record Voice', 'Start and stop recordings of a voice channel.', 'Voice'),
   P('REQUEST_TO_SPEAK', 'Request to Speak', 'Request to speak in stage channels.', 'Voice'),
   P('ADMINISTRATOR', 'Administrator', 'Members with this permission have every permission and bypass channel overrides. This is dangerous.', 'Advanced'),
 ];

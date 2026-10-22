@@ -80,7 +80,7 @@ export function messageRoutes(app: FastifyInstance, ctx: Ctx) {
         `SELECT 1 AS x FROM relationships r JOIN dm_participants p ON p.channel_id = $1 WHERE r.type = 'blocked' AND ((r.user_id = $2 AND r.other_id = p.user_id) OR (r.other_id = $2 AND r.user_id = p.user_id)) LIMIT 1`, [a.channel.id, userId]);
       if (blk) throw forbidden('You cannot message this user', 'BLOCKED');
     }
-    if (a.channel.slowmode > 0 && !has(a.perms, Perm.MANAGE_MESSAGES) && !has(a.perms, Perm.MANAGE_CHANNELS)) {
+    if (a.channel.slowmode > 0 && !has(a.perms, Perm.BYPASS_SLOWMODE)) {
       const [last] = await ctx.db.query("SELECT max(id) AS id FROM messages WHERE channel_id = $1 AND author_id = $2 AND type IN ('default','reply')", [a.channel.id, userId]);
       if (last?.id) {
         const wait = Math.ceil((snowflakeTime(last.id) + a.channel.slowmode * 1000 - Date.now()) / 1000);
@@ -316,7 +316,7 @@ export function messageRoutes(app: FastifyInstance, ctx: Ctx) {
   app.put('/channels/:id/pins/:mid', async (req, reply) => {
     const p = parse(mm, req.params);
     const a = await channelAccess(ctx, req.userId, p.id);
-    if (a.channel.guild_id) need(a.perms, Perm.MANAGE_MESSAGES);
+    if (a.channel.guild_id) need(a.perms, Perm.PIN_MESSAGES);
     const [c] = await ctx.db.query('SELECT count(*)::int AS n FROM messages WHERE channel_id = $1 AND pinned', [p.id]);
     if (c.n >= LIMITS.maxPins) throw new ApiError(400, 'MAX_PINS', `At most ${LIMITS.maxPins} pinned messages`);
     const rows = await ctx.db.query('UPDATE messages SET pinned = true WHERE id = $1 AND channel_id = $2 AND NOT pinned AND type IN (\'default\',\'reply\') RETURNING id', [p.mid, p.id]);
@@ -333,7 +333,7 @@ export function messageRoutes(app: FastifyInstance, ctx: Ctx) {
   app.delete('/channels/:id/pins/:mid', async (req, reply) => {
     const p = parse(mm, req.params);
     const a = await channelAccess(ctx, req.userId, p.id);
-    if (a.channel.guild_id) need(a.perms, Perm.MANAGE_MESSAGES);
+    if (a.channel.guild_id) need(a.perms, Perm.PIN_MESSAGES);
     const rows = await ctx.db.query('UPDATE messages SET pinned = false WHERE id = $1 AND channel_id = $2 AND pinned RETURNING id', [p.mid, p.id]);
     if (rows.length) { await ctx.hub.toChannel(p.id, 'CHANNEL_PINS_UPDATE', { channelId: p.id }); if (a.channel.guild_id) await audit(ctx, a.channel.guild_id, req.userId, 'MESSAGE_UNPIN', p.mid, { channelId: p.id }); }
     return reply.code(204).send();

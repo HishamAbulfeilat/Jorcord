@@ -17,6 +17,8 @@ export interface Config {
   voiceGraceMs: number;
   /** How long an incoming DM call rings before it counts as missed. */
   callRingMs: number;
+  /** Grace period between asking to delete an account and its erasure (logging in again cancels it). */
+  accountDeletionGraceMs: number;
   accessTtlSec: number; refreshTtlSec: number;
   /** `url` is what clients connect to (handed out in voice tokens); `apiUrl` is how this server reaches LiveKit's RoomService. */
   livekit: { url: string; apiUrl: string; apiKey: string; apiSecret: string };
@@ -99,7 +101,7 @@ export function loadConfig(overrides: Partial<Config> = {}, env: NodeJS.ProcessE
     rateLimit: env.RATE_LIMIT_ENABLED !== 'false',
     maxUploadBytes: Number(env.MAX_UPLOAD_BYTES || LIMITS.maxUploadBytes),
     heartbeatIntervalMs: Number(env.HEARTBEAT_INTERVAL_MS ?? 30_000),
-    resumeWindowMs: 5 * 60_000, voiceGraceMs: Number(env.VOICE_GRACE_MS ?? 20_000), callRingMs: Number(env.CALL_RING_MS ?? 30_000), accessTtlSec: 15 * 60, refreshTtlSec: 30 * 24 * 3600,
+    resumeWindowMs: 5 * 60_000, voiceGraceMs: Number(env.VOICE_GRACE_MS ?? 20_000), callRingMs: Number(env.CALL_RING_MS ?? 30_000), accountDeletionGraceMs: Number(env.ACCOUNT_DELETION_GRACE_DAYS ?? 14) * 86_400_000, accessTtlSec: 15 * 60, refreshTtlSec: 30 * 24 * 3600,
     livekit: {
       url: env.LIVEKIT_URL ?? 'ws://localhost:7880',
       apiUrl: env.LIVEKIT_API_URL ?? (env.LIVEKIT_URL && env.LIVEKIT_URL.trim().toLowerCase() !== 'auto' ? env.LIVEKIT_URL : 'ws://localhost:7880'),

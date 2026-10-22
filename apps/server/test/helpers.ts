@@ -101,3 +101,10 @@ export class WsClient {
   waitClose(ms = 3000) { return new Promise<{ code: number }>((res, rej) => { if (this.closed) return res(this.closed); const t = setTimeout(() => rej(new Error('no close')), ms); this.ws.once('close', (code) => { clearTimeout(t); res({ code }); }); }); }
   close() { this.ws.close(); }
 }
+
+/** Account deletion has a grace period: pretend it is over and run the sweep step that erases due accounts. */
+export async function eraseNow(env: TestEnv, userId: string) {
+  await env.ctx.db.query(`UPDATE users SET deletion_due_at = now() - interval '1 minute' WHERE id = $1`, [userId]);
+  const { sweepAccountDeletions } = await import('../src/services/accountDeletion');
+  await sweepAccountDeletions(env.ctx);
+}

@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { authenticator } from 'otplib';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { ZipFileWriter } from '../src/lib/zip';
-import { Api, startServer, type Client, type TestEnv } from './helpers';
+import { Api, eraseNow, startServer, type Client, type TestEnv } from './helpers';
 import { SoftAuthenticator } from './softauthn';
 
 let env: TestEnv, api: Api;
@@ -149,7 +149,8 @@ describe('async data export', () => {
     const app = await api.req('POST', '/applications', u.token, { name: 'Gone Bot' });
     await api.req('PUT', `/users/@me/notes/${(await api.register('xnote')).id}`, u.token, { note: 'secret note' }).catch(() => {});
     await env.ctx.db.query(`INSERT INTO gif_favorites (id, user_id, url) VALUES ('1', $1, 'https://x.test/a.gif')`, [u.id]).catch(() => {});
-    expect((await api.req('DELETE', '/users/@me', u.token, { password: PW })).status).toBe(204);
+    expect((await api.req('DELETE', '/users/@me', u.token, { password: PW })).status).toBe(202);
+    await eraseNow(env, u.id);
     expect(await env.ctx.storage.size(job.storage_key)).toBeNull();
     for (const t of ['export_jobs', 'user_notes', 'gif_favorites', 'push_devices', 'connections', 'reminders', 'saved_messages', 'sessions', 'user_passkeys'])
       expect((await env.ctx.db.query(`SELECT 1 FROM ${t} WHERE user_id = $1`, [u.id])).length, t).toBe(0);

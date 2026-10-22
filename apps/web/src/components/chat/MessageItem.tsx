@@ -13,7 +13,7 @@ import { useUI, toast, toastError } from '@/stores/ui';
 import { useMessages, type Pending } from '@/stores/messages';
 import { api } from '@/lib/api';
 import { cx, displayName, fmtFull, fmtStamp, fmtTime, msgTime, fileUrl } from '@/lib/format';
-import { roleColor, roleIcon, canEditMessage, canDeleteMessage, canPinMessage, can } from '@/lib/perms';
+import { roleColor, roleNameStyle, roleIcon, canEditMessage, canDeleteMessage, canPinMessage, can } from '@/lib/perms';
 import { RoleIcon } from '@/components/ui/RoleIcon';
 import { t } from '@/i18n';
 import { toPlain, parseInline } from '@/lib/markdown';
@@ -40,7 +40,7 @@ export function useAuthorInfo(m: Pick<Message, 'author' | 'guildId'>) {
   const user = useMemo(() => ({ ...m.author, ...live }), [m.author, live]);
   return useMemo(() => {
     const roleList = roles ? Object.values(roles) : undefined;
-    return { user, member, name: displayName(user, member), color: member && roleList ? roleColor(member, roleList) : undefined, icon: member && roleList ? roleIcon(member, roleList) : undefined };
+    return { user, member, name: displayName(user, member), color: member && roleList ? roleColor(member, roleList) : undefined, nameStyle: member && roleList ? roleNameStyle(member, roleList) : undefined, icon: member && roleList ? roleIcon(member, roleList) : undefined };
   }, [user, member, roles]);
 }
 
@@ -54,7 +54,7 @@ function ReplyPreview({ m }: { m: Message }) {
       {ref ? (
         <>
           <Avatar user={info.user} size={16} />
-          <button className="shrink-0 font-medium hover:underline" style={{ color: info.color }} onClick={(e) => open({ kind: 'user', userId: ref.author.id, guildId: m.guildId ?? undefined, rect: e.currentTarget.getBoundingClientRect() })}>@{info.name}</button>
+          <button className="shrink-0 font-medium hover:underline" style={info.nameStyle ?? { color: info.color }} onClick={(e) => open({ kind: 'user', userId: ref.author.id, guildId: m.guildId ?? undefined, rect: e.currentTarget.getBoundingClientRect() })}>@{info.name}</button>
           <button onClick={jump} className="min-w-0 flex-1 truncate text-start text-interactive hover:text-header">{ref.content ? toPlain(parseInline(ref.content)) : ref.attachments.length ? 'Click to see attachment' : 'Message'}</button>
         </>
       ) : <button onClick={jump} className="italic">Original message was deleted</button>}
@@ -169,7 +169,7 @@ export const MessageItem = memo(function MessageItem({ m, grouped, highlighted, 
         <div className="min-w-0 flex-1">
           {(!grouped || m.replyTo || m.interaction) && (
             <div className="flex items-baseline gap-2 leading-[1.375rem]">
-              <button onClick={openUser} {...userTrig} className="truncate font-medium text-header hover:underline" style={{ color: info.color }}>{info.name}</button><ServerTagBadge tag={info.user.serverTag} className="ms-1 align-middle" />
+              <button onClick={openUser} {...userTrig} className="truncate font-medium text-header hover:underline" style={info.nameStyle ?? { color: info.color }}>{info.name}</button><ServerTagBadge tag={info.user.serverTag} className="ms-1 align-middle" />
               {info.icon && <RoleIcon role={info.icon} size={16} className="self-center" />}
               {m.author.bot && <span className="self-center rounded bg-brand px-1 py-px text-[10px] font-bold uppercase leading-3 text-white">Bot</span>}
               <time dateTime={new Date(ts).toISOString()} title={fmtFull(ts)} className="text-xs font-medium text-muted">{fmtStamp(ts)}</time>

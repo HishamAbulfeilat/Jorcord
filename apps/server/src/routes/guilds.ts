@@ -1,15 +1,17 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { LIMITS, Perm, SERVER_TAG_RE, TAG_BADGE_IDS, snowflake } from '@jorcord/shared';
+import { LIMITS, Perm, SERVER_TAG_RE, TAG_BADGE_IDS, WELCOME_SCREEN_MAX_CHANNELS, computePermissions, has, snowflake, type WelcomeScreen } from '@jorcord/shared';
 import { syncGuildTag } from '../services/cosmetics';
 import type { Ctx } from '../ctx';
 import { ApiError, badRequest, conflict, forbidden, notFound } from '../errors';
 import { assetUrl, idSchema, iso, limitParam, parse } from '../lib/ids';
 import { limitOrThrow } from '../lib/ratelimit';
+import { verifyPassword } from '../lib/crypto';
+import { verifyTotp } from '../lib/totp';
 import { addBoosts, boostSummary, MAX_BOOSTS_PER_REQUEST, removeBoost, slotLimits, syncBoosterRole } from '../services/boosts';
 import { MAX_REGEX_RULES_PER_GUILD, rowActions, testRules, validateRegexPatterns } from '../services/automod';
 import { deleteAttachmentFiles } from '../services/files';
-import { audit, buildGuildFull, createGuild, GUILD_TEMPLATES } from '../services/guilds';
+import { audit, buildGuildFull, createGuild, deleteGuildCascade, GUILD_TEMPLATES, transferGuildOwnership } from '../services/guilds';
 import { postSystemMessage } from '../services/messages';
 import { guildAccess, guildPerms, need } from '../services/perms';
 import { GUILD_SELECT, guildDTO } from '../services/serializers';
@@ -17,7 +19,7 @@ import { GUILD_SELECT, guildDTO } from '../services/serializers';
 const gid = z.object({ id: idSchema });
 const patchGuild = z.object({
   name: z.string().trim().min(2).max(100), icon: assetUrl.nullable(), banner: assetUrl.nullable(), description: z.string().max(1000).nullable(),
-  systemChannelId: idSchema.nullable(), rulesChannelId: idSchema.nullable(), discoverable: z.boolean(), memberScreening: z.boolean(),
+  systemChannelId: idSchema.nullable(), rulesChannelId: idSchema.nullable(), discoverable: z.boolean(), memberScreening: z.boolean(), community: z.boolean(),
   vanityUrl: z.string().regex(/^[a-z0-9-]{3,32}$/).nullable(),
   tag: z.string().regex(SERVER_TAG_RE, 'tag must be 3-4 letters or digits').nullable(), tagBadge: z.enum(TAG_BADGE_IDS).nullable(),
 }).partial().strict();
@@ -67,13 +69,19 @@ export function guildRoutes(app: FastifyInstance, ctx: Ctx) {
     const col: Record<string, string> = { name: 'name', icon: 'icon', banner: 'banner', description: 'description', systemChannelId: 'system_channel_id', rulesChannelId: 'rules_channel_id', vanityUrl: 'vanity_url', tag: 'tag', tagBadge: 'tag_badge' };
     const sets: string[] = [], vals: unknown[] = [id];
     for (const [k, v] of Object.entries(b)) { if (!col[k]) continue; vals.push(v); sets.push(`${col[k]} = $${vals.length}`); }
-    if (b.discoverable !== undefined || b.memberScreening !== undefined) {
-      const [g] = await ctx.db.query('SELECT features, rules_channel_id FROM guilds WHERE id = $1', [id]);
+    if (b.discoverable !== undefined || b.memberScreening !== undefined || b.community !== undefined) {
+      const [g] = await ctx.db.query('SELECT features, rules_channel_id, welcome_screen FROM guilds WHERE id = $1', [id]);
       const f = new Set<string>(g.features);
       if (b.discoverable !== undefined) { b.discoverable ? f.add('DISCOVERABLE') : f.delete('DISCOVERABLE'); }
       if (b.memberScreening !== undefined) {
         if (b.memberScreening && !(b.rulesChannelId ?? g.rules_channel_id)) throw badRequest('Set a rules channel before turning on membership screening');
         b.memberScreening ? f.add('MEMBER_SCREENING') : f.delete('MEMBER_SCREENING');
+      }
+      if (b.community !== undefined) {
+        if (b.community && !(b.rulesChannelId ?? g.rules_channel_id)) throw badRequest('Set a rules channel before turning on Community');
+        b.community ? f.add('COMMUNITY') : f.delete('COMMUNITY');
+        // the welcome screen only exists for community servers: leaving Community switches it off (the content is kept)
+        if (!b.community && g.welcome_screen?.enabled) { vals.push(JSON.stringify({ ...g.welcome_screen, enabled: false })); sets.push(`welcome_screen = $${vals.length}::jsonb`); }
       }
       vals.push(JSON.stringify([...f])); sets.push(`features = $${vals.length}::jsonb`);
     }
@@ -86,20 +94,70 @@ export function guildRoutes(app: FastifyInstance, ctx: Ctx) {
     return dto;
   });
 
+  // ---------- welcome screen (community servers) ----------
+  const welcomeBody = z.object({
+    enabled: z.boolean(), description: z.string().trim().max(300).nullable(),
+    channels: z.array(z.object({ channelId: idSchema, description: z.string().trim().min(1).max(50), emoji: z.string().max(64).nullable().optional() }).strict()).max(WELCOME_SCREEN_MAX_CHANNELS),
+  }).partial().strict();
+  /** Members of the server read it (it is also part of the guild object they receive). */
+  app.get('/guilds/:id/welcome-screen', async (req) => {
+    const { id } = parse(gid, req.params);
+    await guildAccess(ctx, req.userId, id);
+    const [g] = await ctx.db.query('SELECT features, welcome_screen FROM guilds WHERE id = $1', [id]);
+    if (!g) throw notFound('Guild');
+    return ((g.features as string[]).includes('COMMUNITY') ? g.welcome_screen : null) ?? { enabled: false, description: null, channels: [] };
+  });
+  app.patch('/guilds/:id/welcome-screen', async (req) => {
+    const { id } = parse(gid, req.params);
+    const b = parse(welcomeBody, req.body);
+    const gp = await guildAccess(ctx, req.userId, id);
+    need(guildPerms(gp), Perm.MANAGE_GUILD);
+    const [g] = await ctx.db.query('SELECT features, welcome_screen FROM guilds WHERE id = $1', [id]);
+    if (!g) throw notFound('Guild');
+    if (!(g.features as string[]).includes('COMMUNITY')) throw badRequest('The welcome screen is only available for community servers');
+    const cur: WelcomeScreen = g.welcome_screen ?? { enabled: false, description: null, channels: [] };
+    const next: WelcomeScreen = { enabled: b.enabled ?? cur.enabled, description: b.description !== undefined ? (b.description || null) : cur.description, channels: cur.channels };
+    if (b.channels) {
+      const ids = b.channels.map((c) => c.channelId);
+      if (new Set(ids).size !== ids.length) throw badRequest('A channel can only be listed once');
+      const rows = ids.length ? await ctx.db.query(`SELECT id, type FROM channels WHERE guild_id = $1 AND id = ANY($2::text[]) AND type NOT IN ('category','thread')`, [id, ids]) : [];
+      if (rows.length !== ids.length) throw badRequest('Welcome channels must be channels of this server (no categories or threads)');
+      // A welcome screen is public to every newcomer: it may only advertise channels @everyone can see.
+      const [ev] = await ctx.db.query('SELECT permissions FROM roles WHERE id = $1', [id]);
+      for (const cid of ids) {
+        const ow = await ctx.pcache.channelOverwrites(ctx, cid);
+        const p = computePermissions({ isOwner: false, everyoneRoleId: id, everyonePerms: BigInt(ev?.permissions ?? '0'), memberRoleIds: [], rolePerms: {}, memberId: '', overwrites: ow });
+        if (!has(p, Perm.VIEW_CHANNEL)) throw badRequest('Welcome channels must be visible to @everyone');
+      }
+      next.channels = b.channels.map((c) => ({ channelId: c.channelId, description: c.description, emoji: c.emoji ?? null }));
+    }
+    if (next.enabled && !next.channels.length) throw badRequest('Add at least one channel to the welcome screen');
+    await ctx.db.query('UPDATE guilds SET welcome_screen = $2::jsonb WHERE id = $1', [id, JSON.stringify(next)]);
+    await audit(ctx, id, req.userId, 'GUILD_UPDATE', id, { welcomeScreen: next });
+    await ctx.hub.toGuild(id, 'GUILD_UPDATE', (await getGuildDTO(ctx, id))!);
+    return next;
+  });
+
   app.delete('/guilds/:id', async (req, reply) => {
     const { id } = parse(gid, req.params);
     const gp = await guildAccess(ctx, req.userId, id);
     if (!gp.isOwner) throw forbidden('Only the owner can delete a guild');
-    const members = (await ctx.db.query('SELECT user_id FROM members WHERE guild_id = $1', [id])).map((r) => r.user_id as string);
-    await ctx.db.query(`UPDATE users SET server_tag = NULL WHERE server_tag->>'guildId' = $1`, [id]);
-    const attachmentLists = (await ctx.db.query(`SELECT attachments FROM messages WHERE guild_id = $1 AND attachments <> '[]'::jsonb`, [id])).map((r) => r.attachments);
-    await ctx.db.tx(async (q) => {
-      await q.query('DELETE FROM messages WHERE guild_id = $1', [id]);
-      await q.query('DELETE FROM guilds WHERE id = $1', [id]);
-    });
-    await deleteAttachmentFiles(ctx, attachmentLists).catch((e) => ctx.log.warn({ err: e }, 'attachment cleanup failed'));
-    await ctx.pcache.invalidate({ k: 'guild', guildId: id });
-    await ctx.hub.toUsers(members, 'GUILD_DELETE', { id });
+    await deleteGuildCascade(ctx, id);
+    return reply.code(204).send();
+  });
+
+  /** Owner hands the server to another member. Re-authenticates with the password (and TOTP when enabled). */
+  app.post('/guilds/:id/transfer-ownership', async (req, reply) => {
+    const { id } = parse(gid, req.params);
+    const b = parse(z.object({ userId: idSchema, password: z.string().max(128), totp: z.string().regex(/^\d{6}$/).optional() }).strict(), req.body);
+    limitOrThrow(ctx.rl, `transfer-owner:${req.userId}`, 5, 15 * 60_000, ctx.config.rateLimit);
+    const gp = await guildAccess(ctx, req.userId, id);
+    if (!gp.isOwner) throw forbidden('Only the owner can transfer a guild');
+    if (b.userId === req.userId) throw badRequest('You already own this server');
+    const [u] = await ctx.db.query('SELECT * FROM users WHERE id = $1', [req.userId]);
+    if (!u?.password_hash || !(await verifyPassword(u.password_hash, b.password))) throw new ApiError(401, 'INVALID_CREDENTIALS', 'Invalid credentials');
+    if (u.mfa_enabled && (!b.totp || !(await verifyTotp(ctx, u, b.totp)))) throw new ApiError(401, 'MFA_REQUIRED', 'A valid two-factor code is required');
+    await transferGuildOwnership(ctx, id, b.userId, req.userId);
     return reply.code(204).send();
   });
 

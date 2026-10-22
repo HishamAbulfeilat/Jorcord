@@ -1,6 +1,6 @@
 import { authenticator } from 'otplib';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { Api, startServer, type Client, type TestEnv } from './helpers';
+import { Api, eraseNow, startServer, type Client, type TestEnv } from './helpers';
 import { SoftAuthenticator } from './softauthn';
 
 let env: TestEnv, api: Api;
@@ -141,7 +141,8 @@ describe('passkeys: sign in', () => {
   it('removes passkeys when the account is deleted', async () => {
     const u = await api.register('pkdel');
     await enroll(u);
-    expect((await api.req('DELETE', '/users/@me', u.token, { password: PW })).status).toBe(204);
+    expect((await api.req('DELETE', '/users/@me', u.token, { password: PW })).status).toBe(202);
+    await eraseNow(env, u.id);
     expect((await env.ctx.db.query('SELECT 1 FROM user_passkeys WHERE user_id = $1', [u.id])).length).toBe(0);
   });
 

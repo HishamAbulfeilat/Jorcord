@@ -4,6 +4,7 @@ import { api } from '@/lib/api';
 import { ApiException } from '@/lib/transport';
 import { useAuth } from '@/stores/auth';
 import { useData } from '@/stores/data';
+import { toast } from '@/stores/ui';
 import { Logo } from '@/components/ui/Logo';
 import { Spinner } from '@/components/ui/primitives';
 import { FIXED_SERVER, getServerUrl, isCapacitor, isNative } from '@/lib/server';
@@ -32,6 +33,7 @@ export const labelCls = 'mb-2 block text-xs font-bold uppercase tracking-wide te
 export async function finishAuth(r: Awaited<ReturnType<typeof api.auth.login>>, remember = true) {
   setRemember(remember);
   useAuth.getState().set(r.accessToken, r.refreshToken); useData.getState().setMe(r.user);
+  if (r.deletionCancelled) toast(t('Welcome back! Your scheduled account deletion was cancelled.'), 'success');
 }
 
 export function LoginPage() {

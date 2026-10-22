@@ -43,11 +43,11 @@ export function guildDTO(r: any): Guild {
     id: r.id, name: r.name, icon: r.icon ?? null, banner: r.banner ?? null, description: r.description ?? null, ownerId: r.owner_id,
     systemChannelId: r.system_channel_id ?? null, rulesChannelId: r.rules_channel_id ?? null,
     boostLevel: boostLevel(r.boost_count ?? 0), boostCount: r.boost_count ?? 0, features: r.features ?? [], vanityUrl: r.vanity_url ?? null, createdAt: iso(r.created_at)!, tag: r.tag ?? null, tagBadge: r.tag_badge ?? null,
-    verificationLevel: (r.verification_level ?? 0) as 0, explicitFilter: (r.explicit_filter ?? 0) as 0, defaultNotifications: r.default_notifications ?? 'mentions',
+    verificationLevel: (r.verification_level ?? 0) as 0, explicitFilter: (r.explicit_filter ?? 0) as 0, defaultNotifications: r.default_notifications ?? 'mentions', welcomeScreen: r.welcome_screen ?? null,
     invitesPausedUntil: r.invites_paused_until && new Date(r.invites_paused_until).getTime() > Date.now() ? iso(r.invites_paused_until) : null,
   };
 }
-export const roleDTO = (r: any): Role => ({ id: r.id, guildId: r.guild_id, name: r.name, color: r.color, hoist: r.hoist, position: r.position, permissions: r.permissions, mentionable: r.mentionable, icon: r.icon ?? null });
+export const roleDTO = (r: any): Role => ({ id: r.id, guildId: r.guild_id, name: r.name, color: r.color, colorSecondary: r.color_secondary ?? null, hoist: r.hoist, position: r.position, permissions: r.permissions, mentionable: r.mentionable, icon: r.icon ?? null });
 export const overwriteDTO = (o: any): OverwriteDTO => ({ id: o.target_id, type: o.type, allow: o.allow, deny: o.deny });
 
 export async function channelsDTO(ctx: Ctx, rows: any[]): Promise<Channel[]> {

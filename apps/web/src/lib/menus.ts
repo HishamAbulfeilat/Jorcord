@@ -48,7 +48,7 @@ export function guildMenu(gid: Id): MenuItem[] {
     { label: t('Notification Settings'), icon: Bell, onClick: () => ui().openModal({ kind: 'notifSettings', scope: 'guild', id: gid }) },
     { label: t('Hide Muted Channels'), icon: EyeOff, checked: !!ui().prefs.hideMutedChannels[gid], onClick: () => ui().setPref('hideMutedChannels', { ...ui().prefs.hideMutedChannels, [gid]: !ui().prefs.hideMutedChannels[gid] }) },
     ...(g.features.includes('ONBOARDING') ? [{ label: t('Channels & Roles'), icon: ListChecks, onClick: () => ui().openModal({ kind: 'customize', guildId: gid }) }] : []),
-    ...(g.rulesChannelId || g.description ? [{ label: t('View Server Welcome'), icon: BookOpen, onClick: () => ui().openModal({ kind: 'onboarding', guildId: gid }) }] : []),
+    ...(g.rulesChannelId || g.description || g.welcomeScreen?.enabled ? [{ label: t('View Server Welcome'), icon: BookOpen, onClick: () => ui().openModal({ kind: 'onboarding', guildId: gid }) }] : []),
     ...(can(p, Perm.MANAGE_GUILD) ? [{ label: t('Add App'), icon: Bot, onClick: () => navigateTo(addAppPath(gid)) }] : []),
     { label: t('Edit Server Profile'), icon: Pencil, onClick: () => ui().openSettings({ kind: 'guild', guildId: gid, tab: 'profile' }) },
     { label: t('Linked Roles'), icon: Link2, onClick: () => ui().openSettings({ kind: 'guild', guildId: gid, tab: 'linkedroles' }) },

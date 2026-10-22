@@ -36,8 +36,14 @@ export interface Guild {
   tag?: string | null; tagBadge?: string | null;
   /** Safety (see GuildSafety): enforced server-side. `invitesPausedUntil` is set while invites/joins are paused (raid protection or manual). */
   verificationLevel?: 0 | 1 | 2 | 3 | 4; explicitFilter?: 0 | 1 | 2; defaultNotifications?: 'all' | 'mentions'; invitesPausedUntil?: string | null;
+  /** Community servers only (null otherwise). */
+  welcomeScreen?: WelcomeScreen | null;
 }
-export interface Role { id: Id; guildId: Id; name: string; color: number; hoist: boolean; position: number; permissions: string; mentionable: boolean; icon: string | null }
+/** Welcome screen of a community server (feature COMMUNITY): shown to people who just joined. Pinned channels are always visible to @everyone. */
+export interface WelcomeScreenChannel { channelId: Id; description: string; emoji: string | null }
+export interface WelcomeScreen { enabled: boolean; description: string | null; channels: WelcomeScreenChannel[] }
+export const WELCOME_SCREEN_MAX_CHANNELS = 5;
+export interface Role { id: Id; guildId: Id; name: string; color: number; /** Second stop of a gradient name colour (needs a non-zero `color`), or null. */ colorSecondary?: number | null; hoist: boolean; position: number; permissions: string; mentionable: boolean; icon: string | null }
 export interface OverwriteDTO { id: Id; type: 'role' | 'member'; allow: string; deny: string }
 export interface Channel {
   id: Id; guildId: Id | null; type: ChannelType; name: string | null; topic: string | null; position: number;

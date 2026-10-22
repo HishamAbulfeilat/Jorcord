@@ -58,5 +58,11 @@ export async function issueTokens(ctx: Ctx, userRow: any, req: FastifyRequest, e
     await ctx.db.query('INSERT INTO sessions (id, user_id, refresh_hash, user_agent, ip, expires_at) VALUES ($1,$2,$3,$4,$5,$6)',
       [sid, userRow.id, sha256(refresh), String(req.headers['user-agent'] ?? '').slice(0, 300), req.ip, exp]);
   }
-  return { user: selfUserDTO(ctx, userRow), accessToken: await signAccess(ctx.config.jwtSecret, userRow.id, sid, ctx.config.accessTtlSec), refreshToken: refresh };
+  // logging in during the deletion grace period cancels the deletion (a refresh keeps its session, which deletion already revoked)
+  let deletionCancelled = false;
+  if (!existingSessionId && userRow.deletion_due_at) {
+    await ctx.db.query('UPDATE users SET deletion_due_at = NULL WHERE id = $1 AND deleted_at IS NULL', [userRow.id]);
+    userRow.deletion_due_at = null; deletionCancelled = true;
+  }
+  return { ...(deletionCancelled ? { deletionCancelled } : {}), user: selfUserDTO(ctx, userRow), accessToken: await signAccess(ctx.config.jwtSecret, userRow.id, sid, ctx.config.accessTtlSec), refreshToken: refresh };
 }

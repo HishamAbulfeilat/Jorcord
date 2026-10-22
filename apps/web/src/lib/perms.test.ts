@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_EVERYONE, Perm } from '@jorcord/shared';
 import type { Member, Role } from '@jorcord/shared';
-import { canDeleteMessage, canManageMember, canManageRole, composerState, effectivePerms, groupMembers, overwriteState, roleColor, setOverwriteState, togglePerm, hasPermBit } from './perms';
+import { PERMISSION_META, canPinMessage, roleNameStyle, roleTextStyle, canDeleteMessage, canManageMember, canManageRole, composerState, effectivePerms, groupMembers, overwriteState, roleColor, setOverwriteState, togglePerm, hasPermBit } from './perms';
 
 const role = (id: string, position: number, perms: bigint, extra: Partial<Role> = {}): Role => ({ id, guildId: 'g', name: id, color: 0, hoist: false, position, permissions: perms.toString(), mentionable: false, icon: null, ...extra });
 const user = (id: string) => ({ id, username: id, displayName: null, avatar: null, banner: null, accentColor: null, bio: null, pronouns: null, bot: false, createdAt: '' });
@@ -89,5 +89,38 @@ describe('composerState: screening and locked threads', () => {
     expect(composerState(p | Perm.MANAGE_THREADS, { type: 'thread', locked: true }).canSend).toBe(true);
     expect(composerState(p, { type: 'thread', locked: true, archived: true })).toMatchObject({ canSend: false, reason: 'This thread is archived and locked.' });
     expect(composerState(p, { type: 'thread', archived: true })).toMatchObject({ canSend: false, reason: 'This thread is archived.' });
+  });
+});
+
+describe('gradient role colours', () => {
+  const plain = role('plain', 3, 0n, { color: 0xff0000 });
+  const grad = role('grad', 4, 0n, { color: 0x00ff00, colorSecondary: 0x0000ff });
+  it('a single colour renders as a plain colour, a secondary colour as a clipped left-to-right gradient', () => {
+    expect(roleTextStyle(plain)).toEqual({ color: '#ff0000' });
+    expect(roleTextStyle(role('none', 1, 0n))).toBeUndefined();
+    const s = roleTextStyle(grad)!;
+    expect(s.backgroundImage).toBe('linear-gradient(90deg, #00ff00, #0000ff)');
+    expect(s).toMatchObject({ backgroundClip: 'text', WebkitTextFillColor: 'transparent' });
+  });
+  it('the highest coloured role decides, and a secondary colour without a primary one is ignored', () => {
+    const rs = [plain, grad, role('ghost', 9, 0n, { color: 0, colorSecondary: 0x123456 })];
+    expect(roleNameStyle(mem('u', ['plain', 'grad', 'ghost']), rs)?.backgroundImage).toContain('#00ff00');
+    expect(roleNameStyle(mem('u', ['plain']), rs)).toEqual({ color: '#ff0000' });
+    expect(roleNameStyle(mem('u', ['ghost']), rs)).toBeUndefined();
+    expect(roleNameStyle(undefined, rs)).toBeUndefined();
+  });
+});
+
+describe('new permission bits in the UI', () => {
+  it('pin needs PIN_MESSAGES (not MANAGE_MESSAGES) in servers and is open in DMs', () => {
+    expect(canPinMessage(Perm.MANAGE_MESSAGES, false)).toBe(false);
+    expect(canPinMessage(Perm.PIN_MESSAGES, false)).toBe(true);
+    expect(canPinMessage(Perm.ADMINISTRATOR, false)).toBe(true);
+    expect(canPinMessage(0n, true)).toBe(true);
+  });
+  it('every permission has a label in the role editor, including PIN_MESSAGES, BYPASS_SLOWMODE and USE_EXTERNAL_STICKERS', () => {
+    const names = new Set(PERMISSION_META.map((p) => p.name));
+    for (const n of Object.keys(Perm)) expect(names.has(n as keyof typeof Perm), n).toBe(true);
+    expect(PERMISSION_META.find((p) => p.name === 'PIN_MESSAGES')).toMatchObject({ label: 'Pin Messages', group: 'Text' });
   });
 });

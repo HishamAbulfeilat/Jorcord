@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { decodeJwt } from 'jose';
 import { authenticator } from 'otplib';
 import { Perm } from '@jorcord/shared';
-import { Api, WsClient, startServer, type Client, type TestEnv } from './helpers';
+import { Api, WsClient, eraseNow, startServer, type Client, type TestEnv } from './helpers';
 
 let env: TestEnv, api: Api;
 beforeAll(async () => { env = await startServer(); api = new Api(env); });
@@ -472,7 +472,8 @@ describe('account deletion and export', () => {
     const blocked = await api.req('DELETE', '/users/@me', owner.token, { password: 'correct horse battery' });
     expect(blocked.status).toBe(409); expect(blocked.body.code).toBe('OWNS_GUILDS');
 
-    expect((await api.req('DELETE', '/users/@me', bob!.token, { password: 'correct horse battery' })).status).toBe(204);
+    expect((await api.req('DELETE', '/users/@me', bob!.token, { password: 'correct horse battery' })).status).toBe(202);
+    await eraseNow(env, bob!.id);
     await w.waitEvent('MEMBER_REMOVE', (d) => d.userId === bob!.id);
     await w.waitEvent('USER_UPDATE', (d) => d.id === bob!.id && d.username === `deleted_${bob!.id}`);
     expect((await api.req('GET', '/users/@me', bob!.token)).status).toBe(401);
@@ -489,7 +490,7 @@ describe('account deletion and export', () => {
     expect((await api.req('POST', '/auth/register', null, { email: 'new@example.com', username: bob!.username, password: 'correct horse battery' })).status).toBe(201);
     // once the owner deletes the server the account can go too
     await api.req('DELETE', `/guilds/${guild.id}`, owner.token);
-    expect((await api.req('DELETE', '/users/@me', owner.token, { password: 'correct horse battery' })).status).toBe(204);
+    expect((await api.req('DELETE', '/users/@me', owner.token, { password: 'correct horse battery' })).status).toBe(202);
     w.close();
   });
   it('asks for a 2FA code when enabled', async () => {
@@ -498,7 +499,7 @@ describe('account deletion and export', () => {
     await api.req('POST', '/auth/mfa/enable', u.token, { code: authenticator.generate(setup.secret) });
     const r = await api.req('DELETE', '/users/@me', u.token, { password: 'correct horse battery' });
     expect(r.status).toBe(401); expect(r.body.code).toBe('MFA_REQUIRED');
-    expect((await api.req('DELETE', '/users/@me', u.token, { password: 'correct horse battery', totp: authenticator.generate(setup.secret) })).status).toBe(204);
+    expect((await api.req('DELETE', '/users/@me', u.token, { password: 'correct horse battery', totp: authenticator.generate(setup.secret) })).status).toBe(202);
   });
   it('exports own data without secrets', async () => {
     const { owner, general, members: [bob] } = await guildWith('exp');

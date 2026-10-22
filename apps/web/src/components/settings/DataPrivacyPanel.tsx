@@ -39,12 +39,12 @@ function DeleteAccount() {
   const [open, setOpen] = useState(false); const [pw, setPw] = useState(''); const [code, setCode] = useState(''); const [busy, setBusy] = useState(false);
   const run = async () => {
     setBusy(true);
-    try { await api.dataExport.deleteAccount({ password: pw, ...(mfa ? { totp: code } : {}) }); useAuth.getState().clear(); location.assign(import.meta.env.BASE_URL + 'login'); }
+    try { const r = await api.dataExport.deleteAccount({ password: pw, ...(mfa ? { totp: code } : {}) }); toast(t('Your account will be deleted in {n} days. Sign in again before then to cancel.', { n: r?.graceDays ?? 14 }), 'success'); useAuth.getState().clear(); location.assign(import.meta.env.BASE_URL + 'login'); }
     catch (e) { toastError(e); setBusy(false); }
   };
   return (<>
     <H3>{t('Delete account')}</H3>
-    <p className="mb-2 text-sm text-muted">{t('Permanently deletes your account, personal data and sign-ins. Your past messages stay in servers, shown as "Deleted User". You must transfer or delete servers you own first. This cannot be undone.')}</p>
+    <p className="mb-2 text-sm text-muted">{t('Schedules your account for deletion. You are signed out everywhere, and after 14 days your account, personal data and sign-ins are erased for good. Signing in again before then cancels the deletion. Your past messages stay in servers, shown as "Deleted User". You must transfer or delete servers you own first.')}</p>
     {!open ? <button className="btn btn-danger" onClick={() => setOpen(true)}>{t('Delete account')}</button> : (
       <form className="flex flex-wrap gap-2" onSubmit={(e) => { e.preventDefault(); void run(); }} data-testid="delete-account-form">
         <input className="field !w-52" type="password" autoComplete="current-password" placeholder={t('Password')} aria-label={t('Password to delete account')} value={pw} onChange={(e) => setPw(e.target.value)} autoFocus />

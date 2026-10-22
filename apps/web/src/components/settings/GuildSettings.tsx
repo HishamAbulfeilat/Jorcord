@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Inbox, FileText, PanelTop, BarChart3, ShieldCheck, Tag, Volume2, Ban, Bot, Compass, GripVertical, Hash, Webhook as WebhookIcon, Sticker as StickerIcon, Copy as CopyIcon, Link2, ListChecks, Rocket, Settings as Cog, Shield, Smile, Trash2, Users, ScrollText, Plus, Search, Crown, UserCircle } from 'lucide-react';
+import { BookOpen, Inbox, FileText, PanelTop, BarChart3, ShieldCheck, Tag, Volume2, Ban, Bot, Compass, GripVertical, Hash, Webhook as WebhookIcon, Sticker as StickerIcon, Copy as CopyIcon, Link2, ListChecks, Rocket, Settings as Cog, Shield, Smile, Trash2, Users, ScrollText, Plus, Search, Crown, UserCircle } from 'lucide-react';
 import { Perm } from '@jorcord/shared';
 import type { AutoModPreset, AutoModRule, Channel } from '@jorcord/shared';
 import { api } from '@/lib/api';
@@ -28,6 +28,7 @@ import { ServerTagEditor } from './CosmeticsPicker';
 import { ServerProfileEditor } from './ServerProfiles';
 import { SafetyTab } from './SafetyTab';
 import { AppealsTab } from './AppealsTab';
+import { WelcomeScreenTab } from './WelcomeScreenTab';
 import { AutoModTab } from './AutoModTab';
 import { BoostTab } from './BoostTab';
 import { LinkedRolesTab } from './LinkedRolesTab';
@@ -44,7 +45,7 @@ export function GuildSettings({ guildId, initialTab }: { guildId: string; initia
   const items = useMemo(() => {
     const it = (id: string, label: string, icon: any, ok: boolean) => (ok ? [{ id, label: t(label), icon }] : []);
     return [
-      { title: g?.guild.name ?? 'Server', items: [...it('overview', T('Overview'), Cog, can(perms, Perm.MANAGE_GUILD)), ...it('roles', T('Roles'), Shield, can(perms, Perm.MANAGE_ROLES)), ...it('channels', T('Channels'), Hash, can(perms, Perm.MANAGE_CHANNELS)), ...it('emoji', T('Emoji'), Smile, can(perms, Perm.MANAGE_EMOJIS)), ...it('stickers', T('Stickers'), StickerIcon, can(perms, Perm.MANAGE_EMOJIS)), ...it('soundboard', T('Soundboard'), Volume2, can(perms, Perm.MANAGE_EMOJIS)), ...it('safety', T('Safety Setup'), ShieldCheck, can(perms, Perm.MANAGE_GUILD)), ...it('onboarding', T('Onboarding'), ListChecks, can(perms, Perm.MANAGE_GUILD)), ...it('template', T('Server Template'), FileText, can(perms, Perm.MANAGE_GUILD)), ...it('widget', T('Widget'), PanelTop, can(perms, Perm.MANAGE_GUILD)), ...it('insights', T('Insights'), BarChart3, can(perms, Perm.MANAGE_GUILD)), ...it('servertag', T('Server Tag'), Tag, can(perms, Perm.MANAGE_GUILD)), ...it('apps', T('Bots & Apps'), Bot, can(perms, Perm.MANAGE_GUILD)), ...it('integrations', T('Integrations'), WebhookIcon, can(perms, Perm.MANAGE_WEBHOOKS)), ...it('commands', T('Command Permissions'), Bot, can(perms, Perm.MANAGE_GUILD) && can(perms, Perm.MANAGE_ROLES)), ...it('boosts', T('Server Boost'), Rocket, true), ...it('linkedroles', T('Linked Roles'), Link2, true), ...it('profile', T('Server Profile'), UserCircle, true)] },
+      { title: g?.guild.name ?? 'Server', items: [...it('overview', T('Overview'), Cog, can(perms, Perm.MANAGE_GUILD)), ...it('roles', T('Roles'), Shield, can(perms, Perm.MANAGE_ROLES)), ...it('channels', T('Channels'), Hash, can(perms, Perm.MANAGE_CHANNELS)), ...it('emoji', T('Emoji'), Smile, can(perms, Perm.MANAGE_EMOJIS)), ...it('stickers', T('Stickers'), StickerIcon, can(perms, Perm.MANAGE_EMOJIS)), ...it('soundboard', T('Soundboard'), Volume2, can(perms, Perm.MANAGE_EMOJIS)), ...it('safety', T('Safety Setup'), ShieldCheck, can(perms, Perm.MANAGE_GUILD)), ...it('onboarding', T('Onboarding'), ListChecks, can(perms, Perm.MANAGE_GUILD)), ...it('template', T('Server Template'), FileText, can(perms, Perm.MANAGE_GUILD)), ...it('widget', T('Widget'), PanelTop, can(perms, Perm.MANAGE_GUILD)), ...it('insights', T('Insights'), BarChart3, can(perms, Perm.MANAGE_GUILD)), ...it('servertag', T('Server Tag'), Tag, can(perms, Perm.MANAGE_GUILD)), ...it('welcome', T('Welcome Screen'), BookOpen, can(perms, Perm.MANAGE_GUILD) && !!g?.guild.features.includes('COMMUNITY')), ...it('apps', T('Bots & Apps'), Bot, can(perms, Perm.MANAGE_GUILD)), ...it('integrations', T('Integrations'), WebhookIcon, can(perms, Perm.MANAGE_WEBHOOKS)), ...it('commands', T('Command Permissions'), Bot, can(perms, Perm.MANAGE_GUILD) && can(perms, Perm.MANAGE_ROLES)), ...it('boosts', T('Server Boost'), Rocket, true), ...it('linkedroles', T('Linked Roles'), Link2, true), ...it('profile', T('Server Profile'), UserCircle, true)] },
       { title: t('Moderation'), items: [...it('members', T('Members'), Users, can(perms, Perm.KICK_MEMBERS) || can(perms, Perm.MANAGE_ROLES) || can(perms, Perm.MANAGE_GUILD)), ...it('invites', T('Invites'), Link2, can(perms, Perm.MANAGE_GUILD) || can(perms, Perm.CREATE_INVITE)), ...it('automod', T('AutoMod'), Bot, can(perms, Perm.MANAGE_GUILD)), ...it('audit', T('Audit Log'), ScrollText, can(perms, Perm.VIEW_AUDIT_LOG)), ...it('bans', T('Bans'), Ban, can(perms, Perm.BAN_MEMBERS)), ...it('appeals', T('Appeals'), Inbox, can(perms, Perm.BAN_MEMBERS)), ...it('modtools', T('Mod Tools'), Shield, can(perms, Perm.KICK_MEMBERS) || can(perms, Perm.BAN_MEMBERS) || can(perms, Perm.VIEW_AUDIT_LOG))] },
       ...(isOwner ? [{ items: [{ id: 'delete', label: t('Delete Server'), icon: Trash2, danger: true }] }] : []),
     ].filter((gr) => gr.items.length);
@@ -66,6 +67,7 @@ export function GuildSettings({ guildId, initialTab }: { guildId: string; initia
       {tab === 'widget' && <WidgetTab guildId={guildId} />}
       {tab === 'insights' && <InsightsTab guildId={guildId} />}
       {tab === 'servertag' && <ServerTagTab guildId={guildId} />}
+      {tab === 'welcome' && <WelcomeScreenTab guildId={guildId} />}
       {tab === 'apps' && <BotsAppsTab guildId={guildId} myPerms={perms} />}
       {tab === 'integrations' && <IntegrationsTab guildId={guildId} />}
       {tab === 'commands' && <CommandPermissions guildId={guildId} />}
@@ -86,9 +88,9 @@ export function GuildSettings({ guildId, initialTab }: { guildId: string; initia
 
 function Overview({ guildId }: { guildId: string }) {
   const g = useData((s) => s.guilds[guildId])!; const gd = g.guild;
-  const [f, setF] = useState({ name: gd.name, description: gd.description ?? '', icon: gd.icon, banner: gd.banner, systemChannelId: gd.systemChannelId ?? '', rulesChannelId: gd.rulesChannelId ?? '', discoverable: gd.features.includes('DISCOVERABLE'), screening: gd.features.includes('MEMBER_SCREENING') }); const [busy, setBusy] = useState(false);
-  const dirty = f.name !== gd.name || (f.description || null) !== (gd.description || null) || f.icon !== gd.icon || f.banner !== gd.banner || (f.systemChannelId || null) !== (gd.systemChannelId || null) || (f.rulesChannelId || null) !== (gd.rulesChannelId || null) || f.discoverable !== gd.features.includes('DISCOVERABLE') || f.screening !== gd.features.includes('MEMBER_SCREENING');
-  const save = async () => { setBusy(true); try { const u = await api.guilds.patch(guildId, { name: f.name, description: f.description || null, icon: f.icon, banner: f.banner, systemChannelId: f.systemChannelId || null, rulesChannelId: f.rulesChannelId || null, discoverable: f.discoverable, memberScreening: f.screening && !!f.rulesChannelId }); useData.getState().apply('GUILD_UPDATE', { ...gd, ...u }); toast(t('Server updated'), 'success'); } catch (e) { toastError(e); } setBusy(false); };
+  const [f, setF] = useState({ name: gd.name, description: gd.description ?? '', icon: gd.icon, banner: gd.banner, systemChannelId: gd.systemChannelId ?? '', rulesChannelId: gd.rulesChannelId ?? '', discoverable: gd.features.includes('DISCOVERABLE'), screening: gd.features.includes('MEMBER_SCREENING'), community: gd.features.includes('COMMUNITY') }); const [busy, setBusy] = useState(false);
+  const dirty = f.name !== gd.name || (f.description || null) !== (gd.description || null) || f.icon !== gd.icon || f.banner !== gd.banner || (f.systemChannelId || null) !== (gd.systemChannelId || null) || (f.rulesChannelId || null) !== (gd.rulesChannelId || null) || f.discoverable !== gd.features.includes('DISCOVERABLE') || f.screening !== gd.features.includes('MEMBER_SCREENING') || f.community !== gd.features.includes('COMMUNITY');
+  const save = async () => { setBusy(true); try { const u = await api.guilds.patch(guildId, { name: f.name, description: f.description || null, icon: f.icon, banner: f.banner, systemChannelId: f.systemChannelId || null, rulesChannelId: f.rulesChannelId || null, discoverable: f.discoverable, memberScreening: f.screening && !!f.rulesChannelId, community: f.community && !!f.rulesChannelId }); useData.getState().apply('GUILD_UPDATE', { ...gd, ...u }); toast(t('Server updated'), 'success'); } catch (e) { toastError(e); } setBusy(false); };
   const texts = Object.values(g.channels).filter((c) => c.type === 'text');
   return (<>
     <H1>{t('Server Overview')}</H1>
@@ -98,10 +100,11 @@ function Overview({ guildId }: { guildId: string }) {
     <Field label={t('System Messages Channel')} hint={t('We use this channel to post welcome messages and boost announcements.')}><select className="field" value={f.systemChannelId} onChange={(e) => setF({ ...f, systemChannelId: e.target.value })}><option value="">{t('No system messages')}</option>{texts.map((c) => <option key={c.id} value={c.id}>#{c.name}</option>)}</select></Field>
     <Field label={t('Rules Channel')} hint={t('New members review the messages in this channel on a welcome screen before they start chatting.')}><select className="field" value={f.rulesChannelId} onChange={(e) => setF({ ...f, rulesChannelId: e.target.value })}><option value="">{t('No rules screening')}</option>{texts.map((c) => <option key={c.id} value={c.id}>#{c.name}</option>)}</select></Field>
     <Row title={t('Membership Screening')} desc={f.rulesChannelId ? t('New members must accept the rules before they can chat.') : t('Choose a rules channel first.')}><Toggle label={t('Membership Screening')} checked={f.screening && !!f.rulesChannelId} disabled={!f.rulesChannelId} onChange={(v) => setF({ ...f, screening: v })} /></Row>
+    <Row title={t('Community Server')} desc={f.rulesChannelId ? t('Unlocks community features such as the welcome screen.') : t('Choose a rules channel first.')}><Toggle label={t('Community Server')} checked={f.community && !!f.rulesChannelId} disabled={!f.rulesChannelId} onChange={(v) => setF({ ...f, community: v })} /></Row>
     <Row title={t('Enable Discovery')} desc={t('Let people find this server on the Discover page.')}><Toggle label={t('Enable Discovery')} checked={f.discoverable} onChange={(v) => setF({ ...f, discoverable: v })} /></Row>
     <div className="mb-4 mt-4"><span className="label">{t('Server Banner')}</span><div className="relative h-28 overflow-hidden rounded-lg bg-rail">{f.banner && <img src={fileUrl(f.banner)!} alt="" className="h-full w-full object-cover" />}<label className="absolute inset-0 flex cursor-pointer items-center justify-center bg-black/40 text-sm font-semibold text-white opacity-0 hover:opacity-100 focus-within:opacity-100">{t('Upload banner')}<input type="file" accept="image/*" className="sr-only" onChange={async (e) => { const file = e.target.files?.[0]; if (file) { try { setF({ ...f, banner: await uploadImageFile(file) }); } catch (err) { toastError(err); } } }} /></label></div>{f.banner && <button className="mt-1 text-sm text-link" onClick={() => setF({ ...f, banner: null })}>{t('Remove banner')}</button>}</div>
     <VanityUrl guildId={guildId} />
-    <SaveBar dirty={dirty} busy={busy} onSave={save} onReset={() => setF({ name: gd.name, description: gd.description ?? '', icon: gd.icon, banner: gd.banner, systemChannelId: gd.systemChannelId ?? '', rulesChannelId: gd.rulesChannelId ?? '', discoverable: gd.features.includes('DISCOVERABLE'), screening: gd.features.includes('MEMBER_SCREENING') })} />
+    <SaveBar dirty={dirty} busy={busy} onSave={save} onReset={() => setF({ name: gd.name, description: gd.description ?? '', icon: gd.icon, banner: gd.banner, systemChannelId: gd.systemChannelId ?? '', rulesChannelId: gd.rulesChannelId ?? '', discoverable: gd.features.includes('DISCOVERABLE'), screening: gd.features.includes('MEMBER_SCREENING'), community: gd.features.includes('COMMUNITY') })} />
   </>);
 }
 
@@ -215,9 +218,33 @@ function Bans({ guildId }: { guildId: string }) {
   </>);
 }
 
+/** Hand the server to another member: the owner re-enters their password (and 2FA code when enabled). */
+function TransferOwnership({ guildId }: { guildId: string }) {
+  const g = useData((s) => s.guilds[guildId])!; const mfa = useData((s) => !!s.me?.mfaEnabled);
+  const candidates = Object.values(g.members).filter((m) => m.user.id !== g.guild.ownerId && !m.user.bot);
+  const [to, setTo] = useState(''); const [pw, setPw] = useState(''); const [code, setCode] = useState(''); const [busy, setBusy] = useState(false);
+  if (!candidates.length) return null;
+  const run = async () => {
+    setBusy(true);
+    try { await api.guilds.transferOwnership(guildId, { userId: to, password: pw, ...(mfa ? { totp: code } : {}) }); toast(t('Ownership transferred'), 'success'); useUI.getState().openSettings(null); }
+    catch (e) { toastError(e); }
+    setBusy(false);
+  };
+  return (<form className="mb-8 rounded-lg bg-modal-alt p-4" data-testid="transfer-ownership" onSubmit={(e) => { e.preventDefault(); void run(); }}>
+    <H3>{t('Transfer Ownership')}</H3>
+    <p className="mb-3 text-sm text-muted">{t('Make another member the owner. You stay a normal member. Only the owner can delete the server or transfer it, so do this before deleting your account.')}</p>
+    <div className="flex flex-wrap gap-2">
+      <select className="field !w-56" aria-label={t('New owner')} value={to} onChange={(e) => setTo(e.target.value)}><option value="">{t('Choose a member')}</option>{candidates.map((m) => <option key={m.user.id} value={m.user.id}>{displayName(m.user, m)}</option>)}</select>
+      <input className="field !w-48" type="password" autoComplete="current-password" aria-label={t('Your password')} placeholder={t('Password')} value={pw} onChange={(e) => setPw(e.target.value)} />
+      {mfa && <input className="field !w-28" inputMode="numeric" maxLength={6} aria-label={t('Authentication code')} placeholder={t('2FA code')} value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))} />}
+      <button className="btn btn-danger" disabled={busy || !to || !pw || (mfa && code.length < 6)}>{t('Transfer')}</button>
+    </div>
+  </form>);
+}
+
 function DeleteServer({ guildId }: { guildId: string }) {
   const g = useData((s) => s.guilds[guildId])!.guild; const open = useUI((s) => s.openModal);
-  return (<><H1>{t('Delete Server')}</H1><p className="mb-4 text-muted">Deleting <b className="text-header">{g.name}</b> is permanent. All channels, messages, and members will be removed.</p>
+  return (<><TransferOwnership guildId={guildId} /><H1>{t('Delete Server')}</H1><p className="mb-4 text-muted">Deleting <b className="text-header">{g.name}</b> is permanent. All channels, messages, and members will be removed.</p>
     <button className="btn btn-danger btn-lg" onClick={() => open({ kind: 'prompt', title: `Delete '${g.name}'`, label: `Type the server name (${g.name}) to confirm`, onSubmit: async (v) => { if (v !== g.name) { toast(t('Name did not match'), 'error'); return; } try { await api.guilds.delete(guildId); useData.getState().apply('GUILD_DELETE', { id: guildId }); useUI.getState().openSettings(null); location.assign(import.meta.env.BASE_URL + 'channels/@me'); } catch (e) { toastError(e); } } })}>{t('Delete Server')}</button></>);
 }
 void ListChecks; void msgTime;

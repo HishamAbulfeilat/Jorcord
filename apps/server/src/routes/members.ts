@@ -97,16 +97,17 @@ export function memberRoutes(app: FastifyInstance, ctx: Ctx) {
   });
   app.post('/guilds/:id/roles', async (req, reply) => {
     const { id } = parse(gid, req.params);
-    const b = parse(z.object({ name: z.string().trim().min(1).max(100), color: colorInt, hoist: z.boolean(), permissions: permStr, mentionable: z.boolean(), icon: z.string().max(2048).nullable() }).partial().strict(), req.body);
+    const b = parse(z.object({ name: z.string().trim().min(1).max(100), color: colorInt, colorSecondary: colorInt.nullable(), hoist: z.boolean(), permissions: permStr, mentionable: z.boolean(), icon: z.string().max(2048).nullable() }).partial().strict(), req.body);
     const gp = await guildAccess(ctx, req.userId, id); const perms = guildPerms(gp);
     need(perms, Perm.MANAGE_ROLES);
     const [c] = await ctx.db.query('SELECT count(*)::int AS n FROM roles WHERE guild_id = $1', [id]);
     if (c.n >= 250) throw new ApiError(400, 'MAX_ROLES', 'Role limit reached');
     const bits = BigInt(b.permissions ?? '0'); noEscalation(perms, bits);
+    if (b.colorSecondary != null && !b.color) throw badRequest('A secondary colour needs a primary colour');
     const rid = snowflake();
     await ctx.db.query('UPDATE roles SET position = position + 1 WHERE guild_id = $1 AND position >= 1 AND id <> $1', [id]);
-    await ctx.db.query('INSERT INTO roles (id, guild_id, name, color, hoist, position, permissions, mentionable, icon) VALUES ($1,$2,$3,$4,$5,1,$6,$7,$8)',
-      [rid, id, b.name ?? 'new role', b.color ?? 0, b.hoist ?? false, (bits & ALL_PERMS).toString(), b.mentionable ?? false, b.icon ?? null]);
+    await ctx.db.query('INSERT INTO roles (id, guild_id, name, color, color_secondary, hoist, position, permissions, mentionable, icon) VALUES ($1,$2,$3,$4,$5,$6,1,$7,$8,$9)',
+      [rid, id, b.name ?? 'new role', b.color ?? 0, b.colorSecondary ?? null, b.hoist ?? false, (bits & ALL_PERMS).toString(), b.mentionable ?? false, b.icon ?? null]);
     await ctx.pcache.invalidate({ k: 'guild', guildId: id });
     await audit(ctx, id, req.userId, 'ROLE_CREATE', rid, b);
     const [row] = await ctx.db.query('SELECT * FROM roles WHERE id = $1', [rid]);
@@ -134,15 +135,19 @@ export function memberRoutes(app: FastifyInstance, ctx: Ctx) {
   });
   app.patch('/guilds/:id/roles/:roleId', async (req) => {
     const p = parse(z.object({ id: idSchema, roleId: idSchema }), req.params);
-    const b = parse(z.object({ name: z.string().trim().min(1).max(100), color: colorInt, hoist: z.boolean(), permissions: permStr, mentionable: z.boolean(), icon: z.string().max(2048).nullable() }).partial().strict(), req.body);
+    const b = parse(z.object({ name: z.string().trim().min(1).max(100), color: colorInt, colorSecondary: colorInt.nullable(), hoist: z.boolean(), permissions: permStr, mentionable: z.boolean(), icon: z.string().max(2048).nullable() }).partial().strict(), req.body);
     const gp = await guildAccess(ctx, req.userId, p.id); const perms = guildPerms(gp);
     need(perms, Perm.MANAGE_ROLES);
     const [role] = await ctx.db.query('SELECT * FROM roles WHERE id = $1 AND guild_id = $2', [p.roleId, p.id]);
     if (!role) throw notFound('Role');
     if (p.roleId !== p.id) needOutrank(gp, role.position);
-    if (p.roleId === p.id && (b.name !== undefined || b.hoist !== undefined || b.color !== undefined)) throw badRequest('@everyone can only have its permissions changed');
+    if (p.roleId === p.id && (b.name !== undefined || b.hoist !== undefined || b.color !== undefined || b.colorSecondary !== undefined)) throw badRequest('@everyone can only have its permissions changed');
     if (b.permissions !== undefined) noEscalation(perms, BigInt(b.permissions) & ~BigInt(role.permissions));
-    const col: Record<string, string> = { name: 'name', color: 'color', hoist: 'hoist', permissions: 'permissions', mentionable: 'mentionable', icon: 'icon' };
+    const col: Record<string, string> = { name: 'name', color: 'color', colorSecondary: 'color_secondary', hoist: 'hoist', permissions: 'permissions', mentionable: 'mentionable', icon: 'icon' };
+    // A gradient needs a primary colour: clearing the primary clears the secondary, setting a secondary without one is refused.
+    const nextPrimary = b.color ?? role.color;
+    if (b.colorSecondary != null && !nextPrimary) throw badRequest('A secondary colour needs a primary colour');
+    if (!nextPrimary && role.color_secondary != null && b.colorSecondary === undefined) b.colorSecondary = null;
     const settled = b.permissions !== undefined ? await trackVisibility(ctx, p.id, { userIds: await roleHolders(p.id, p.roleId) }) : null;
     const sets: string[] = [], vals: unknown[] = [p.roleId];
     for (const [k, v] of Object.entries(b)) { vals.push(k === 'permissions' ? (BigInt(v as string) & ALL_PERMS).toString() : v); sets.push(`${col[k]} = $${vals.length}`); }

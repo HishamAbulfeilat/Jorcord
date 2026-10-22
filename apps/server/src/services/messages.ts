@@ -92,7 +92,11 @@ export async function createMessage(ctx: Ctx, m: NewMessage): Promise<Message> {
   }
   let stickerIds = m.stickerIds ?? [];
   if (stickerIds.length) {
-    const ok = channel.guild_id ? await ctx.db.query('SELECT id FROM stickers WHERE guild_id = $1 AND id = ANY($2::text[])', [channel.guild_id, stickerIds]) : [];
+    // The channel's own stickers are always usable. Stickers of another server need USE_EXTERNAL_STICKERS and membership of that server; anything else is dropped.
+    const external = !!channel.guild_id && has(m.senderPerms, Perm.USE_EXTERNAL_STICKERS);
+    const ok = channel.guild_id
+      ? await ctx.db.query(`SELECT s.id FROM stickers s WHERE s.id = ANY($2::text[]) AND (s.guild_id = $1 OR ($3::boolean AND EXISTS (SELECT 1 FROM members mm WHERE mm.guild_id = s.guild_id AND mm.user_id = $4)))`, [channel.guild_id, stickerIds, external, m.authorId])
+      : [];
     stickerIds = ok.map((r) => r.id);
   }
   const id = snowflake();

@@ -1,7 +1,7 @@
 /** Typed REST client written against docs/CONTRACT.md. All calls go through the swappable transport. */
 import type {
   Activity, Attachment, AuditEntry, AutoModRule, Channel, Emoji, Guild, GuildFull, Invite, Member, Message, MessageEdit, Relationship, ReadState, Role, SelfUser, Sticker, User, VoiceToken, VoiceRecording, Id, Presence, OverwriteDTO,
-  AllowedMentions, GuildIntegration,
+  AllowedMentions, GuildIntegration, WelcomeScreen,
   Reminder, ScheduledMessage, ModView, ModWarning, ModNote, BulkModerationFilter, BulkModerationResult, PruneResult, BoostSummary, LinkedRoleView, LinkedCriterion, RoleMetadataApp, DirectoryApp, DirectoryCategory, SoundboardSound, Connection, PublicConnection, GifFavorite, GuildTemplate, GuildWidgetSettings, GuildInsights, ChannelFollow, Onboarding, OnboardingResponse, GuildSafety, SafetyPreset, Application, ApplicationCommand, CommandPermissionOverwrite, CommandOptionChoice, CreatePoll, ForumTag, InteractionOptionValue, ModalSubmitRow, OAuthAuthorizePreview, OAuthAuthorizeResult, ScheduledEvent, StageInstance, Report, RecurrenceRule, ChannelActivity, ChannelActivityKind,
 } from '@jorcord/shared';
 import { send } from './transport';
@@ -9,7 +9,7 @@ import { send } from './transport';
 /** A clip: its message plus clip metadata (`clipId` = `messageId` = message id). */
 export type ClipMessage = Message & { clipId: Id; messageId: Id; durationSeconds: number | null };
 
-export interface AuthResult { user: SelfUser; accessToken: string; refreshToken: string }
+export interface AuthResult { user: SelfUser; accessToken: string; refreshToken: string; /** Set when this sign-in cancelled a pending account deletion. */ deletionCancelled?: boolean }
 export interface RemoteAuthCode { id: string; pollSecret: string; scanSecret: string; expiresAt: string }
 export type RemoteAuthPoll = { status: 'pending' | 'scanned'; expiresAt: string } | ({ status: 'approved' } & AuthResult);
 export interface RemoteAuthScan { id: string; device: { userAgent: string | null; ip: string | null; createdAt: string | null }; expiresAt: string }
@@ -88,7 +88,8 @@ export const api = {
     start: () => send<DataExportJob>({ method: 'POST', path: '/users/@me/exports', body: {} }),
     get: (id: Id) => send<DataExportJob>({ method: 'GET', path: `/users/@me/exports/${id}` }),
     remove: (id: Id) => send({ method: 'DELETE', path: `/users/@me/exports/${id}` }),
-    deleteAccount: (b: { password: string; totp?: string }) => send({ method: 'DELETE', path: '/users/@me', body: b }),
+    /** Schedules deletion after a grace period (202); signing in again cancels it. */
+    deleteAccount: (b: { password: string; totp?: string }) => send<{ deletionDueAt: string; graceDays: number }>({ method: 'DELETE', path: '/users/@me', body: b }),
   },
   users: {
     me: () => send<SelfUser>({ method: 'GET', path: '/users/@me' }),
@@ -142,7 +143,11 @@ export const api = {
     create: (b: { name: string; icon?: string | null; template?: string }) => send<GuildFull>({ method: 'POST', path: '/guilds', body: b }),
     get: (id: Id) => send<GuildFull>({ method: 'GET', path: `/guilds/${id}` }),
     preview: (id: Id) => send<Guild & { approxMembers?: number }>({ method: 'GET', path: `/guilds/${id}/preview` }),
-    patch: (id: Id, b: Partial<Guild> & { discoverable?: boolean; memberScreening?: boolean }) => send<Guild>({ method: 'PATCH', path: `/guilds/${id}`, body: b }),
+    patch: (id: Id, b: Partial<Guild> & { discoverable?: boolean; memberScreening?: boolean; community?: boolean }) => send<Guild>({ method: 'PATCH', path: `/guilds/${id}`, body: b }),
+    welcomeScreen: (id: Id) => send<WelcomeScreen>({ method: 'GET', path: `/guilds/${id}/welcome-screen` }),
+    patchWelcomeScreen: (id: Id, b: Partial<WelcomeScreen>) => send<WelcomeScreen>({ method: 'PATCH', path: `/guilds/${id}/welcome-screen`, body: b }),
+    /** Owner hands the server to another member (re-authenticates with the password). */
+    transferOwnership: (id: Id, b: { userId: Id; password: string; totp?: string }) => send({ method: 'POST', path: `/guilds/${id}/transfer-ownership`, body: b }),
     delete: (id: Id) => send({ method: 'DELETE', path: `/guilds/${id}` }),
     channels: (id: Id) => send<Channel[]>({ method: 'GET', path: `/guilds/${id}/channels` }).then((x) => arr<Channel>(x)),
     createChannel: (id: Id, b: Partial<Channel> & { name: string; type: Channel['type'] }) => send<Channel>({ method: 'POST', path: `/guilds/${id}/channels`, body: b }),
