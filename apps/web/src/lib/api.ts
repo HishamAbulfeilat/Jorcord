@@ -25,6 +25,7 @@ export type InteractionInput =
   | { type: 5; channelId: Id; interactionId: Id; data: { customId: string; components: ModalSubmitRow[] } };
 export interface BanAppealItem { id: Id; guildId: Id; user: User | null; message: string; status: 'pending' | 'approved' | 'denied'; banReason: string | null; bannedAt: string; createdAt: string; decidedAt: string | null; decidedBy: User | null; decisionReason: string | null }
 export interface MyBan { guild: { id: Id; name: string; icon: string | null }; reason: string | null; bannedAt: string; appeal: { id: Id; status: 'pending' | 'approved' | 'denied'; message: string; createdAt: string; decidedAt: string | null; decisionReason: string | null } | null }
+export interface DataExportJob { id: Id; status: 'queued' | 'running' | 'ready' | 'failed' | 'expired'; createdAt: string; finishedAt: string | null; expiresAt: string | null; sizeBytes: number | null; counts: Record<string, number> | null; error: string | null; downloadUrl?: string }
 export interface Passkey { id: Id; name: string; createdAt: string; lastUsedAt: string | null; deviceType: string | null; backedUp: boolean; transports: string[] }
 export interface PushDevice { id: Id; platform: 'web' | 'android' | 'ios' | 'desktop'; createdAt: string | null; lastUsedAt: string | null; current?: boolean }
 export type PushRegistration = { platform: 'web' | 'desktop'; subscription: { endpoint: string; expirationTime?: number | null; keys: { p256dh: string; auth: string } } } | { platform: 'android' | 'ios'; token: string };
@@ -78,6 +79,13 @@ export const api = {
   myBans: {
     list: () => send<MyBan[]>({ method: 'GET', path: '/users/@me/bans' }).then((x) => arr<MyBan>(x)),
     appeal: (guildId: Id, message: string) => send<MyBan['appeal']>({ method: 'POST', path: `/users/@me/bans/${guildId}/appeal`, body: { message } }),
+  },
+  dataExport: {
+    list: () => send<DataExportJob[]>({ method: 'GET', path: '/users/@me/exports' }).then((x) => arr<DataExportJob>(x)),
+    start: () => send<DataExportJob>({ method: 'POST', path: '/users/@me/exports', body: {} }),
+    get: (id: Id) => send<DataExportJob>({ method: 'GET', path: `/users/@me/exports/${id}` }),
+    remove: (id: Id) => send({ method: 'DELETE', path: `/users/@me/exports/${id}` }),
+    deleteAccount: (b: { password: string; totp?: string }) => send({ method: 'DELETE', path: '/users/@me', body: b }),
   },
   users: {
     me: () => send<SelfUser>({ method: 'GET', path: '/users/@me' }),

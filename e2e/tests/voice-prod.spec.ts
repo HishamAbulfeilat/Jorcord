@@ -69,6 +69,24 @@ test('server-served app + production CSP: two users join, hear and see each othe
   expect(csp).toEqual([]);
 });
 
+test('Standard noise suppression (RNNoise AudioWorklet) loads under the production CSP and audio keeps flowing', async () => {
+  await dbg(A.page, 'setNoise', 'rnnoise');
+  await expect.poll(async () => JSON.stringify(await dbg<any>(A.page, 'noise')), { timeout: 30_000 }).toContain('jv-rnnoise');
+  expect((await dbg<any>(A.page, 'noise')).fallback).toBeNull();
+  const aId = (await dbg<any[]>(B.page, 'remotes'))[0].identity;
+  await expect.poll(async () => (await dbg<any[]>(B.page, 'remotes')).some((r) => r.audioSubscribed), { timeout: 20_000 }).toBe(true);
+  const before = (await dbg<any>(B.page, 'audioStats', aId))?.bytesReceived ?? 0;
+  await expect.poll(async () => ((await dbg<any>(B.page, 'audioStats', aId))?.bytesReceived ?? 0) - before, { timeout: 20_000 }).toBeGreaterThan(500);
+  // High keeps RNNoise and also asks the browser; Browser removes the processor again
+  await dbg(A.page, 'setNoise', 'high');
+  await expect.poll(async () => (await dbg<any>(A.page, 'noise')).processor, { timeout: 30_000 }).toBe('jv-rnnoise');
+  await dbg(A.page, 'setNoise', 'browser');
+  await expect.poll(async () => (await dbg<any>(A.page, 'noise')).processor, { timeout: 30_000 }).toBeNull();
+  expect((await dbg<any>(A.page, 'state')).error).toBeNull();
+  expect(await A.page.evaluate(() => (window as any).__csp ?? [])).toEqual([]);
+  expect(csp).toEqual([]);
+});
+
 test('LiveKit killed and restarted mid-call: both recover, mute / camera / roster survive', async () => {
   // state that must survive the outage
   await A.page.getByRole('button', { name: 'Mute', exact: true }).last().click();

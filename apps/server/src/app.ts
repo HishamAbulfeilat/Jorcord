@@ -14,6 +14,7 @@ import { Hub } from './gateway/hub';
 import { gatewayRoutes } from './gateway/ws';
 import { RateLimiter, installRateLimit } from './lib/ratelimit';
 import { authRoutes, publicAuthRoutes } from './routes/auth';
+import { exportPublicRoutes, exportRoutes } from './routes/dataexport';
 import { appealRoutes } from './routes/appeals';
 import { passkeyPublicRoutes, passkeyRoutes } from './routes/passkeys';
 import { remoteAuthPublicRoutes, remoteAuthRoutes } from './routes/remoteauth';
@@ -140,6 +141,7 @@ export async function buildApp(opts: BuildOptions = {}): Promise<{ app: FastifyI
   await app.register(async (api) => {
     publicAuthRoutes(api, ctx);
     passkeyPublicRoutes(api, ctx);
+    exportPublicRoutes(api, ctx);
     remoteAuthPublicRoutes(api, ctx);
     pushPublicRoutes(api, ctx);
     invitePublicRoutes(api, ctx);
@@ -152,7 +154,7 @@ export async function buildApp(opts: BuildOptions = {}): Promise<{ app: FastifyI
     await api.register(async (priv) => {
       priv.addHook('preHandler', authenticate(ctx));
       priv.addHook('onResponse', godModeAuditHook(ctx));
-      authRoutes(priv, ctx); passkeyRoutes(priv, ctx); appealRoutes(priv, ctx); remoteAuthRoutes(priv, ctx); userRoutes(priv, ctx); guildRoutes(priv, ctx); channelRoutes(priv, ctx);
+      authRoutes(priv, ctx); passkeyRoutes(priv, ctx); appealRoutes(priv, ctx); exportRoutes(priv, ctx); remoteAuthRoutes(priv, ctx); userRoutes(priv, ctx); guildRoutes(priv, ctx); channelRoutes(priv, ctx);
       clipRoutes(priv, ctx);
       memberRoutes(priv, ctx); messageRoutes(priv, ctx); miscRoutes(priv, ctx); voiceRoutes(priv, ctx); pushRoutes(priv, ctx);
       applicationRoutes(priv, ctx); commandRoutes(priv, ctx); interactionRoutes(priv, ctx); pollRoutes(priv, ctx); eventRoutes(priv, ctx); socialRoutes(priv, ctx); soundboardRoutes(priv, ctx); activityRoutes(priv, ctx); safetyRoutes(priv, ctx); onboardingRoutes(priv, ctx); followRoutes(priv, ctx); guildExtrasRoutes(priv, ctx); favoriteRoutes(priv, ctx); connectionRoutes(priv, ctx); linkedRoleRoutes(priv, ctx); directoryRoutes(priv, ctx); integrationRoutes(priv, ctx); modToolRoutes(priv, ctx); adminRoutes(priv, ctx);

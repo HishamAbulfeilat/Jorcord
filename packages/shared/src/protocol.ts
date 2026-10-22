@@ -32,6 +32,8 @@ export interface Events {
   PRESENCE_UPDATE: { userId: Id; presence: Presence; customStatus?: User['customStatus']; /** what they are doing (empty when offline or sharing is off) */ activities?: Activity[] };
   USER_UPDATE: User;
   /** To the appellant only: a moderator decided their ban appeal. Never carries the appeal text. */
+  /** To the account owner: a data export job finished (`ready`) or failed. Fetch GET /users/@me/exports/:id. */
+  DATA_EXPORT_UPDATE: { id: Id; status: 'ready' | 'failed' };
   BAN_APPEAL_UPDATE: { id: Id; guildId: Id; status: 'approved' | 'denied'; decisionReason: string | null };
   /** To moderators with BAN_MEMBERS only: a new appeal is waiting (no content, fetch GET /guilds/:id/appeals). */
   BAN_APPEAL_CREATE: { id: Id; guildId: Id };

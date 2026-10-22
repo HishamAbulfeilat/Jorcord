@@ -18,6 +18,11 @@ export function isRnnoiseSupported(g: any = globalThis): boolean {
   return typeof g.AudioContext === 'function' && typeof g.AudioWorkletNode === 'function' && typeof g.WebAssembly === 'object';
 }
 
+const withTimeout = <T,>(p: Promise<T>, ms: number): Promise<T> => new Promise((res, rej) => {
+  const t = setTimeout(() => rej(new Error('worklet load timed out')), ms);
+  p.then((v) => { clearTimeout(t); res(v); }, (e) => { clearTimeout(t); rej(e); });
+});
+
 export type RnnoiseResult =
   | { processor: TrackProcessor<Track.Kind.Audio>; reason?: undefined }
   | { processor?: undefined; reason: NoiseFallbackReason; error?: unknown };
@@ -38,7 +43,7 @@ export async function createRnnoiseProcessor(deps: RnnoiseDeps = {}): Promise<Rn
   let ctx: AudioContext;
   try {
     ctx = new Ctx({ sampleRate: 48000, latencyHint: 'interactive' });
-    await ctx.audioWorklet.addModule(url);
+    await withTimeout(ctx.audioWorklet.addModule(url), 10_000);
   } catch (error) { return { reason: 'load-failed', error }; }
 
   let src: MediaStreamAudioSourceNode | undefined; let node: AudioWorkletNode | undefined; let dest: MediaStreamAudioDestinationNode | undefined;
@@ -48,7 +53,8 @@ export async function createRnnoiseProcessor(deps: RnnoiseDeps = {}): Promise<Rn
   };
   const wire = async (input: MediaStreamTrack) => {
     teardown();
-    if (ctx.state === 'suspended') await ctx.resume().catch(() => {});
+    // never await resume(): on a context created without a user gesture it stays pending forever
+    if (ctx.state === 'suspended') void ctx.resume().catch(() => {});
     src = ctx.createMediaStreamSource(new MediaStream([input]));
     node = new Node(ctx, NOISE_WORKLET_NAME, { channelCount: 1, channelCountMode: 'explicit', outputChannelCount: [1] });
     dest = ctx.createMediaStreamDestination();

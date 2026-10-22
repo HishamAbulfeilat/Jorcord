@@ -123,6 +123,8 @@ export function userRoutes(app: FastifyInstance, ctx: Ctx) {
     const groups = await ctx.db.query(`SELECT c.* FROM channels c JOIN dm_participants p ON p.channel_id = c.id WHERE p.user_id = $1 AND c.type = 'group_dm'`, [id]);
     for (const g of groups) await removeGroupRecipient(ctx, g, id);
     await clearVoiceState(ctx, id);
+    const ownedApps = await ctx.db.query('SELECT id, bot_user_id FROM applications WHERE owner_id = $1', [id]);
+    const exportKeys = (await ctx.db.query('SELECT storage_key FROM export_jobs WHERE user_id = $1 AND storage_key IS NOT NULL', [id])).map((r) => r.storage_key as string);
     const orphanFiles = await ctx.db.query('DELETE FROM files WHERE uploader_id = $1 AND NOT attached RETURNING key', [id]);
     await ctx.db.tx(async (q) => {
       await q.query('DELETE FROM members WHERE user_id = $1', [id]);
@@ -135,6 +137,15 @@ export function userRoutes(app: FastifyInstance, ctx: Ctx) {
       await q.query('DELETE FROM auth_tokens WHERE user_id = $1', [id]);
       await q.query('DELETE FROM sessions WHERE user_id = $1', [id]);
       await q.query('DELETE FROM user_passkeys WHERE user_id = $1', [id]);
+      for (const t of ['push_devices', 'notification_settings', 'user_notes', 'dm_ignores', 'saved_messages', 'reminders', 'gif_favorites', 'connections', 'oauth_tokens', 'oauth_codes', 'app_user_metadata', 'bot_reminders', 'remote_auth'])
+        await q.query(`DELETE FROM ${t} WHERE user_id = $1`, [id]); // personal data tied to the account (table names are constants)
+      await q.query('DELETE FROM user_notes WHERE target_id = $1', [id]);
+      await q.query('DELETE FROM export_jobs WHERE user_id = $1', [id]);
+      for (const a of ownedApps) {
+        await q.query('DELETE FROM roles WHERE managed_app_id = $1', [a.id]);
+        await q.query('DELETE FROM applications WHERE id = $1', [a.id]);
+        await q.query('DELETE FROM users WHERE id = $1', [a.bot_user_id]);
+      }
       await q.query('DELETE FROM ban_appeals WHERE user_id = $1', [id]);
       await q.query('DELETE FROM webauthn_challenges WHERE user_id = $1', [id]);
       await q.query(`UPDATE users SET username = $2, display_name = 'Deleted User', email = NULL, password_hash = NULL, avatar = NULL, banner = NULL, accent_color = NULL,
@@ -142,6 +153,8 @@ export function userRoutes(app: FastifyInstance, ctx: Ctx) {
     });
     await ctx.pcache.invalidate({ k: 'user', userId: id });
     for (const f of orphanFiles) await ctx.storage.delete(f.key).catch(() => {});
+    for (const k of exportKeys) await ctx.storage.delete(k).catch(() => {}); // archives of personal data go with the account
+    for (const a of ownedApps) { ctx.hub.disconnectUser(a.bot_user_id); await ctx.pcache.invalidate({ k: 'user', userId: a.bot_user_id }); }
     ctx.hub.disconnectUser(id);
     const [gone] = await ctx.db.query('SELECT * FROM users WHERE id = $1', [id]);
     await ctx.hub.toUsers(audience, 'USER_UPDATE', userDTO(ctx, gone));
@@ -150,10 +163,10 @@ export function userRoutes(app: FastifyInstance, ctx: Ctx) {
     return reply.code(204).send();
   });
 
-  /** Data export (GDPR-style): everything we hold about the caller, as one JSON download. */
+  /** Legacy quick export (JSON, newest 10k messages). Prefer the async zip: POST /users/@me/exports. */
   app.get('/users/@me/export', async (req, reply) => {
     limitOrThrow(ctx.rl, `export:${req.userId}`, 3, 3600_000, ctx.config.rateLimit);
-    const id = req.userId, MAX_MESSAGES = 50_000;
+    const id = req.userId, MAX_MESSAGES = 10_000; // legacy synchronous export; the full archive is POST /users/@me/exports
     const [u] = await ctx.db.query('SELECT * FROM users WHERE id = $1', [id]);
     const guilds = await ctx.db.query('SELECT g.id, g.name, m.nick, m.joined_at, (g.owner_id = m.user_id) AS owner FROM members m JOIN guilds g ON g.id = m.guild_id WHERE m.user_id = $1 ORDER BY m.joined_at', [id]);
     const dms = await ctx.db.query('SELECT c.* FROM channels c JOIN dm_participants p ON p.channel_id = c.id WHERE p.user_id = $1', [id]);

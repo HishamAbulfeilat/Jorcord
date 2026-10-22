@@ -469,7 +469,14 @@ export class VoiceClient {
   }
 
   /** Update audio settings. Restarts the mic capture so constraints are re-applied. */
-  async setAudioSettings(patch: Partial<AudioSettings>) {
+  private audioQueue: Promise<void> = Promise.resolve();
+  /** Calls are serialized: two quick setting changes must not interleave unpublish/publish of the mic. */
+  setAudioSettings(patch: Partial<AudioSettings>): Promise<void> {
+    const run = this.audioQueue.then(() => this.applyAudioSettings(patch));
+    this.audioQueue = run.catch(() => {});
+    return run;
+  }
+  private async applyAudioSettings(patch: Partial<AudioSettings>) {
     const audio = { ...this.snap.settings.audio, ...patch };
     this.snap = { ...this.snap, settings: { ...this.snap.settings, audio } };
     const lp = this.room.localParticipant;
@@ -479,7 +486,10 @@ export class VoiceClient {
     if (lp.getTrackPublication(Track.Source.Microphone)) {
       this.rnnoiseAttached = false;
       this.teardownGate();
-      await lp.setMicrophoneEnabled(false);
+      // setMicrophoneEnabled(false) only *mutes* the track (the old capture, with the old constraints, would be unmuted again):
+      // unpublish + stop it so the next applyMicState() captures afresh with the new constraints and processors.
+      const mic = lp.getTrackPublication(Track.Source.Microphone)?.track;
+      if (mic) await lp.unpublishTrack(mic, true);
       await this.applyMicState();
     } else this.emit();
   }

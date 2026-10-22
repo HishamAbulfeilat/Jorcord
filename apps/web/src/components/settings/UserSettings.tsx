@@ -15,6 +15,7 @@ import { profileGradient, isHex, headerBackground, isHexPair, type ThemePair } f
 import { api } from '@/lib/api';
 import { useData } from '@/stores/data';
 import { PasskeysPanel } from './PasskeysPanel';
+import { DataPrivacyPanel } from './DataPrivacyPanel';
 import { useUI, defaultKeybinds, toast, toastError, type Theme } from '@/stores/ui';
 import { SettingsLayout, H1, H3, SaveBar } from './SettingsLayout';
 import { Field, Row, Toggle, Spinner } from '@/components/ui/primitives';
@@ -80,6 +81,7 @@ function Account({ go }: { go: (t: string) => void }) {
       <Field label={t('New Password')}><input type="password" autoComplete="new-password" className="field" value={pw.next} onChange={(e) => setPw({ ...pw, next: e.target.value })} minLength={8} /></Field>
       <button disabled={busy || pw.next.length < 8 || !pw.cur} className="btn btn-primary btn-lg">{t('Change Password')}</button>
     </form>
+    <DataPrivacyPanel />
   </>);
 }
 

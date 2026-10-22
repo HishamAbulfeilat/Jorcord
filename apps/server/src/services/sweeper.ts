@@ -7,6 +7,7 @@ import { fireDueReminders } from './reminders';
 import { syncGuild } from './linkedroles';
 import { fireDueBotReminders } from './sysbots';
 import { sweepUnattachedUploads } from './files';
+import { expireExports } from './dataExport';
 
 /** Thread auto-archive: no activity for `auto_archive_minutes` -> archived (THREAD_UPDATE). Atomic, so multi-node safe. */
 export async function archiveIdleThreads(ctx: Ctx) {
@@ -62,4 +63,5 @@ export async function runSweeps(ctx: Ctx) {
   await step('linked-roles', () => sweepLinkedRoles(ctx));
   await step('interactions', () => pruneInteractions(ctx));
   await step('uploads', () => sweepUnattachedUploads(ctx));
+  await step('exports', () => expireExports(ctx));
 }
