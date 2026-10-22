@@ -1,21 +1,21 @@
 # Discord gaps
 
-A checklist of Discord features that Jorcord does **not** have yet. Every item below was verified missing against `apps/server`, `apps/web` and `packages/shared` (searches for transcripts, `MediaRecorder`, `superRe`, `clips`, `recurrence`/`rrule`, `answers_vk`, `Media (media-only)` channel types, `appActivity`/`embedded`/`iframe` in voice, `push` notification settings, `preferredLocale?, onboarding?` and `picture-in-picture?` poll ). Excluded on purpose because they already exist: voice messages attachments SEND permission (server swallows and returns them, `parity-voice-messages.test.ts`), keybinds (`stores/ui.ts` defaultKeybinds + `KeybindsTab`), streamer mode (`lib/streamer.ts`), server templates (`parity-guildextras.test.ts`), Go Live quality presets and viewer quality tiles (`voice/controls.tsx` + `voice/tiles.tsx`), stage channels (`parity-voice-priority.test.ts`, `services/stage.ts`), thread topics and [Stage] so on.
+A checklist of Discord features and whether Jorcord has them. Last verified against the repo on 2026-10-22 (server migrations 001-042 plus 049/050, `apps/server/src/routes/*.ts`, `apps/web/src`, `packages/shared`). A ticked item names the code and test that prove it; an unticked item was checked and is still missing. Items this file once called missing (voice-message recording, forum defaults, super reactions, activities, recurrence, clips, poll voter filters) have since landed.
 
-Checklist items are grouped by feature. Each row lists the files it would touch and an S/M/L size.
+Checklist items are grouped by feature. Each row lists the files involved and an S/M/L size.
 
 ## Voice messages
 
-- [ ] **Record a voice message from the composer.** The server already accepts audio attachments and returns the `VOICE_MESSAGE`-flavoured attachment (`parity-voice-messages.test.ts`), but the client has no recording button: there is no `MediaRecorder` anywhere in `apps/web` and no audio waveform player (audio attachments render as a bare `<audio controls>` tag).
-  Files: apps/web/src/components/chat/Composer.tsx, apps/web/src/components/chat/Attachments.tsx. Size: M.
+- [x] **Record a voice message from the composer.** `apps/web/src/lib/voiceRecord.ts` (MediaRecorder) and `lib/voiceMsg.ts` (waveform) feed the composer and `chat/Attachments.tsx` renders the voice-message player (`voiceRecord.test.ts`, `voiceMsg.test.ts`, `Attachments.test.tsx`). Server: audio attachments need `SEND_VOICE_MESSAGES` (`routes/messages.ts`, `parity-voice-messages.test.ts`).
+  Files: apps/web/src/lib/voiceRecord.ts, apps/web/src/lib/voiceMsg.ts, apps/web/src/components/chat/Composer.tsx, apps/web/src/components/chat/Attachments.tsx. Size: M.
 
 ## Forum / media channels
 
 - [x] **Media channel** (a forum whose posts are media-only, no text body). `ChannelType` has a `'media'` member (`packages/shared/src/types.ts`) and `services/messages` enforces the media-only guard via `isMediaAttachment` / `requireMedia`; posts carry attachments through `POST /channels/:id/forum/posts`.
   Files: packages/shared/src/types.ts, packages/shared/src/limits.ts, apps/server/src/routes/channels.ts, apps/server/src/services/messages.ts, apps/web/src/components/settings/ChannelSettings.tsx. Size: M.
-- [ ] **Forum channel default sort order / default layout (gallery or list).** `Channel` carries `availableTags`, `requireTag`, `defaultAutoArchiveDuration` but no `defaultSortOrder` / `defaultForumLayout`; `ForumView.tsx` hard-codes newest-first and has no layout picker.
+- [x] **Forum channel default sort order / default layout (gallery or list).** Migration `034_forum_defaults.sql`; `PATCH /channels/:id` accepts `defaultSortOrder` / `defaultForumLayout` (`routes/channels.ts`, `parity-forum-defaults.test.ts`); `ForumView.tsx` and `ChannelSettings.tsx` use them.
   Files: packages/shared/src/types.ts, apps/server/src/routes/channels.ts, apps/web/src/components/settings/ChannelSettings.tsx, apps/web/src/components/chat/ForumView.tsx. Size: S.
-- [ ] **Forum channel default reaction emoji.** Discord lets a forum add a default reaction to every new post; `channelFields` / `Channel` have no such field and `routes/channels` has no reaction hook for the newly created post.
+- [x] **Forum channel default reaction emoji.** `defaultReactionEmoji` (migration 034) is added by the author to every new post in `POST /channels/:id/forum/posts`; a custom default must be an emoji of the same server (checked since the 2026-10 review; `sec-review-2026-10.test.ts`).
   Files: packages/shared/src/types.ts, apps/server/src/routes/channels.ts, apps/server/src/services/messages.ts, apps/web/src/components/settings/ChannelSettings.tsx. Size: S.
 
 ## Threads
@@ -30,7 +30,7 @@ Checklist items are grouped by feature. Each row lists the files it would touch 
 
 ## Super reactions
 
-- [ ] **Super reactions (burst reaction emoji with burst bar)** — zero code references; no burst emoji set stored on the server, no burst path in `services/messages` and no burst tint in `MessageItem` / reactions.
+- [x] **Super reactions (burst reaction emoji with burst bar).** Migration `035_burst_reactions.sql` (`reactions.burst`, `burst_color`, `burst_reaction_usage`); `PUT .../reactions/:emoji/@me` with `{ burst: true }` and a daily allowance (`LIMITS.burstReactionsPerDay`, `consumeBurstQuota` in `services/messages.ts`); web `chat/Reactions.tsx` and `stores/messages.ts` (`burst-reactions.test.ts` on both sides).
   Files: apps/server/src/services/messages.ts, apps/server/src/routes/messages.ts, apps/web/src/components/chat/MessageItem.tsx, apps/web/src/components/chat/ChatView.tsx. Size: M.
 
 ## Embeds / atoms
@@ -45,20 +45,20 @@ Checklist items are grouped by feature. Each row lists the files it would touch 
 
 ## Activities / embedded apps
 
-- [ ] **Activities menu (embedded apps such as YouTube Together, Poker, Chess).** Rich presence is implemented (`parity-activities.test.ts`), but nothing in `apps/web/src/voice` spins up an embedded-app session, and the server has no app-activity invite/voice-track model.
-  Files: apps/web/src/voice/controls.tsx, apps/web/src/voice/Room.tsx, apps/server/src/services/voice.ts, apps/server/src/routes/activities.ts. Size: L.
+- [x] **Shared voice-channel activities (Watch Together, Tic-Tac-Toe).** Migration `042_channel_activities.sql`; `routes/activities.ts` (`/channels/:id/activities`, `/activities/:id`) with server-side authorization: you must be connected to the voice channel, Tic-Tac-Toe moves are validated by `services/tictactoe.ts`, and only the host or a `MANAGE_CHANNELS` holder can end a session (`parity-channel-activities.test.ts`); web `voice/WatchTogether.tsx`, `voice/TicTacToe.tsx`. Not built: third-party embedded apps (Poker, Chess) and an Embedded-App-SDK.
+  Files: apps/server/src/routes/activities.ts, apps/server/src/services/tictactoe.ts, apps/web/src/voice/WatchTogether.tsx, apps/web/src/voice/TicTacToe.tsx. Size: L.
 
 ## Scheduled events
 
-- [ ] **Scheduled-event recurrence rules.** `routes/events.ts` has no `recurrence` field, `eventFields` contains only start/end/location/image/privacyLevel, and there is no `rrule` expansion anywhere.
+- [x] **Scheduled-event recurrence rules.** Migration `036_recurrence.sql`; `recurrenceRule` (daily/weekly/monthly, interval, until, count) in `routes/events.ts`; `nextOccurrences` computed in `services/scheduled.ts` (`platform.test.ts` "recurrence"); web `PlatformModals.tsx` and `lib/events.ts`.
   Files: apps/server/src/routes/events.ts, apps/server/src/services/scheduled.ts, packages/shared/src/types.ts, apps/web/src/components/modals/PlatformModals.tsx. Size: M.
 
 ## Message extras
 
-- [ ] **Message clips (in-app screen-recording clipping, clips channel auto-collect).** There is no clips service, no clips-channel semantics (the `'clips'` channel in the default template is an ordinary text channel), and no clip upload route — the client only has clipboard paste in the composer and soundboard clips in the voice dock.
+- [ ] **Message clips (in-app screen-recording clipping, clips channel auto-collect).** Server side is done: migration `040_clips.sql`, `isClipsChannel` on channels, `routes/clips.ts` (`POST/GET /channels/:id/clips`, `DELETE /channels/:id/clips/:clipId`; only in a clips channel, MP4/WebM sniffed by magic bytes, 30 s and 100 MB limits, 6 posts/min; `clips.test.ts`). Still open: the web clips UI (recorder, clips channel view) and the screen-recording capture itself.
   Files: apps/server/src/routes/messages.ts, apps/server/src/services/messages.ts, apps/web/src/lib/menus.ts, apps/web/src/components/chat/MessageItem.tsx. Size: L.
 
 ## Polls details
 
-- [ ] **Poll answer-voter list with member filters and multi-select vote events.** `GET /channels/:id/polls/:mid/answers/:answerId` exists, but there is no `?type=` filter, no `MESSAGE_UPDATE` re-render of vote counts, and poll expiry auto-finalize is timestamp-based only (`poll_expiry`), so an instant-finalize edit is impossible.
+- [x] **Poll answer-voter list with member filters and multi-select vote events.** `GET /channels/:id/polls/:mid/answers/:answerId?type=members|bots` (`routes/polls.ts`); `POST .../polls/:mid/expire` ends a poll early; `finalizePoll` emits `MESSAGE_UPDATE` (`services/polls.ts`); vote events are covered in `hardening.test.ts`.
   Files: apps/server/src/routes/polls.ts, apps/server/src/services/polls.ts, apps/web/src/components/chat/MessageExtras.tsx. Size: S.

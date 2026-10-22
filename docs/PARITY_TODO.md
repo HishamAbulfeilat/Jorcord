@@ -26,7 +26,7 @@ Rank = order in which this pass implements items (R1 first). `-` = not planned i
 | R16 | Account switching (multi-account) | DONE (`lib/accounts.ts`, `AccountsSection.tsx`, status menu) | 3 | single session store (`lib/session.ts`) |
 | R17 | Connections on profile (links to Twitch/GitHub...) | DONE (`routes/connections.ts`, `ConnectionsTab.tsx`; self-declared + verify-by-code, no third-party OAuth) | 2 | none |
 | R18 | Soundboard (guild sounds + play in voice) | DONE (`routes/soundboard.ts`, `components/Soundboard.tsx`) | 4 | upload/limits, play over gateway event, USE_SOUNDBOARD, per-user + global mute, voice dock button |
-| R19 | Message edit history | todo | 1 | `edited_at` only; Discord itself does not show history, skip |
+| R19 | Message edit history | DONE (migration `031_edit_history.sql`, `GET /channels/:id/messages/:mid/edits` in `routes/messages.ts`, `parity-edit-history.test.ts`) | 1 | prior contents are kept on every edit; the original note to skip it was reversed later |
 | R20 | Server boost levels page perks list | DONE (`routes/guilds.ts`, `services/boosts.ts`, `BoostTab.tsx`; levels 1-3, enforced emoji/sticker slots, progress, boosters, booster role, announcements) | 2 | boosts free/unlimited (`GuildSettings` boosts tab) |
 | R21 | Linked roles, app directory (Twitch/YouTube integrations skipped on purpose, see `PARITY.md`) | DONE (`routes/linkedroles.ts`, `services/linkedroles.ts`, `LinkedRolesTab.tsx`, `routes/directory.ts`, `AppDirectory.tsx`, Developer Portal listing; bot metadata API) | 1 | criteria: account/join age, messages, verified connection, app metadata |
 | R22 | Mod view / member safety flags, bulk-ban, prune, warnings, mod notes, mod-log CSV | DONE (`routes/modtools.ts`, `ModView.tsx`, `ModToolsTab.tsx`, composer `/warn`) | 2 | ban/kick/timeout were already done |
@@ -48,5 +48,5 @@ Second pass (soundboard through multi-account), one commit each, prefix `parity:
 6. Announcement follow/crosspost (R11).
 7. Templates, widget, insights, vanity UI (R14).
 8. GIF favorites (R15). 9. Connections (R17, self-declared + verify by code). 10. Multi-account (R16).
-Third pass (R7 AutoMod v3, R20 boost levels, R21 linked roles + App Directory, R22 mod tools): all done. Only R19 stays skipped on purpose (Discord has no edit history either).
+Third pass (R7 AutoMod v3, R20 boost levels, R21 linked roles + App Directory, R22 mod tools): all done. R19 (edit history) landed later, see the table.
 Fourth pass: message search filters (`has` incl. video, `mentions`, `author_id`, `before`/`after` by snowflake or ISO date, `sort_by`/`sort_order`; `services/search.ts`, `lib/searchTokens.ts`): done. No new migration: `mentions` reuses the GIN index from 009.

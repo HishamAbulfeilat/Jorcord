@@ -1,14 +1,15 @@
 # What the native wrappers need from `apps/web`
 
-Status (as of this pass): items 1 (configurable server URL), 2 (deep links), 4 (screen-share detection), and 7 (PWA service-worker skip) are implemented in `apps/web`. Item 3 (push) is implemented end-to-end on both sides: the web client (`lib/push.ts`) and the server (`routes/push.ts` `POST /users/@me/push-devices`) both exist, and the Capacitor path (`lib/push.ts` `enableNative`) already calls `api.push.register({ platform, token })` on the `registration` event — the remaining wrapper piece is the native-side `RequestPermissions` → `Register` UI in the app's notifications settings. Items 5 (layout/safe areas) and 6 (desktop settings: autostart/updater) are partially implemented (see notes below).
+Status (re-checked 2026-10-22): items 1 (server URL, now one fixed server, see section 1), 2 (deep links), 4 (screen-share detection), and 7 (PWA service-worker skip) are implemented in `apps/web`. Item 3 (push) is implemented end-to-end on both sides: the web client (`lib/push.ts`) and the server (`routes/push.ts` `POST /users/@me/push-devices`) both exist, and the Capacitor path (`lib/push.ts` `enableNative`) already calls `api.push.register({ platform, token })` on the `registration` event — the remaining wrapper piece is the native-side `RequestPermissions` → `Register` UI in the app's notifications settings. Items 5 (layout/safe areas) and 6 (desktop settings: autostart/updater) are partially implemented (see notes below).
 
 The Tauri (desktop) and Capacitor (mobile) shells load the static web bundle (`apps/web/dist`) from a local origin
 (`tauri://localhost` / `http://tauri.localhost`, `https://localhost` on Android, `capacitor://localhost` on iOS). The web
 app must therefore not assume it is served from the same origin as the API.
 
-## 1. Configurable server URL (required)
-- On first launch inside a wrapper (detect: `window.__TAURI__`, `window.Capacitor?.isNativePlatform()`), show a
-  "Connect to a server" screen; persist the URL (localStorage is fine; the wrapper origin is stable).
+## 1. Server URL (required)
+- **Packaged builds use one fixed server.** `apps/web/.env.production` sets `VITE_SERVER_URL` (currently `https://jorcord.duckdns.org`); `vite build` loads it automatically, so the desktop, Android/iOS and GitHub Pages bundles all talk to that server and never show the picker or let the user change it (`apps/web/src/lib/server.ts` `FIXED_SERVER`, `fixedServer.test.ts`). Change the file, or set `VITE_SERVER_URL` in the build environment, to point builds elsewhere. The bundle the server serves itself (Docker image, `VITE_BASE=/`) keeps using its own origin.
+- Only when `VITE_SERVER_URL` is empty does a wrapper (detect: `window.__TAURI__`, `window.Capacitor?.isNativePlatform()`) show a
+  "Connect to a server" screen and persist the URL (localStorage is fine; the wrapper origin is stable).
 - All REST calls use `${serverUrl}/api/...`; the WebSocket gateway uses `wss://` derived from it; LiveKit URL comes from the
   voice token as today. Web (same-origin) keeps the empty default.
 - Validate by fetching `${serverUrl}/health`. Provide "change server" in settings / on the login screen.
@@ -26,7 +27,7 @@ app must therefore not assume it is served from the same origin as the API.
 
 ## 3. Push notifications (mobile)
 - After login on native: `PushNotifications.requestPermissions()` -> `register()` -> on `registration` send
-  `{ platform: 'android'|'ios', token }` to a new server endpoint (e.g. `POST /api/push/devices`); delete on logout.
+  `{ platform: 'android'|'ios', token }` to `POST /api/v1/users/@me/push-devices` (`routes/push.ts`); delete on logout.
   Server then sends via FCM (Android) / APNs (iOS, or FCM with APNs key). Handle `pushNotificationActionPerformed` to
   navigate to the channel. Server work is outside the wrapper scope.
 - Foreground messages: show with `@capacitor/local-notifications` or in-app toast.

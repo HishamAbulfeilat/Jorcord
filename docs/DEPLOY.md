@@ -51,7 +51,7 @@ All settings are environment variables (`apps/server/.env.example` lists them wi
 
 | Variable | Notes |
 |---|---|
-| `JWT_SECRET` | **Required in production**, >= 16 chars (use 48+ random bytes). Also derives the MFA-secret encryption key: rotating it logs everyone out *and* invalidates enrolled authenticator secrets. |
+| `JWT_SECRET` | **Required in production** and at least **32 characters** (the server refuses to start with less; non-production runs accept >= 16). Use 48+ random bytes, e.g. `openssl rand -base64 48`. Also derives the MFA-secret encryption key: rotating it logs everyone out *and* invalidates enrolled authenticator secrets. |
 | `DATABASE_URL` | Postgres connection string. Empty = PGlite (single node only). |
 | `REDIS_URL` | Enables the Redis event bus, shared presence and shared voice state. |
 | `PUBLIC_URL` | Used in emailed links (`/verify-email?token=`, `/reset-password?token=`). |
@@ -161,14 +161,14 @@ Then `PUBLIC_URL=https://api.example.com` (users open this URL: it serves the we
 * **Health**: `GET /health` (200 `{status:"ok",db,...}` / 503). The image has a Docker `HEALTHCHECK`.
 * **Backups**: `pg_dump` the `jorcord` database and back up the bucket. `DATA_DIR` holds only the dev JWT secret and (without
   S3) uploaded files.
-* **Upgrades**: pull, rebuild, `docker compose up -d`. Migrations are forward-only and run at boot.
+* **Upgrades**: pull, rebuild, `docker compose up -d`. Migrations are forward-only and run at boot. Index-only migrations use the non-blocking `*.concurrent.sql` form; for backups, rollback and what to do when a host is stuck see [OPERATIONS.md](./OPERATIONS.md).
 * **Logs**: JSON via pino on stdout; `authorization`/`cookie` headers are redacted.
 * **Account deletion** anonymises the user row (username `deleted_<id>`, no email/password) and keeps their messages
   attributed to "Deleted User"; `GET /users/@me/export` returns a JSON export of the caller's data.
 
 ## Security checklist
 
-- [ ] `JWT_SECRET`, `POSTGRES_PASSWORD`, `LIVEKIT_API_SECRET`, `MINIO_ROOT_PASSWORD` are unique random values.
+- [ ] `JWT_SECRET` (>= 32 characters), `POSTGRES_PASSWORD`, `LIVEKIT_API_SECRET` (>= 32 characters), `MINIO_ROOT_PASSWORD` are unique random values.
 - [ ] `CORS_ORIGINS` lists only your web origin(s); `TRUST_PROXY=true` only when actually behind a proxy.
 - [ ] TLS on the API and LiveKit endpoints.
 - [ ] Postgres, Redis and MinIO are not reachable from the internet (compose does not publish them).

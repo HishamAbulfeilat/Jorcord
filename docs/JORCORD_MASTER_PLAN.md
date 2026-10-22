@@ -56,17 +56,26 @@ REA is installed globally (`rea`, MCP server `rea`, skill `reverse-engineer-anyt
 
 ---
 
-## 2. Current state snapshot (from repo docs and inventory, 2026-10-10)
+## 2. Current state snapshot (verified against the repo, 2026-10-22)
 
-Not re-verified by running the app. Re-check with `git log` and the tests before relying on any single line.
+Counts below were taken from the working tree (branch `claude/discord-clone-design-cdj43b`, root `package.json` version 1.3.0, tags up to `v1.3.0`); server tests: 64 test files, 438 passing. Section 4 and the section 8 phase list were written on 2026-10-10 and still show some rows as missing that are now done; this section and `docs/PARITY.md` section 3 are the current record.
 
-**Done (per README/PARITY):** accounts (register/login/refresh/logout, email verify, password reset, TOTP MFA, sessions), profiles (display name, bio, pronouns, avatar, banner, accent, custom status, themes), friends/blocks/read-states, DMs and group DMs (+ring), guilds, channels (text, voice, announcement, stage, forum, category, thread), categories + reorder, roles + overwrites using Discord's algorithm, members (nick, timeout, kick, ban), invites (+preview, join), messages (reply, edit, delete, bulk delete, pins, reactions, search, unfurl, GIFs, attachments via `/uploads`), threads (create-from-message, forum posts, auto-archive, lock), polls, scheduled events, stage instances (+request to speak, speakers), voice (LiveKit token, voice-states, moderation move/mute/deafen), webhooks (create/list/delete/execute), automod (keyword/spam/mention_spam/link), emoji + stickers, audit log, boosts (free), discovery, membership screening (`pending`), notification settings, push (VAPID + devices), applications + bot tokens + OAuth2 (+PKCE) + application commands (+permissions) + interactions (gateway + signed HTTP) + components + modals, rate-limit headers + buckets, numeric error codes, gateway intents (migration 008), data export (`/users/@me/export`), i18n (6 languages), Developer Portal page, Tauri desktop shell (tray, autostart, deep-link, single-instance, updater, window-state, notifications), Capacitor mobile shells, Docker compose, release workflow.
+**Inventory:** 33 route files in `apps/server/src/routes` (about 330 route handlers), 44 migration files (`001`-`042`, plus `049_passkeys` and `050_ban_appeals` from the accounts work; `043`-`048` are intentionally unused; `041` is `041_perf_indexes.concurrent.sql`, see `docs/OPERATIONS.md`), services under `apps/server/src/services` (including `sysbots/`), packages `shared`, `voice` and `bot-sdk`, apps `server`, `web`, `desktop` (Tauri v2) and `mobile` (Capacitor).
 
-**Open per PARITY section 8:** Components V2, soundboard, onboarding prompts, avatar decorations, plus everything in section 4 marked missing or partial. Note: the report flow (report form from the message context menu + moderator queue modal from the guild menu, `api.messages.report` + `api.guilds.reports/resolveReport/dismissReport`) is now wired end-to-end; what remains is a dedicated moderator-queue side panel (list + triage in a persistent view) rather than the modal.
+**Done:**
+- Accounts and identity: register/login/refresh/logout, email verification and password reset (HTML mails), TOTP MFA, sessions/devices, QR-code login (migration 037, `routes/remoteauth.ts`), multi-account switching, data export, profiles with pronouns/bio/banner/accent/themes, per-guild profiles (033), connections (023), avatar decorations, profile effects, name plates, server tags (017).
+- Social: friends/blocks/read states, notes and mutuals, message requests and DM privacy (010), DMs and group DMs with ring, inbox/mentions, saved messages and reminders (012), GIF favorites (022), message forwarding (011), edit history (031).
+- Guilds and channels: guilds, text/voice/announcement/stage/forum/media/category/thread channels, roles and overwrites (Discord's algorithm), members/kick/ban/timeout, invites with preview/events/vanity, templates and widget/insights (021), onboarding and screening (006, 019), safety setup/raid protection/age gate (013, 018), boosts (025), discovery, linked roles and app directory (026), mod tools/warnings/notes/prune/bulk (027), reports (029), audit log.
+- Messaging: replies, edit, delete, bulk delete, pins, reactions and super reactions (035), polls, search with filters, unfurl, attachments, voice messages, forum posts with tags/sort/layout/default reaction (034), thread lifecycle, announcement follow/crosspost (020), allowed mentions (028), AutoMod v3 (014, 024).
+- Voice: LiveKit voice/video/screen share, stage channels and instances, soundboard (015), voice moderation, priority speaker, server-side recording indicator (039), shared activities Watch Together and Tic-Tac-Toe (042), rich presence (016).
+- Events: scheduled events with recurrence (036).
+- Platform: applications/bot tokens/OAuth2 with PKCE (007), application commands, interactions (gateway and signed HTTP), components V1 and modals, gateway intents (008), built-in system bots Welcome/Moderation/Utility (038), rate-limit headers and buckets, numeric error codes, push (VAPID and mobile devices).
+- Operations: super-admin panel with re-authenticated, time-boxed god mode and `admin_audit` (030, 032), Docker compose, release workflow for desktop/mobile/web/server, fixed-server builds (`VITE_SERVER_URL`).
+- Clips: server side (040, `routes/clips.ts`); the web UI is in progress.
 
-Inventory facts: ~125 route handlers in `apps/server/src/routes/*.ts` (applications, auth, channels, commands, events, guilds, interactions, members, messages, misc, polls, push, users, voice); migrations `001`-`008`; web app under `apps/web/src/{components,pages,stores,voice,i18n,lib}`; packages `shared`, `voice`, `bot-sdk`.
+**In progress (other work streams, not on `main` yet):** passkeys (049), ban appeals (050), call ringing, clips web UI, voice/noise-suppression work in `packages/voice` and `apps/web/src/voice`.
 
----
+**Open:** Components V2, third-party embedded apps (Poker/Chess style), Go Live viewer limits and overlay, anonymous/blocked stage speakers, Discord wire-format compatibility layer (section 6.10), sharding/zlib on the gateway, private threads, role-restricted emoji, dedicated moderator-report side panel.
 
 ## 3. What the Discord desktop client contributes (summary of Appendix A)
 
@@ -82,8 +91,8 @@ Source tags: **DD** public docs, **RE** seen in local client analysis, **JP** Jo
 | Feature | Status | Pri | Size | Notes / source |
 |---|---|---|---|---|
 | Register, login, refresh, logout, sessions, MFA, email verify, password reset | done | - | - | JP |
-| Passkeys / WebAuthn | missing | P2 | M | Standard; not in Discord docs |
-| QR-code login (mobile approves desktop) | missing | P3 | M | Common pattern; implement with a short-lived pairing token |
+| Passkeys / WebAuthn | in progress | P2 | M | migration 049, `routes/passkeys.ts`; see section 2 |
+| QR-code login (mobile approves desktop) | done | - | - | migration 037, `routes/remoteauth.ts`, `remote-auth.test.ts` |
 | Account deletion / disable, data export | partial | P2 | S | `DELETE /users/@me`, `/users/@me/export` exist; add grace period + owned-guild transfer rule |
 | Username uniqueness model (unique handle + display name) | partial | P2 | S | verify `routes/auth.ts` |
 | Profile: pronouns, bio, banner, accent, theme | done | - | - | JP |

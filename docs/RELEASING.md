@@ -8,7 +8,8 @@ One tag produces one published GitHub Release containing every platform build.
    `package.json` (root, `apps/web`, `apps/server`, `apps/desktop`, `apps/mobile`) and
    `apps/desktop/src-tauri/tauri.conf.json` (+ `Cargo.toml`). Android `versionName` and iOS `MARKETING_VERSION`
    are set from the tag by CI; Android `versionCode` is the workflow run number.
-2. Commit, then `git tag v0.1.0 && git push origin v0.1.0`.
+2. Commit, then `git tag vX.Y.Z && git push origin vX.Y.Z` (X.Y.Z = the version you set in step 1; the root `package.json` is the reference).
+   Every build reads `apps/web/.env.production`, so the apps ship pointing at the fixed server (`VITE_SERVER_URL`, see `docs/WRAPPER_WEB_NEEDS.md` section 1); override it with a `VITE_SERVER_URL` env var in the workflow to build for another server.
 3. `.github/workflows/release.yml` builds in parallel: desktop (Windows, macOS arm64 + Intel, Linux), Android, iOS, web,
    server tarball + LiveKit config, Docker image. The final `release` job downloads every artifact, writes
    `SHA256SUMS.txt`, and creates the (non-draft) release `Jorcord vX.Y.Z` with generated notes in a single call, so there is no
@@ -48,7 +49,7 @@ If the iOS job fails the release is still published (the notes say so). Any othe
 |---|---|---|
 | `ANDROID_KEYSTORE_B64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD` | APKs/AAB signed with your release key (base64 of the `.jks`) | an ephemeral keystore is generated per run: APKs install fine, but a later release signed with a different key cannot upgrade it (uninstall first). Not acceptable for Play Store |
 | `GOOGLE_SERVICES_JSON_B64` | Android push (FCM) enabled | app builds, push disabled |
-| `TAURI_SIGNING_PRIVATE_KEY(_PASSWORD)` | desktop updater artifacts are produced (also put the public key in `tauri.conf.json` `plugins.updater.pubkey`) | updater artifacts are skipped |
+| `TAURI_SIGNING_PRIVATE_KEY(_PASSWORD)` | desktop updater artifacts are produced and `latest.json` is published. The matching public key is already committed in `apps/desktop/src-tauri/tauri.conf.json` (`plugins.updater.pubkey`, endpoint `releases/latest/download/latest.json`); the secret must be the private half of that key pair, otherwise installed apps reject the update | the build switches to `tauri.noupdater.conf.json`, updater artifacts and `latest.json` are skipped, installed apps get no update |
 | `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY`, `APPLE_ID`, `APPLE_PASSWORD`, `APPLE_TEAM_ID` | macOS builds are signed + notarized | unsigned `.dmg` (right-click > Open, or `xattr -cr`) |
 
 Create the Android key once and keep it forever:

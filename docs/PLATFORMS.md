@@ -6,8 +6,7 @@
 | Android | `apps/mobile/android` | Capacitor 6 | project generated, `cap sync` verified; Gradle build needs Android SDK |
 | iOS | `apps/mobile/ios` | Capacitor 6 | project generated; building needs a Mac with Xcode |
 
-Both wrappers embed `apps/web/dist`. The user types their server URL on first launch (see `docs/WRAPPER_WEB_NEEDS.md` for
-the web-side work this requires, and add the wrapper origins to the server's `CORS_ORIGINS`).
+Both wrappers embed `apps/web/dist`, built with the fixed server URL from `apps/web/.env.production` (`VITE_SERVER_URL`, currently `https://jorcord.duckdns.org`): the apps connect to that one server and show no server picker. Set `VITE_SERVER_URL` to something else (or empty to get the "Connect to a server" screen back) when building for another deployment. See `docs/WRAPPER_WEB_NEEDS.md` for the web-side details, and add the wrapper origins to the server's `CORS_ORIGINS`.
 
 Common first step: `pnpm install && pnpm --filter @jorcord/web build`.
 
