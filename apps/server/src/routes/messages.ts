@@ -14,6 +14,7 @@ import { audit, visibleChannelRows } from '../services/guilds';
 import { createMessage, parseMentions, postSystemMessage, consumeBurstQuota, resolveBurstColor } from '../services/messages';
 import { checkAutomod } from '../services/automod';
 import { channelAccess, channelPermsLite, guildAccess, need } from '../services/perms';
+import { canUseEmoji } from '../services/emojis';
 import { joinThread } from '../services/threads';
 import { hasSearchCriteria, searchMessages, searchQuerySchema } from '../services/search';
 import { ageConfirmed, ageGate } from '../services/agegate';
@@ -266,9 +267,10 @@ export function messageRoutes(app: FastifyInstance, ctx: Ctx) {
     const [m] = await ctx.db.query('SELECT 1 AS x FROM messages WHERE id = $1 AND channel_id = $2', [p.mid, p.id]);
     if (!m) throw notFound('Message');
     if (e.emojiId) {
-      const [em] = await ctx.db.query('SELECT guild_id FROM emojis WHERE id = $1 AND name = $2', [e.emojiId, e.emoji]);
+      const [em] = await ctx.db.query('SELECT guild_id, role_ids FROM emojis WHERE id = $1 AND name = $2', [e.emojiId, e.emoji]);
       if (!em) throw badRequest('Unknown custom emoji');
       if (em.guild_id !== a.channel.guild_id) need(a.perms, Perm.USE_EXTERNAL_EMOJIS);
+      else if (!canUseEmoji(em.role_ids, a.gp?.memberRoleIds, a.perms)) throw forbidden('That emoji is restricted to certain roles', 'EMOJI_RESTRICTED');
     }
     const [c] = await ctx.db.query('SELECT count(DISTINCT emoji)::int AS n, bool_or(emoji = $2) AS has FROM reactions WHERE message_id = $1', [p.mid, e.emoji]);
     if (!c.has && c.n >= 20) throw new ApiError(400, 'MAX_REACTIONS', 'Too many different reactions');

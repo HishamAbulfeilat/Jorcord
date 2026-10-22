@@ -16,6 +16,7 @@ import { activeRingsFor } from '../services/calls';
 import { relationshipDTOs } from '../routes/users';
 import type { GwSession } from './hub';
 import { shapeReady } from './intents';
+import { threadListSync } from '../services/threads';
 import { activitiesSchema, normalizeActivities } from '../services/activities';
 
 const withActivities = (a: Activity[]) => (a.length ? { activities: a } : {});
@@ -122,7 +123,15 @@ export function gatewayRoutes(app: FastifyInstance, ctx: Ctx) {
       const s: GwSession = { id: randomToken(16), userId: claims.userId, authSessionId: claims.sessionId, seq: 0, buffer: [], socket: null, detachedAt: null, intents };
       ctx.hub.sessions.set(s.id, s);
       await attach(s);
-      ctx.hub.sendTo(s, 'READY', shapeReady(s, await buildReady(ctx, s.userId, s.id)));
+      const ready = await buildReady(ctx, s.userId, s.id);
+      ctx.hub.sendTo(s, 'READY', shapeReady(s, ready));
+      // THREAD_LIST_SYNC: authoritative active-thread list per guild, so clients drop threads they lost access to while offline
+      for (const g of s.intents == null || (s.intents & 1) ? ready.guilds : []) { // GUILDS intent = bit 0
+        const threads = g.channels.filter((c) => c.type === 'thread');
+        if (!threads.length) continue;
+        const sync = await threadListSync(ctx, g.id, await ctx.db.query('SELECT * FROM channels WHERE id = ANY($1::text[])', [threads.map((t) => t.id)]), s.userId);
+        ctx.hub.sendTo(s, 'THREAD_LIST_SYNC', sync);
+      }
     }
 
     async function tryResume(userId: string, sessionId: string, seq: number): Promise<boolean> {

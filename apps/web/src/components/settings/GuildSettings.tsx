@@ -145,6 +145,22 @@ function CatBlock({ cat, children }: { cat: Channel; children: React.ReactNode }
   return <section ref={setNodeRef} data-category={cat.id} style={{ transform: CSS.Transform.toString(transform), transition }} className={cx('mt-4', isDragging && 'relative z-20 opacity-80')}><div className="flex items-center gap-1 px-1"><Handle attrs={{ ...attributes, ...listeners }} label={t('Drag to reorder {name}', { name: cat.name ?? '' })} /><H3>{cat.name}</H3><button className="ms-auto text-sm text-link hover:underline" onClick={() => open({ kind: 'channelSettings', channelId: cat.id })}>{t('Edit category')}</button></div>{children}</section>;
 }
 
+/** Role restriction for one emoji: empty = everyone may use it. */
+function EmojiRoles({ guildId, emoji }: { guildId: string; emoji: { id: string; name: string; roleIds?: string[] } }) {
+  const g = useData((s) => s.guilds[guildId])!; const [open, setOpen] = useState(false);
+  const roles = Object.values(g.roles).filter((r) => r.id !== guildId).sort((a, b) => b.position - a.position);
+  const sel = emoji.roleIds ?? [];
+  const save = (next: string[]) => api.guilds.patchEmoji(guildId, emoji.id, { roleIds: next }).then((e) => useData.getState().apply('EMOJIS_UPDATE', { guildId, emojis: useData.getState().guilds[guildId]!.emojis.map((x) => (x.id === emoji.id ? e : x)) })).catch(toastError);
+  return (<span className="relative">
+    <button className="btn btn-secondary" aria-expanded={open} aria-label={t('Roles for {name}', { name: emoji.name })} onClick={() => setOpen(!open)}>{sel.length ? t('{n} roles', { n: sel.length }) : t('Everyone')}</button>
+    {open && <div role="group" aria-label={t('Roles allowed to use :{name}:', { name: emoji.name })} className="absolute end-0 z-10 mt-1 max-h-60 w-56 overflow-auto rounded-md border border-divider bg-modal p-2 shadow-lg">
+      <p className="mb-1 text-xs text-muted">{t('Only these roles can use it. None selected = everyone.')}</p>
+      {!roles.length && <p className="text-xs text-muted">{t('No roles yet.')}</p>}
+      {roles.map((r) => <label key={r.id} className="flex cursor-pointer items-center gap-2 py-1 text-sm"><input type="checkbox" checked={sel.includes(r.id)} onChange={(ev) => void save(ev.target.checked ? [...sel, r.id] : sel.filter((x) => x !== r.id))} />{r.name}</label>)}
+    </div>}
+  </span>);
+}
+
 function EmojiTab({ guildId }: { guildId: string }) {
   const g = useData((s) => s.guilds[guildId])!; const [name, setName] = useState(''); const [img, setImg] = useState<string | null>(null);
   const add = async () => { if (!img || !name) return; try { const e = await api.guilds.createEmoji(guildId, { name, url: img, animated: /\.gif($|\?)/i.test(img) }); useData.getState().apply('EMOJIS_UPDATE', { guildId, emojis: [...g.emojis, e] }); setName(''); setImg(null); toast(t('Emoji added'), 'success'); } catch (e) { toastError(e); } };
@@ -153,7 +169,7 @@ function EmojiTab({ guildId }: { guildId: string }) {
     <p className="mb-4 text-sm text-muted">{g.emojis.length} / {LIMITS.maxEmojiPerServer} slots used. Everyone gets {LIMITS.maxEmojiPerServer} emoji slots — no paywall.</p>
     <div className="mb-6 flex flex-wrap items-end gap-3 rounded-lg bg-side p-3"><IconPicker value={img} onChange={setImg} label={t('Image')} size={56} /><div className="min-w-[160px] flex-1"><span className="label">{t('Name')}</span><input className="field" value={name} maxLength={32} onChange={(e) => setName(e.target.value.replace(/[^\w]/g, ''))} placeholder={t('emoji_name')} /></div><button disabled={!img || name.length < 2} className="btn btn-primary btn-lg" onClick={add}>{t('Upload')}</button></div>
     {!g.emojis.length && <Empty icon={<Smile size={40} />} title={t('No custom emoji yet')} />}
-    <ul>{g.emojis.map((e) => <li key={e.id} className="flex items-center gap-3 border-b border-divider/50 py-2"><img loading="lazy" decoding="async" src={fileUrl(e.url) ?? e.url} alt="" className="h-8 w-8 object-contain" /><span className="flex-1 font-mono text-sm">:{e.name}:</span><button className="btn btn-secondary" onClick={() => useUI.getState().openModal({ kind: 'prompt', title: 'Rename Emoji', label: 'Name', initial: e.name, onSubmit: (v) => api.guilds.patchEmoji(guildId, e.id, { name: v }).then(() => useData.getState().apply('EMOJIS_UPDATE', { guildId, emojis: g.emojis.map((x) => (x.id === e.id ? { ...x, name: v } : x)) })).catch(toastError) })}>{t('Rename')}</button><button aria-label={`Delete ${e.name}`} className="p-2 text-danger" onClick={() => api.guilds.deleteEmoji(guildId, e.id).then(() => useData.getState().apply('EMOJIS_UPDATE', { guildId, emojis: g.emojis.filter((x) => x.id !== e.id) })).catch(toastError)}><Trash2 size={16} /></button></li>)}</ul>
+    <ul>{g.emojis.map((e) => <li key={e.id} className="flex items-center gap-3 border-b border-divider/50 py-2"><img loading="lazy" decoding="async" src={fileUrl(e.url) ?? e.url} alt="" className="h-8 w-8 object-contain" /><span className="flex-1 font-mono text-sm">:{e.name}:</span><button className="btn btn-secondary" onClick={() => useUI.getState().openModal({ kind: 'prompt', title: 'Rename Emoji', label: 'Name', initial: e.name, onSubmit: (v) => api.guilds.patchEmoji(guildId, e.id, { name: v }).then(() => useData.getState().apply('EMOJIS_UPDATE', { guildId, emojis: g.emojis.map((x) => (x.id === e.id ? { ...x, name: v } : x)) })).catch(toastError) })}>{t('Rename')}</button><EmojiRoles guildId={guildId} emoji={e} /><button aria-label={`Delete ${e.name}`} className="p-2 text-danger" onClick={() => api.guilds.deleteEmoji(guildId, e.id).then(() => useData.getState().apply('EMOJIS_UPDATE', { guildId, emojis: g.emojis.filter((x) => x.id !== e.id) })).catch(toastError)}><Trash2 size={16} /></button></li>)}</ul>
   </>);
 }
 

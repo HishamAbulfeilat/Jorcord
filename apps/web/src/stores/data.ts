@@ -150,6 +150,16 @@ export const useData = create<DataState>((set, get) => ({
       case 'VOICE_RECORDING_UPDATE': return set((st) => d.recording ? { voiceRecordings: { ...st.voiceRecordings, [d.channelId]: d.recording } } : { voiceRecordings: omit(st.voiceRecordings, d.channelId) });
       case 'EMOJIS_UPDATE': return patchGuild(d.guildId, (g) => ({ ...g, emojis: d.emojis }));
       case 'STICKERS_UPDATE': return patchGuild(d.guildId, (g) => ({ ...g, stickers: d.stickers }));
+      case 'THREAD_LIST_SYNC': {
+        // authoritative list of active threads (for the whole guild, or just under d.channelIds): drop the ones we no longer see
+        const keep = new Set((d.threads as Channel[]).map((t) => t.id));
+        return patchGuild(d.guildId, (g) => {
+          const channels = { ...g.channels };
+          for (const c of Object.values(channels)) if (c.type === 'thread' && !c.archived && !keep.has(c.id) && (!d.channelIds || d.channelIds.includes(c.parentId))) delete channels[c.id];
+          for (const t of d.threads as Channel[]) channels[t.id] = { ...channels[t.id], ...t };
+          return { ...g, channels };
+        });
+      }
       case 'THREAD_DELETE': return patchGuild(d.guildId, (g) => { const { [d.id]: _, ...rest } = g.channels; return { ...g, channels: rest }; });
       default: return;
     }

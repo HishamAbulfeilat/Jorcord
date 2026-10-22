@@ -59,6 +59,8 @@ export interface Events {
   STICKERS_UPDATE: { guildId: Id; stickers: Sticker[] };
   THREAD_CREATE: Channel; THREAD_UPDATE: Channel;
   THREAD_MEMBERS_UPDATE: { id: Id; guildId: Id; addedUserIds: Id[]; removedUserIds: Id[] };
+  /** Active threads the recipient can see, sent after READY per guild (`channelIds` omitted) and when they gain access to channels (`channelIds` = those parents). Replaces the client's known active threads for that scope. */
+  THREAD_LIST_SYNC: { guildId: Id; channelIds?: Id[]; threads: Channel[]; members: { threadId: Id; userId: Id; joinedAt: string }[] };
   /** Reply to gateway op REQUEST_MEMBERS (sent only to the requesting session). */
   /** Platform pass (additive). Bots receive INTERACTION_CREATE on their gateway session (or via the signed HTTP endpoint). */
   INTERACTION_CREATE: Interaction;

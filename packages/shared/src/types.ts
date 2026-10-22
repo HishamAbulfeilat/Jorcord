@@ -55,6 +55,10 @@ export interface Channel {
   /** Forum/media defaults: post sort order, default layout, and the reaction auto-added to every new post. */
   defaultSortOrder?: 'latest_activity' | 'creation_date'; defaultForumLayout?: 'list' | 'gallery'; defaultReactionEmoji?: string | null;
   appliedTags?: Id[]; autoArchiveDuration?: number; locked?: boolean; archiveAt?: string | null;
+  /** Threads: private threads are visible only to their members (and MANAGE_THREADS holders); `invitable` lets any member add others. */
+  private?: boolean; invitable?: boolean;
+  /** Group DMs: custom icon (asset URL). */
+  icon?: string | null;
   /** A channel that hosts clips (short videos) and exposes the clips API. */
   isClipsChannel?: boolean;
 }
@@ -103,7 +107,7 @@ export interface AllowedMentions {
 export interface Reminder { id: Id; remindAt: string; firedAt: string | null; message: Message }
 export interface Invite { code: string; guildId: Id; channelId: Id; inviterId: Id; uses: number; maxUses: number | null; expiresAt: string | null; temporary: boolean; guild?: Pick<Guild, 'id' | 'name' | 'icon'>; approxMembers?: number }
 export interface Relationship { user: User; type: 'friend' | 'blocked' | 'incoming' | 'outgoing' }
-export interface Emoji { id: Id; guildId: Id; name: string; animated: boolean; url: string }
+export interface Emoji { id: Id; guildId: Id; name: string; animated: boolean; url: string; /** When present, only members holding one of these roles (or emoji managers) may use the emoji. */ roleIds?: Id[] }
 export interface Sticker { id: Id; guildId: Id; name: string; url: string; format: 'png' | 'apng' | 'lottie' | 'gif' }
 export interface VoiceState { userId: Id; guildId: Id | null; channelId: Id | null; selfMute: boolean; selfDeaf: boolean; serverMute: boolean; serverDeaf: boolean; video: boolean; streaming: boolean; suppress: boolean; /** ISO time when the user asked to speak on a stage (null/absent = no request). */ requestToSpeakAt?: string | null; /** userId of the streamer this member is currently watching (null/absent = not watching). */ watching?: string | null; /** cap on how many members may watch this member's stream (null/absent = uncapped). */ streamViewerLimit?: number | null }
 /** An active voice-channel recording session. */

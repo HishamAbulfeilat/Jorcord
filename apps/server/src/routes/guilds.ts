@@ -214,7 +214,15 @@ export function guildRoutes(app: FastifyInstance, ctx: Ctx) {
   });
 
   // ---------- emojis & stickers ----------
-  const emojiRow = (e: any) => ({ id: e.id, guildId: e.guild_id, name: e.name, animated: e.animated, url: e.url });
+  const emojiRow = (e: any) => ({ id: e.id, guildId: e.guild_id, name: e.name, animated: e.animated, url: e.url, ...(e.role_ids?.length ? { roleIds: e.role_ids as string[] } : {}) });
+  /** Role restriction: every id must be a role of this server (@everyone excluded). */
+  const checkEmojiRoles = async (guildId: string, roleIds: string[]) => {
+    const uniq = [...new Set(roleIds)];
+    if (!uniq.length) return uniq;
+    const rows = await ctx.db.query('SELECT id FROM roles WHERE guild_id = $1 AND id = ANY($2::text[]) AND id <> $1', [guildId, uniq]);
+    if (rows.length !== uniq.length) throw badRequest('Unknown role');
+    return uniq;
+  };
   const stickerRow = (s: any) => ({ id: s.id, guildId: s.guild_id, name: s.name, url: s.url, format: s.format });
   const stickerPush = async (id: string) => ctx.hub.toGuild(id, 'STICKERS_UPDATE', { guildId: id, stickers: (await ctx.db.query('SELECT * FROM stickers WHERE guild_id = $1', [id])).map(stickerRow) });
   const emojiPush = async (id: string) => ctx.hub.toGuild(id, 'EMOJIS_UPDATE', { guildId: id, emojis: (await ctx.db.query('SELECT * FROM emojis WHERE guild_id = $1', [id])).map(emojiRow) });
@@ -226,21 +234,23 @@ export function guildRoutes(app: FastifyInstance, ctx: Ctx) {
   });
   app.post('/guilds/:id/emojis', async (req, reply) => {
     const { id } = parse(gid, req.params);
-    const b = parse(z.object({ name: nameSchema, url: assetUrl, animated: z.boolean().optional() }).strict(), req.body);
+    const b = parse(z.object({ name: nameSchema, url: assetUrl, animated: z.boolean().optional(), roleIds: z.array(idSchema).max(20).optional() }).strict(), req.body);
     need(guildPerms(await guildAccess(ctx, req.userId, id)), Perm.MANAGE_EMOJIS);
+    const roleIds = await checkEmojiRoles(id, b.roleIds ?? []);
     const [c] = await ctx.db.query('SELECT count(*)::int AS n FROM emojis WHERE guild_id = $1', [id]);
     const slots = await slotLimits(ctx, id);
     if (c.n >= slots.emojiSlots) throw new ApiError(400, 'MAX_EMOJIS', `Emoji limit reached (${slots.emojiSlots} at boost level ${slots.level}; boosting is free)`);
     const eid = snowflake();
-    await ctx.db.query('INSERT INTO emojis (id, guild_id, name, animated, url) VALUES ($1,$2,$3,$4,$5)', [eid, id, b.name, b.animated ?? false, b.url]);
+    await ctx.db.query('INSERT INTO emojis (id, guild_id, name, animated, url, role_ids) VALUES ($1,$2,$3,$4,$5,$6::jsonb)', [eid, id, b.name, b.animated ?? false, b.url, JSON.stringify(roleIds)]);
     await audit(ctx, id, req.userId, 'EMOJI_CREATE', eid, b); await emojiPush(id);
     return reply.code(201).send(emojiRow((await ctx.db.query('SELECT * FROM emojis WHERE id = $1', [eid]))[0]));
   });
   app.patch('/guilds/:id/emojis/:emojiId', async (req) => {
     const p = parse(z.object({ id: idSchema, emojiId: idSchema }), req.params);
-    const b = parse(z.object({ name: nameSchema }).strict(), req.body);
+    const b = parse(z.object({ name: nameSchema.optional(), roleIds: z.array(idSchema).max(20).optional() }).strict().refine((x) => x.name !== undefined || x.roleIds !== undefined, 'Nothing to change'), req.body);
     need(guildPerms(await guildAccess(ctx, req.userId, p.id)), Perm.MANAGE_EMOJIS);
-    const rows = await ctx.db.query('UPDATE emojis SET name = $3 WHERE id = $1 AND guild_id = $2 RETURNING *', [p.emojiId, p.id, b.name]);
+    const roleIds = b.roleIds !== undefined ? await checkEmojiRoles(p.id, b.roleIds) : null;
+    const rows = await ctx.db.query('UPDATE emojis SET name = COALESCE($3, name), role_ids = COALESCE($4::jsonb, role_ids) WHERE id = $1 AND guild_id = $2 RETURNING *', [p.emojiId, p.id, b.name ?? null, roleIds ? JSON.stringify(roleIds) : null]);
     if (!rows.length) throw notFound('Emoji');
     await audit(ctx, p.id, req.userId, 'EMOJI_UPDATE', p.emojiId, b); await emojiPush(p.id);
     return emojiRow(rows[0]);

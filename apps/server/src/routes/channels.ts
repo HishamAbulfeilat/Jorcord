@@ -369,9 +369,9 @@ export function channelRoutes(app: FastifyInstance, ctx: Ctx) {
     for (const t of [...uniq.filter((x) => !previous.includes(x)), ...previous.filter((x) => !uniq.includes(x))]) if (tags.get(t)?.moderated && !canModerate) throw forbidden('That tag can only be managed by moderators');
     return uniq;
   }
-  async function createThread(a: Awaited<ReturnType<typeof channelAccess>>, userId: string, id: string, name: string, o: { autoArchive?: number; appliedTags?: string[] } = {}) {
+  async function createThread(a: Awaited<ReturnType<typeof channelAccess>>, userId: string, id: string, name: string, o: { autoArchive?: number; appliedTags?: string[]; private?: boolean; invitable?: boolean } = {}) {
     await insertChannel(ctx.db, { id, guildId: a.channel.guild_id, type: 'thread', name, parentId: a.channel.id, ownerId: userId, slowmode: 0 });
-    await ctx.db.query('UPDATE channels SET auto_archive_minutes = $2, applied_tags = $3::jsonb, activity_at = now() WHERE id = $1', [id, o.autoArchive ?? a.channel.default_auto_archive ?? 1440, JSON.stringify(o.appliedTags ?? [])]);
+    await ctx.db.query('UPDATE channels SET auto_archive_minutes = $2, applied_tags = $3::jsonb, activity_at = now(), thread_private = $4, thread_invitable = $5 WHERE id = $1', [id, o.autoArchive ?? a.channel.default_auto_archive ?? 1440, JSON.stringify(o.appliedTags ?? []), !!o.private, o.invitable ?? true]);
     const [row] = await ctx.db.query('SELECT * FROM channels WHERE id = $1', [id]);
     const dto = await channelDTO(ctx, row);
     await ctx.db.query('INSERT INTO thread_members (thread_id, user_id) VALUES ($1,$2) ON CONFLICT DO NOTHING', [id, userId]);
@@ -393,6 +393,21 @@ export function channelRoutes(app: FastifyInstance, ctx: Ctx) {
     const [fresh] = await ctx.db.query('SELECT * FROM messages WHERE id = $1', [p.mid]);
     await ctx.hub.toChannel(p.id, 'MESSAGE_UPDATE', await messageDTO(ctx, fresh, null));
     await audit(ctx, a.channel.guild_id, req.userId, 'THREAD_CREATE', p.mid, { name: b.name });
+    return reply.code(201).send(dto);
+  });
+
+  /** Start a thread without a starter message. Private threads need CREATE_PRIVATE_THREADS and are visible to their members only. */
+  app.post('/channels/:id/threads', async (req, reply) => {
+    const { id } = parse(z.object({ id: idSchema }), req.params);
+    const b = parse(z.object({ name: z.string().trim().min(1).max(100), type: z.enum(['public', 'private']).default('public'), invitable: z.boolean().optional(), autoArchiveDuration: archiveDuration.optional() }).strict(), req.body);
+    limitOrThrow(ctx.rl, `thread-create:${req.userId}`, 10, 60_000, ctx.config.rateLimit);
+    const a = await channelAccess(ctx, req.userId, id);
+    const isPrivate = b.type === 'private';
+    if (!(isPrivate ? a.channel.type === 'text' : ['text', 'announcement'].includes(a.channel.type))) throw badRequest(isPrivate ? 'Private threads can only be started in text channels' : 'Threads can only be started in text channels');
+    need(a.perms, isPrivate ? Perm.CREATE_PRIVATE_THREADS : Perm.CREATE_PUBLIC_THREADS);
+    await checkVerification(ctx, a.channel.guild_id, req.userId, a.perms);
+    const { dto } = await createThread(a, req.userId, snowflake(), b.name, { autoArchive: b.autoArchiveDuration, private: isPrivate, invitable: isPrivate ? b.invitable ?? true : undefined });
+    await audit(ctx, a.channel.guild_id, req.userId, 'THREAD_CREATE', dto.id, { name: b.name, private: isPrivate });
     return reply.code(201).send(dto);
   });
 
@@ -438,7 +453,7 @@ export function channelRoutes(app: FastifyInstance, ctx: Ctx) {
     const a = await channelAccess(ctx, req.userId, id);
     need(a.perms, Perm.READ_MESSAGE_HISTORY);
     const rows = await ctx.db.query(`SELECT * FROM channels WHERE parent_id = $1 AND type = 'thread' AND archived = $2 ORDER BY last_message_id DESC NULLS LAST, id DESC LIMIT $3`, [id, q.archived === 'true', limitParam(q.limit)]);
-    return channelsDTO(ctx, rows);
+    return channelsDTO(ctx, await onlyVisibleThreads(rows, a.perms, req.userId));
   });
 
   /** Threads of one parent channel. `state` = active | archived; archived supports `before=<threadId>` paging. */
@@ -452,9 +467,16 @@ export function channelRoutes(app: FastifyInstance, ctx: Ctx) {
     const rows = await ctx.db.query(
       `SELECT * FROM channels WHERE parent_id = $1 AND type = 'thread' AND archived = $2 AND ($3::text IS NULL OR id < $3) ORDER BY id DESC LIMIT $4`,
       [p.id, p.state === 'archived', q.before ?? null, limit + 1]);
-    const threads = await channelsDTO(ctx, rows.slice(0, limit));
+    const threads = await channelsDTO(ctx, await onlyVisibleThreads(rows.slice(0, limit), a.perms, req.userId));
     return { threads, members: await myThreadMembers(threads.map((t) => t.id), req.userId), hasMore: rows.length > limit };
   });
+  /** Drops private threads the caller may not see (not a member, not the owner, no MANAGE_THREADS). */
+  const onlyVisibleThreads = async (rows: any[], parentPerms: bigint, userId: string) => {
+    const priv = rows.filter((r) => r.thread_private);
+    if (!priv.length || has(parentPerms, Perm.MANAGE_THREADS)) return rows;
+    const mine = new Set((await ctx.db.query('SELECT thread_id FROM thread_members WHERE user_id = $2 AND thread_id = ANY($1::text[])', [priv.map((r) => r.id), userId])).map((r) => r.thread_id as string));
+    return rows.filter((r) => !r.thread_private || mine.has(r.id) || r.owner_id === userId);
+  };
 
   /** Every active thread in a guild the caller can see (e.g. to populate a sidebar on connect). */
   app.get('/guilds/:id/threads/active', async (req) => {
@@ -487,8 +509,9 @@ export function channelRoutes(app: FastifyInstance, ctx: Ctx) {
     if (a.channel.archived) throw badRequest('Thread is archived');
     const target = p.userId === '@me' ? req.userId : p.userId;
     if (target !== req.userId) {
-      if (a.channel.owner_id !== req.userId) need(a.perms, Perm.MANAGE_THREADS);
-      const ok = await viewersAmong(ctx, a.channel, [target]); // only people who can actually see the thread
+      // private + not invitable: only the owner / MANAGE_THREADS may add people; otherwise any member of a private thread may
+      if (a.channel.owner_id !== req.userId && !(a.channel.thread_private && a.channel.thread_invitable !== false)) need(a.perms, Perm.MANAGE_THREADS);
+      const ok = await viewersAmong(ctx, a.channel, [target], { ignorePrivate: true }); // only people who can see the parent channel
       if (!ok.length) throw notFound('Member');
     }
     await joinThread(ctx, a.channel, target);

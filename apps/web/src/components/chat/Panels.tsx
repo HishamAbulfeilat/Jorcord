@@ -1,17 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Search, X, Pin, PinOff, MessagesSquare, Hash, CornerDownRight, ShieldBan } from 'lucide-react';
+import { Search, X, Pin, PinOff, MessagesSquare, Hash, CornerDownRight, ShieldBan, Lock } from 'lucide-react';
 import { canPinMessage } from '@/lib/perms';
 import { myChannelPerms } from '@/lib/session';
 import { toastError } from '@/stores/ui';
 import { t } from '@/i18n';
+import { Perm, has } from '@jorcord/shared';
 import type { Channel, Id, Message, Report } from '@jorcord/shared';
 import { api } from '@/lib/api';
 import { useData } from '@/stores/data';
 import { useUI, toast } from '@/stores/ui';
 import { useNav } from '@/lib/nav';
 import { Avatar } from '@/components/ui/Avatar';
-import { Spinner, Empty } from '@/components/ui/primitives';
+import { Spinner, Empty, Toggle } from '@/components/ui/primitives';
 import { Markdown } from './Markdown';
 import { displayName, fmtStamp, msgTime, cx } from '@/lib/format';
 import { useDebounced } from '@/lib/hooks';
@@ -91,15 +92,38 @@ export function PinsPanel({ channel, onClose }: { channel: Channel; onClose: () 
   );
 }
 
+/** Start a thread without a starter message; private threads are visible to their members only. */
+export function NewThreadForm({ channel, onCreated }: { channel: Channel; onCreated: (c: Channel) => void }) {
+  const perms = myChannelPerms(channel.id);
+  const canPublic = has(perms, Perm.CREATE_PUBLIC_THREADS), canPrivate = channel.type === 'text' && has(perms, Perm.CREATE_PRIVATE_THREADS);
+  const [name, setName] = useState(''); const [priv, setPriv] = useState(false); const [invitable, setInvitable] = useState(true); const [busy, setBusy] = useState(false);
+  if (!canPublic && !canPrivate) return null;
+  const isPrivate = priv && canPrivate || !canPublic;
+  const submit = async () => {
+    if (!name.trim() || busy) return; setBusy(true);
+    try { const c = await api.channels.startThread(channel.id, { name: name.trim(), type: isPrivate ? 'private' : 'public', ...(isPrivate ? { invitable } : {}) }); useData.getState().apply('THREAD_CREATE', c); setName(''); onCreated(c); }
+    catch (e) { toastError(e); } finally { setBusy(false); }
+  };
+  return (
+    <form data-testid="new-thread" onSubmit={(e) => { e.preventDefault(); void submit(); }} className="mb-3 rounded-md border border-divider bg-chat p-3">
+      <input aria-label={t('Thread name')} value={name} onChange={(e) => setName(e.target.value)} maxLength={100} placeholder={t('New thread name')} className="w-full rounded-md bg-input px-3 py-2 text-sm text-header outline-none" />
+      {canPrivate && <label className="mt-2 flex items-center justify-between text-sm text-header"><span className="flex items-center gap-1"><Lock size={14} />{t('Private thread')}</span><Toggle label={t('Private thread')} checked={isPrivate} onChange={setPriv} disabled={!canPublic} /></label>}
+      {isPrivate && <label className="mt-2 flex items-center justify-between text-sm text-header"><span>{t('Members can invite others')}</span><Toggle label={t('Members can invite others')} checked={invitable} onChange={setInvitable} /></label>}
+      <button type="submit" disabled={!name.trim() || busy} className="mt-3 w-full rounded-md bg-brand px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{t('Start Thread')}</button>
+    </form>
+  );
+}
+
 export function ThreadsPanel({ channel, onClose }: { channel: Channel; onClose: () => void }) {
   const nav = useNav();
   const chans = useData((s) => (channel.guildId ? s.guilds[channel.guildId]?.channels : undefined));
   const threads = useMemo(() => Object.values(chans ?? {}).filter((c) => c.type === 'thread' && c.parentId === channel.id), [chans, channel.id]);
   useQuery({ queryKey: ['threads', channel.id], queryFn: async () => { const [a, b] = await Promise.all([api.channels.threads(channel.id, false), api.channels.threads(channel.id, true)]); [...a, ...b].forEach((t) => useData.getState().apply('THREAD_UPDATE', t)); return true; }, staleTime: 15_000 });
   const active = threads.filter((t) => !t.archived), old = threads.filter((t) => t.archived);
-  const Row = ({ t }: { t: Channel }) => <button onClick={() => { nav.go(channel.guildId, t.id); onClose(); }} className="mb-2 flex w-full items-center gap-3 rounded-md border border-divider bg-chat p-3 text-start hover:bg-chat-hover"><MessagesSquare size={20} className="text-muted" /><span className="min-w-0 flex-1"><span className="block truncate font-semibold text-header">{t.name}</span><span className="text-xs text-muted">{t.archived ? 'Archived' : 'Active'}</span></span><CornerDownRight size={16} className="text-muted" /></button>;
+  const Row = ({ t }: { t: Channel }) => <button onClick={() => { nav.go(channel.guildId, t.id); onClose(); }} className="mb-2 flex w-full items-center gap-3 rounded-md border border-divider bg-chat p-3 text-start hover:bg-chat-hover">{t.private ? <Lock size={20} className="text-muted" aria-label="Private thread" /> : <MessagesSquare size={20} className="text-muted" />}<span className="min-w-0 flex-1"><span className="block truncate font-semibold text-header">{t.name}</span><span className="text-xs text-muted">{t.archived ? 'Archived' : 'Active'}</span></span><CornerDownRight size={16} className="text-muted" /></button>;
   return (
     <PanelShell title={t('Threads')} onClose={onClose}>
+      {['text', 'announcement'].includes(channel.type) && <NewThreadForm channel={channel} onCreated={(c) => { nav.go(channel.guildId, c.id); onClose(); }} />}
       {!threads.length && <Empty icon={<MessagesSquare size={40} />} title="There are no threads">Stay focused on a conversation with a thread. Hover a message and use “Create Thread”.</Empty>}
       {active.length > 0 && <h3 className="section-title px-1 pb-2">Active threads</h3>}{active.map((t) => <Row key={t.id} t={t} />)}
       {old.length > 0 && <h3 className="section-title px-1 pb-2 pt-3">Archived</h3>}{old.map((t) => <Row key={t.id} t={t} />)}

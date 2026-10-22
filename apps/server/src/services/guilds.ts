@@ -71,7 +71,13 @@ export async function visibleChannelRows(ctx: Ctx, guildId: string, userId: stri
   for (const o of ows) { const l = byCh.get(o.channel_id) ?? []; l.push({ id: o.target_id, type: o.type, allow: BigInt(o.allow), deny: BigInt(o.deny) }); byCh.set(o.channel_id, l); }
   const byId = new Map(rows.map((r) => [r.id, r]));
   const canView = (r: any) => { const src = r.type === 'thread' && r.parent_id ? byId.get(r.parent_id) ?? r : r; const p = permsFor(gp, byCh.get(src.id) ?? []); return has(p, Perm.VIEW_CHANNEL) && has(p, alsoNeed); };
-  return rows.filter(canView);
+  const seen = rows.filter(canView);
+  // private threads: members, owners and MANAGE_THREADS holders only
+  const priv = seen.filter((r) => r.type === 'thread' && r.thread_private);
+  if (!priv.length) return seen;
+  const mine = new Set((await ctx.db.query('SELECT thread_id FROM thread_members WHERE user_id = $1 AND thread_id = ANY($2::text[])', [userId, priv.map((r) => r.id)])).map((r) => r.thread_id as string));
+  const canManage = (r: any) => { const src = byId.get(r.parent_id) ?? r; return has(permsFor(gp, byCh.get(src.id) ?? []), Perm.MANAGE_THREADS); };
+  return seen.filter((r) => !(r.type === 'thread' && r.thread_private) || mine.has(r.id) || r.owner_id === userId || canManage(r));
 }
 
 export async function buildGuildFull(ctx: Ctx, guildId: string, userId: string): Promise<GuildFull> {
@@ -88,7 +94,7 @@ export async function buildGuildFull(ctx: Ctx, guildId: string, userId: string):
   return {
     ...guildDTO(g),
     channels: await channelsDTO(ctx, channelRows), roles: roles.map(roleDTO), members: await membersDTO(ctx, memberRows),
-    emojis: emojis.map((e) => ({ id: e.id, guildId: e.guild_id, name: e.name, animated: e.animated, url: e.url })),
+    emojis: emojis.map((e) => ({ id: e.id, guildId: e.guild_id, name: e.name, animated: e.animated, url: e.url, ...(e.role_ids?.length ? { roleIds: e.role_ids as string[] } : {}) })),
     stickers: stickers.map((s) => ({ id: s.id, guildId: s.guild_id, name: s.name, url: s.url, format: s.format })),
     memberCount: cnt.n,
   };

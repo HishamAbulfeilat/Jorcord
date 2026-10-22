@@ -61,11 +61,13 @@ export async function channelsDTO(ctx: Ctx, rows: any[]): Promise<Channel[]> {
     id: r.id, guildId: r.guild_id ?? null, type: r.type, name: r.name ?? null, topic: r.topic ?? null, position: r.position,
     parentId: r.parent_id ?? null, nsfw: r.nsfw, slowmode: r.slowmode, bitrate: r.bitrate ?? null, userLimit: r.user_limit ?? null,
     overwrites: ows.filter((o) => o.channel_id === r.id).map(overwriteDTO), lastMessageId: r.last_message_id ?? null,
+    ...(r.type === 'group_dm' ? { icon: r.icon ?? null } : {}),
     ...(r.type === 'dm' || r.type === 'group_dm' ? { recipients: recips.filter((p) => p.channel_id === r.id).map((p) => users.get(p.user_id)!).filter(Boolean) } : {}),
     ownerId: r.owner_id ?? null, archived: r.archived, createdAt: iso(r.created_at)!, isClipsChannel: !!r.is_clips_channel,
     ...(r.type === 'forum' || r.type === 'media' ? { availableTags: r.available_tags ?? [], requireTag: !!r.require_tag, defaultAutoArchiveDuration: r.default_auto_archive ?? 1440, defaultSortOrder: (r.default_sort_order ?? 'latest_activity') as 'latest_activity' | 'creation_date', defaultForumLayout: (r.default_forum_layout ?? 'list') as 'list' | 'gallery', defaultReactionEmoji: r.default_reaction_emoji ?? null } : {}),
     ...(r.type === 'thread' ? {
       appliedTags: r.applied_tags ?? [], autoArchiveDuration: r.auto_archive_minutes ?? 1440, locked: !!r.locked,
+      ...(r.thread_private ? { private: true, invitable: r.thread_invitable !== false } : {}),
       archiveAt: r.archived ? null : new Date(new Date(r.activity_at ?? r.created_at).getTime() + (r.auto_archive_minutes ?? 1440) * 60_000).toISOString(),
     } : {}),
   }));

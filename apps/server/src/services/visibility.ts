@@ -3,6 +3,8 @@ import type { Ctx } from '../ctx';
 import { loadGuildPerms, permsFor } from './perms';
 import { channelsDTO } from './serializers';
 import { disconnectMember } from './voice';
+import { visibleChannelRows } from './guilds';
+import { threadListSync } from './threads';
 
 export interface VisibilityScope {
   /** Limit to these channels (and the threads under them). Default: every channel of the guild. */
@@ -15,9 +17,9 @@ type Snapshot = Map<string, Set<string>>;
 /** channelId -> users who can VIEW_CHANNEL it (threads inherit their parent's overwrites). */
 async function snapshot(ctx: Ctx, guildId: string, scope: VisibilityScope): Promise<Snapshot> {
   const rows = scope.channelIds
-    ? await ctx.db.query(`SELECT id, type, parent_id, archived FROM channels WHERE guild_id = $1 AND (id = ANY($2::text[]) OR parent_id = ANY($2::text[]))`, [guildId, scope.channelIds])
-    : await ctx.db.query('SELECT id, type, parent_id, archived FROM channels WHERE guild_id = $1', [guildId]);
-  const channels = rows.filter((c) => !(c.type === 'thread' && c.archived));
+    ? await ctx.db.query(`SELECT id, type, parent_id, archived, thread_private FROM channels WHERE guild_id = $1 AND (id = ANY($2::text[]) OR parent_id = ANY($2::text[]))`, [guildId, scope.channelIds])
+    : await ctx.db.query('SELECT id, type, parent_id, archived, thread_private FROM channels WHERE guild_id = $1', [guildId]);
+  const channels = rows.filter((c) => !(c.type === 'thread' && (c.archived || c.thread_private))); // private threads follow membership, not overwrites
   const users = scope.userIds ?? (await ctx.db.query('SELECT user_id FROM members WHERE guild_id = $1', [guildId])).map((r) => r.user_id as string);
   const gps = await loadGuildPerms(ctx, guildId, users);
   const owIds = [...new Set(channels.map((c) => (c.type === 'thread' && c.parent_id ? c.parent_id : c.id)))];
@@ -56,6 +58,13 @@ export async function trackVisibility(ctx: Ctx, guildId: string, scope: Visibili
     if (gainedBy.size) {
       const dtos = await channelsDTO(ctx, await ctx.db.query('SELECT * FROM channels WHERE id = ANY($1::text[])', [[...gainedBy.keys()]]));
       for (const dto of dtos) await ctx.hub.toUsers(gainedBy.get(dto.id)!, dto.type === 'thread' ? 'THREAD_CREATE' : 'CHANNEL_CREATE', dto);
+      // THREAD_LIST_SYNC: users who gained a parent channel learn about its active threads in one event
+      const perUser = new Map<string, string[]>();
+      for (const [cid, users] of gainedBy) if (dtos.find((d) => d.id === cid)?.type !== 'thread') for (const u of users) perUser.set(u, [...(perUser.get(u) ?? []), cid]);
+      for (const [u, parents] of perUser) {
+        const threads = (await visibleChannelRows(ctx, guildId, u)).filter((c) => c.type === 'thread' && parents.includes(c.parent_id));
+        if (threads.length) await ctx.hub.toUsers([u], 'THREAD_LIST_SYNC', await threadListSync(ctx, guildId, threads, u, parents));
+      }
     }
   };
 }

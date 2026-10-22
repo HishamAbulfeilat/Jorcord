@@ -3,6 +3,7 @@ import type { Ctx } from '../ctx';
 import { ApiError, badRequest, forbidden, notFound } from '../errors';
 import { checkAutomod } from './automod';
 import { channelAccess } from './perms';
+import { assertEmojiAllowed } from './emojis';
 import { audit } from './guilds';
 import { noteMessage } from './linkedroles';
 import { applyMediaFilter, checkVerification } from './safety';
@@ -84,6 +85,7 @@ export async function createMessage(ctx: Ctx, m: NewMessage): Promise<Message> {
   if (m.requireMedia && !attachments.some(isMediaAttachment)) throw badRequest('Media channels only accept posts with an image or video');
   if (!content.trim() && !attachments.length && !(m.stickerIds?.length) && !m.components?.length && !m.poll && !m.allowEmpty && !m.embeds?.length && !m.forward && m.type !== 'join' && m.type !== 'boost' && m.type !== 'thread_created' && m.type !== 'poll_result') throw badRequest('Cannot send an empty message');
   if (channel.guild_id && !m.skipChecks && !m.webhookId) await checkVerification(ctx, channel.guild_id, m.authorId, m.senderPerms);
+  if (channel.guild_id && !m.skipChecks && !m.webhookId) await assertEmojiAllowed(ctx, channel.guild_id, content, m.memberRoleIds, m.senderPerms);
   const ment = await parseMentions(ctx, channel, content, m.senderPerms);
   if (channel.guild_id && !m.skipChecks) await checkAutomod(ctx, channel.guild_id, m.authorId, m.memberRoleIds ?? [], m.senderPerms, m.forward ? `${content}\n${m.forward.content}` : content, ment.mentions.length + ment.mentionRoles.length, [channel.id, ...(channel.parent_id ? [channel.parent_id] : [])]);
   if (m.replyTo) {

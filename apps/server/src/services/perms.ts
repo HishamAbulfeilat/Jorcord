@@ -79,7 +79,15 @@ export async function channelPermsLite(ctx: Ctx, userId: string, channelId: stri
   if (!gp) return null;
   const permChannelId = channel.type === 'thread' && channel.parent_id ? channel.parent_id : channel.id;
   const perms = permsFor(gp, await loadOverwrites(ctx, permChannelId));
-  return has(perms, Perm.VIEW_CHANNEL) ? { channel, perms } : null;
+  if (!has(perms, Perm.VIEW_CHANNEL)) return null;
+  if (channel.type === 'thread' && channel.thread_private && !(await canSeePrivateThread(ctx, channel.id, userId, perms, null))) return null;
+  return { channel, perms };
+}
+
+/** A private thread is visible to its members, its owner and anyone holding MANAGE_THREADS (resolved on the parent channel). */
+export async function canSeePrivateThread(ctx: Ctx, threadId: string, userId: string, parentPerms: bigint, ownerId: string | null): Promise<boolean> {
+  if (has(parentPerms, Perm.MANAGE_THREADS) || ownerId === userId) return true;
+  return (await ctx.db.query('SELECT 1 AS x FROM thread_members WHERE thread_id = $1 AND user_id = $2', [threadId, userId])).length > 0;
 }
 
 export interface Access { channel: any; perms: bigint; gp: GuildPerm | null; permChannel: any }
@@ -98,6 +106,7 @@ export async function channelAccess(ctx: Ctx, userId: string, channelId: string,
   const permChannel = channel.type === 'thread' && channel.parent_id ? (await getChannelRow(ctx, channel.parent_id)) ?? channel : channel;
   const perms = permsFor(gp, await loadOverwrites(ctx, permChannel.id));
   if (opts.requireView !== false && !has(perms, Perm.VIEW_CHANNEL)) throw notFound('Channel');
+  if (opts.requireView !== false && channel.type === 'thread' && channel.thread_private && !(await canSeePrivateThread(ctx, channel.id, userId, perms, channel.owner_id ?? null))) throw notFound('Channel');
   return { channel, perms, gp, permChannel };
 }
 export function need(perms: bigint, ...bits: bigint[]) {
@@ -122,7 +131,7 @@ export function needOutrankMember(actor: GuildPerm, target: GuildPerm | null) {
 }
 
 /** Users (among candidates) who can VIEW_CHANNEL on a guild channel. */
-export async function viewersAmong(ctx: Ctx, channel: any, candidates: string[]): Promise<string[]> {
+export async function viewersAmong(ctx: Ctx, channel: any, candidates: string[], opts: { ignorePrivate?: boolean } = {}): Promise<string[]> {
   if (!candidates.length) return [];
   if (!channel.guild_id) {
     const parts = await ctx.pcache.dmParticipants(ctx, channel.id);
@@ -131,6 +140,9 @@ export async function viewersAmong(ctx: Ctx, channel: any, candidates: string[])
   const permChannelId = channel.type === 'thread' && channel.parent_id ? channel.parent_id : channel.id;
   const ow = await loadOverwrites(ctx, permChannelId);
   const gps = await loadGuildPerms(ctx, channel.guild_id, candidates);
-  return [...gps.values()].filter((gp) => has(permsFor(gp, ow), Perm.VIEW_CHANNEL)).map((g) => g.userId);
+  const seen = [...gps.values()].filter((gp) => has(permsFor(gp, ow), Perm.VIEW_CHANNEL));
+  if (channel.type !== 'thread' || !channel.thread_private || opts.ignorePrivate) return seen.map((g) => g.userId);
+  const members = new Set((await ctx.db.query('SELECT user_id FROM thread_members WHERE thread_id = $1 AND user_id = ANY($2::text[])', [channel.id, seen.map((g) => g.userId)])).map((r) => r.user_id as string));
+  return seen.filter((gp) => members.has(gp.userId) || channel.owner_id === gp.userId || has(permsFor(gp, ow), Perm.MANAGE_THREADS)).map((g) => g.userId);
 }
 export { ALL_PERMS, Perm, has };

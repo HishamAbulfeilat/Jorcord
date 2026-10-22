@@ -10,6 +10,8 @@ import { cx } from '@/lib/format';
 import { useDebounced } from '@/lib/hooks';
 import { Spinner } from '@/components/ui/primitives';
 import { LIMITS } from '@jorcord/shared';
+import { effectivePerms } from '@/lib/perms';
+import { canUseEmoji } from '@/lib/emojiRoles';
 
 const GIF_PAGE = 30;
 export type EmojiPick = { char?: string; name: string; id?: string; animated?: boolean; gif?: string; sticker?: string; burst?: boolean; burstColor?: string };
@@ -22,7 +24,12 @@ export function EmojiPicker({ onPick, guildId, allowGif = false, allowSticker = 
   const [burst, setBurst] = useState(false); const [burstColor, setBurstColor] = useState<string>(LIMITS.burstColors[0]);
   const guilds = useData((s) => s.guilds); const order = useData((s) => s.guildOrder);
   const dq = useDebounced(q, 250);
-  const custom = useMemo(() => order.map((id) => guilds[id]).filter((g) => g && g.emojis.length), [guilds, order]);
+  const myId = useData((s) => s.me?.id);
+  // role-restricted emoji are hidden from people who may not use them
+  const custom = useMemo(() => order.map((id) => guilds[id]).filter(Boolean).map((g) => {
+    const me = myId ? g!.members[myId] : undefined; const perms = effectivePerms({ guild: g!.guild, roles: Object.values(g!.roles), member: me! });
+    return { ...g!, emojis: g!.emojis.filter((e) => canUseEmoji(e, me?.roles, perms)) };
+  }).filter((g) => g.emojis.length), [guilds, order, myId]);
   const results = q ? searchEmoji(q, 90) : null;
   const customHits = q ? custom.flatMap((g) => g.emojis.filter((e) => e.name.toLowerCase().includes(q.toLowerCase().replace(/^:/, '')))) : [];
   const rec = recent();

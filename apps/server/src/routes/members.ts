@@ -173,8 +173,10 @@ export function memberRoutes(app: FastifyInstance, ctx: Ctx) {
     const settled = await trackVisibility(ctx, p.id, { userIds: holders });
     await ctx.db.query('DELETE FROM overwrites WHERE target_id = $1 AND type = \'role\'', [p.roleId]);
     await ctx.db.query('DELETE FROM roles WHERE id = $1', [p.roleId]);
+    const emojiRows = await ctx.db.query(`UPDATE emojis SET role_ids = role_ids - $2::text WHERE guild_id = $1 AND role_ids::text LIKE '%' || $2 || '%' RETURNING id`, [p.id, p.roleId]); // restricted emoji lose the deleted role
     await ctx.pcache.invalidate({ k: 'guild', guildId: p.id });
     await settled();
+    if (emojiRows.length) await ctx.hub.toGuild(p.id, 'EMOJIS_UPDATE', { guildId: p.id, emojis: (await ctx.db.query('SELECT * FROM emojis WHERE guild_id = $1', [p.id])).map((e) => ({ id: e.id, guildId: e.guild_id, name: e.name, animated: e.animated, url: e.url, ...(e.role_ids?.length ? { roleIds: e.role_ids as string[] } : {}) })) });
     await audit(ctx, p.id, req.userId, 'ROLE_DELETE', p.roleId, { name: role.name });
     await ctx.hub.toGuild(p.id, 'ROLE_DELETE', { id: p.roleId, guildId: p.id });
     for (const u of holders) await pushMember(p.id, u);

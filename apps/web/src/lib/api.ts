@@ -170,8 +170,8 @@ export const api = {
     createInvite: (id: Id, b: { channelId?: Id; maxUses?: number | null; maxAgeSeconds?: number | null; temporary?: boolean } = {}) => send<Invite>({ method: 'POST', path: `/guilds/${id}/invites`, body: b }),
     auditLogs: (id: Id, q: { limit?: number; before?: Id; action?: string; actionType?: number } = {}) => send<AuditEntry[]>({ method: 'GET', path: `/guilds/${id}/audit-logs`, query: q }).then((x) => arr<AuditEntry>(x)),
     emojis: (id: Id) => send<Emoji[]>({ method: 'GET', path: `/guilds/${id}/emojis` }).then((x) => arr<Emoji>(x)),
-    createEmoji: (id: Id, b: { name: string; url: string; animated?: boolean }) => send<Emoji>({ method: 'POST', path: `/guilds/${id}/emojis`, body: b }),
-    patchEmoji: (id: Id, eid: Id, b: { name: string }) => send<Emoji>({ method: 'PATCH', path: `/guilds/${id}/emojis/${eid}`, body: b }),
+    createEmoji: (id: Id, b: { name: string; url: string; animated?: boolean; roleIds?: Id[] }) => send<Emoji>({ method: 'POST', path: `/guilds/${id}/emojis`, body: b }),
+    patchEmoji: (id: Id, eid: Id, b: { name?: string; roleIds?: Id[] }) => send<Emoji>({ method: 'PATCH', path: `/guilds/${id}/emojis/${eid}`, body: b }),
     deleteEmoji: (id: Id, eid: Id) => send({ method: 'DELETE', path: `/guilds/${id}/emojis/${eid}` }),
     stickers: (id: Id) => send<Sticker[]>({ method: 'GET', path: `/guilds/${id}/stickers` }).then((x) => arr<Sticker>(x)),
     createSticker: (id: Id, b: { name: string; url: string; format?: Sticker['format'] }) => send<Sticker>({ method: 'POST', path: `/guilds/${id}/stickers`, body: b }),
@@ -300,6 +300,9 @@ export const api = {
     threads: (id: Id, archived = false) => send<any>({ method: 'GET', path: `/channels/${id}/threads/${archived ? 'archived' : 'active'}` }).then((x) => (Array.isArray(x) ? x : (x?.threads ?? [])) as Channel[]),
     addRecipient: (channelId: Id, userId: Id) => send({ method: 'PUT', path: `/channels/${channelId}/recipients/${userId}` }),
     removeRecipient: (channelId: Id, userId: Id | '@me') => send({ method: 'DELETE', path: `/channels/${channelId}/recipients/${userId}` }),
+    /** Starts a thread without a starter message; `private` threads are visible to their members only. */
+    startThread: (channelId: Id, b: { name: string; type?: 'public' | 'private'; invitable?: boolean; autoArchiveDuration?: number }) => send<Channel>({ method: 'POST', path: `/channels/${channelId}/threads`, body: b }),
+    addThreadMember: (threadId: Id, userId: Id | '@me') => send({ method: 'PUT', path: `/channels/${threadId}/thread-members/${userId}` }),
   },
   messages: {
     list: (channelId: Id, q: MessageQuery = {}) => send<Message[]>({ method: 'GET', path: `/channels/${channelId}/messages`, query: { limit: 50, ...q } }).then((x) => arr<Message>(x)),

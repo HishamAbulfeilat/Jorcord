@@ -16,7 +16,7 @@ import { randomToken } from '../lib/crypto';
  */
 export interface MemberEntry { timeoutMs: number | null; roleIds: string[]; /** membership screening not yet accepted: read-only like a timeout */ pending?: boolean }
 interface GuildEntry { ownerId: string; rolePerms: Record<string, bigint>; rolePos: Record<string, number>; members: Map<string, MemberEntry | null> }
-export interface ChannelLite { id: string; guild_id: string | null; type: string; parent_id: string | null }
+export interface ChannelLite { id: string; guild_id: string | null; type: string; parent_id: string | null; thread_private?: boolean }
 
 export type Invalidation =
   | { k: 'guild'; guildId: string }                       // guild row, roles, channels, overwrites, members of the guild (delete/ownership/roles)
@@ -95,9 +95,9 @@ export class PermCache {
     if (hit) { this.stats.hits++; return hit; }
     this.stats.misses++;
     const g = this.gen;
-    const [r] = await ctx.db.query('SELECT id, guild_id, type, parent_id FROM channels WHERE id = $1', [id]);
+    const [r] = await ctx.db.query('SELECT id, guild_id, type, parent_id, thread_private FROM channels WHERE id = $1', [id]);
     if (!r) return null; // absent channels are never cached, so creation needs no invalidation
-    const c: ChannelLite = { id: r.id, guild_id: r.guild_id ?? null, type: r.type, parent_id: r.parent_id ?? null };
+    const c: ChannelLite = { id: r.id, guild_id: r.guild_id ?? null, type: r.type, parent_id: r.parent_id ?? null, thread_private: !!r.thread_private };
     if (g === this.gen) this.putChannel(c);
     return c;
   }
