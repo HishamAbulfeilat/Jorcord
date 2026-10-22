@@ -23,6 +23,8 @@ export type InteractionInput =
   | { type: 4; channelId: Id; data: { id: Id; options: InteractionOptionValue[] } }
   | { type: 3; channelId: Id; messageId: Id; data: { customId: string; values?: string[] } }
   | { type: 5; channelId: Id; interactionId: Id; data: { customId: string; components: ModalSubmitRow[] } };
+export interface BanAppealItem { id: Id; guildId: Id; user: User | null; message: string; status: 'pending' | 'approved' | 'denied'; banReason: string | null; bannedAt: string; createdAt: string; decidedAt: string | null; decidedBy: User | null; decisionReason: string | null }
+export interface MyBan { guild: { id: Id; name: string; icon: string | null }; reason: string | null; bannedAt: string; appeal: { id: Id; status: 'pending' | 'approved' | 'denied'; message: string; createdAt: string; decidedAt: string | null; decisionReason: string | null } | null }
 export interface Passkey { id: Id; name: string; createdAt: string; lastUsedAt: string | null; deviceType: string | null; backedUp: boolean; transports: string[] }
 export interface PushDevice { id: Id; platform: 'web' | 'android' | 'ios' | 'desktop'; createdAt: string | null; lastUsedAt: string | null; current?: boolean }
 export type PushRegistration = { platform: 'web' | 'desktop'; subscription: { endpoint: string; expirationTime?: number | null; keys: { p256dh: string; auth: string } } } | { platform: 'android' | 'ios'; token: string };
@@ -72,6 +74,10 @@ export const api = {
     validateResetToken: (token: string) => send<{ valid: boolean }>({ method: 'POST', path: '/auth/password/reset/validate', body: { token }, auth: false }),
     resetPassword: (token: string, newPassword: string) => send({ method: 'POST', path: '/auth/password/reset', body: { token, newPassword }, auth: false }),
     password: (b: { currentPassword: string; newPassword: string }) => send({ method: 'POST', path: '/auth/password', body: b }),
+  },
+  myBans: {
+    list: () => send<MyBan[]>({ method: 'GET', path: '/users/@me/bans' }).then((x) => arr<MyBan>(x)),
+    appeal: (guildId: Id, message: string) => send<MyBan['appeal']>({ method: 'POST', path: `/users/@me/bans/${guildId}/appeal`, body: { message } }),
   },
   users: {
     me: () => send<SelfUser>({ method: 'GET', path: '/users/@me' }),
@@ -141,6 +147,8 @@ export const api = {
     kick: (id: Id, userId: Id) => send({ method: 'DELETE', path: `/guilds/${id}/members/${userId}` }),
     ban: (id: Id, userId: Id, b: { reason?: string; deleteMessageSeconds?: number } = {}) => send({ method: 'PUT', path: `/guilds/${id}/bans/${userId}`, body: b }),
     unban: (id: Id, userId: Id) => send({ method: 'DELETE', path: `/guilds/${id}/bans/${userId}` }),
+    appeals: (id: Id, status: 'pending' | 'approved' | 'denied' | 'all' = 'pending') => send<BanAppealItem[]>({ method: 'GET', path: `/guilds/${id}/appeals?status=${status}` }).then((x) => arr<BanAppealItem>(x)),
+    decideAppeal: (id: Id, appealId: Id, decision: 'approve' | 'deny', reason?: string) => send({ method: 'POST', path: `/guilds/${id}/appeals/${appealId}`, body: { decision, reason: reason || null } }),
     bans: (id: Id) => send<{ user: User; reason: string | null }[]>({ method: 'GET', path: `/guilds/${id}/bans` }).then((x) => arr<{ user: User; reason: string | null }>(x)),
     invites: (id: Id) => send<Invite[]>({ method: 'GET', path: `/guilds/${id}/invites` }).then((x) => arr<Invite>(x)),
     createInvite: (id: Id, b: { channelId?: Id; maxUses?: number | null; maxAgeSeconds?: number | null; temporary?: boolean } = {}) => send<Invite>({ method: 'POST', path: `/guilds/${id}/invites`, body: b }),

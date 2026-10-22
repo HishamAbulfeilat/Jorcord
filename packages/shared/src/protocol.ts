@@ -31,6 +31,10 @@ export interface Events {
   TYPING_START: { channelId: Id; userId: Id; timestamp: number };
   PRESENCE_UPDATE: { userId: Id; presence: Presence; customStatus?: User['customStatus']; /** what they are doing (empty when offline or sharing is off) */ activities?: Activity[] };
   USER_UPDATE: User;
+  /** To the appellant only: a moderator decided their ban appeal. Never carries the appeal text. */
+  BAN_APPEAL_UPDATE: { id: Id; guildId: Id; status: 'approved' | 'denied'; decisionReason: string | null };
+  /** To moderators with BAN_MEMBERS only: a new appeal is waiting (no content, fetch GET /guilds/:id/appeals). */
+  BAN_APPEAL_CREATE: { id: Id; guildId: Id };
   RELATIONSHIP_ADD: Relationship; RELATIONSHIP_REMOVE: { userId: Id };
   READ_STATE_UPDATE: ReadState;
   VOICE_STATE_UPDATE: VoiceState;
