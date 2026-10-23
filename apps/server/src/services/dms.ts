@@ -1,5 +1,6 @@
 import type { Ctx } from '../ctx';
 import { ApiError, forbidden, notFound } from '../errors';
+import { assertServerAllowsDm, sharedContext } from './memberDms';
 import { privacyOf } from './privacy';
 import { channelDTO } from './serializers';
 import { clearVoiceState } from './voice';
@@ -19,11 +20,12 @@ export async function addGroupRecipient(ctx: Ctx, channel: any, actorId: string,
   const [blk] = await ctx.db.query(
     `SELECT 1 AS x FROM relationships WHERE type = 'blocked' AND ((user_id = $1 AND other_id = ANY($2::text[])) OR (other_id = $1 AND user_id = ANY($2::text[]))) LIMIT 1`, [userId, current]);
   if (blk) throw forbidden('Cannot add this user', 'BLOCKED');
-  const [ok] = await ctx.db.query( // same anti-spam rule as creating a DM: friends or a shared server with the person adding
-    `SELECT 1 AS x WHERE EXISTS (SELECT 1 FROM relationships WHERE user_id = $1 AND other_id = $2 AND type = 'friend')
-        OR EXISTS (SELECT 1 FROM members a JOIN members b ON a.guild_id = b.guild_id WHERE a.user_id = $1 AND b.user_id = $2)`, [actorId, userId]);
-  if (!ok) throw forbidden('You need to be friends or share a server with this user', 'NO_SHARED_CONTEXT');
   const [isFriend] = await ctx.db.query(`SELECT 1 AS x FROM relationships WHERE user_id = $1 AND other_id = $2 AND type = 'friend'`, [actorId, userId]);
+  if (!isFriend) { // same anti-spam rule as creating a DM: friends or a shared server (that lets its members DM each other) with the person adding
+    const sc = await sharedContext(ctx, actorId, userId);
+    if (!sc.shared) throw forbidden('You need to be friends or share a server with this user', 'NO_SHARED_CONTEXT');
+    assertServerAllowsDm(sc);
+  }
   if (!isFriend && !(await privacyOf(ctx, userId)).allowDmsFromServerMembers) throw forbidden('This user does not accept direct messages from server members', 'DM_DISABLED');
   await ctx.db.query('INSERT INTO dm_participants (channel_id, user_id) VALUES ($1,$2) ON CONFLICT DO NOTHING', [channel.id, userId]);
   await ctx.pcache.invalidate({ k: 'dm', channelId: channel.id });

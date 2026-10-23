@@ -1,7 +1,8 @@
-import { DEFAULT_RAID_PROTECTION, Perm, has, type Attachment, type GuildSafety, type RaidProtection, type SafetyPreset } from '@jorcord/shared';
+import { DEFAULT_RAID_PROTECTION, Perm, has, normalizeLinkList, type Attachment, type GuildSafety, type RaidProtection, type SafetyPreset } from '@jorcord/shared';
 import type { Ctx } from '../ctx';
 import { ApiError } from '../errors';
 import { audit } from './guilds';
+import { normalizeGuard } from './impersonation';
 import { guildDTO, GUILD_SELECT } from './serializers';
 
 export const normalizeRaid = (raw: unknown): RaidProtection => {
@@ -82,7 +83,9 @@ export function safetyDTO(g: any): GuildSafety {
     { id: 'default_notifications', done: g.default_notifications === 'mentions' },
     { id: 'screening', done: Array.isArray(g.features) && g.features.includes('MEMBER_SCREENING') },
   ];
-  return { verificationLevel: (g.verification_level ?? 0) as 0, explicitFilter: (g.explicit_filter ?? 0) as 0, defaultNotifications: g.default_notifications ?? 'mentions', raidProtection: raid, invitesPausedUntil: paused, checklist, score: Math.round((checklist.filter((c) => c.done).length / checklist.length) * 100) };
+  const guard = normalizeGuard(g.impersonation_guard);
+  return { memberDms: g.member_dms_restricted_at ? 'optin' : 'open', linkAllow: normalizeLinkList(g.link_allow), linkDeny: normalizeLinkList(g.link_deny), impersonationGuard: guard,
+    verificationLevel: (g.verification_level ?? 0) as 0, explicitFilter: (g.explicit_filter ?? 0) as 0, defaultNotifications: g.default_notifications ?? 'mentions', raidProtection: raid, invitesPausedUntil: paused, checklist, score: Math.round((checklist.filter((c) => c.done).length / checklist.length) * 100) };
 }
 
 export const SAFETY_PRESETS: Record<SafetyPreset, { verificationLevel: number; explicitFilter: number; defaultNotifications: 'all' | 'mentions'; raidProtection: RaidProtection }> = {

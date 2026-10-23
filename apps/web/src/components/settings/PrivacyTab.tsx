@@ -1,5 +1,6 @@
 /** User Settings > Privacy & Safety. Everything here is enforced server-side (DMs, friend requests, message requests, activity). */
 import { useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Privacy } from '@jorcord/shared';
 import { DEFAULT_PRIVACY } from '@jorcord/shared';
 import { api } from '@/lib/api';
@@ -36,6 +37,7 @@ export function PrivacyTab() {
     <Row title={t('Message requests')} desc={t('Messages from people who are not your friends go to a separate Message Requests list until you accept them.')}>
       <Toggle label={t('Message requests')} checked={p.messageRequests} disabled={busy} onChange={(v) => void save({ messageRequests: v })} />
     </Row>
+    <ServerDmOptIns />
     <H3>{t('Who can add you as a friend')}</H3>
     <Row title={t('Everyone')} desc={t('Anyone who finds your username can send you a request.')}>
       <Toggle label={t('Everyone')} checked={fr.everyone} disabled={busy} onChange={(v) => void save({ friendRequests: { everyone: v } })} />
@@ -54,6 +56,26 @@ export function PrivacyTab() {
     </Row>
     <MyBansPanel />
 </>);
+}
+
+/** Servers that make members opt in before other members can DM them: one switch per such server. */
+function ServerDmOptIns() {
+  const all = useData((s) => s.guilds);
+  const optin = Object.values(all).map((g) => g.guild).filter((g) => g.memberDms === 'optin');
+  if (!optin.length) return null;
+  return (<div data-testid="server-dm-optins">
+    {optin.map((g) => <ServerDmRow key={g.id} guildId={g.id} name={g.name} />)}
+  </div>);
+}
+function ServerDmRow({ guildId, name }: { guildId: string; name: string }) {
+  const qc = useQueryClient(); const q = useQuery({ queryKey: ['member-dms', guildId], queryFn: () => api.guilds.memberDmState(guildId) });
+  if (!q.data) return null;
+  return (
+    <Row title={t('Allow DMs from members of {name}', { name })} desc={q.data.reachable && !q.data.optIn ? t('You joined before this was required, so members can already message you.') : t('This server asks members to opt in. Off by default for new members.')}>
+      <Toggle label={t('Allow DMs from members of {name}', { name })} checked={q.data.reachable} disabled={q.data.reachable && !q.data.optIn}
+        onChange={(v) => void api.guilds.setMemberDmOptIn(guildId, v).then((n) => qc.setQueryData(['member-dms', guildId], n)).catch(toastError)} />
+    </Row>
+  );
 }
 
 /** Manual activity (there is no game detection on the web): shows up like any other rich presence. */

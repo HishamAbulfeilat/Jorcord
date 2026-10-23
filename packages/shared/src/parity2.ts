@@ -60,12 +60,13 @@ export interface DirectoryApp {
 }
 
 // ---------- moderation tools ----------
-export type SafetyFlag = 'new_account' | 'raid_joined' | 'spam_suspect' | 'dm_restricted';
+export type SafetyFlag = 'new_account' | 'raid_joined' | 'spam_suspect' | 'dm_restricted' | 'impersonation';
 export const SAFETY_FLAGS: { id: SafetyFlag; label: string; hint: string }[] = [
   { id: 'new_account', label: 'New account', hint: 'Account is less than 7 days old' },
   { id: 'raid_joined', label: 'Raid joined', hint: 'Joined during a detected raid' },
   { id: 'spam_suspect', label: 'Spam suspect', hint: 'Tripped AutoMod 3 or more times in the last 24 hours' },
   { id: 'dm_restricted', label: 'DMs restricted', hint: 'Does not accept direct messages from server members' },
+  { id: 'impersonation', label: 'Possible impersonator', hint: 'Name closely matches the owner, a moderator or the server' },
 ];
 export const MOD_LIMITS = { noteLength: 1000, notesPerMember: 25, warningLength: 500, bulkIds: 200, bulkMax: 200, pruneMaxDays: 30, pruneBatch: 1000, filterMinutesMax: 10080 } as const;
 export interface ModWarning { id: Id; guildId: Id; userId: Id; moderatorId: Id | null; reason: string; source: 'manual' | 'automod'; ruleId: Id | null; createdAt: string }

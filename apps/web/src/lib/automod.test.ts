@@ -3,6 +3,13 @@ import type { AutoModRule } from '@jorcord/shared';
 import { BLANK_FORM, buildRuleBody, formProblem, ruleSummary, splitLines, toggleAction } from './automod';
 
 const form = (o: Partial<typeof BLANK_FORM>) => ({ ...BLANK_FORM, name: 'r', ...o });
+describe('suspicious_links rule', () => {
+  it('sends the extra allowed domains and no keyword fields', () => {
+    const b = buildRuleBody(form({ trigger: 'suspicious_links', allow: 'example.com, docs.example.org', actions: ['block', 'warn'] }));
+    expect(b).toMatchObject({ trigger: 'suspicious_links', allowList: ['example.com', 'docs.example.org'], keywords: [], actions: ['block', 'warn'] });
+    expect(formProblem(form({ trigger: 'suspicious_links' }))).toBeNull();
+  });
+});
 describe('automod form', () => {
   it('validates before submit', () => {
     expect(formProblem(form({ name: ' ' }))).toBe('Name your rule');

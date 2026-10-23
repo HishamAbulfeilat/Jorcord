@@ -11,6 +11,7 @@ import { intToHex, effectivePerms } from '@/lib/perms';
 import { openDmWith, userMenu } from '@/lib/menus';
 import { useMenuTrigger } from '@/components/ui/ContextMenu';
 import { UserBadges } from '@/components/ui/UserBadges';
+import { AccountAge } from '@/components/ui/TrustBits';
 import { Markdown } from '@/components/chat/Markdown';
 import { RoleIcon } from '@/components/ui/RoleIcon';
 import { headerBackground, bodyBackground, isHexPair, isHex } from '@/lib/profileTheme';
@@ -81,6 +82,7 @@ export function ProfileCard({ userId, guildId, compact }: { userId: string; guil
           {prof.bio && <><h4 className="mb-1 text-xs font-bold uppercase text-header">{t('About Me')}</h4><div className="mb-3 text-sm"><Markdown content={prof.bio} guildId={guildId} /></div></>}
           <h4 className="mb-1 text-xs font-bold uppercase text-header">{t('Member Since')}</h4>
           <div className="mb-3 flex gap-3 text-sm"><span>{fmtStamp(new Date(u.createdAt).getTime()).replace(/ at .*/, '')}</span>{member && <span className="text-muted">• Joined {new Date(member.joinedAt).toLocaleDateString()}</span>}</div>
+          {!u.bot && <div className="-mt-2 mb-3"><AccountAge createdAt={u.createdAt} /></div>}
           {!!q.data?.connections?.length && (<><h4 className="mb-1 text-xs font-bold uppercase text-header">{t('Connections')}</h4><ul className="mb-3 flex flex-wrap gap-1.5" data-testid="profile-connections">{q.data.connections.map((c) => <li key={c.url}><a href={c.url} target="_blank" rel="noopener noreferrer nofollow" className="flex items-center gap-1 rounded bg-active px-2 py-1 text-xs font-medium text-header hover:underline" title={c.verified ? t('Verified') : t('Not verified')}>{c.name}{c.verified && <BadgeCheck size={13} className="text-success" aria-label={t('Verified')} />}</a></li>)}</ul></>)}
           {guildId && myRoles.length > 0 && (<><h4 className="mb-1 text-xs font-bold uppercase text-header">{t('Roles')}</h4><ul className="flex flex-wrap gap-1">{myRoles.map((r) => <li key={r.id} className="flex items-center gap-1.5 rounded bg-active px-2 py-0.5 text-xs font-medium text-header">{r.icon ? <RoleIcon role={r} size={14} /> : <span className="h-3 w-3 rounded-full" style={{ background: r.color ? intToHex(r.color) : 'rgb(var(--muted))' }} />}{r.name}</li>)}</ul></>)}
           {!isMe && q.data && <NoteBox userId={userId} note={q.data.note} />}

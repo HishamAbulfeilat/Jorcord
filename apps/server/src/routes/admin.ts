@@ -193,4 +193,20 @@ export function adminRoutes(app: FastifyInstance, ctx: Ctx) {
     const { limit, offset } = parse(page, req.query);
     return ctx.db.query('SELECT id, action, path, status, created_at AS "createdAt" FROM admin_audit ORDER BY created_at DESC LIMIT $1 OFFSET $2', [limit, offset]);
   });
+
+  /** Mass-DM spam incidents (see services/massdm.ts): who was limited, why, for how long. */
+  app.get('/admin/mass-dm', async (req) => {
+    gate(req);
+    const { limit, offset } = parse(page, req.query);
+    return ctx.db.query(`SELECT i.id, i.sender_id AS "senderId", u.username, i.reason, i.recipients, i.sample, i.limited_until AS "limitedUntil", i.created_at AS "createdAt"
+      FROM mass_dm_incidents i JOIN users u ON u.id = i.sender_id ORDER BY i.created_at DESC LIMIT $1 OFFSET $2`, [limit, offset]);
+  });
+  app.post('/admin/users/:id/clear-dm-limit', async (req) => {
+    gate(req);
+    const { id: uid } = parse(id, req.params);
+    const rows = await ctx.db.query('UPDATE users SET dm_limited_until = NULL WHERE id = $1 RETURNING id', [uid]);
+    if (!rows.length) throw notFound('User');
+    await ctx.db.query('DELETE FROM dm_request_events WHERE sender_id = $1', [uid]);
+    return { ok: true };
+  });
 }

@@ -5,6 +5,7 @@ import { Perm, isStandardStickerId, standardSticker } from '@jorcord/shared';
 import { Avatar } from '@/components/ui/Avatar';
 import { ServerTagBadge } from '@/components/ui/Cosmetics';
 import { Markdown } from './Markdown';
+import { LinkWarningBanner } from '@/components/ui/TrustBits';
 import { AttachmentView, EmbedView } from './Attachments';
 import { Forward as ForwardIcon } from 'lucide-react';
 import { ReactionBar, addReaction } from './Reactions';
@@ -147,6 +148,7 @@ export const MessageItem = memo(function MessageItem({ m, grouped, highlighted, 
             : <time className="ms-1 select-none text-[10px] text-muted" title={fmtFull(new Date(m.editedAt).getTime())}>(edited)</time>)}
         </div>
       ) : null}
+      {!editing && <LinkWarningBanner warnings={m.linkWarnings} />}
       {m.forward && <ForwardedBody f={m.forward} guildId={m.guildId} />}
       {m.attachments.length > 0 && <div className="mt-1 flex flex-col items-start gap-1">{m.attachments.map((a) => <AttachmentView key={a.id} a={a} />)}</div>}
       {stickers && stickers.length > 0 && <div className="mt-1 flex gap-2">{stickers.map((s) => <img loading="lazy" decoding="async" key={s.id} src={fileUrl(s.url) ?? s.url} alt={s.name} title={s.name} className="h-[160px] w-[160px] object-contain" />)}</div>}

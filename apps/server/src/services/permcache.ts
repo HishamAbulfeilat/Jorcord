@@ -151,7 +151,7 @@ export class PermCache {
     if (missing.length) {
       this.stats.misses++;
       const g = this.gen;
-      const members = await ctx.db.query('SELECT user_id, timeout_until, pending FROM members WHERE guild_id = $1 AND user_id = ANY($2::text[])', [guildId, missing]);
+      const members = await ctx.db.query('SELECT user_id, timeout_until, (pending OR safety_hold) AS pending FROM members WHERE guild_id = $1 AND user_id = ANY($2::text[])', [guildId, missing]);
       const mr = await ctx.db.query('SELECT user_id, role_id FROM member_roles WHERE guild_id = $1 AND user_id = ANY($2::text[])', [guildId, missing]);
       const roleIds = new Map<string, string[]>();
       for (const x of mr) { const l = roleIds.get(x.user_id); if (l) l.push(x.role_id); else roleIds.set(x.user_id, [x.role_id]); }

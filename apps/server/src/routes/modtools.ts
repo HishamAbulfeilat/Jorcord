@@ -30,8 +30,9 @@ export async function safetyFlags(ctx: Ctx, guildId: string, userId: string): Pr
   const flags: SafetyFlag[] = [];
   const [u] = await ctx.db.query('SELECT created_at, privacy FROM users WHERE id = $1', [userId]); if (!u) return flags;
   if (Date.now() - new Date(u.created_at).getTime() < 7 * DAY) flags.push('new_account');
-  const [m] = await ctx.db.query('SELECT raid_flagged FROM members WHERE guild_id = $1 AND user_id = $2', [guildId, userId]);
+  const [m] = await ctx.db.query('SELECT raid_flagged, impersonation_flag FROM members WHERE guild_id = $1 AND user_id = $2', [guildId, userId]);
   if (m?.raid_flagged) flags.push('raid_joined');
+  if (m?.impersonation_flag) flags.push('impersonation');
   const [a] = await ctx.db.query(`SELECT count(*)::int AS n FROM audit_log WHERE guild_id = $1 AND actor_id = $2 AND action IN ('AUTOMOD_BLOCK','AUTOMOD_ALERT') AND created_at > now() - interval '24 hours'`, [guildId, userId]);
   if (a.n >= 3) flags.push('spam_suspect');
   if (!normalizePrivacy(u.privacy).allowDmsFromServerMembers) flags.push('dm_restricted');

@@ -2,6 +2,7 @@ import { LIMITS, Perm, has, isStandardStickerId, snowflake, type AllowedMentions
 import type { Ctx } from '../ctx';
 import { ApiError, badRequest, forbidden, notFound } from '../errors';
 import { checkAutomod } from './automod';
+import { guardFirstContact } from './massdm';
 import { channelAccess } from './perms';
 import { assertEmojiAllowed } from './emojis';
 import { audit } from './guilds';
@@ -88,6 +89,7 @@ export async function createMessage(ctx: Ctx, m: NewMessage): Promise<Message> {
   if (channel.guild_id && !m.skipChecks && !m.webhookId) await assertEmojiAllowed(ctx, channel.guild_id, content, m.memberRoleIds, m.senderPerms);
   const ment = await parseMentions(ctx, channel, content, m.senderPerms);
   if (channel.guild_id && !m.skipChecks) await checkAutomod(ctx, channel.guild_id, m.authorId, m.memberRoleIds ?? [], m.senderPerms, m.forward ? `${content}\n${m.forward.content}` : content, ment.mentions.length + ment.mentionRoles.length, [channel.id, ...(channel.parent_id ? [channel.parent_id] : [])]);
+  if (channel.type === 'dm' && !m.skipChecks && !m.webhookId) await guardFirstContact(ctx, channel, m.authorId, content);
   if (m.replyTo) {
     const [ref] = await ctx.db.query('SELECT 1 AS x FROM messages WHERE id = $1 AND channel_id = $2', [m.replyTo, channel.id]);
     if (!ref) throw badRequest('Replied-to message not found in this channel');

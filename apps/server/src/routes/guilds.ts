@@ -9,6 +9,7 @@ import { limitOrThrow } from '../lib/ratelimit';
 import { verifyPassword } from '../lib/crypto';
 import { verifyTotp } from '../lib/totp';
 import { addBoosts, boostSummary, MAX_BOOSTS_PER_REQUEST, removeBoost, slotLimits, syncBoosterRole } from '../services/boosts';
+import { guildLinkLists } from '../services/linkrisk';
 import { MAX_REGEX_RULES_PER_GUILD, rowActions, testRules, validateRegexPatterns } from '../services/automod';
 import { deleteAttachmentFiles } from '../services/files';
 import { audit, buildGuildFull, createGuild, deleteGuildCascade, GUILD_TEMPLATES, transferGuildOwnership } from '../services/guilds';
@@ -307,12 +308,12 @@ export function guildRoutes(app: FastifyInstance, ctx: Ctx) {
     actions: rowActions(r), alertChannelId: r.alert_channel_id ?? null, regexPatterns: r.regex_patterns ?? [], testMode: !!r.test_mode, options: r.options ?? {} });
   const actionEnum = z.enum(['block', 'timeout', 'alert', 'warn']);
   const ruleBody = z.object({
-    name: z.string().trim().min(1).max(100), enabled: z.boolean(), trigger: z.enum(['keyword', 'keyword_preset', 'spam', 'mention_spam', 'link', 'regex', 'invite_link', 'caps', 'repeated_chars']),
+    name: z.string().trim().min(1).max(100), enabled: z.boolean(), trigger: z.enum(['keyword', 'keyword_preset', 'spam', 'mention_spam', 'link', 'regex', 'invite_link', 'caps', 'repeated_chars', 'suspicious_links']),
     keywords: z.array(z.string().min(1).max(60)).max(100), action: actionEnum, actions: z.array(actionEnum).min(1).max(4), exemptRoles: z.array(idSchema).max(20),
     presets: z.array(z.enum(['profanity', 'sexual_content', 'slurs'])).max(3), allowList: z.array(z.string().min(1).max(60)).max(100),
     mentionLimit: z.number().int().min(1).max(50), exemptChannels: z.array(idSchema).max(50), timeoutSeconds: z.number().int().min(10).max(7 * 86400),
     customMessage: z.string().trim().max(150).nullable(), alertChannelId: idSchema.nullable(), regexPatterns: z.array(z.string().min(1).max(100)).max(3), testMode: z.boolean(),
-    options: z.object({ spamCount: z.number().int().min(2).max(30), spamSeconds: z.number().int().min(2).max(60), capsPercent: z.number().int().min(50).max(100), capsMinLength: z.number().int().min(5).max(200), repeatLimit: z.number().int().min(5).max(100) }).partial().strict(),
+    options: z.object({ spamCount: z.number().int().min(2).max(30), spamSeconds: z.number().int().min(2).max(60), capsPercent: z.number().int().min(50).max(100), capsMinLength: z.number().int().min(5).max(200), repeatLimit: z.number().int().min(5).max(100), linkMinScore: z.number().int().min(20).max(100) }).partial().strict(),
   }).strict();
   const checkRule = (b: { trigger?: string; presets?: string[]; regexPatterns?: string[] }, creating: boolean) => {
     if (b.trigger === 'keyword_preset' && !b.presets?.length && creating) throw badRequest('Pick at least one preset');
@@ -341,7 +342,7 @@ export function guildRoutes(app: FastifyInstance, ctx: Ctx) {
     const b = parse(z.object({ content: z.string().max(4000), mentionCount: z.number().int().min(0).max(100).optional() }).strict(), req.body);
     need(guildPerms(await guildAccess(ctx, req.userId, id)), Perm.MANAGE_GUILD);
     limitOrThrow(ctx.rl, `automod-test:${req.userId}`, 30, 60_000, ctx.config.rateLimit);
-    return testRules(await ctx.db.query('SELECT * FROM automod_rules WHERE guild_id = $1 ORDER BY id', [id]), b.content, b.mentionCount ?? 0);
+    return testRules(await ctx.db.query('SELECT * FROM automod_rules WHERE guild_id = $1 ORDER BY id', [id]), b.content, b.mentionCount ?? 0, await guildLinkLists(ctx, id));
   });
   app.get('/guilds/:id/automod/rules', async (req) => {
     const { id } = parse(gid, req.params);

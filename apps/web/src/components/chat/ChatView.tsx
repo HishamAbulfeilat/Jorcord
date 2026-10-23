@@ -30,6 +30,7 @@ import { selfMember } from '@/stores/data';
 import { api } from '@/lib/api';
 import { toastError } from '@/stores/ui';
 import { t } from '@/i18n';
+import { AccountAge } from '@/components/ui/TrustBits';
 
 export function HeaderButton({ label, active, onClick, children, badge }: { label: string; active?: boolean; onClick: () => void; children: React.ReactNode; badge?: boolean }) {
   return <Tip text={label} side="bottom"><button aria-label={label} aria-pressed={active} onClick={onClick} className={cx('touch relative flex h-8 min-w-8 items-center justify-center rounded px-1 md:min-h-0', active ? 'text-header' : 'text-interactive hover:text-interactive-hover')}>{children}{badge && <span className="absolute end-0.5 top-0 h-2 w-2 rounded-full bg-danger" />}</button></Tip>;
@@ -175,7 +176,7 @@ function MessageRequestBanner({ channel }: { channel: Channel }) {
   const act = (p: Promise<unknown>, after?: () => void) => p.then(after).catch(toastError);
   return (
     <div role="region" aria-label={t('Message request')} data-testid="message-request-banner" className="mx-4 mb-2 flex flex-wrap items-center gap-2 rounded-md bg-brand/15 px-3 py-2 text-sm text-header">
-      <span className="min-w-0 flex-1">{t('{name} is not on your friends list. Accept to move this conversation to your messages.', { name: other.displayName ?? other.username })}</span>
+      <span className="min-w-0 flex-1">{t('{name} is not on your friends list. Accept to move this conversation to your messages.', { name: other.displayName ?? other.username })} <AccountAge createdAt={other.createdAt} className="ms-1" /></span>
       <button className="btn btn-primary" onClick={() => act(api.users.acceptRequest(channel.id))}>{t('Accept')}</button>
       <button className="btn btn-secondary" onClick={() => act(api.users.ignoreRequest(channel.id), () => nav.go('@me'))}>{t('Ignore')}</button>
       <button className="btn btn-danger" onClick={() => act(api.users.setRelationship(other.id, 'blocked').then(() => api.users.ignoreRequest(channel.id)), () => nav.go('@me'))}>{t('Block')}</button>

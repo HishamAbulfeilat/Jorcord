@@ -5,6 +5,7 @@ import { toast, toastError } from '@/stores/ui';
 import { H1, H3 } from './SettingsLayout';
 import { Row, Spinner, Toggle } from '@/components/ui/primitives';
 import { cx } from '@/lib/format';
+import { ImpersonationSection, LinkListsSection, MemberDmsSection } from './SafetyTrustPanels';
 import { t } from '@/i18n';
 
 const LEVELS = [
@@ -65,5 +66,8 @@ export function SafetyTab({ guildId }: { guildId: Id }) {
       <label className="flex items-center gap-2">{t('pause for minutes')}<input aria-label={t('Raid lock minutes')} type="number" min={5} max={1440} className="field !w-24" defaultValue={rp.lockMinutes} onBlur={(e) => void patch({ raidProtection: { lockMinutes: Number(e.target.value) } })} /></label>
     </div>}
     <Row title={t('Pause invites')} desc={paused ? `${t('Invites are paused until')} ${new Date(paused).toLocaleString()}` : t('Stop anyone from joining through invites or Discovery for 24 hours.')}><Toggle label={t('Pause invites')} checked={!!paused} onChange={(v) => void patch({ pauseInvites: v })} /></Row>
+    <MemberDmsSection s={s} patch={(b) => void patch(b)} />
+    <LinkListsSection s={s} patch={(b) => void patch(b)} />
+    <ImpersonationSection guildId={guildId} s={s} patch={(b) => void patch(b)} />
   </div>);
 }

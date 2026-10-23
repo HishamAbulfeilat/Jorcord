@@ -38,6 +38,8 @@ export interface Guild {
   tag?: string | null; tagBadge?: string | null;
   /** Safety (see GuildSafety): enforced server-side. `invitesPausedUntil` is set while invites/joins are paused (raid protection or manual). */
   verificationLevel?: 0 | 1 | 2 | 3 | 4; explicitFilter?: 0 | 1 | 2; defaultNotifications?: 'all' | 'mentions'; invitesPausedUntil?: string | null;
+  /** 'optin': members must opt in (Privacy settings) before other members can DM them through this server. */
+  memberDms?: 'open' | 'optin';
   /** Community servers only (null otherwise). */
   welcomeScreen?: WelcomeScreen | null;
 }
@@ -90,6 +92,8 @@ export interface Message {
   crosspost?: CrosspostOrigin | null;
   /** Controls which mentions trigger notifications. */
   allowedMentions?: AllowedMentions | null;
+  /** Set when a link in the content looks like a scam or phishing attempt (server-side scoring, see trust.ts). Absent when nothing is suspicious. */
+  linkWarnings?: import('./trust').LinkWarning[];
 }
 /** R19: a prior version of an edited message's content (`GET /channels/:id/messages/:mid/edits`). Newest first; the current content is not included. */
 export interface MessageEdit { id: Id; messageId: Id; content: string; editedAt: string }
@@ -123,10 +127,10 @@ export interface VoiceRecording { id: Id; channelId: Id; guildId: Id | null; sta
 export interface AuditEntry { id: Id; guildId: Id; actorId: Id; action: string; /** numeric AuditActionType (additive) */ actionType?: number; targetId: Id | null; changes: unknown; reason: string | null; createdAt: string }
 export interface ReadState { channelId: Id; lastReadId: Id | null; mentionCount: number }
 export interface Webhook { id: Id; guildId: Id; channelId: Id; name: string; avatar: string | null; token?: string }
-export type AutoModTrigger = 'keyword' | 'keyword_preset' | 'spam' | 'mention_spam' | 'link' | 'regex' | 'invite_link' | 'caps' | 'repeated_chars';
+export type AutoModTrigger = 'keyword' | 'keyword_preset' | 'spam' | 'mention_spam' | 'link' | 'regex' | 'invite_link' | 'caps' | 'repeated_chars' | 'suspicious_links';
 export type AutoModAction = 'block' | 'timeout' | 'alert' | 'warn';
 /** Trigger tuning: spamCount messages within spamSeconds; capsPercent of letters (at least capsMinLength letters); a run of repeatLimit identical characters. */
-export interface AutoModOptions { spamCount?: number; spamSeconds?: number; capsPercent?: number; capsMinLength?: number; repeatLimit?: number }
+export interface AutoModOptions { spamCount?: number; spamSeconds?: number; capsPercent?: number; capsMinLength?: number; repeatLimit?: number; /** suspicious_links: lowest link risk score (0-100) that triggers the rule; default 50 */ linkMinScore?: number }
 export type AutoModPreset = 'profanity' | 'sexual_content' | 'slurs';
 export interface AutoModRule {
   id: Id; guildId: Id; name: string; enabled: boolean; trigger: AutoModTrigger; keywords: string[]; action: AutoModAction; exemptRoles: Id[];

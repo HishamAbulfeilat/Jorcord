@@ -1,9 +1,10 @@
-import { Perm, has, snowflake, type AutoModAction, type AutoModOptions, type Embed } from '@jorcord/shared';
+import { Perm, assessMessageLinks, has, snowflake, type AutoModAction, type AutoModOptions, type Embed, type LinkLists } from '@jorcord/shared';
 import type { Ctx } from '../ctx';
 import { ApiError } from '../errors';
 import { limitOrThrow } from '../lib/ratelimit';
 import { RegexError, RegexTimeout, SafeRegex, compileSafeRegex } from '../lib/saferegex';
 import { audit } from './guilds';
+import { guildLinkLists } from './linkrisk';
 import { createMessage } from './messages';
 
 export type AutomodPreset = 'profanity' | 'sexual_content' | 'slurs';
@@ -63,7 +64,11 @@ export function longestRun(content: string): number {
 
 export interface RuleLike { trigger: string; keywords: string[]; presets: string[]; allowList: string[]; mentionLimit: number; regexPatterns?: string[]; options?: AutoModOptions }
 /** Pure matcher: does `content` (with `mentionCount` mentions) violate this rule? Spam needs history and is handled by the caller. */
-export function ruleMatches(r: RuleLike, content: string, mentionCount: number, deadline?: number): boolean {
+export function ruleMatches(r: RuleLike, content: string, mentionCount: number, deadline?: number, links?: LinkLists): boolean {
+  if (r.trigger === 'suspicious_links') { // scam/phishing scoring (shared/trust.ts); the rule's own allow list and keywords extend the server's allow and deny lists
+    const min = r.options?.linkMinScore ?? 50;
+    return assessMessageLinks(content, { allow: [...(links?.allow ?? []), ...r.allowList], deny: [...(links?.deny ?? []), ...r.keywords] }).some((x) => x.score >= min);
+  }
   if (r.trigger === 'link') return /https?:\/\//i.test(content);
   if (r.trigger === 'mention_spam') return mentionCount >= Math.max(1, r.mentionLimit);
   if (r.trigger === 'invite_link') return INVITE_RE.test(content);
@@ -91,9 +96,9 @@ export function rowActions(r: any): AutoModAction[] {
 }
 const ruleLike = (r: any): RuleLike => ({ trigger: r.trigger, keywords: r.keywords, presets: r.presets, allowList: r.allow_list, mentionLimit: r.mention_limit, regexPatterns: r.regex_patterns ?? [], options: r.options ?? {} });
 
-async function ruleHit(ctx: Ctx, r: any, guildId: string, userId: string, content: string, mentionCount: number, deadline: number): Promise<boolean> {
+async function ruleHit(ctx: Ctx, r: any, guildId: string, userId: string, content: string, mentionCount: number, deadline: number, links?: LinkLists): Promise<boolean> {
   if (r.trigger !== 'spam') {
-    try { return ruleMatches(ruleLike(r), content, mentionCount, deadline); } catch (e) {
+    try { return ruleMatches(ruleLike(r), content, mentionCount, deadline, links); } catch (e) {
       if (e instanceof RegexTimeout) { ctx.log.warn({ guildId, ruleId: r.id }, 'automod regex time budget exceeded; treating as no match'); return false; }
       throw e;
     }
@@ -138,10 +143,11 @@ export async function checkAutomod(ctx: Ctx, guildId: string, userId: string, me
   if (has(perms, Perm.MANAGE_GUILD)) return; // administrators/managers are exempt
   const rules = await ctx.db.query('SELECT * FROM automod_rules WHERE guild_id = $1 AND enabled', [guildId]);
   const deadline = Date.now() + REGEX_BUDGET_MS;
+  const links = rules.some((r) => r.trigger === 'suspicious_links') ? await guildLinkLists(ctx, guildId) : undefined;
   for (const r of rules) {
     if ((r.exempt_roles as string[]).some((x) => memberRoleIds.includes(x))) continue;
     if ((r.exempt_channels as string[]).some((x) => channelIds.includes(x))) continue;
-    if (!(await ruleHit(ctx, r, guildId, userId, content, mentionCount, deadline))) continue;
+    if (!(await ruleHit(ctx, r, guildId, userId, content, mentionCount, deadline, links))) continue;
     const actions = rowActions(r);
     if (r.test_mode) { // dry run: log only, the message goes through
       await audit(ctx, guildId, userId, 'AUTOMOD_TEST', r.id, { content: content.slice(0, 200), actions }, r.name);
@@ -183,7 +189,7 @@ export async function botOutputBlocked(ctx: Ctx, guildId: string | null | undefi
 }
 
 /** Dry run for the admin UI: which enabled-or-not rules would match this text (spam needs history and is reported as not evaluated). No side effects. */
-export function testRules(rules: any[], content: string, mentionCount: number) {
+export function testRules(rules: any[], content: string, mentionCount: number, links?: LinkLists) {
   return rules.map((r) => ({ ruleId: r.id as string, name: r.name as string, trigger: r.trigger as string, enabled: !!r.enabled, testMode: !!r.test_mode, actions: rowActions(r),
-    matched: r.trigger === 'spam' ? false : (() => { try { return ruleMatches(ruleLike(r), content, mentionCount, Date.now() + REGEX_BUDGET_MS); } catch { return false; } })(), evaluated: r.trigger !== 'spam' }));
+    matched: r.trigger === 'spam' ? false : (() => { try { return ruleMatches(ruleLike(r), content, mentionCount, Date.now() + REGEX_BUDGET_MS, links); } catch { return false; } })(), evaluated: r.trigger !== 'spam' }));
 }

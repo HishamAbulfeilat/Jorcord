@@ -69,6 +69,10 @@ export interface GuildSafety {
   raidProtection: RaidProtection; invitesPausedUntil: string | null;
   /** Safety Setup checklist: what is already done. */
   checklist: { id: string; done: boolean }[]; score: number;
+  /** 'optin': members who join from now on can only be DMed through this server after they opt in. */
+  memberDms?: 'open' | 'optin';
+  linkAllow?: string[]; linkDeny?: string[];
+  impersonationGuard?: { enabled: boolean; action: 'flag' | 'hold' };
 }
 export type SafetyPreset = 'basic' | 'recommended' | 'strict';
 

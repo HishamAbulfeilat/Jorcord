@@ -15,6 +15,9 @@ import { verifyTotp } from '../lib/totp';
 import { uninstallBot } from '../services/apps';
 import { scheduleAccountDeletion } from '../services/accountDeletion';
 import { channelAccess } from '../services/perms';
+import { checkImpersonation } from '../services/impersonation';
+import { assertServerAllowsDm, sharedContext } from '../services/memberDms';
+import { assertNotDmLimited } from '../services/massdm';
 import { canSendFriendRequest, normalizePrivacy, privacyOf } from '../services/privacy';
 import { publicActivities, liveStatus, channelDTO, channelsDTO, getUser, GUILD_SELECT, guildDTO, selfUserDTO, userDTO, usersByIds } from '../services/serializers';
 
@@ -64,6 +67,10 @@ export function userRoutes(app: FastifyInstance, ctx: Ctx) {
     }
     if (b.serverTagGuildId !== undefined) await setServerTag(ctx, req.userId, b.serverTagGuildId as string | null);
     if (sets.length) await ctx.db.query(`UPDATE users SET ${sets.join(', ')} WHERE id = $1`, vals);
+    if (b.displayName) { // a new display name is checked against the owner/staff names of every server that has the impersonation guard on
+      const gs = await ctx.db.query(`SELECT m.guild_id FROM members m JOIN guilds g ON g.id = m.guild_id WHERE m.user_id = $1 AND g.impersonation_guard->>'enabled' = 'true' LIMIT 100`, [req.userId]);
+      for (const g of gs) await checkImpersonation(ctx, g.guild_id, req.userId).catch((e) => ctx.log.warn({ err: e }, 'impersonation check failed'));
+    }
     const [row] = await ctx.db.query('SELECT * FROM users WHERE id = $1', [req.userId]);
     await ctx.hub.toPresenceAudience(req.userId, 'USER_UPDATE', userDTO(ctx, row));
     if (b.privacy && 'showActivity' in (b.privacy as object)) await ctx.hub.broadcastPresence(req.userId); // the activity switch takes effect at once
@@ -217,11 +224,12 @@ export function userRoutes(app: FastifyInstance, ctx: Ctx) {
     }
     const friendIds = new Set((await ctx.db.query(`SELECT other_id FROM relationships WHERE user_id = $1 AND other_id = ANY($2::text[]) AND type = 'friend'`, [req.userId, others])).map((r) => r.other_id as string));
     const requestFor = new Set<string>();
-    for (const o of others) { // must be friends or share a guild (anti-spam)
-      const [ok] = await ctx.db.query(
-        `SELECT 1 AS x WHERE EXISTS (SELECT 1 FROM members a JOIN members b ON a.guild_id = b.guild_id WHERE a.user_id = $1 AND b.user_id = $2) OR $3::boolean`, [req.userId, o, friendIds.has(o)]);
-      if (!ok) throw forbidden('You need to be friends or share a server with this user', 'NO_SHARED_CONTEXT');
+    for (const o of others) { // must be friends or share a guild that lets its members DM each other (anti-spam)
       if (friendIds.has(o)) continue;
+      const sc = await sharedContext(ctx, req.userId, o);
+      if (!sc.shared) throw forbidden('You need to be friends or share a server with this user', 'NO_SHARED_CONTEXT');
+      assertServerAllowsDm(sc);
+      await assertNotDmLimited(ctx, req.userId);
       const [ign] = await ctx.db.query('SELECT 1 AS x FROM dm_ignores WHERE user_id = $1 AND other_id = $2', [o, req.userId]);
       if (ign) throw forbidden('This user does not accept messages from you', 'DM_DISABLED');
       const pv = await privacyOf(ctx, o);

@@ -2,7 +2,7 @@
 import type {
   Activity, Attachment, AuditEntry, AutoModRule, Channel, Emoji, Guild, GuildFull, Invite, Member, Message, MessageEdit, Relationship, ReadState, Role, SelfUser, Sticker, User, VoiceToken, VoiceRecording, Id, Presence, OverwriteDTO,
   AllowedMentions, ConnectionOAuthStart, ConnectionProviderInfo, StreamFeed, StreamFeedsResponse, GuildIntegration, WelcomeScreen, VoiceState, StageQueueEntry, StageBlock, StreamInfo,
-  Reminder, ScheduledMessage, ModView, ModWarning, ModNote, BulkModerationFilter, BulkModerationResult, PruneResult, BoostSummary, LinkedRoleView, LinkedCriterion, RoleMetadataApp, DirectoryApp, DirectoryCategory, SoundboardSound, Connection, PublicConnection, GifFavorite, GuildTemplate, GuildWidgetSettings, GuildInsights, ChannelFollow, Onboarding, OnboardingResponse, GuildSafety, SafetyPreset, Application, ApplicationCommand, CommandPermissionOverwrite, CommandOptionChoice, CreatePoll, ForumTag, InteractionOptionValue, ModalSubmitRow, OAuthAuthorizePreview, OAuthAuthorizeResult, ScheduledEvent, StageInstance, Report, RecurrenceRule, ChannelActivity, ChannelActivityKind,
+  Reminder, ScheduledMessage, ModView, ModWarning, ModNote, BulkModerationFilter, BulkModerationResult, PruneResult, BoostSummary, LinkedRoleView, LinkedCriterion, RoleMetadataApp, DirectoryApp, DirectoryCategory, SoundboardSound, Connection, PublicConnection, GifFavorite, GuildTemplate, GuildWidgetSettings, GuildInsights, ChannelFollow, Onboarding, OnboardingResponse, GuildSafety, ImpersonationEntry, SafetyPreset, Application, ApplicationCommand, CommandPermissionOverwrite, CommandOptionChoice, CreatePoll, ForumTag, InteractionOptionValue, ModalSubmitRow, OAuthAuthorizePreview, OAuthAuthorizeResult, ScheduledEvent, StageInstance, Report, RecurrenceRule, ChannelActivity, ChannelActivityKind,
 } from '@jorcord/shared';
 import { send } from './transport';
 
@@ -230,7 +230,11 @@ export const api = {
     eventInterest: (id: Id, eid: Id, on: boolean) => send({ method: on ? 'PUT' : 'DELETE', path: `/guilds/${id}/scheduled-events/${eid}/users/@me` }),
     eventUsers: (id: Id, eid: Id) => send<{ user: User }[]>({ method: 'GET', path: `/guilds/${id}/scheduled-events/${eid}/users`, query: { limit: 100 } }).then((x) => arr<{ user: User }>(x)),
     safety: (id: Id) => send<GuildSafety>({ method: 'GET', path: `/guilds/${id}/safety` }),
-    patchSafety: (id: Id, b: Partial<{ verificationLevel: number; explicitFilter: number; defaultNotifications: 'all' | 'mentions'; raidProtection: Partial<GuildSafety['raidProtection']>; pauseInvites: boolean }>) => send<GuildSafety>({ method: 'PATCH', path: `/guilds/${id}/safety`, body: b }),
+    patchSafety: (id: Id, b: Partial<{ verificationLevel: number; explicitFilter: number; defaultNotifications: 'all' | 'mentions'; raidProtection: Partial<GuildSafety['raidProtection']>; pauseInvites: boolean; memberDms: 'open' | 'optin'; memberDmsApplyToExisting: boolean; linkAllow: string[]; linkDeny: string[]; impersonationGuard: Partial<NonNullable<GuildSafety['impersonationGuard']>> }>) => send<GuildSafety>({ method: 'PATCH', path: `/guilds/${id}/safety`, body: b }),
+    memberDmState: (id: Id) => send<{ policy: 'open' | 'optin'; optIn: boolean; reachable: boolean }>({ method: 'GET', path: `/guilds/${id}/members/@me/dms` }),
+    setMemberDmOptIn: (id: Id, allow: boolean) => send<{ policy: 'open' | 'optin'; optIn: boolean; reachable: boolean }>({ method: 'PUT', path: `/guilds/${id}/members/@me/dms`, body: { allow } }),
+    impersonationQueue: (id: Id) => send<ImpersonationEntry[]>({ method: 'GET', path: `/guilds/${id}/safety/impersonation` }).then((x) => arr<ImpersonationEntry>(x)),
+    clearImpersonation: (id: Id, userId: Id) => send<{ cleared: boolean }>({ method: 'POST', path: `/guilds/${id}/members/${userId}/impersonation/clear` }),
     safetyPreset: (id: Id, preset: SafetyPreset) => send<GuildSafety>({ method: 'POST', path: `/guilds/${id}/safety/preset`, body: { preset } }),
     onboarding: (id: Id) => send<Onboarding>({ method: 'GET', path: `/guilds/${id}/onboarding` }),
     putOnboarding: (id: Id, b: Partial<Pick<Onboarding, 'enabled' | 'defaultChannelIds'>> & { prompts?: any[] }) => send<Onboarding>({ method: 'PUT', path: `/guilds/${id}/onboarding`, body: b }),

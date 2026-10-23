@@ -2,6 +2,7 @@ import { UserFlags, boostLevelFor, snowflakeTime } from '@jorcord/shared';
 import type { Activity, Attachment, Channel, Component, Embed, Guild, Member, Message, OverwriteDTO, Poll, Reaction, Role, SelfUser, User } from '@jorcord/shared';
 import type { Ctx } from '../ctx';
 import { iso } from '../lib/ids';
+import { warningsForRows } from './linkrisk';
 import { normalizePrivacy } from './privacy';
 
 export const boostLevel = boostLevelFor;
@@ -45,6 +46,7 @@ export function guildDTO(r: any): Guild {
     systemChannelId: r.system_channel_id ?? null, rulesChannelId: r.rules_channel_id ?? null,
     boostLevel: boostLevel(r.boost_count ?? 0), boostCount: r.boost_count ?? 0, features: r.features ?? [], vanityUrl: r.vanity_url ?? null, createdAt: iso(r.created_at)!, tag: r.tag ?? null, tagBadge: r.tag_badge ?? null,
     verificationLevel: (r.verification_level ?? 0) as 0, explicitFilter: (r.explicit_filter ?? 0) as 0, defaultNotifications: r.default_notifications ?? 'mentions', welcomeScreen: r.welcome_screen ?? null,
+    memberDms: r.member_dms_restricted_at ? 'optin' : 'open',
     invitesPausedUntil: r.invites_paused_until && new Date(r.invites_paused_until).getTime() > Date.now() ? iso(r.invites_paused_until) : null,
   };
 }
@@ -118,6 +120,7 @@ export async function messagesDTO(ctx: Ctx, rows: any[], viewerId: string | null
   const votes = pollIds.length ? await ctx.db.query(
     'SELECT message_id, answer_id, count(*)::int AS n, bool_or(user_id = $2) AS me FROM poll_votes WHERE message_id = ANY($1::text[]) GROUP BY message_id, answer_id', [pollIds, viewerId ?? '']) : [];
   const voters = pollIds.length ? await ctx.db.query('SELECT message_id, count(DISTINCT user_id)::int AS n FROM poll_votes WHERE message_id = ANY($1::text[]) GROUP BY message_id', [pollIds]) : [];
+  const linkWarn = await warningsForRows(ctx, rows);
   return rows.map((r) => ({
     id: r.id, channelId: r.channel_id, guildId: r.guild_id ?? null,
     author: withWebhookIdentity(users.get(r.author_id), r) ?? { id: r.author_id, username: 'deleted', displayName: null, avatar: null, banner: null, accentColor: null, bio: null, pronouns: null, bot: false, createdAt: iso(r.created_at ?? new Date())! },
@@ -135,6 +138,7 @@ export async function messagesDTO(ctx: Ctx, rows: any[], viewerId: string | null
     poll: r.poll ? pollDTO(r, votes, voters) : null,
     forward: r.forward ?? null, crosspost: r.crosspost ?? null,
     allowedMentions: r.allowed_mentions ?? null,
+    ...(linkWarn.has(r.id) ? { linkWarnings: linkWarn.get(r.id) } : {}),
   }));
 }
 export async function messageDTO(ctx: Ctx, row: any, viewerId: string | null): Promise<Message> { return (await messagesDTO(ctx, [row], viewerId))[0]!; }

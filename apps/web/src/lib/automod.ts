@@ -4,7 +4,7 @@ import type { AutoModAction, AutoModOptions, AutoModPreset, AutoModRule, AutoMod
 export const TRIGGERS: { id: AutoModTrigger; label: string }[] = [
   { id: 'keyword', label: 'Block custom words' }, { id: 'keyword_preset', label: 'Commonly flagged words' }, { id: 'regex', label: 'Pattern (regex)' },
   { id: 'spam', label: 'Spam' }, { id: 'mention_spam', label: 'Mention spam' }, { id: 'link', label: 'Links' }, { id: 'invite_link', label: 'Invite links' },
-  { id: 'caps', label: 'Excessive caps' }, { id: 'repeated_chars', label: 'Repeated characters' },
+  { id: 'caps', label: 'Excessive caps' }, { id: 'repeated_chars', label: 'Repeated characters' }, { id: 'suspicious_links', label: 'Suspicious links (scams, phishing)' },
 ];
 export const ACTIONS: { id: AutoModAction; label: string; hint: string }[] = [
   { id: 'block', label: 'Block message', hint: 'The message is never posted' }, { id: 'warn', label: 'Warn member', hint: 'Adds a warning to their record' },
@@ -45,7 +45,7 @@ export function buildRuleBody(f: RuleForm): Partial<AutoModRule> {
   return {
     name: f.name.trim(), trigger: f.trigger, enabled: true, actions: f.actions, exemptRoles: [], exemptChannels: f.exemptChannels, testMode: f.testMode,
     keywords: f.trigger === 'keyword' ? splitWords(f.keywords) : [],
-    ...(kw ? { allowList: splitWords(f.allow) } : {}), ...(f.trigger === 'keyword_preset' ? { presets: f.presets } : {}),
+    ...(kw || f.trigger === 'suspicious_links' ? { allowList: splitWords(f.allow) } : {}), ...(f.trigger === 'keyword_preset' ? { presets: f.presets } : {}),
     ...(f.trigger === 'regex' ? { regexPatterns: splitLines(f.regex) } : {}),
     ...(f.trigger === 'mention_spam' ? { mentionLimit: clamp(f.mentionLimit, 1, 50) } : {}),
     ...(f.actions.includes('timeout') ? { timeoutSeconds: clamp(f.timeoutMin * 60, 10, 7 * 86400) } : {}),
