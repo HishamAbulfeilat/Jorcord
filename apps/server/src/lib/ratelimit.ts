@@ -9,7 +9,7 @@ export interface ConsumeResult { limited: boolean; limit: number; remaining: num
 export class RateLimiter {
   private buckets = new Map<string, Bucket>();
   private timer = setInterval(() => { const n = Date.now(); for (const [k, b] of this.buckets) if (b.reset < n) this.buckets.delete(k); }, 30_000);
-  constructor() { this.timer.unref(); }
+  constructor() { this.timer.unref(); this.failTimer.unref(); }
   /** Counts one hit and reports the full bucket state (used for X-RateLimit-* headers). */
   consume(key: string, max: number, windowMs: number): ConsumeResult {
     const now = Date.now(); let b = this.buckets.get(key);
@@ -26,8 +26,30 @@ export class RateLimiter {
   }
   /** True when `key` already exceeded max within its active window (does not count a hit). */
   isLimited(key: string, max: number): boolean { const b = this.buckets.get(key); return !!b && b.reset > Date.now() && b.count >= max; }
-  close() { clearInterval(this.timer); }
+  // ---- failure lockouts (brute-force protection): failed attempts count, successes never do ----
+  private fails = new Map<string, FailState>();
+  private failTimer = setInterval(() => { const n = Date.now(); for (const [k, f] of this.fails) if (f.lockedUntil < n && f.windowEnd < n && f.strikeEnd < n) this.fails.delete(k); }, 60_000);
+  /** Seconds the key is locked out for (0 = free). Does not count anything. */
+  lockedFor(key: string): number { const f = this.fails.get(key); const n = Date.now(); return f && f.lockedUntil > n ? Math.ceil((f.lockedUntil - n) / 1000) : 0; }
+  /**
+   * Counts one failed attempt. `max` failures inside `windowMs` lock the key for `baseLockMs`; every further lockout doubles the time (up to `maxLockMs`),
+   * and the doubling is forgotten after `maxLockMs` without a lockout. Returns the lock length in seconds when this failure tripped it, else 0.
+   */
+  recordFailure(key: string, o: LockoutPolicy): number {
+    const now = Date.now(); let f = this.fails.get(key);
+    if (!f) { f = { count: 0, windowEnd: now + o.windowMs, lockedUntil: 0, strikes: 0, strikeEnd: 0 }; this.fails.set(key, f); }
+    if (f.lockedUntil > now) return 0; // already locked: attempts during a lock neither extend nor reset it
+    if (f.windowEnd < now) { f.count = 0; f.windowEnd = now + o.windowMs; }
+    if (f.strikeEnd < now) f.strikes = 0;
+    if (++f.count < o.max) return 0;
+    const ms = Math.min(o.maxLockMs, o.baseLockMs * 2 ** f.strikes);
+    f.strikes++; f.count = 0; f.lockedUntil = now + ms; f.strikeEnd = now + Math.max(o.maxLockMs, ms) * 2; f.windowEnd = now + o.windowMs;
+    return Math.ceil(ms / 1000);
+  }
+  close() { clearInterval(this.timer); clearInterval(this.failTimer); }
 }
+interface FailState { count: number; windowEnd: number; lockedUntil: number; strikes: number; strikeEnd: number }
+export interface LockoutPolicy { max: number; windowMs: number; baseLockMs: number; maxLockMs: number }
 
 /** Stable opaque bucket id (never leaks the principal or resource ids). */
 export const bucketId = (s: string) => createHash('sha256').update(s).digest('hex').slice(0, 16);

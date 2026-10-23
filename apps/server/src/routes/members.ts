@@ -19,6 +19,7 @@ import { postSystemMessage } from '../services/messages';
 import { disconnectMember } from '../services/voice';
 import { channelAccess, guildAccess, guildPerms, loadGuildPerm, need, needOutrank, needOutrankMember } from '../services/perms';
 import { GUILD_SELECT, guildDTO, liveStatus, memberDTO, membersDTO, roleDTO, usersByIds } from '../services/serializers';
+import { assertNotLocked, inviteGuardKeys, recordFailure } from '../lib/bruteforce';
 
 const gid = z.object({ id: idSchema });
 const permStr = z.string().regex(/^\d{1,20}$/);
@@ -382,9 +383,11 @@ export function memberRoutes(app: FastifyInstance, ctx: Ctx) {
     const { code } = parse(z.object({ code: z.string().regex(/^[A-Za-z0-9_-]{3,32}$/) }), req.params);
     limitOrThrow(ctx.rl, `invite-join:${req.userId}`, 20, 15 * 60_000, ctx.config.rateLimit); // code/vanity guessing + join spam
     let guildId: string;
+    const guard = inviteGuardKeys(req.ip, req.userId);
+    assertNotLocked(ctx, guard); // lockout with backoff after repeated wrong codes (per IP and per user); right codes never count
     const [existing] = await ctx.db.query('SELECT * FROM invites WHERE code = $1 AND (expires_at IS NULL OR expires_at > now()) AND (max_uses IS NULL OR uses < max_uses)', [code]);
     const [vanity] = existing ? [] : await ctx.db.query('SELECT id FROM guilds WHERE lower(vanity_url) = lower($1)', [code]);
-    if (!existing && !vanity) throw notFound('Invite');
+    if (!existing && !vanity) { recordFailure(ctx, guard); throw notFound('Invite'); }
     guildId = existing ? existing.guild_id : vanity.id;
     const full = await joinGuild(ctx, req.userId, guildId, existing ? code : null);
     return reply.code(200).send(full);
@@ -436,8 +439,10 @@ export function invitePublicRoutes(app: FastifyInstance, ctx: Ctx) {
   app.get('/invites/:code', async (req) => {
     const { code } = parse(z.object({ code: z.string().regex(/^[A-Za-z0-9_-]{3,32}$/) }), req.params);
     limitOrThrow(ctx.rl, `invite-peek:${req.ip}`, 60, 60_000, ctx.config.rateLimit); // unauthenticated: stop code enumeration
+    const guard = inviteGuardKeys(req.ip);
+    assertNotLocked(ctx, guard);
     const [r] = await ctx.db.query('SELECT * FROM invites WHERE code = $1 AND (expires_at IS NULL OR expires_at > now()) AND (max_uses IS NULL OR uses < max_uses)', [code]);
-    if (!r) throw notFound('Invite');
+    if (!r) { recordFailure(ctx, guard); throw notFound('Invite'); }
     const [g] = await ctx.db.query('SELECT id, name, icon FROM guilds WHERE id = $1', [r.guild_id]);
     const [c] = await ctx.db.query('SELECT count(*)::int AS n FROM members WHERE guild_id = $1', [r.guild_id]);
     const inv: Invite = { code: r.code, guildId: r.guild_id, channelId: r.channel_id, inviterId: r.inviter_id, uses: r.uses, maxUses: r.max_uses ?? null, expiresAt: iso(r.expires_at), temporary: r.temporary, guild: g, approxMembers: c.n };

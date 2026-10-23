@@ -6,6 +6,7 @@ import { checkVerification } from '../services/safety';
 import { ApiError, badRequest, conflict, forbidden, notFound } from '../errors';
 import { assetUrl, idSchema, limitParam, parse } from '../lib/ids';
 import { randomToken, safeEqual } from '../lib/crypto';
+import { assertNotLocked, recordFailure, webhookGuardKeys } from '../lib/bruteforce';
 import { limitOrThrow } from '../lib/ratelimit';
 import { audit, insertChannel, visibleChannelRows } from '../services/guilds';
 import { createMessage, isMediaAttachment } from '../services/messages';
@@ -539,7 +540,7 @@ export function channelRoutes(app: FastifyInstance, ctx: Ctx) {
 export function webhookPublicRoutes(app: FastifyInstance, ctx: Ctx) {
   const webhookParams = z.object({ id: idSchema, token: z.string().min(10).max(100) });
   const messageParams = z.object({ id: idSchema, token: z.string().min(10).max(100), mid: idSchema });
-  const checkToken = (w: any, p: { id: string; token: string }) => { if (!w || !safeEqual(w.token, p.token)) throw notFound('Webhook'); };
+  const checkToken = (w: any, p: { id: string; token: string }, req: { ip: string }) => { assertNotLocked(ctx, webhookGuardKeys(req.ip, p.id, p.token)); if (!w || !safeEqual(w.token, p.token)) { recordFailure(ctx, webhookGuardKeys(req.ip, p.id, p.token)); throw notFound('Webhook'); } }; // only wrong guesses count; a correct token adds nothing
   /** Messages owned by this webhook, posted in the webhook's channel or one of its threads. */
   const loadWebhookMessage = async (w: any, mid: string) => {
     const [m] = await ctx.db.query('SELECT * FROM messages WHERE id = $1', [mid]);
@@ -556,7 +557,7 @@ export function webhookPublicRoutes(app: FastifyInstance, ctx: Ctx) {
   app.get('/webhooks/:id/:token', async (req) => {
     const p = parse(z.object({ id: idSchema, token: z.string().min(10).max(100) }), req.params);
     const w = (await ctx.db.query('SELECT * FROM webhooks WHERE id = $1', [p.id]))[0];
-    checkToken(w, p);
+    checkToken(w, p, req);
     return { id: w.id, guildId: w.guild_id, channelId: w.channel_id, name: w.name, avatar: w.avatar ?? null, token: w.token, url: `/webhooks/${w.id}/${w.token}` };
   });
 
@@ -564,7 +565,7 @@ export function webhookPublicRoutes(app: FastifyInstance, ctx: Ctx) {
     const p = parse(z.object({ id: idSchema, token: z.string().min(10).max(100) }), req.params);
     const b = parse(z.object({ name: z.string().trim().min(1).max(80).optional(), avatar: assetUrl.nullable().optional() }).strict(), req.body); // channelId is deliberately not accepted here: moving a hook needs MANAGE_WEBHOOKS (PATCH /webhooks/:id)
     const w = (await ctx.db.query('SELECT * FROM webhooks WHERE id = $1', [p.id]))[0];
-    checkToken(w, p);
+    checkToken(w, p, req);
     if (b.name !== undefined) {
       await ctx.db.query('UPDATE webhooks SET name = $2 WHERE id = $1', [w.id, b.name]);
       await ctx.db.query('UPDATE users SET display_name = $2 WHERE id = $1', [w.bot_user_id, b.name]);
@@ -581,7 +582,7 @@ export function webhookPublicRoutes(app: FastifyInstance, ctx: Ctx) {
   app.delete('/webhooks/:id/:token', async (req, reply) => {
     const p = parse(webhookParams, req.params);
     const w = (await ctx.db.query('SELECT * FROM webhooks WHERE id = $1', [p.id]))[0];
-    checkToken(w, p);
+    checkToken(w, p, req);
     await ctx.db.query('DELETE FROM webhooks WHERE id = $1', [w.id]);
     await ctx.db.query('DELETE FROM users WHERE id = $1', [w.bot_user_id]);
     await ctx.hub.toGuild(w.guild_id, 'WEBHOOKS_UPDATE', { guildId: w.guild_id, channelId: w.channel_id });
@@ -605,7 +606,7 @@ export function webhookPublicRoutes(app: FastifyInstance, ctx: Ctx) {
     const embeds = parseEmbeds(b.embeds, true); // webhook = bot-classed sender
     const components = b.components === undefined ? undefined : parseComponents(b.components);
     const [w] = await ctx.db.query('SELECT * FROM webhooks WHERE id = $1', [p.id]);
-    checkToken(w, p);
+    checkToken(w, p, req);
     limitOrThrow(ctx.rl, `webhook:${w.id}`, 60, 60_000, ctx.config.rateLimit);
     let channel = (await ctx.db.query('SELECT * FROM channels WHERE id = $1', [w.channel_id]))[0];
     if (!channel) throw notFound('Webhook');
@@ -622,7 +623,7 @@ export function webhookPublicRoutes(app: FastifyInstance, ctx: Ctx) {
   app.get('/webhooks/:id/:token/messages/:mid', async (req) => {
     const p = parse(messageParams, req.params);
     const w = (await ctx.db.query('SELECT * FROM webhooks WHERE id = $1', [p.id]))[0];
-    checkToken(w, p);
+    checkToken(w, p, req);
     const m = await loadWebhookMessage(w, p.mid);
     return messageDTO(ctx, m, null);
   });
@@ -631,7 +632,7 @@ export function webhookPublicRoutes(app: FastifyInstance, ctx: Ctx) {
     const p = parse(messageParams, req.params);
     const b = parse(z.object({ content: z.string().min(1).max(4000) }).strict(), req.body);
     const w = (await ctx.db.query('SELECT * FROM webhooks WHERE id = $1', [p.id]))[0];
-    checkToken(w, p);
+    checkToken(w, p, req);
     limitOrThrow(ctx.rl, `webhook-edit:${w.id}`, 15, 10_000, ctx.config.rateLimit);
     const m = await loadWebhookMessage(w, p.mid);
     if (m.forward) throw badRequest('Forwarded messages cannot be edited');
@@ -648,7 +649,7 @@ export function webhookPublicRoutes(app: FastifyInstance, ctx: Ctx) {
   app.delete('/webhooks/:id/:token/messages/:mid', async (req, reply) => {
     const p = parse(messageParams, req.params);
     const w = (await ctx.db.query('SELECT * FROM webhooks WHERE id = $1', [p.id]))[0];
-    checkToken(w, p);
+    checkToken(w, p, req);
     const m = await loadWebhookMessage(w, p.mid);
     await ctx.db.query('DELETE FROM messages WHERE id = $1', [p.mid]);
     await ctx.hub.toChannel(m.channel_id, 'MESSAGE_DELETE', { id: p.mid, channelId: m.channel_id, guildId: m.guild_id ?? null });
