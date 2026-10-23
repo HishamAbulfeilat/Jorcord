@@ -8,3 +8,4 @@ export * from './parity';
 export * from './parity2';
 export * from './userFlags';
 export * from './stickers';
+export * from './streamfeeds';

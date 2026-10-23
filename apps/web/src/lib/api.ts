@@ -1,7 +1,7 @@
 /** Typed REST client written against docs/CONTRACT.md. All calls go through the swappable transport. */
 import type {
   Activity, Attachment, AuditEntry, AutoModRule, Channel, Emoji, Guild, GuildFull, Invite, Member, Message, MessageEdit, Relationship, ReadState, Role, SelfUser, Sticker, User, VoiceToken, VoiceRecording, Id, Presence, OverwriteDTO,
-  AllowedMentions, GuildIntegration, WelcomeScreen, VoiceState, StageQueueEntry, StageBlock, StreamInfo,
+  AllowedMentions, ConnectionOAuthStart, ConnectionProviderInfo, StreamFeed, StreamFeedsResponse, GuildIntegration, WelcomeScreen, VoiceState, StageQueueEntry, StageBlock, StreamInfo,
   Reminder, ScheduledMessage, ModView, ModWarning, ModNote, BulkModerationFilter, BulkModerationResult, PruneResult, BoostSummary, LinkedRoleView, LinkedCriterion, RoleMetadataApp, DirectoryApp, DirectoryCategory, SoundboardSound, Connection, PublicConnection, GifFavorite, GuildTemplate, GuildWidgetSettings, GuildInsights, ChannelFollow, Onboarding, OnboardingResponse, GuildSafety, SafetyPreset, Application, ApplicationCommand, CommandPermissionOverwrite, CommandOptionChoice, CreatePoll, ForumTag, InteractionOptionValue, ModalSubmitRow, OAuthAuthorizePreview, OAuthAuthorizeResult, ScheduledEvent, StageInstance, Report, RecurrenceRule, ChannelActivity, ChannelActivityKind,
 } from '@jorcord/shared';
 import { send } from './transport';
@@ -136,6 +136,10 @@ export const api = {
     addConnection: (b: { type: string; handle: string; visible?: boolean }) => send<Connection>({ method: 'POST', path: '/users/@me/connections', body: b }),
     patchConnection: (id: Id, b: { visible: boolean }) => send<Connection>({ method: 'PATCH', path: `/users/@me/connections/${id}`, body: b }),
     deleteConnection: (id: Id) => send({ method: 'DELETE', path: `/users/@me/connections/${id}` }),
+    /** Which providers exist and which can be verified with "Connect with ..." on this server (`oauth: true`). */
+    connectionProviders: () => send<ConnectionProviderInfo[]>({ method: 'GET', path: '/connections/providers' }).then((x) => arr<ConnectionProviderInfo>(x)),
+    /** Returns the provider's authorize URL (501 FEATURE_DISABLED when the server has no credentials). */
+    startConnectionOAuth: (provider: string) => send<ConnectionOAuthStart>({ method: 'POST', path: `/users/@me/connections/oauth/${encodeURIComponent(provider)}/start` }),
     verifyConnection: (id: Id) => send<Connection>({ method: 'POST', path: `/users/@me/connections/${id}/verify` }),
     findByUsername: (username: string) => send<User[] | User>({ method: 'GET', path: '/users', query: { username } }).then((x) => (Array.isArray(x) ? x : x ? [x] : [])),
   },
@@ -214,6 +218,11 @@ export const api = {
     integrations: (id: Id) => send<GuildIntegration[]>({ method: 'GET', path: `/guilds/${id}/integrations` }).then((x) => arr<GuildIntegration>(x)),
     patchIntegration: (id: Id, appId: Id, permissions: string) => send<GuildIntegration>({ method: 'PATCH', path: `/guilds/${id}/integrations/${appId}`, body: { permissions } }),
     removeIntegration: (id: Id, appId: Id) => send({ method: 'DELETE', path: `/guilds/${id}/integrations/${appId}` }),
+    /** Server Settings > Integrations: Twitch live / YouTube upload announcements (Manage Server). */
+    streamFeeds: (id: Id) => send<StreamFeedsResponse>({ method: 'GET', path: `/guilds/${id}/stream-feeds` }),
+    createStreamFeed: (id: Id, b: { provider: 'twitch' | 'youtube'; channel: string; channelId: Id; template?: string; roleId?: Id | null }) => send<StreamFeed>({ method: 'POST', path: `/guilds/${id}/stream-feeds`, body: b }),
+    patchStreamFeed: (id: Id, feedId: Id, b: { channelId?: Id; template?: string; roleId?: Id | null; enabled?: boolean }) => send<StreamFeed>({ method: 'PATCH', path: `/guilds/${id}/stream-feeds/${feedId}`, body: b }),
+    deleteStreamFeed: (id: Id, feedId: Id) => send({ method: 'DELETE', path: `/guilds/${id}/stream-feeds/${feedId}` }),
     events: (id: Id) => send<ScheduledEvent[]>({ method: 'GET', path: `/guilds/${id}/scheduled-events` }).then((x) => arr<ScheduledEvent>(x)),
     createEvent: (id: Id, b: CreateEventInput) => send<ScheduledEvent>({ method: 'POST', path: `/guilds/${id}/scheduled-events`, body: b }),
     patchEvent: (id: Id, eid: Id, b: Partial<CreateEventInput> & { status?: number }) => send<ScheduledEvent>({ method: 'PATCH', path: `/guilds/${id}/scheduled-events/${eid}`, body: b }),

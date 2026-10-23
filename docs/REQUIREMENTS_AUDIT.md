@@ -63,6 +63,8 @@ Verified by `pnpm -r typecheck`, server tests (69 files, 476 passed), web tests 
 | Profile effects and avatar decorations | done | already end to end (migration 017, validation, DTO, `Avatar.tsx`, picker); this pass added four effects (embers, petals, starfield, northern lights) and a server test that every catalog id round-trips |
 | Components V2 | done | see DISCORD-GAPS.md "Components V2"; `test/components-v2.test.ts`, `ComponentsV2.test.tsx`, bot-sdk integration test |
 | Scheduled message sends | done | migration `060_scheduled_messages.sql`; `test/scheduled-messages.test.ts`, `lib/scheduledMessages.test.ts`, `ScheduleModal.test.tsx` |
+| Twitch / YouTube: OAuth-verified connections | done (mocked providers; unverified against real Twitch/Google) | migration `070_connection_oauth.sql`; `services/connectionOAuth.ts`, `routes/connections.ts` (`POST /users/@me/connections/oauth/:provider/start`, public `GET /connections/oauth/:provider/callback`); off (501) without `TWITCH_CLIENT_ID/SECRET` / `GOOGLE_CLIENT_ID/SECRET`; `test/integrations-streams.test.ts`, web `ConnectionsTab.test.tsx`, `connectReturn.test.ts`; see `docs/INTEGRATIONS.md` |
+| Twitch live / YouTube upload announcements per server | done (mocked providers; unverified against real Twitch/YouTube) | migration `071_stream_feeds.sql`; `routes/streamfeeds.ts` (`/guilds/:id/stream-feeds`, Manage Server, audit `STREAM_FEED_*`, cap 25), `services/streamfeeds.ts` (sweeper step `stream-feeds`), `lib/providerHttp.ts`; web `StreamFeedsPanel.tsx` (Server Settings > Integrations); `test/integrations-streams.test.ts`, `StreamFeedsPanel.test.tsx` |
 
 ## 5. Recommended follow-ups
 

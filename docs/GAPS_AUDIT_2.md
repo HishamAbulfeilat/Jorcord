@@ -32,11 +32,14 @@ Status: **done** (exists and is tested), **partial**, **missing**.
 | Auto-gain / echo-cancel / sensitivity settings | partial | **done** | `VoiceSettings.tsx` (echo cancellation, AGC, input sensitivity slider, noise engine), applied in `voice/controller.ts` |
 | Soundshare (screen share with audio) | partial | **done on web; native per-app capture out of scope** | `startScreenShare({audio})` in `packages/voice/src/client.ts`, share-audio toggle in `voice/controls.tsx`, clip capture includes the screen-share audio track. WebView2/WebKit cannot capture a single app's audio; the browser/OS picker decides (tab or system audio) |
 
-Out of scope (as requested): Twitch/YouTube integrations, native Android/iOS screen share.
+| Twitch/YouTube: verified connections | missing ("skipped on purpose") | **missing -> done (this pass), provider calls mocked in tests** | OAuth "Connect with Twitch/YouTube" when the operator sets client credentials (`services/connectionOAuth.ts`, migration 070, `test/integrations-streams.test.ts`, web `ConnectionsTab.tsx`); the code-in-page flow is unchanged without credentials. See `docs/INTEGRATIONS.md` |
+| Twitch/YouTube: live and upload notifications | missing | **missing -> done (this pass), provider calls mocked in tests** | `/guilds/:id/stream-feeds`, `services/streamfeeds.ts` poller (Helix streams with an app token; YouTube public RSS, no key), migration 071, web `StreamFeedsPanel.tsx`. Subscriber roles stay out of scope |
+
+Out of scope (as requested): native Android/iOS screen share.
 
 ## Notes
 
-- Migrations used: 063 (private threads), 064 (emoji roles), 065 (group DM icon), 066 (user flags). 067 is unused.
+- Migrations used: 063 (private threads), 064 (emoji roles), 065 (group DM icon), 066 (user flags), 070 (connection OAuth), 071 (stream feeds). 067 is unused.
 - Private threads do not use channel overwrites; visibility is membership based. They are excluded from `trackVisibility` (overwrite snapshots) on purpose.
 - `std_*` sticker ids cannot collide with snowflakes (digits only). Image URLs are public and immutable like `/files`.
 - Global push-to-talk captures the key system-wide, so other apps do not receive it; modifier-only keys and mouse buttons are not supported by OS hotkeys and fall back to the in-window listener.

@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useData, selfMember } from '@/stores/data';
-import { useUI } from '@/stores/ui';
+import { useUI, toast } from '@/stores/ui';
+import { connectReturnMessage, parseConnectReturn, stripConnectReturn } from '@/lib/connectReturn';
 import { useLayout } from '@/stores/layout';
 import { useNotif } from '@/stores/notif';
 import { useRouteIds } from '@/lib/nav';
@@ -21,6 +22,16 @@ export function AppEffects() {
   useEffect(() => { setBadgeCount(mentions); }, [mentions]);
   // desktop: report "Playing <game>" while a detectable game is running (no-op in the browser)
   useEffect(() => { if (!me) { void resetGameActivity(); return; } return startGameDetection(); }, [me?.id]); // eslint-disable-line
+
+  // back from "Connect with Twitch / YouTube": say how it went and show the Connections list
+  useEffect(() => {
+    if (!me) return;
+    const r = parseConnectReturn(window.location.search); if (!r) return;
+    try { window.history.replaceState(window.history.state, '', window.location.pathname + stripConnectReturn(window.location.search) + window.location.hash); } catch { /* */ }
+    const m = connectReturnMessage(r); toast(m.text, m.kind);
+    useUI.getState().openSettings({ kind: 'user', tab: 'connections' });
+    void queryClient.invalidateQueries({ queryKey: ['connections'] });
+  }, [me?.id]); // eslint-disable-line
 
   // custom status expiry is enforced by the server (customStatus.expiresAt): it clears the status and broadcasts PRESENCE_UPDATE
 

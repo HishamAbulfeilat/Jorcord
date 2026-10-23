@@ -17,13 +17,14 @@ const LABELS: Record<string, string> = {
   LINKED_ROLE_CREATE: 'created a linked role', LINKED_ROLE_UPDATE: 'updated a linked role', LINKED_ROLE_DELETE: 'removed a linked role', BOOST_UPDATE: 'updated boost settings',
   POLL_END: 'ended a poll', APPLICATION_UPDATE: 'updated an application', APPLICATION_TOKEN_RESET: 'reset a bot token', FORUM_TAG_UPDATE: 'updated forum tags',
   STAGE_BLOCK_SPEAKER: 'blocked a member from speaking on a stage', STAGE_UNBLOCK_SPEAKER: 'allowed a member to speak on a stage again', STREAM_VIEWER_KICK: 'removed a viewer from a stream',
+  STREAM_FEED_CREATE: 'added a stream or video feed', STREAM_FEED_UPDATE: 'updated a stream or video feed', STREAM_FEED_DELETE: 'removed a stream or video feed',
 };
 export const humanize = (a: string) => a.replace(/_/g, ' ').toLowerCase().replace(/^./, (c) => c.toUpperCase());
 export const actionLabel = (action: string) => LABELS[action] ?? humanize(action).toLowerCase();
 
 export interface AuditFilter { value: string; label: string; type?: number }
 const GROUPS: { title: string; actions: string[] }[] = [
-  { title: 'Server', actions: ['GUILD_UPDATE', 'BOT_ADD', 'INVITE_CREATE', 'INVITE_DELETE', 'WEBHOOK_CREATE', 'WEBHOOK_UPDATE', 'WEBHOOK_DELETE', 'APPLICATION_COMMAND_PERMISSION_UPDATE'] },
+  { title: 'Server', actions: ['GUILD_UPDATE', 'BOT_ADD', 'INVITE_CREATE', 'INVITE_DELETE', 'WEBHOOK_CREATE', 'WEBHOOK_UPDATE', 'WEBHOOK_DELETE', 'STREAM_FEED_CREATE', 'STREAM_FEED_UPDATE', 'STREAM_FEED_DELETE', 'APPLICATION_COMMAND_PERMISSION_UPDATE'] },
   { title: 'Channels', actions: ['CHANNEL_CREATE', 'CHANNEL_UPDATE', 'CHANNEL_DELETE', 'OVERWRITE_UPDATE', 'THREAD_CREATE', 'THREAD_UPDATE', 'THREAD_DELETE', 'FORUM_TAG_UPDATE'] },
   { title: 'Members', actions: ['MEMBER_KICK', 'MEMBER_BAN_ADD', 'MEMBER_BAN_REMOVE', 'MEMBER_UPDATE', 'MEMBER_ROLE_UPDATE', 'MEMBER_TIMEOUT', 'MEMBER_PRUNE', 'MEMBER_WARN', 'MEMBER_WARN_DELETE', 'MEMBER_BULK_BAN', 'MEMBER_BULK_KICK', 'BAN_APPEAL_CREATE', 'BAN_APPEAL_APPROVE', 'BAN_APPEAL_DENY'] },
   { title: 'AutoMod', actions: ['AUTOMOD_RULE_CREATE', 'AUTOMOD_RULE_UPDATE', 'AUTOMOD_RULE_DELETE', 'AUTOMOD_BLOCK', 'AUTOMOD_ALERT', 'AUTOMOD_TEST'] },

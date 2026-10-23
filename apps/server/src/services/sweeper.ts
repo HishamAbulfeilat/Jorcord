@@ -8,6 +8,7 @@ import { fireDueReminders } from './reminders';
 import { syncGuild } from './linkedroles';
 import { fireDueBotReminders } from './sysbots';
 import { sweepUnattachedUploads } from './files';
+import { pollStreamFeeds } from './streamfeeds';
 import { expireExports } from './dataExport';
 import { sendDueScheduledMessages } from './scheduledMessages';
 import { sweepAccountDeletions } from './accountDeletion';
@@ -68,6 +69,7 @@ export async function runSweeps(ctx: Ctx) {
   await step('linked-roles', () => sweepLinkedRoles(ctx));
   await step('interactions', () => pruneInteractions(ctx));
   await step('uploads', () => sweepUnattachedUploads(ctx));
+  await step('stream-feeds', () => pollStreamFeeds(ctx));
   await step('exports', () => expireExports(ctx));
   await step('scheduled-messages', () => sendDueScheduledMessages(ctx));
   await step('account-deletions', () => sweepAccountDeletions(ctx));

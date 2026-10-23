@@ -34,7 +34,8 @@ import { fileRoutes, miscRoutes, voiceWebhookRoutes } from './routes/misc';
 import { pushPublicRoutes, pushRoutes } from './routes/push';
 import { socialRoutes } from './routes/social';
 import { activityRoutes } from './routes/activities';
-import { connectionRoutes } from './routes/connections';
+import { connectionRoutes, connectionOAuthPublicRoutes } from './routes/connections';
+import { streamFeedRoutes } from './routes/streamfeeds';
 import { favoriteRoutes } from './routes/favorites';
 import { guildExtrasRoutes, widgetPublicRoutes } from './routes/guildextras';
 import { followRoutes } from './routes/follows';
@@ -148,6 +149,7 @@ export async function buildApp(opts: BuildOptions = {}): Promise<{ app: FastifyI
     invitePublicRoutes(api, ctx);
     webhookPublicRoutes(api, ctx);
     oauthPublicRoutes(api, ctx);
+    connectionOAuthPublicRoutes(api, ctx);
     interactionPublicRoutes(api, ctx);
     fileRoutes(api, ctx);
     widgetPublicRoutes(api, ctx);
@@ -159,7 +161,7 @@ export async function buildApp(opts: BuildOptions = {}): Promise<{ app: FastifyI
       clipRoutes(priv, ctx);
       scheduledMessageRoutes(priv, ctx);
       memberRoutes(priv, ctx); messageRoutes(priv, ctx); miscRoutes(priv, ctx); voiceRoutes(priv, ctx); pushRoutes(priv, ctx);
-      applicationRoutes(priv, ctx); commandRoutes(priv, ctx); interactionRoutes(priv, ctx); pollRoutes(priv, ctx); eventRoutes(priv, ctx); socialRoutes(priv, ctx); soundboardRoutes(priv, ctx); activityRoutes(priv, ctx); safetyRoutes(priv, ctx); onboardingRoutes(priv, ctx); followRoutes(priv, ctx); guildExtrasRoutes(priv, ctx); favoriteRoutes(priv, ctx); connectionRoutes(priv, ctx); linkedRoleRoutes(priv, ctx); directoryRoutes(priv, ctx); integrationRoutes(priv, ctx); modToolRoutes(priv, ctx); adminRoutes(priv, ctx);
+      applicationRoutes(priv, ctx); commandRoutes(priv, ctx); interactionRoutes(priv, ctx); pollRoutes(priv, ctx); eventRoutes(priv, ctx); socialRoutes(priv, ctx); soundboardRoutes(priv, ctx); activityRoutes(priv, ctx); safetyRoutes(priv, ctx); onboardingRoutes(priv, ctx); followRoutes(priv, ctx); guildExtrasRoutes(priv, ctx); favoriteRoutes(priv, ctx); connectionRoutes(priv, ctx); streamFeedRoutes(priv, ctx); linkedRoleRoutes(priv, ctx); directoryRoutes(priv, ctx); integrationRoutes(priv, ctx); modToolRoutes(priv, ctx); adminRoutes(priv, ctx);
     });
   }, { prefix: '/api/v1' });
 

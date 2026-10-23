@@ -1,13 +1,14 @@
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { CONNECTION_PROVIDERS, MAX_CONNECTIONS, connectionProvider, snowflake, type Connection, type PublicConnection } from '@jorcord/shared';
+import { CONNECTION_PROVIDERS, MAX_CONNECTIONS, connectionProvider, isOAuthConnectionProvider, snowflake, type Connection, type ConnectionProviderInfo, type PublicConnection } from '@jorcord/shared';
 import type { Ctx } from '../ctx';
 import { ApiError, badRequest, notFound } from '../errors';
 import { idSchema, iso, parse } from '../lib/ids';
 import { limitOrThrow } from '../lib/ratelimit';
 import { safeGet } from '../lib/ssrf';
 import { refreshUserEverywhere } from '../services/linkedroles';
+import { BINDING_COOKIE, OAuthFlowError, STATE_TTL_SEC, completeAuthorize, disabled, oauthEnabled, parseCookie, startAuthorize } from '../services/connectionOAuth';
 
 const codeOf = (token: string) => `jorcord-verify=${token}`;
 export const connectionDTO = (r: any): Connection => ({ id: r.id, type: r.type, handle: r.handle, name: connectionProvider(r.type)?.name ?? r.type, url: r.url, verified: r.verified, visible: r.visible, createdAt: iso(r.created_at)!, verifyCode: codeOf(r.verify_token) });
@@ -19,13 +20,26 @@ export async function publicConnections(ctx: Ctx, userId: string): Promise<Publi
 }
 
 /**
- * Profile connections. Jorcord does not integrate with third-party OAuth, so a connection is self-declared (an unverified link) until the owner
- * proves control: put the connection's `verifyCode` anywhere on the linked page (profile bio, site) and call verify; the server fetches it
- * (SSRF-guarded) and looks for the code.
+ * Profile connections. A connection is self-declared (an unverified link) until the owner proves control: put the connection's `verifyCode`
+ * anywhere on the linked page (profile bio, site) and call verify; the server fetches it (SSRF-guarded) and looks for the code.
+ * Twitch and YouTube can instead be verified with OAuth when the operator configured the app credentials (see services/connectionOAuth.ts).
  */
 export function connectionRoutes(app: FastifyInstance, ctx: Ctx) {
   const idp = z.object({ id: idSchema });
-  app.get('/connections/providers', async () => CONNECTION_PROVIDERS.map((p) => ({ id: p.id, name: p.name, example: p.example })));
+  app.get('/connections/providers', async (): Promise<ConnectionProviderInfo[]> => CONNECTION_PROVIDERS.map((p) => ({ id: p.id, name: p.name, example: p.example, ...(oauthEnabled(ctx, p.id) ? { oauth: true } : {}) })));
+
+  /** "Connect with Twitch / YouTube": returns the provider's authorize URL (501 FEATURE_DISABLED without server credentials). */
+  app.post('/users/@me/connections/oauth/:provider/start', async (req, reply) => {
+    const { provider } = parse(z.object({ provider: z.string().max(20) }), req.params);
+    if (req.isBot) throw new ApiError(403, 'BOT_FORBIDDEN', 'Bots cannot add connections');
+    if (!isOAuthConnectionProvider(provider)) throw badRequest('Unknown provider');
+    if (!oauthEnabled(ctx, provider)) throw disabled(provider);
+    limitOrThrow(ctx.rl, `connection-oauth:${req.userId}`, 10, 60_000, ctx.config.rateLimit);
+    const { url, nonce } = await startAuthorize(ctx, req.userId, provider);
+    // The nonce ties the callback to this browser: a link forwarded to somebody else cannot attach their account to ours.
+    reply.header('set-cookie', `${BINDING_COOKIE}=${nonce}; Max-Age=${STATE_TTL_SEC}; Path=/api/v1/connections/oauth; HttpOnly; SameSite=Lax${ctx.config.publicUrl.startsWith('https://') ? '; Secure' : ''}`);
+    return { url, expiresIn: STATE_TTL_SEC };
+  });
   app.get('/users/@me/connections', async (req) => (await ctx.db.query('SELECT * FROM connections WHERE user_id = $1 ORDER BY created_at', [req.userId])).map(connectionDTO));
 
   app.post('/users/@me/connections', async (req, reply) => {
@@ -71,5 +85,35 @@ export function connectionRoutes(app: FastifyInstance, ctx: Ctx) {
     const [u] = await ctx.db.query('UPDATE connections SET verified = true WHERE id = $1 RETURNING *', [id]);
     void refreshUserEverywhere(ctx, req.userId).catch(() => {}); // linked roles that need a verified connection
     return connectionDTO(u);
+  });
+}
+
+/** The provider redirects the browser here (no bearer token: the signed-in user comes from the stored state). Always answers with a redirect back to the web client. */
+export function connectionOAuthPublicRoutes(app: FastifyInstance, ctx: Ctx) {
+  const back = (provider: string, result: string) => {
+    const u = new URL('/channels/@me', ctx.config.publicUrl); u.searchParams.set('connect', provider); u.searchParams.set('result', result);
+    return u.href;
+  };
+  app.get('/connections/oauth/:provider/callback', async (req, reply) => {
+    const { provider } = req.params as { provider: string };
+    if (!isOAuthConnectionProvider(provider)) return reply.code(404).send({ code: 'NOT_FOUND', message: 'Route not found' });
+    reply.header('set-cookie', `${BINDING_COOKIE}=; Max-Age=0; Path=/api/v1/connections/oauth; HttpOnly; SameSite=Lax`).header('cache-control', 'no-store').header('referrer-policy', 'no-referrer');
+    try { limitOrThrow(ctx.rl, `connection-oauth-cb:${req.ip}`, 30, 60_000, ctx.config.rateLimit); } catch { return reply.redirect(back(provider, 'rate_limited')); }
+    const query = (req.query ?? {}) as Record<string, unknown>;
+    if (query.error) {
+      // the user pressed "cancel": drop the pending state if we can tell which one it is
+      const st = query.state; if (typeof st === 'string' && st.length <= 200) await ctx.db.query('DELETE FROM connection_oauth_states WHERE state_hash = $1', [createHash('sha256').update(st).digest('hex')]).catch(() => {});
+      return reply.redirect(back(provider, 'denied'));
+    }
+    const q = z.object({ code: z.string().min(1).max(2048), state: z.string().min(16).max(200) }).safeParse(query);
+    if (!q.success) return reply.redirect(back(provider, 'invalid_state'));
+    try {
+      await completeAuthorize(ctx, provider, { code: q.data.code, state: q.data.state, nonce: parseCookie(req.headers.cookie, BINDING_COOKIE) });
+      return reply.redirect(back(provider, 'ok'));
+    } catch (e) {
+      if (e instanceof OAuthFlowError) return reply.redirect(back(provider, e.reason));
+      ctx.log.error({ provider, err: e instanceof Error ? e.message : 'unknown' }, 'connection oauth callback failed');
+      return reply.redirect(back(provider, 'exchange_failed'));
+    }
   });
 }

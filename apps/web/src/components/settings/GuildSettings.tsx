@@ -21,6 +21,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { CAT, applyChannelDrop, layoutOf, orderDiff } from '@/lib/channelOrder';
 import { CommandPermissions } from './CommandPermissions';
 import { WebhooksList } from './Webhooks';
+import { StreamFeedsPanel } from './StreamFeedsPanel';
 import { publicOrigin } from '@/lib/server';
 import { t, T } from '@/i18n';
 import { SoundboardTab } from '@/components/Soundboard';
@@ -45,7 +46,7 @@ export function GuildSettings({ guildId, initialTab }: { guildId: string; initia
   const items = useMemo(() => {
     const it = (id: string, label: string, icon: any, ok: boolean) => (ok ? [{ id, label: t(label), icon }] : []);
     return [
-      { title: g?.guild.name ?? 'Server', items: [...it('overview', T('Overview'), Cog, can(perms, Perm.MANAGE_GUILD)), ...it('roles', T('Roles'), Shield, can(perms, Perm.MANAGE_ROLES)), ...it('channels', T('Channels'), Hash, can(perms, Perm.MANAGE_CHANNELS)), ...it('emoji', T('Emoji'), Smile, can(perms, Perm.MANAGE_EMOJIS)), ...it('stickers', T('Stickers'), StickerIcon, can(perms, Perm.MANAGE_EMOJIS)), ...it('soundboard', T('Soundboard'), Volume2, can(perms, Perm.MANAGE_EMOJIS)), ...it('safety', T('Safety Setup'), ShieldCheck, can(perms, Perm.MANAGE_GUILD)), ...it('onboarding', T('Onboarding'), ListChecks, can(perms, Perm.MANAGE_GUILD)), ...it('template', T('Server Template'), FileText, can(perms, Perm.MANAGE_GUILD)), ...it('widget', T('Widget'), PanelTop, can(perms, Perm.MANAGE_GUILD)), ...it('insights', T('Insights'), BarChart3, can(perms, Perm.MANAGE_GUILD)), ...it('servertag', T('Server Tag'), Tag, can(perms, Perm.MANAGE_GUILD)), ...it('welcome', T('Welcome Screen'), BookOpen, can(perms, Perm.MANAGE_GUILD) && !!g?.guild.features.includes('COMMUNITY')), ...it('apps', T('Bots & Apps'), Bot, can(perms, Perm.MANAGE_GUILD)), ...it('integrations', T('Integrations'), WebhookIcon, can(perms, Perm.MANAGE_WEBHOOKS)), ...it('commands', T('Command Permissions'), Bot, can(perms, Perm.MANAGE_GUILD) && can(perms, Perm.MANAGE_ROLES)), ...it('boosts', T('Server Boost'), Rocket, true), ...it('linkedroles', T('Linked Roles'), Link2, true), ...it('profile', T('Server Profile'), UserCircle, true)] },
+      { title: g?.guild.name ?? 'Server', items: [...it('overview', T('Overview'), Cog, can(perms, Perm.MANAGE_GUILD)), ...it('roles', T('Roles'), Shield, can(perms, Perm.MANAGE_ROLES)), ...it('channels', T('Channels'), Hash, can(perms, Perm.MANAGE_CHANNELS)), ...it('emoji', T('Emoji'), Smile, can(perms, Perm.MANAGE_EMOJIS)), ...it('stickers', T('Stickers'), StickerIcon, can(perms, Perm.MANAGE_EMOJIS)), ...it('soundboard', T('Soundboard'), Volume2, can(perms, Perm.MANAGE_EMOJIS)), ...it('safety', T('Safety Setup'), ShieldCheck, can(perms, Perm.MANAGE_GUILD)), ...it('onboarding', T('Onboarding'), ListChecks, can(perms, Perm.MANAGE_GUILD)), ...it('template', T('Server Template'), FileText, can(perms, Perm.MANAGE_GUILD)), ...it('widget', T('Widget'), PanelTop, can(perms, Perm.MANAGE_GUILD)), ...it('insights', T('Insights'), BarChart3, can(perms, Perm.MANAGE_GUILD)), ...it('servertag', T('Server Tag'), Tag, can(perms, Perm.MANAGE_GUILD)), ...it('welcome', T('Welcome Screen'), BookOpen, can(perms, Perm.MANAGE_GUILD) && !!g?.guild.features.includes('COMMUNITY')), ...it('apps', T('Bots & Apps'), Bot, can(perms, Perm.MANAGE_GUILD)), ...it('integrations', T('Integrations'), WebhookIcon, can(perms, Perm.MANAGE_WEBHOOKS) || can(perms, Perm.MANAGE_GUILD)), ...it('commands', T('Command Permissions'), Bot, can(perms, Perm.MANAGE_GUILD) && can(perms, Perm.MANAGE_ROLES)), ...it('boosts', T('Server Boost'), Rocket, true), ...it('linkedroles', T('Linked Roles'), Link2, true), ...it('profile', T('Server Profile'), UserCircle, true)] },
       { title: t('Moderation'), items: [...it('members', T('Members'), Users, can(perms, Perm.KICK_MEMBERS) || can(perms, Perm.MANAGE_ROLES) || can(perms, Perm.MANAGE_GUILD)), ...it('invites', T('Invites'), Link2, can(perms, Perm.MANAGE_GUILD) || can(perms, Perm.CREATE_INVITE)), ...it('automod', T('AutoMod'), Bot, can(perms, Perm.MANAGE_GUILD)), ...it('audit', T('Audit Log'), ScrollText, can(perms, Perm.VIEW_AUDIT_LOG)), ...it('bans', T('Bans'), Ban, can(perms, Perm.BAN_MEMBERS)), ...it('appeals', T('Appeals'), Inbox, can(perms, Perm.BAN_MEMBERS)), ...it('modtools', T('Mod Tools'), Shield, can(perms, Perm.KICK_MEMBERS) || can(perms, Perm.BAN_MEMBERS) || can(perms, Perm.VIEW_AUDIT_LOG))] },
       ...(isOwner ? [{ items: [{ id: 'delete', label: t('Delete Server'), icon: Trash2, danger: true }] }] : []),
     ].filter((gr) => gr.items.length);
@@ -69,7 +70,7 @@ export function GuildSettings({ guildId, initialTab }: { guildId: string; initia
       {tab === 'servertag' && <ServerTagTab guildId={guildId} />}
       {tab === 'welcome' && <WelcomeScreenTab guildId={guildId} />}
       {tab === 'apps' && <BotsAppsTab guildId={guildId} myPerms={perms} />}
-      {tab === 'integrations' && <IntegrationsTab guildId={guildId} />}
+      {tab === 'integrations' && <IntegrationsTab guildId={guildId} canWebhooks={can(perms, Perm.MANAGE_WEBHOOKS)} canFeeds={can(perms, Perm.MANAGE_GUILD)} />}
       {tab === 'commands' && <CommandPermissions guildId={guildId} />}
       {tab === 'modtools' && <ModToolsTab guildId={guildId} canKick={can(perms, Perm.KICK_MEMBERS)} canBan={can(perms, Perm.BAN_MEMBERS)} canAudit={can(perms, Perm.VIEW_AUDIT_LOG)} />}
       {tab === 'linkedroles' && <LinkedRolesTab guildId={guildId} canManage={can(perms, Perm.MANAGE_ROLES)} />}
@@ -296,15 +297,18 @@ function StickersTab({ guildId }: { guildId: string }) {
   </>);
 }
 
-function IntegrationsTab({ guildId }: { guildId: string }) {
+function IntegrationsTab({ guildId, canWebhooks, canFeeds }: { guildId: string; canWebhooks: boolean; canFeeds: boolean }) {
   const g = useData((s) => s.guilds[guildId])!;
   const chans = Object.values(g.channels).filter((c) => c.type === 'text' || c.type === 'announcement').sort((a, b) => a.position - b.position);
   const [sel, setSel] = useState(chans[0]?.id ?? '');
   return (<>
     <H1>{t('Integrations')}</H1>
-    <p className="mb-4 text-sm text-muted">{t('Webhooks let other services post messages into a channel. Keep webhook URLs secret: anyone with the URL can post.')}</p>
-    <Field label={t('Channel')}><select className="field" aria-label={t('Channel')} value={sel} onChange={(e) => setSel(e.target.value)}>{chans.map((c) => <option key={c.id} value={c.id}>#{c.name}</option>)}</select></Field>
-    {sel && <WebhooksList channelId={sel} key={sel} />}
+    {canWebhooks && (<>
+      <p className="mb-4 text-sm text-muted">{t('Webhooks let other services post messages into a channel. Keep webhook URLs secret: anyone with the URL can post.')}</p>
+      <Field label={t('Channel')}><select className="field" aria-label={t('Channel')} value={sel} onChange={(e) => setSel(e.target.value)}>{chans.map((c) => <option key={c.id} value={c.id}>#{c.name}</option>)}</select></Field>
+      {sel && <WebhooksList channelId={sel} key={sel} />}
+    </>)}
+    {canFeeds && <StreamFeedsPanel guildId={guildId} />}
   </>);
 }
 void Compass; void CopyIcon; void publicOrigin;

@@ -40,9 +40,13 @@ export interface Config {
   /** Skip calls to the LiveKit RoomService (tests / deployments without a LiveKit API reachable from the server). */
   livekitControl: boolean;
   push: PushConfig;
+  /** Third-party app credentials for OAuth-verified connections (Twitch, Google/YouTube) and Twitch stream feeds. null = not configured (feature off). */
+  integrations: { twitch: ClientCreds | null; google: ClientCreds | null };
   /** Background lifecycle sweeps (poll expiry, event start/end, thread auto-archive, stage cleanup). 0 disables the timer (tests call runSweeps directly). */
   sweepIntervalMs: number;
 }
+
+export interface ClientCreds { clientId: string; clientSecret: string }
 
 export interface PushConfig {
   /** Web Push (VAPID). Keys are generated into DATA_DIR/vapid.json when not supplied. */
@@ -96,6 +100,7 @@ export function loadConfig(overrides: Partial<Config> = {}, env: NodeJS.ProcessE
   const corsOrigins: string[] | true = corsEnv === '*' ? true
     : [...new Set([...(corsEnv ? corsEnv.split(',').map((s) => s.trim()).filter(Boolean) : []), ...DEFAULT_CORS_ORIGINS, ...(publicOrigin ? [publicOrigin] : [])])];
   const apnsKey = readMaybeFile(env.APNS_KEY?.replace(/\\n/g, '\n'), env.APNS_KEY_FILE);
+  const creds = (id?: string, secret?: string): ClientCreds | null => (id?.trim() && secret?.trim() ? { clientId: id.trim(), clientSecret: secret.trim() } : null);
   const cfg: Config = {
     env: env.NODE_ENV ?? 'development', isProd,
     host: env.HOST ?? '0.0.0.0', port: Number(env.PORT ?? 3000), logLevel: env.LOG_LEVEL ?? 'info',
@@ -134,6 +139,7 @@ export function loadConfig(overrides: Partial<Config> = {}, env: NodeJS.ProcessE
       },
     },
     livekitControl: env.LIVEKIT_CONTROL !== 'false', sweepIntervalMs: Number(env.SWEEP_INTERVAL_MS ?? 10_000),
+    integrations: { twitch: creds(env.TWITCH_CLIENT_ID, env.TWITCH_CLIENT_SECRET), google: creds(env.GOOGLE_CLIENT_ID, env.GOOGLE_CLIENT_SECRET) },
     push: {
       vapid: { publicKey: env.VAPID_PUBLIC_KEY || null, privateKey: env.VAPID_PRIVATE_KEY || null, subject: env.VAPID_SUBJECT || (publicUrl.startsWith('https://') ? publicUrl : 'mailto:admin@example.com') },
       fcmServiceAccount: readMaybeFile(env.FCM_SERVICE_ACCOUNT, env.FCM_SERVICE_ACCOUNT_FILE),

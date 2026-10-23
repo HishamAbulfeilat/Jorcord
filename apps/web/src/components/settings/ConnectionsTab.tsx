@@ -15,11 +15,21 @@ export function ConnectionsTab() {
   const [type, setType] = useState(CONNECTION_PROVIDERS[0]!.id); const [handle, setHandle] = useState(''); const [busy, setBusy] = useState(false);
   const prov = CONNECTION_PROVIDERS.find((p) => p.id === type)!;
   const refresh = () => qc.invalidateQueries({ queryKey: ['connections'] });
+  // providers the server can verify with OAuth (it has the app credentials); retry:false so an older server just shows no buttons
+  const prov2 = useQuery({ queryKey: ['connection-providers'], queryFn: () => api.users.connectionProviders(), retry: false, staleTime: 5 * 60_000 });
+  const oauth = (prov2.data ?? []).filter((p) => p.oauth);
+  const [connecting, setConnecting] = useState('');
+  const connect = async (id: string) => { setConnecting(id); try { const r = await api.users.startConnectionOAuth(id); window.location.assign(r.url); } catch (err) { toastError(err); setConnecting(''); } };
   const add = async (e: React.FormEvent) => { e.preventDefault(); setBusy(true); try { await api.users.addConnection({ type, handle: handle.trim() }); setHandle(''); await refresh(); toast(t('Connection added'), 'success'); } catch (err) { toastError(err); } setBusy(false); };
   const act = (p: Promise<unknown>, ok?: string) => p.then(() => { void refresh(); void qc.invalidateQueries({ queryKey: ['user'] }); if (ok) toast(ok, 'success'); }).catch(toastError);
   return (<div data-testid="connections-tab">
     <H1>{t('Connections')}</H1>
     <p className="mb-4 text-sm text-muted">{t('Show your other accounts on your profile. A new link is unverified until you prove it is yours: put the code below on the linked page (for example in your bio), then press Verify.')}</p>
+    {oauth.length > 0 && (<div className="mb-4 rounded-lg bg-side p-3" data-testid="oauth-connect">
+      <p className="mb-2 text-xs font-bold uppercase text-header">{t('Connect and verify instantly')}</p>
+      <div className="flex flex-wrap gap-2">{oauth.map((p) => <button key={p.id} className="btn btn-secondary" disabled={!!connecting} onClick={() => void connect(p.id)}>{t('Connect with {name}', { name: p.name })}</button>)}</div>
+      <p className="mt-2 text-xs text-muted">{t('You sign in on the provider\'s site and we only read your public account name. Nothing else is stored.')}</p>
+    </div>)}
     <form onSubmit={add} className="mb-6 flex flex-wrap items-end gap-2 rounded-lg bg-side p-3">
       <label className="text-xs font-bold uppercase text-header">{t('Service')}<select aria-label={t('Service')} className="field mt-1 !w-auto" value={type} onChange={(e) => setType(e.target.value)}>{CONNECTION_PROVIDERS.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
       <label className="min-w-[180px] flex-1 text-xs font-bold uppercase text-header">{prov.id === 'website' ? t('Link') : t('Username')}<input aria-label={t('Connection handle')} className="field mt-1" value={handle} onChange={(e) => setHandle(e.target.value)} placeholder={prov.example} maxLength={200} /></label>
