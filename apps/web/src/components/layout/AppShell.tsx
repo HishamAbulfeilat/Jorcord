@@ -96,7 +96,7 @@ function ConnectionBanner() {
 }
 
 export function AppShell({ base = '' }: { base?: string }) {
-  const mobile = useIsMobile(); const left = useUI((s) => s.leftDrawer); const setLeft = useUI((s) => s.setLeftDrawer); const setRight = useUI((s) => s.setRightDrawer); const right = useUI((s) => s.setRightDrawer);
+  const mobile = useIsMobile(); const left = useUI((s) => s.leftDrawer); const setLeft = useUI((s) => s.setLeftDrawer); const setRight = useUI((s) => s.setRightDrawer); const right = useUI((s) => s.rightDrawer);
   const navigate = useNavigate(); const ref = useRef<HTMLDivElement>(null);
   const { guildId } = useRouteIds();
   // goto events from menus / notifications

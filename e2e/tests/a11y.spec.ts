@@ -8,6 +8,8 @@ test.afterAll(async () => { await A?.ctx.close(); });
 
 async function scan(page: Page, label: string) {
   await page.waitForTimeout(400); // let pop/slide-in animations settle: mid-flight opacity skews contrast
+  // ...and under load (cold Vite chunks) they can start late: wait for every finite animation to finish
+  await page.evaluate(() => Promise.all(document.getAnimations().filter((a) => a.effect?.getComputedTiming().iterations !== Infinity).map((a) => a.finished.catch(() => {}))));
   const r = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa']).analyze();
   const bad = r.violations.map((v) => `${v.id} (${v.impact}): ${v.nodes.slice(0, 3).map((n) => n.target.join(' ') + ' :: ' + (n.any[0]?.message ?? '')).join(' | ')}`);
   expect.soft(bad, `axe violations on ${label}`).toEqual([]);

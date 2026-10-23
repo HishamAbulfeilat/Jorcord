@@ -11,8 +11,8 @@
   /* dark (default) */
   --rail: 30 31 34; --side: 43 45 49; --chat: 49 51 56; --float: 17 18 20; --chat-hover: 46 48 53;
   --input: 30 31 34; --modal: 49 51 56; --modal-alt: 43 45 49; --hover: 53 55 60; --active: 64 66 73;
-  --brand: 88 101 242; --brand-hover: 71 82 196; --brand-active: 60 69 165;
-  --text: 219 222 225; --muted: 148 155 164; --header: 242 243 245; --interactive: 181 186 193; --interactive-hover: 219 222 225;
+  --brand: 84 96 235; --brand-hover: 71 82 196; --brand-active: 60 69 165;
+  --text: 219 222 225; --muted: 156 163 172; --header: 242 243 245; --interactive: 181 186 193; --interactive-hover: 219 222 225;
   --link: 0 168 252; --danger: 218 55 60; --danger-hover: 162 43 47; --success: 35 165 89; --warn: 240 178 50;
   --divider: 63 65 71; --mention: 201 205 251; --mention-bg: 88 101 242;
   --composer: 56 58 64;

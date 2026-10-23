@@ -72,7 +72,7 @@ export function MemberList({ guildId }: { guildId: string }) {
           const style = { position: 'absolute', top: 0, left: 0, width: '100%', transform: `translateY(${v.start}px)` } as const;
           if (r.kind === 'group') {
             const label = r.group.id === 'online' || r.group.id === 'offline' ? t(PRESENCE_LABEL[r.group.id] ?? r.group.name) : r.group.name;
-            return <li key={v.key} role="presentation" ref={virt.measureElement} data-index={v.index} style={style}><h3 className="px-4 pb-1 pt-6 text-xs font-bold uppercase tracking-wide text-muted">{label} — {r.group.members.length}</h3></li>;
+            return <li key={v.key} ref={virt.measureElement} data-index={v.index} style={style}><h3 className="px-4 pb-1 pt-6 text-xs font-bold uppercase tracking-wide text-muted">{label} — {r.group.members.length}</h3></li>;
           }
           return <li key={v.key} ref={virt.measureElement} data-index={v.index} style={style}><MemberRow m={r.member} roles={roles} guildId={guildId} ownerId={g.guild.ownerId} /></li>;
         })}
