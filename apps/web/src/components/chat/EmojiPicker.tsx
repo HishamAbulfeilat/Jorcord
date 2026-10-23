@@ -19,7 +19,7 @@ const RKEY = 'jorcord.recent.emoji';
 const recent = (): string[] => { try { return JSON.parse(localStorage.getItem(RKEY) ?? '[]'); } catch { return []; } };
 const pushRecent = (c: string) => { try { localStorage.setItem(RKEY, JSON.stringify([c, ...recent().filter((x) => x !== c)].slice(0, 24))); } catch { /* */ } };
 
-export function EmojiPicker({ onPick, guildId, allowGif = false, allowSticker = false, allowBurst = false, initialTab = 'emoji', gifOnly = false }: { onPick: (e: EmojiPick) => void; guildId?: string; allowGif?: boolean; allowSticker?: boolean; allowBurst?: boolean; initialTab?: 'emoji' | 'gif' | 'sticker'; gifOnly?: boolean }) {
+export function EmojiPicker({ onPick, guildId, allowGif = false, allowSticker = false, allowBurst = false, initialTab = 'emoji', gifOnly = false, externalStickers = true }: { externalStickers?: boolean; onPick: (e: EmojiPick) => void; guildId?: string; allowGif?: boolean; allowSticker?: boolean; allowBurst?: boolean; initialTab?: 'emoji' | 'gif' | 'sticker'; gifOnly?: boolean }) {
   const [q, setQ] = useState(''); const [tab, setTab] = useState<'emoji' | 'gif' | 'sticker'>(gifOnly ? 'gif' : initialTab); const [hover, setHover] = useState<string>('');
   const [burst, setBurst] = useState(false); const [burstColor, setBurstColor] = useState<string>(LIMITS.burstColors[0]);
   const guilds = useData((s) => s.guilds); const order = useData((s) => s.guildOrder);
@@ -62,7 +62,7 @@ export function EmojiPicker({ onPick, guildId, allowGif = false, allowSticker = 
       </div>
       {allowBurst && tab === 'emoji' && burst && <div className="flex items-center gap-1.5 px-2 pb-1" role="group" aria-label={t('Super reaction color')}>{LIMITS.burstColors.map((c) => <button key={c} type="button" aria-pressed={burstColor === c} aria-label={c} title={c} onClick={() => setBurstColor(c)} className={cx('h-5 w-5 rounded-full border-2', burstColor === c ? 'border-header' : 'border-transparent')} style={{ backgroundColor: c }} />)}</div>}
       {tab === 'sticker' ? (
-        <StickerGrid guildId={guildId} q={q} onPick={(st) => pick({ name: st.name, sticker: st.id })} />
+        <StickerGrid guildId={guildId} q={q} externalStickers={externalStickers} onPick={(st) => pick({ name: st.name, sticker: st.id })} />
       ) : tab === 'gif' ? (
         <div className="flex min-h-0 flex-1 flex-col">
           <div className="flex gap-1 px-2 pb-1" role="tablist" aria-label={t('GIF source')}>
@@ -120,17 +120,20 @@ export function EmojiPicker({ onPick, guildId, allowGif = false, allowSticker = 
     </div>
   );
 }
-function StickerGrid({ guildId, q, onPick }: { guildId?: string; q: string; onPick: (s: { id: string; name: string }) => void }) {
+function StickerGrid({ guildId, q, onPick, externalStickers }: { guildId?: string; q: string; externalStickers: boolean; onPick: (s: { id: string; name: string }) => void }) {
   const stickers = useData((s) => (guildId ? s.guilds[guildId]?.stickers : undefined)) ?? [];
+  const order = useData((s) => s.guildOrder); const guilds = useData((s) => s.guilds);
+  const others = useMemo(() => (guildId ? order.filter((id) => id !== guildId).map((id) => guilds[id]).filter((g): g is NonNullable<typeof g> => !!g && g.stickers.length > 0) : []), [order, guilds, guildId]);
   const match = (s: { name: string }) => s.name.toLowerCase().includes(q.toLowerCase());
   const list = stickers.filter(match);
-  const Cell = (s: { id: string; name: string; url: string }) => <button key={s.id} role="gridcell" aria-label={s.name} title={s.name} onClick={() => onPick(s)} className="flex aspect-square items-center justify-center rounded-lg p-1 hover:bg-hover"><img src={fileUrl(s.url) ?? s.url} alt={s.name} className="max-h-full max-w-full object-contain" loading="lazy" /></button>;
+  const Cell = (s: { id: string; name: string; url: string }, disabled = false) => <button key={s.id} role="gridcell" aria-label={s.name} title={disabled ? t('You need the Use External Stickers permission in this channel') : s.name} disabled={disabled} onClick={() => onPick(s)} className={cx('flex aspect-square items-center justify-center rounded-lg p-1', disabled ? 'cursor-not-allowed opacity-40' : 'hover:bg-hover')}><img src={fileUrl(s.url) ?? s.url} alt={s.name} className="max-h-full max-w-full object-contain" loading="lazy" /></button>;
   return (
     <div className="scroller min-h-0 flex-1 p-2" role="grid" aria-label={t('Stickers')}>
       {guildId && <h3 className="py-1 text-xs font-bold uppercase tracking-wide text-muted">{t('This server')}</h3>}
       {guildId && !stickers.length && <p className="p-4 text-center text-sm text-muted">{t('This server has no stickers yet. Add some in Server Settings.')}</p>}
-      {guildId && <div className="grid grid-cols-3 gap-2">{list.map(Cell)}</div>}
-      {STANDARD_STICKER_PACKS.map((p) => { const hits = p.stickers.filter(match); return hits.length ? <section key={p.id} aria-label={p.name}><h3 className="py-1 pt-3 text-xs font-bold uppercase tracking-wide text-muted">{p.name}</h3><div className="grid grid-cols-3 gap-2">{hits.map(Cell)}</div></section> : null; })}
+      {guildId && <div className="grid grid-cols-3 gap-2">{list.map((x) => Cell(x))}</div>}
+      {others.map((g) => { const hits = g.stickers.filter(match); return hits.length ? <section key={g.guild.id} aria-label={g.guild.name}><h3 className="py-1 pt-3 text-xs font-bold uppercase tracking-wide text-muted">{g.guild.name}</h3>{!externalStickers && <p className="pb-1 text-xs text-muted">{t('You need the Use External Stickers permission in this channel to send these.')}</p>}<div className="grid grid-cols-3 gap-2">{hits.map((x) => Cell(x, !externalStickers))}</div></section> : null; })}
+      {STANDARD_STICKER_PACKS.map((p) => { const hits = p.stickers.filter(match); return hits.length ? <section key={p.id} aria-label={p.name}><h3 className="py-1 pt-3 text-xs font-bold uppercase tracking-wide text-muted">{p.name}</h3><div className="grid grid-cols-3 gap-2">{hits.map((x) => Cell(x))}</div></section> : null; })}
     </div>
   );
 }

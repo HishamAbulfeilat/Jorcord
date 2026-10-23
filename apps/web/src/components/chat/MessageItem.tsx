@@ -109,10 +109,13 @@ export const MessageItem = memo(function MessageItem({ m, grouped, highlighted, 
   const replyingTo = useUI((s) => s.replyTo[m.channelId] === m.id);
   const nav = useNav(); const mobile = useIsMobile();
   const ts = msgTime(m.id, m.createdAt);
+  // Stickers may belong to another server the viewer is in (USE_EXTERNAL_STICKERS), so look through every known guild, own first.
   const allStickers = useData((s) => (m.stickerIds.length && m.guildId ? s.guilds[m.guildId]?.stickers : undefined));
+  const order = useData((s) => (m.stickerIds.length ? s.guildOrder : undefined)); const guildsMap = useData((s) => (m.stickerIds.length ? s.guilds : undefined));
+  const externalStickers = useMemo(() => (order && guildsMap && m.guildId ? order.filter((id) => id !== m.guildId).flatMap((id) => guildsMap[id]?.stickers ?? []) : undefined), [order, guildsMap, m.guildId]);
   const standard = m.stickerIds.map((id) => standardSticker(id)).filter((x): x is NonNullable<typeof x> => !!x);
   const ownIds = m.stickerIds.filter((id) => !isStandardStickerId(id));
-  const own = allStickers?.filter((x) => ownIds.includes(x.id));
+  const own = allStickers || externalStickers ? ownIds.map((id) => allStickers?.find((x) => x.id === id) ?? externalStickers?.find((x) => x.id === id)).filter((x): x is NonNullable<typeof x> => !!x) : undefined;
   const stickers = m.stickerIds.length ? [...standard, ...(own ?? [])] : undefined;
   useEffect(() => { if (m.guildId && ownIds.length && (own?.length ?? 0) < ownIds.length) void refreshStickers(m.guildId); }, [m.guildId, ownIds.length, own?.length]); // eslint-disable-line
   const mentioned = !!me && (m.mentions.includes(me.id) || m.mentionEveryone) && m.author.id !== me.id;

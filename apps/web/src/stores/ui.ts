@@ -97,7 +97,7 @@ export interface MenuItem { label?: string; icon?: any; onClick?: () => void; da
   /** Inline slider row (keyboard: Left/Right adjust, Up/Down leave). */
   slider?: { value: number; min: number; max: number; step?: number; label: string; format?: (v: number) => string; onChange: (v: number) => void } }
 export interface Toast { id: number; kind: 'info' | 'success' | 'error'; text: string }
-export type Popout = { kind: 'user'; userId: Id; guildId?: Id; rect: DOMRect } | { kind: 'emoji'; rect: DOMRect; onPick: (e: { char?: string; name: string; id?: Id; animated?: boolean; gif?: string; sticker?: Id; burst?: boolean; burstColor?: string }) => void; guildId?: Id; stickers?: boolean; allowBurst?: boolean; gifOnly?: boolean } | null;
+export type Popout = { kind: 'user'; userId: Id; guildId?: Id; rect: DOMRect } | { kind: 'emoji'; rect: DOMRect; onPick: (e: { char?: string; name: string; id?: Id; animated?: boolean; gif?: string; sticker?: Id; burst?: boolean; burstColor?: string }) => void; guildId?: Id; stickers?: boolean; externalStickers?: boolean; allowBurst?: boolean; gifOnly?: boolean } | null;
 
 interface UIState {
   prefs: Prefs; setPref<K extends keyof Prefs>(k: K, v: Prefs[K]): void;

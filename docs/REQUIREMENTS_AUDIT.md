@@ -28,7 +28,7 @@ Summary: 13 done. Update after this audit: the two items that were missing (stag
 
 | Item | Status | Evidence / gap |
 |------|--------|----------------|
-| Permission bits audit + missing bits | partial | `packages/shared/src/permissions.ts` has 44 bits including `SEND_POLLS`, `USE_EXTERNAL_APPS`, `SEND_VOICE_MESSAGES`, `CREATE_EVENTS`, `MANAGE_EVENTS`, `RECORD_VOICE`; positions above bit 32 intentionally differ from Discord and are mapped in `DISCORD_PERMISSION_BITS`; `test/permissions.test.ts`. Still absent: `PIN_MESSAGES`, `BYPASS_SLOWMODE`, `USE_EXTERNAL_STICKERS`, `VIEW_GUILD_INSIGHTS` (grep finds none) |
+| Permission bits audit + missing bits | partial | `packages/shared/src/permissions.ts` has 44 bits including `SEND_POLLS`, `USE_EXTERNAL_APPS`, `SEND_VOICE_MESSAGES`, `CREATE_EVENTS`, `MANAGE_EVENTS`, `RECORD_VOICE`; positions above bit 32 intentionally differ from Discord and are mapped in `DISCORD_PERMISSION_BITS`; `test/permissions.test.ts`. `PIN_MESSAGES`, `BYPASS_SLOWMODE` and `USE_EXTERNAL_STICKERS` now exist (migration 052; external stickers enforced in `services/messages.ts`, picker + message rendering in the web app). Still absent: `VIEW_GUILD_INSIGHTS` |
 | `allowed_mentions` | done | `routes/messages.ts` accepts `allowedMentions`; stored in `messages.allowed_mentions` (migration `028_allowed_mentions.sql`); `services/serializers.ts` L134; `test/parity-messages-mentions.test.ts` |
 | Message flags | partial | `MessageFlags` in `packages/shared/src/platform.ts` L90. User sends accept `SUPPRESS_EMBEDS` and `SUPPRESS_NOTIFICATIONS` only (`routes/messages.ts` L140); `SUPPRESS_NOTIFICATIONS` honoured in `services/push.ts` L276; `EPHEMERAL`/`LOADING` used by interactions. No test dedicated to `SUPPRESS_EMBEDS` on normal messages was found |
 | Client-sent embeds | done | `routes/messages.ts` L29-30 (bots/webhooks only, validated by `lib/embeds.ts`); `test/parity-embeds.test.ts` |
@@ -69,7 +69,7 @@ Verified by `pnpm -r typecheck`, server tests (69 files, 476 passed), web tests 
 ## 5. Recommended follow-ups
 
 1. (done) Web clips recorder and clips channel view.
-2. Add `PIN_MESSAGES`, `BYPASS_SLOWMODE`, `USE_EXTERNAL_STICKERS` permission bits with a migration that ORs them into existing roles where appropriate.
+2. ~~Add `PIN_MESSAGES`, `BYPASS_SLOWMODE`, `USE_EXTERNAL_STICKERS` permission bits~~ done (migration 052).
 3. Desktop: native file dialogs, lock/unlock/suspend events, clipboard images, move other accounts' tokens into the keychain, and a run on real Windows/macOS/Linux desktops (see section 4).
 4. A test that walks `AuditActionType` and asserts each action has an emitter or is marked reserved.
 5. (Done) Stage anonymous speakers / persisted raised-hand order; Go Live viewer cap.

@@ -44,15 +44,32 @@ const POINTS = (n: number, outer: number, inner: number) => Array.from({ length:
   return `${(80 + r * Math.cos(a)).toFixed(1)},${(80 + r * Math.sin(a)).toFixed(1)}`;
 }).join(' ');
 
-function shapeSvg(shape: Shape, bg: string): string {
-  const style = `fill="${bg}" stroke="#ffffff" stroke-width="6" stroke-linejoin="round"`;
+/** Mix a #rrggbb colour toward white (amt > 0) or black (amt < 0). */
+function shade(hex: string, amt: number): string {
+  const n = parseInt(hex.slice(1), 16);
+  const f = (c: number) => Math.round(amt >= 0 ? c + (255 - c) * amt : c * (1 + amt));
+  return `#${[(n >> 16) & 255, (n >> 8) & 255, n & 255].map((c) => f(c).toString(16).padStart(2, '0')).join('')}`;
+}
+
+function shapeGeometry(shape: Shape, attrs: string): string {
   switch (shape) {
-    case 'circle': return `<circle cx="80" cy="80" r="70" ${style}/>`;
-    case 'square': return `<rect x="12" y="12" width="136" height="136" rx="28" ${style}/>`;
-    case 'star': return `<polygon points="${POINTS(5, 74, 36)}" ${style}/>`;
-    case 'burst': return `<polygon points="${POINTS(12, 74, 56)}" ${style}/>`;
-    case 'heart': return `<path d="M80 144 C20 100 12 60 40 38 C58 24 76 34 80 50 C84 34 102 24 120 38 C148 60 140 100 80 144 Z" ${style}/>`;
+    case 'circle': return `<circle cx="80" cy="80" r="68" ${attrs}/>`;
+    case 'square': return `<rect x="14" y="14" width="132" height="132" rx="30" ${attrs}/>`;
+    case 'star': return `<polygon points="${POINTS(5, 74, 36)}" ${attrs}/>`;
+    case 'burst': return `<polygon points="${POINTS(12, 74, 56)}" ${attrs}/>`;
+    case 'heart': return `<path d="M80 144 C20 100 12 60 40 38 C58 24 76 34 80 50 C84 34 102 24 120 38 C148 60 140 100 80 144 Z" ${attrs}/>`;
   }
+}
+
+/** Layered artwork: soft shadow, white sticker border, vertical gradient body, inner rim, gloss highlight and sparkles. */
+function shapeSvg(shape: Shape, bg: string, uid: string): string {
+  const defs = `<defs><linearGradient id="${uid}g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${shade(bg, 0.35)}"/><stop offset="1" stop-color="${shade(bg, -0.18)}"/></linearGradient><linearGradient id="${uid}h" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".55"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient><clipPath id="${uid}c">${shapeGeometry(shape, '')}</clipPath></defs>`;
+  const shadow = `<g transform="translate(0 5)" opacity=".28">${shapeGeometry(shape, 'fill="#000" stroke="#000" stroke-width="8" stroke-linejoin="round"')}</g>`;
+  const border = shapeGeometry(shape, 'fill="#fff" stroke="#fff" stroke-width="10" stroke-linejoin="round"');
+  const body = shapeGeometry(shape, `fill="url(#${uid}g)" stroke="${shade(bg, -0.3)}" stroke-width="2.5" stroke-linejoin="round"`);
+  const gloss = `<g clip-path="url(#${uid}c)"><ellipse cx="80" cy="34" rx="62" ry="30" fill="url(#${uid}h)"/></g>`;
+  const sparkle = (x: number, y: number, r: number) => `<path d="M${x} ${y - r} Q${x} ${y} ${x + r} ${y} Q${x} ${y} ${x} ${y + r} Q${x} ${y} ${x - r} ${y} Q${x} ${y} ${x} ${y - r}Z" fill="#fff" opacity=".9"/>`;
+  return `${defs}${shadow}${border}${body}${gloss}${sparkle(30, 30, 9)}${sparkle(132, 124, 6)}`;
 }
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
@@ -60,7 +77,7 @@ const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&l
 function svgFor(d: Def): string {
   const size = d.size ?? (d.text.length <= 2 ? 52 : d.text.length === 3 ? 42 : 34);
   const dy = d.shape === 'heart' ? 8 : d.shape === 'star' ? 14 : 0;
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160" width="160" height="160" role="img" aria-label="${esc(d.name)}"><title>${esc(d.name)}</title>${shapeSvg(d.shape, d.bg)}<text x="80" y="${(80 + size * 0.36 + dy).toFixed(1)}" font-family="Arial Black, Arial, Helvetica, sans-serif" font-weight="900" font-size="${size}" text-anchor="middle" fill="${d.fg}" transform="rotate(-8 80 80)">${esc(d.text)}</text></svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160" width="160" height="160" role="img" aria-label="${esc(d.name)}"><title>${esc(d.name)}</title>${shapeSvg(d.shape, d.bg, `s${d.slug}`)}<g transform="rotate(-8 80 80)" font-family="Arial Black, Arial, Helvetica, sans-serif" font-weight="900" font-size="${size}" text-anchor="middle"><text x="80" y="${(80 + size * 0.36 + dy + 2.5).toFixed(1)}" fill="#000" opacity=".22">${esc(d.text)}</text><text x="80" y="${(80 + size * 0.36 + dy).toFixed(1)}" fill="${d.fg}" stroke="${shade(d.bg, 0.55)}" stroke-width="1.5" paint-order="stroke">${esc(d.text)}</text></g></svg>`;
 }
 
 const DEFS = new Map<string, Def>(PACKS.flatMap((p) => p.defs.map((d) => [`std_${d.slug}`, d] as const)));
