@@ -34,7 +34,7 @@ rm -f "$RUNNER_TEMP/ios.p12"
 
 # Install every provisioning profile and remember bundle id -> profile name for the export step.
 PROFDIR="$HOME/Library/MobileDevice/Provisioning Profiles"; mkdir -p "$PROFDIR"
-MAP=""; MAIN_PROFILE_NAME=""
+MAP=""; MAIN_PROFILE_NAME=""; rm -f "$RUNNER_TEMP/profile-map.txt"
 i=0
 for b64 in "$IOS_PROVISIONING_PROFILE_B64" ${IOS_EXTRA_PROFILES_B64:-}; do
   f="$RUNNER_TEMP/p$i.mobileprovision"; echo "$b64" | base64 -d > "$f"
@@ -46,14 +46,29 @@ for b64 in "$IOS_PROVISIONING_PROFILE_B64" ${IOS_EXTRA_PROFILES_B64:-}; do
   cp "$f" "$PROFDIR/$UUID.mobileprovision"
   [ "$i" = 0 ] && MAIN_PROFILE_NAME="$NAME"
   MAP="$MAP<key>$BUNDLE</key><string>$NAME</string>"
+  echo "$BUNDLE=$NAME" >> "$RUNNER_TEMP/profile-map.txt"
   echo "Installed profile '$NAME' for $BUNDLE"
   i=$((i+1))
 done
 
+# A global PROVISIONING_PROFILE_SPECIFIER would hit app extensions too, so write each profile into the build
+# configurations of the target with the matching bundle id (the project has the app and a broadcast extension).
+python3 - "$RUNNER_TEMP/profile-map.txt" App.xcodeproj/project.pbxproj <<'PY'
+import re, sys
+m = dict(l.rstrip("\n").split("=", 1) for l in open(sys.argv[1]) if "=" in l)
+p = sys.argv[2]; s = open(p).read()
+def fix(mt):
+    blk = mt.group(0); b = re.search(r"PRODUCT_BUNDLE_IDENTIFIER = ([^;]+);", blk)
+    if not b: return blk
+    name = m.get(b.group(1).strip().strip('"'))
+    if not name: return blk
+    blk = re.sub(r"\n\s*PROVISIONING_PROFILE_SPECIFIER = [^;]*;", "", blk)
+    return blk.replace("buildSettings = {", 'buildSettings = {\n\t\t\t\tPROVISIONING_PROFILE_SPECIFIER = "%s";' % name, 1)
+open(p, "w").write(re.sub(r"buildSettings = \{.*?\n\t\t\t\};", fix, s, flags=re.S))
+PY
 xcodebuild "${TARGET[@]}" -scheme App -configuration Release -sdk iphoneos -archivePath "$ARCHIVE" archive \
   MARKETING_VERSION="$APP_VERSION" CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
-  DEVELOPMENT_TEAM="$APPLE_TEAM_ID" CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY="Apple Distribution" \
-  PROVISIONING_PROFILE_SPECIFIER="$MAIN_PROFILE_NAME" | tail -n 60
+  DEVELOPMENT_TEAM="$APPLE_TEAM_ID" CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY="Apple Distribution" | tail -n 60
 
 METHOD="${IOS_EXPORT_METHOD:-app-store-connect}"
 cat > "$RUNNER_TEMP/ExportOptions.plist" <<PLIST
