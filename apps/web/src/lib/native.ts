@@ -69,6 +69,15 @@ export const callService = {
   stop() { try { void capPlugin('CallService')?.stop?.(); } catch { /* */ } },
 };
 
+/**
+ * Native screen-capture plugin (apps/mobile: Android MediaProjection service / iOS ReplayKit broadcast extension), or undefined outside the
+ * Capacitor apps. Falls back to registerPlugin() because Capacitor.Plugins only lists plugins that were already registered from JS.
+ */
+export function screenSharePlugin(): any {
+  if (!isCapacitor()) return undefined;
+  try { return capPlugin('JorcordScreenShare') ?? (window as any).Capacitor?.registerPlugin?.('JorcordScreenShare'); } catch { return undefined; }
+}
+
 /** Desktop-only helpers behind the settings page. Every call is a no-op outside Tauri (plain web / PWA). */
 export const desktop = {
   available: () => isTauri(),

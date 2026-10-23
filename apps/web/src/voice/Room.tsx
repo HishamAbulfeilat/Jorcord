@@ -63,6 +63,12 @@ export function VoiceBanners() {
           <button className="rounded px-2 py-0.5 font-medium hover:bg-black/30" onClick={() => client.dismissScreenResume()}>{t('Dismiss')}</button>
         </div>
       )}
+      {snap.screenOn && snap.platform.nativeScreenShare && snap.status === 'connected' && (
+        <div role="status" data-testid="voice-native-sharing" className="flex items-center justify-center gap-3 bg-danger/90 px-3 py-1.5 text-sm text-white">
+          <MonitorUp size={16} />{t('You are sharing your screen')}
+          <button className="rounded bg-black/30 px-2 py-0.5 font-medium hover:bg-black/50" onClick={() => void client.stopScreenShare()}>{t('Stop sharing')}</button>
+        </div>
+      )}
       {blocked && snap.status === 'connected' && <button onClick={unlock} className="bg-brand px-3 py-1.5 text-sm font-semibold text-white hover:bg-brand-hover">{t('Click to enable audio')}</button>}
       {snap.error && !reconnecting && (
         <div role="alert" data-code={snap.error.code} className="flex items-center justify-between gap-3 bg-danger/90 px-3 py-2 text-sm text-white">

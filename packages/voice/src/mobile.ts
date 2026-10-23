@@ -1,6 +1,6 @@
 import type { PresetConstraints } from './presets';
 
-export interface Platform { isIOS: boolean; isAndroid: boolean; isMobile: boolean; isSafari: boolean; canScreenShare: boolean }
+export interface Platform { isIOS: boolean; isAndroid: boolean; isMobile: boolean; isSafari: boolean; canScreenShare: boolean; /** Screen share goes through the native Capacitor plugin (set by VoiceClient.setNativeScreenSource). */ nativeScreenShare?: boolean }
 
 /** Capacitor (iOS/Android) webviews cannot start getDisplayMedia even when the API object exists; Tauri/WebKitGTK may lack it entirely. */
 const insideCapacitor = (): boolean => { try { return !!(globalThis as any).Capacitor?.isNativePlatform?.(); } catch { return false; } };

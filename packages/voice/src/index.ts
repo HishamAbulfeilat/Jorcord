@@ -8,6 +8,7 @@ export * from './reconnect';
 export * from './diagnostics';
 export * from './ptt';
 export * from './mobile';
+export * from './nativeScreen';
 export * from './priority';
 export * from './mutedSpeaking';
 export * from './e2ee';

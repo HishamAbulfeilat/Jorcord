@@ -38,6 +38,12 @@
             android:exported="false"
             android:foregroundServiceType="microphone|camera|mediaProjection|phoneCall" />
 
+        <!-- MediaProjection screen capture for screen sharing (needs its own foregroundServiceType=mediaProjection service). -->
+        <service
+            android:name=".ScreenShareService"
+            android:exported="false"
+            android:foregroundServiceType="mediaProjection" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

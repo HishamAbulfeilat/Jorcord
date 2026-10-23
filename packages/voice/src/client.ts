@@ -1,5 +1,5 @@
 import {
-  Room, RoomEvent, Track, VideoPreset, ConnectionState, ParticipantEvent,
+  Room, RoomEvent, Track, VideoPreset, LocalVideoTrack as LocalVideoTrackImpl, ConnectionState, ParticipantEvent,
   type Participant, type RemoteParticipant, type LocalParticipant, type TrackPublication,
   type RoomOptions, type TrackPublishOptions, type ScreenShareCaptureOptions, type VideoCaptureOptions,
   type LocalVideoTrack, type RemoteVideoTrack, type RemoteTrackPublication, type LocalTrackPublication,
@@ -19,6 +19,7 @@ import {
   viewerQualityToDimensions, type CameraEncoding, type CameraQuality, type ContentHint, type StreamPresetId, type VideoCodecName, type ViewerQuality,
 } from './presets';
 import { detectPlatform, mobileConstraints, type Platform } from './mobile';
+import type { NativeScreenSession, NativeScreenSource } from './nativeScreen';
 import { initialSpeaking, speakingReducer, type SpeakingState } from './speaking';
 import { parseVideoStats, parseConnectionStats, type StatsSample, type ConnectionStats, type ConnSample } from './stats';
 import {
@@ -150,6 +151,8 @@ export class VoiceClient {
   private intent = { camera: false, cameraDeviceId: undefined as string | undefined, screen: false };
   private unbindWindow: (() => void) | undefined;
   private hiddenAt = 0;
+  private nativeScreen: NativeScreenSource | undefined;
+  private nativeSession: { session: NativeScreenSession; track: LocalVideoTrack } | undefined;
 
   constructor(opts: VoiceClientOptions = {}) {
     this.opts = opts;
@@ -269,6 +272,7 @@ export class VoiceClient {
 
   /** Disconnect the Room without letting the Disconnected handler treat it as a connection loss. */
   private async shutdownRoom() {
+    await this.endNativeScreen();
     this.leaving = true;
     try { await this.room.disconnect(true); } finally { this.leaving = false; }
   }
@@ -370,7 +374,9 @@ export class VoiceClient {
   /** After a rejoin: bring the camera back; a screen share needs a fresh user gesture, so just flag it. */
   private async restoreIntent() {
     if (this.intent.camera) { try { await this.setCamera(true, this.intent.cameraDeviceId); } catch { /* the user can re-enable */ } }
-    if (this.intent.screen) {
+    if (this.intent.screen && this.snap.platform.nativeScreenShare) {
+      this.emit({ screenResumeNeeded: true, error: null }); // the native consent dialog needs a user gesture
+    } else if (this.intent.screen) {
       try { await this.startScreenShare(); this.emit({ screenResumeNeeded: false }); }
       catch { this.emit({ screenResumeNeeded: true, error: null }); }
     }
@@ -765,7 +771,65 @@ export class VoiceClient {
     await this.setCamera(true, deviceId);
   }
 
+  /**
+   * Enable screen sharing through a native capture plugin (Capacitor mobile apps). Resolves to whether it is available;
+   * when it is, `platform.canScreenShare` / `platform.nativeScreenShare` turn true so the existing UI shows the button.
+   */
+  async setNativeScreenSource(source: NativeScreenSource | undefined): Promise<boolean> {
+    this.nativeScreen = source;
+    let ok = false;
+    try { ok = !!source && (await source.isSupported()); } catch { ok = false; }
+    this.nativeScreen = ok ? source : undefined;
+    const base = detectPlatform();
+    this.emit({ platform: ok ? { ...base, canScreenShare: true, nativeScreenShare: true } : base });
+    return ok;
+  }
+
+  /** Native capture: frames arrive as a canvas-backed track (video only, no system audio). */
+  private async startNativeScreenShare(o: { preset?: StreamPresetId; hint?: ContentHint }) {
+    const src = this.nativeScreen!;
+    const preset = o.preset ?? this.snap.settings.screenPreset;
+    const hint = o.hint ?? this.snap.settings.screenHint;
+    const { resolved, codec } = this.publishOptsFor('screen', preset, hint);
+    await this.endNativeScreen();
+    let session: NativeScreenSession | undefined;
+    try {
+      session = await src.start({ fps: 8, maxDimension: 1280 });
+      session.track.contentHint = hint;
+      const track = new LocalVideoTrackImpl(session.track, undefined, true);
+      const opts: TrackPublishOptions = {
+        source: Track.Source.ScreenShare, name: 'screen',
+        videoCodec: codec as VideoCodec, backupCodec: false, simulcast: false,
+        degradationPreference: 'maintain-resolution',
+        // Snapshots of a phone screen: modest bitrate/framerate are plenty and keep thermal load and uplink low.
+        screenShareEncoding: { maxBitrate: Math.min(resolved.maxBitrateKbps, 2500) * 1000, maxFramerate: 10 },
+      };
+      const s = session;
+      this.nativeSession = { session: s, track };
+      s.onEnded(() => { void this.endNativeScreen(); });
+      await this.room.localParticipant.publishTrack(track, opts);
+      this.snap = { ...this.snap, settings: { ...this.snap.settings, screenPreset: preset, screenHint: hint } };
+      this.intent.screen = true;
+      this.emit({ screenOn: true, activeCodec: codec, screenResumeNeeded: false });
+    } catch (e) {
+      await this.endNativeScreen(false);
+      if (session) await session.stop().catch(() => {});
+      this.emit({ screenOn: false });
+      throw this.fail(e, 'screen');
+    }
+  }
+
+  /** Stop native capture and unpublish its track. Idempotent; safe from the unpublish event handler. */
+  private async endNativeScreen(unpublish = true) {
+    const cur = this.nativeSession; if (!cur) return;
+    this.nativeSession = undefined;
+    if (unpublish) { try { await this.room.localParticipant.unpublishTrack(cur.track, true); } catch { /* room may already be gone */ } }
+    await cur.session.stop().catch(() => {});
+    this.emit({ screenOn: false });
+  }
+
   async startScreenShare(o: { preset?: StreamPresetId; hint?: ContentHint; audio?: boolean } = {}) {
+    if (this.nativeScreen && this.snap.platform.nativeScreenShare) return this.startNativeScreenShare(o);
     if (!this.snap.platform.canScreenShare) { const e = { code: 'unsupported' as const, message: 'Screen sharing is not supported on this device/browser.' }; this.emit({ error: e }); throw e; }
     const preset = o.preset ?? this.snap.settings.screenPreset;
     const hint = o.hint ?? this.snap.settings.screenHint;
@@ -785,7 +849,7 @@ export class VoiceClient {
       this.emit({ screenOn: true, activeCodec: codec, screenResumeNeeded: false });
     } catch (e) { this.emit({ screenOn: false }); throw this.fail(e, 'screen'); }
   }
-  async stopScreenShare() { this.intent.screen = false; this.emit({ screenResumeNeeded: false }); await this.room.localParticipant.setScreenShareEnabled(false); this.emit({ screenOn: false }); }
+  async stopScreenShare() { this.intent.screen = false; this.emit({ screenResumeNeeded: false }); await this.endNativeScreen(); await this.room.localParticipant.setScreenShareEnabled(false); this.emit({ screenOn: false }); }
 
   /** Change live screen-share quality without re-prompting the picker (applyConstraints + sender bitrate). */
   async setLiveStreamQuality(presetId: StreamPresetId, hint?: ContentHint) {
@@ -952,7 +1016,7 @@ export class VoiceClient {
       .on(RoomEvent.LocalTrackUnpublished, (pub: LocalTrackPublication) => {
         // stopped while healthy (browser "Stop sharing" button, device unplugged) = the user's intent changed; a drop is not
         const healthy = !this.leaving && this.rc.phase === 'connected' && this.room.state === ConnectionState.Connected;
-        if (pub.source === Track.Source.ScreenShare) { if (healthy) this.intent.screen = false; this.emit({ screenOn: false }); }
+        if (pub.source === Track.Source.ScreenShare) { if (healthy) this.intent.screen = false; void this.endNativeScreen(false); this.emit({ screenOn: false }); }
         if (pub.source === Track.Source.Camera) { if (healthy) this.intent.camera = false; this.emit({ cameraOn: false }); }
         touch();
       })

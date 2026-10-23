@@ -3,5 +3,10 @@
 <plist version="1.0"><dict>
 	<!-- Use "production" for App Store / TestFlight builds. -->
 	<key>aps-environment</key><string>development</string>
+	<!-- Shared with the BroadcastExtension (screen sharing frames). Register this group in your Apple developer account. -->
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>group.app.jorcord.mobile</string>
+	</array>
 	<!-- Universal links: add applinks:<your-host> and host /.well-known/apple-app-site-association -->
 </dict></plist>

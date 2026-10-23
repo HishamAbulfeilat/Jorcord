@@ -2,7 +2,7 @@
  * Voice controller: one VoiceClient (LiveKit) per tab, joined/left through the API token endpoint and mirrored to the
  * gateway with VOICE_STATE_UPDATE (op 4). UI reads the client via @jorcord/voice/react hooks and `useVoiceUI`.
  */
-import { VoiceClient, mapVoiceError, type StreamPresetId, type VoiceSettings, type VoiceSnapshot, type ContentHint, type VoiceError } from '@jorcord/voice';
+import { VoiceClient, createNativeScreenSource, mapVoiceError, type StreamPresetId, type VoiceSettings, type VoiceSnapshot, type ContentHint, type VoiceError } from '@jorcord/voice';
 import { api } from '@/lib/api';
 import { getGateway } from '@/lib/gateway';
 import { useData, findChannel } from '@/stores/data';
@@ -10,7 +10,7 @@ import { useUI, type Prefs } from '@/stores/ui';
 import { useVoiceUI, voiceHooks } from '@/stores/voiceui';
 import { useLiveVoice } from '@/stores/livevoice';
 import { playSound } from '@/lib/sound';
-import { callService } from '@/lib/native';
+import { callService, screenSharePlugin } from '@/lib/native';
 import { CallRecorder, type RecordingRoom } from './callRecorder';
 import { t } from '@/i18n';
 import './noiseSetup';
@@ -86,6 +86,9 @@ export function getVoiceClient(): VoiceClient {
     bindClient(client);
     syncGlobalPtt(useUI.getState().prefs);
     { const ua = audioMapsForClient(useUI.getState().prefs); client.syncUserAudio(ua.volumes, ua.muted); }
+    // Mobile apps: screen sharing through the native plugin (the button stays hidden when it reports unsupported).
+    const sp = screenSharePlugin();
+    if (sp) void client.setNativeScreenSource(createNativeScreenSource(sp));
     (window as any).__jorcordVoice = debugApi(client);
   }
   return client;

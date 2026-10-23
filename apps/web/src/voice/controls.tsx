@@ -41,6 +41,7 @@ export function ScreenSharePopover({ onClose }: { onClose: () => void }) {
   const snap = useVoiceSnapshot(); const client = useVoiceClient();
   const prefs = useUI((s) => s.prefs); const setPref = useUI((s) => s.setPref);
   const live = snap.screenOn;
+  const native = !!snap.platform.nativeScreenShare;
   const [preset, setPreset] = useState<StreamPresetId>(prefs.screenPreset as StreamPresetId);
   const [hint, setHint] = useState<'motion' | 'detail'>(prefs.screenHint);
   const [audio, setAudio] = useState(prefs.screenAudio);
@@ -80,9 +81,11 @@ export function ScreenSharePopover({ onClose }: { onClose: () => void }) {
             {VIEWER_LIMIT_CHOICES.map((c) => <option key={c ?? 'none'} value={c ?? ''}>{limitLabel(c)}</option>)}
           </select>
         </div>)}
-      <div className="mt-3 flex items-center justify-between text-sm text-header"><span>{t('Share audio')}</span><Toggle label={t('Share audio')} checked={audio} onChange={(v) => { setAudio(v); setPref('screenAudio', v); }} /></div>
+      {native
+        ? <p data-testid="share-native-note" className="mt-3 text-xs text-muted">{t('Shares your whole phone screen without sound. You will be asked to confirm each time.')}</p>
+        : <div className="mt-3 flex items-center justify-between text-sm text-header"><span>{t('Share audio')}</span><Toggle label={t('Share audio')} checked={audio} onChange={(v) => { setAudio(v); setPref('screenAudio', v); }} /></div>}
       {!live
-        ? <button className="btn btn-primary btn-lg mt-3 w-full" onClick={() => { onClose(); void startStream(channelId, viewerLimit, { preset, hint, audio }); }}>{t('Go Live')}</button>
+        ? <button className="btn btn-primary btn-lg mt-3 w-full" onClick={() => { onClose(); void startStream(channelId, viewerLimit, { preset, hint, audio: native ? false : audio }); }}>{t('Go Live')}</button>
         : <button className="btn btn-danger btn-lg mt-3 w-full" onClick={() => { onClose(); void client.stopScreenShare(); }}>{t('Stop Streaming')}</button>}
     </div>
   );

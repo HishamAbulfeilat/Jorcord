@@ -70,6 +70,8 @@
 			</array>
 		</dict>
 	</array>
+	<key>JorcordAppGroup</key>
+	<string>group.app.jorcord.mobile</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
