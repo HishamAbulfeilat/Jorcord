@@ -1,7 +1,7 @@
 /** Social-layer modals: Inbox (mentions), later saved items and reminders. */
 import { useMemo, useState } from 'react';
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlarmClock, AtSign, CalendarClock, Bookmark, Hash, Trash2, Users, ShieldBan } from 'lucide-react';
+import { AlarmClock, AtSign, CalendarClock, Bookmark, Hash, Paperclip, Pencil, Trash2, Users, ShieldBan } from 'lucide-react';
 import type { Id, Message, Report, ScheduledMessage, ReportReason, ReportStatus } from '@jorcord/shared';
 import { api } from '@/lib/api';
 import { useData } from '@/stores/data';
@@ -89,6 +89,7 @@ function RemindersList({ close }: { close: () => void }) {
 }
 
 function ScheduledList() {
+  const openModal = useUI((s) => s.openModal);
   const guilds = useData((s) => s.guilds); const dms = useData((s) => s.dms); const qc = useQueryClient();
   const q = useQuery({ queryKey: ['inbox', 'scheduled'], queryFn: api.messages.scheduled });
   const cancel = (id: string) => api.messages.cancelScheduled(id).then(() => qc.invalidateQueries({ queryKey: ['inbox', 'scheduled'] })).catch(toastError);
@@ -101,8 +102,10 @@ function ScheduledList() {
         {q.data?.map((s) => (
           <li key={s.id} data-scheduled={s.id} data-status={s.status} className="group relative rounded-lg border border-divider bg-side p-3">
             <div className="mb-1 flex items-center gap-1 text-xs font-semibold text-muted"><CalendarClock size={12} />{s.status === 'pending' || s.status === 'sending' ? t('Sends') : s.status === 'sent' ? t('Sent') : s.status === 'failed' ? t('Failed') : t('Canceled')} {when(s.sendAt)} · {where(s)}</div>
-            <div className="whitespace-pre-wrap break-words text-sm text-normal">{s.content}</div>
+            {s.content && <div className="whitespace-pre-wrap break-words text-sm text-normal">{s.content}</div>}
+            {s.attachments?.length > 0 && <div className="mt-1 flex flex-wrap gap-2 text-xs text-muted">{s.attachments.map((a) => <span key={a.id} className="inline-flex items-center gap-1"><Paperclip size={12} />{a.filename}</span>)}</div>}
             {s.error && <div className="mt-1 text-xs text-danger" role="alert">{s.error}</div>}
+            {s.status === 'pending' && <button aria-label={t('Edit scheduled message')} title={t('Edit scheduled message')} data-testid="scheduled-edit" onClick={() => openModal({ kind: 'scheduleMessage', channelId: s.channelId, content: s.content, edit: s })} className="absolute end-11 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-[rgb(var(--rail))] text-muted hover:text-normal"><Pencil size={14} /></button>}
             <button aria-label={s.status === 'pending' ? t('Cancel scheduled message') : t('Remove from list')} title={s.status === 'pending' ? t('Cancel scheduled message') : t('Remove from list')} disabled={s.status === 'sending'} onClick={() => void cancel(s.id)} className="absolute end-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-[rgb(var(--rail))] text-muted hover:text-danger disabled:opacity-40"><Trash2 size={14} /></button>
           </li>))}
       </ul>

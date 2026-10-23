@@ -80,4 +80,68 @@ describe('scheduled messages', () => {
     for (let i = 0; i < 25; i++) expect((await api.req('POST', `/channels/${general.id}/scheduled-messages`, member.token, { content: `m${i}`, sendAt: inSeconds(3600 + i) })).status).toBe(201);
     expect((await api.req('POST', `/channels/${general.id}/scheduled-messages`, member.token, { content: 'one too many', sendAt: inSeconds(3600) })).status).toBe(400);
   });
+
+  const upload = async (token: string, name = 'a.txt', body = 'hello', type = 'text/plain') => {
+    const b = 'XBOUNDARYX';
+    const payload = Buffer.from(`--${b}\r\nContent-Disposition: form-data; name="file"; filename="${name}"\r\nContent-Type: ${type}\r\n\r\n${body}\r\n--${b}--\r\n`);
+    return (await api.req('POST', '/uploads', token, payload as any, { 'content-type': `multipart/form-data; boundary=${b}` })).body;
+  };
+  const fileRow = async (id: string) => (await env.ctx.db.query('SELECT attached FROM files WHERE id = $1', [id]))[0];
+
+  it('carries attachments: claimed at schedule time, posted at send time, released on cancel', async () => {
+    const { general, member, owner } = await setup();
+    const url = `/channels/${general.id}/scheduled-messages`;
+    const f1 = await upload(member.token), f2 = await upload(member.token, 'b.txt');
+    const theirs = await upload(owner.token, 'o.txt');
+    expect((await api.req('POST', url, member.token, { content: '', sendAt: inSeconds(60) })).status).toBe(400); // neither content nor files
+    expect((await api.req('POST', url, member.token, { content: 'x', sendAt: inSeconds(60), attachments: [theirs.id] })).status).toBe(404); // someone else's upload
+    const s = await api.req('POST', url, member.token, { content: '', sendAt: inSeconds(60), attachments: [f1.id] });
+    expect(s.status).toBe(201); expect(s.body.attachments.map((a: any) => a.id)).toEqual([f1.id]);
+    expect((await fileRow(f1.id)).attached).toBe(true);
+    expect((await api.req('POST', url, member.token, { content: 'again', sendAt: inSeconds(60), attachments: [f1.id] })).status).toBe(404); // already claimed
+    await due(s.body.id); await runSweeps(env.ctx);
+    const sent = (await api.req('GET', `/channels/${general.id}/messages`, member.token)).body.find((m: any) => m.attachments?.some((a: any) => a.id === f1.id));
+    expect(sent.author.id).toBe(member.id);
+    // a canceled one gives its files back (deleted)
+    const c = (await api.req('POST', url, member.token, { content: 'c', sendAt: inSeconds(3600), attachments: [f2.id] })).body;
+    expect((await api.req('DELETE', `/users/@me/scheduled-messages/${c.id}`, member.token)).status).toBe(204);
+    expect(await fileRow(f2.id)).toBeUndefined();
+  });
+
+  it('refuses attachments without ATTACH_FILES, and re-checks it at send time', async () => {
+    const { general, member, owner, guild } = await setup();
+    const url = `/channels/${general.id}/scheduled-messages`;
+    const f = await upload(member.token);
+    const s = (await api.req('POST', url, member.token, { content: 'with file', sendAt: inSeconds(60), attachments: [f.id] })).body;
+    await api.req('PUT', `/channels/${general.id}/permissions/${guild.id}`, owner.token, { type: 'role', allow: '0', deny: String(Perm.ATTACH_FILES) });
+    const g = await upload(member.token, 'g.txt');
+    expect((await api.req('POST', url, member.token, { content: 'no files', sendAt: inSeconds(60), attachments: [g.id] })).status).toBe(403);
+    expect((await fileRow(g.id)).attached).toBe(false); // nothing was claimed
+    await due(s.id); await runSweeps(env.ctx);
+    const row = (await api.req('GET', '/users/@me/scheduled-messages', member.token)).body.find((x: any) => x.id === s.id);
+    expect(row.status).toBe('failed');
+    expect(await fileRow(f.id)).toBeUndefined(); // a failed send releases its files
+  });
+
+  it('edits a pending message: content, time, attachments; owner-only; not once finished', async () => {
+    const { general, member, owner } = await setup();
+    const url = `/channels/${general.id}/scheduled-messages`;
+    const f1 = await upload(member.token), f2 = await upload(member.token, 'b.txt');
+    const s = (await api.req('POST', url, member.token, { content: 'v1', sendAt: inSeconds(3600), attachments: [f1.id] })).body;
+    const patch = (token: string, body: any) => api.req('PATCH', `/users/@me/scheduled-messages/${s.id}`, token, body);
+    expect((await patch(owner.token, { content: 'hax' })).status).toBe(404);
+    expect((await patch(member.token, {})).status).toBe(400);
+    expect((await patch(member.token, { sendAt: inSeconds(1) })).status).toBe(400);
+    expect((await patch(member.token, { content: '', attachments: [] })).status).toBe(400); // would be empty
+    const later = inSeconds(7200);
+    const r = await patch(member.token, { content: 'v2', sendAt: later, attachments: [f2.id] });
+    expect(r.status).toBe(200); expect(r.body).toMatchObject({ content: 'v2', status: 'pending' });
+    expect(r.body.attachments.map((a: any) => a.id)).toEqual([f2.id]); expect(new Date(r.body.sendAt).getTime()).toBe(Date.parse(later));
+    expect(await fileRow(f1.id)).toBeUndefined(); // dropped
+    expect((await fileRow(f2.id)).attached).toBe(true);
+    await due(s.id); await runSweeps(env.ctx);
+    const sent = (await api.req('GET', `/channels/${general.id}/messages`, member.token)).body.find((m: any) => m.content === 'v2');
+    expect(sent.attachments.map((a: any) => a.id)).toEqual([f2.id]);
+    expect((await patch(member.token, { content: 'v3' })).status).toBe(409); // already sent
+  });
 });

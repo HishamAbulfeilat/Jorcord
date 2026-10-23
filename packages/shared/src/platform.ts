@@ -1,5 +1,5 @@
 /** Platform types (applications, bots, commands, interactions, components, polls, events, stages, forum tags) and numeric taxonomies. Additive to types.ts. */
-import type { Id, User } from './types';
+import type { Attachment, Id, User } from './types';
 
 // ---------- numeric error codes (additive: ApiError.code stays a string; ApiError.errorCode is the Discord-style number) ----------
 export const ErrorCode = {
@@ -134,7 +134,7 @@ export const SCHEDULED_MESSAGE_LIMITS = { minDelayMs: 10_000, maxDelayMs: 30 * 8
 export type ScheduledMessageStatus = 'pending' | 'sending' | 'sent' | 'failed' | 'canceled';
 /** My own scheduled send (private). `error` explains a failed one (lost permission, slowmode, deleted reply target ...). */
 export interface ScheduledMessage {
-  id: Id; channelId: Id; guildId: Id | null; content: string; replyTo: Id | null; sendAt: string; status: ScheduledMessageStatus;
+  id: Id; channelId: Id; guildId: Id | null; content: string; attachments: Attachment[]; replyTo: Id | null; sendAt: string; status: ScheduledMessageStatus;
   error: string | null; sentMessageId: Id | null; createdAt: string;
 }
 

@@ -340,7 +340,8 @@ export const api = {
     createThread: (channelId: Id, id: Id, name: string, autoArchiveDuration?: number) => send<Channel>({ method: 'POST', path: `/channels/${channelId}/messages/${id}/threads`, body: { name, ...(autoArchiveDuration ? { autoArchiveDuration } : {}) } }),
     /** Replaces my votes with `answerIds` ([] clears them). Returns the poll message as I see it. */
     /** Send later: only the author sees and manages these. */
-    schedule: (channelId: Id, b: { content: string; sendAt: string; replyTo?: Id | null }) => send<ScheduledMessage>({ method: 'POST', path: `/channels/${channelId}/scheduled-messages`, body: b }),
+    schedule: (channelId: Id, b: { content: string; sendAt: string; replyTo?: Id | null; attachments?: Id[] }) => send<ScheduledMessage>({ method: 'POST', path: `/channels/${channelId}/scheduled-messages`, body: b }),
+    editScheduled: (id: Id, b: { content?: string; sendAt?: string; attachments?: Id[] }) => send<ScheduledMessage>({ method: 'PATCH', path: `/users/@me/scheduled-messages/${id}`, body: b }),
     scheduled: () => send<ScheduledMessage[]>({ method: 'GET', path: '/users/@me/scheduled-messages' }).then((x) => arr<ScheduledMessage>(x)),
     cancelScheduled: (id: Id) => send({ method: 'DELETE', path: `/users/@me/scheduled-messages/${id}` }),
     vote: (channelId: Id, id: Id, answerIds: number[]) => send<Message>({ method: 'PUT', path: `/channels/${channelId}/polls/${id}/votes`, body: { answerIds } }),

@@ -13,6 +13,7 @@ import { claimAttachments, deleteAttachmentFiles, saveUpload } from '../services
 import { audit, visibleChannelRows } from '../services/guilds';
 import { createMessage, parseMentions, postSystemMessage, consumeBurstQuota, resolveBurstColor } from '../services/messages';
 import { checkAutomod } from '../services/automod';
+import { assertCanPostIn } from '../services/posting';
 import { channelAccess, channelPermsLite, guildAccess, need } from '../services/perms';
 import { canUseEmoji } from '../services/emojis';
 import { joinThread } from '../services/threads';
@@ -70,26 +71,6 @@ async function snapshotForForward(ctx: Ctx, userId: string, channelId: string, m
 }
 
 export function messageRoutes(app: FastifyInstance, ctx: Ctx) {
-  async function assertCanPostIn(a: Awaited<ReturnType<typeof channelAccess>>, userId: string) {
-    const t = a.channel.type;
-    if (t === 'category' || t === 'forum' || t === 'media') throw badRequest('Cannot send messages in this channel type');
-    // Voice and stage channels carry a text chat: they take messages under the same SEND_MESSAGES rules (overwrites included).
-    need(a.perms, t === 'thread' ? Perm.SEND_IN_THREADS : Perm.SEND_MESSAGES);
-    if (t === 'thread' && a.channel.locked && !has(a.perms, Perm.MANAGE_THREADS)) throw new ApiError(403, 'THREAD_LOCKED', 'This thread is locked').num(50083);
-    if (t === 'dm') {
-      const [blk] = await ctx.db.query(
-        `SELECT 1 AS x FROM relationships r JOIN dm_participants p ON p.channel_id = $1 WHERE r.type = 'blocked' AND ((r.user_id = $2 AND r.other_id = p.user_id) OR (r.other_id = $2 AND r.user_id = p.user_id)) LIMIT 1`, [a.channel.id, userId]);
-      if (blk) throw forbidden('You cannot message this user', 'BLOCKED');
-    }
-    if (a.channel.slowmode > 0 && !has(a.perms, Perm.BYPASS_SLOWMODE)) {
-      const [last] = await ctx.db.query("SELECT max(id) AS id FROM messages WHERE channel_id = $1 AND author_id = $2 AND type IN ('default','reply')", [a.channel.id, userId]);
-      if (last?.id) {
-        const wait = Math.ceil((snowflakeTime(last.id) + a.channel.slowmode * 1000 - Date.now()) / 1000);
-        if (wait > 0) throw new ApiError(429, 'SLOWMODE', `Slowmode: wait ${wait}s`, { retryAfter: wait }, { 'retry-after': String(wait) });
-      }
-    }
-  }
-
   app.get('/channels/:id/messages', async (req) => {
     const { id } = parse(cm, req.params);
     const q = parse(z.object({ limit: z.coerce.number().optional(), before: idSchema.optional(), after: idSchema.optional(), around: idSchema.optional() }), req.query);
@@ -116,7 +97,7 @@ export function messageRoutes(app: FastifyInstance, ctx: Ctx) {
     limitOrThrow(ctx.rl, `msg:${req.userId}`, 10, 10_000, ctx.config.rateLimit);
     const a = await channelAccess(ctx, req.userId, id);
     await ageGate(ctx, req.userId, req.isBot, a);
-    await assertCanPostIn(a, req.userId);
+    await assertCanPostIn(ctx, a, req.userId);
     let body: z.infer<typeof sendBody>;
     const uploaded: string[] = [];
     if (req.isMultipart()) {

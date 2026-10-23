@@ -19,7 +19,17 @@ export function scheduleProblem(at: Date | null, now = Date.now()): string | nul
   return null;
 }
 
-export interface Preset { id: string; label: string; at: Date }
+/** Only the fields an edit actually changed (the server rejects an empty PATCH). `attachments` is the full list of ids to keep plus newly uploaded ones. */
+export function schedulePatch(orig: { content: string; sendAt: string; attachments: { id: string }[] }, next: { content: string; sendAt: string; attachmentIds: string[] }) {
+  const out: { content?: string; sendAt?: string; attachments?: string[] } = {};
+  if (next.content !== orig.content) out.content = next.content;
+  if (Date.parse(next.sendAt) !== Date.parse(orig.sendAt)) out.sendAt = next.sendAt;
+  const a = orig.attachments.map((x) => x.id);
+  if (a.length !== next.attachmentIds.length || a.some((x, i) => x !== next.attachmentIds[i])) out.attachments = next.attachmentIds;
+  return out;
+}
+
+export interface Preset{ id: string; label: string; at: Date }
 /** Quick choices: in an hour, this evening (18:00, only while still ahead), tomorrow 09:00, next Monday 09:00. */
 export function presets(now = new Date()): Preset[] {
   const out: Preset[] = [{ id: 'hour', label: 'In 1 hour', at: new Date(now.getTime() + 3600_000) }];

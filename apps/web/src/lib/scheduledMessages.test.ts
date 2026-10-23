@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { fromLocalInput, presets, scheduleProblem, toLocalInput } from './scheduledMessages';
+import { fromLocalInput, presets, scheduleProblem, schedulePatch, toLocalInput } from './scheduledMessages';
 
 describe('scheduled message time helpers', () => {
   it('round-trips datetime-local values in local time', () => {
@@ -20,5 +20,14 @@ describe('scheduled message time helpers', () => {
       expect(p.some((x) => x.id === 'evening')).toBe(now.getHours() < 18);
     }
     expect(presets(new Date(2030, 0, 3, 12, 0)).map((x) => x.id)).toContain('monday'); // Thursday: Monday is not tomorrow
+  });
+});
+
+describe('schedulePatch', () => {
+  const orig = { content: 'a', sendAt: '2030-01-01T00:00:00.000Z', attachments: [{ id: '1' }, { id: '2' }] };
+  it('sends only what changed', () => {
+    expect(schedulePatch(orig, { content: 'a', sendAt: '2030-01-01T00:00:00Z', attachmentIds: ['1', '2'] })).toEqual({});
+    expect(schedulePatch(orig, { content: 'b', sendAt: '2030-01-02T00:00:00.000Z', attachmentIds: ['1'] })).toEqual({ content: 'b', sendAt: '2030-01-02T00:00:00.000Z', attachments: ['1'] });
+    expect(schedulePatch(orig, { content: 'a', sendAt: orig.sendAt, attachmentIds: ['1', '2', '3'] })).toEqual({ attachments: ['1', '2', '3'] });
   });
 });
