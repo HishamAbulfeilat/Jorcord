@@ -2,6 +2,7 @@
 import type { Application, ApplicationCommand, Interaction, Modal, ScheduledEvent, ScheduledMessage, StageInstance, CommandOptionChoice } from './platform';
 import type { Activity, ChannelActivity, GifFavorite, SoundboardSound } from './parity';
 import type { Channel, Guild, Id, Invite, Member, Message, Presence, ReadState, Relationship, Reminder, Role, SelfUser, User, VoiceState, VoiceRecording, StageQueueEntry, Emoji, Sticker } from './types';
+import type { DigestEntry } from './privacykit';
 
 export const Op = { DISPATCH: 0, HEARTBEAT: 1, IDENTIFY: 2, PRESENCE_UPDATE: 3, VOICE_STATE_UPDATE: 4, RESUME: 6, RECONNECT: 7, REQUEST_MEMBERS: 8, TYPING: 9, HELLO: 10, HEARTBEAT_ACK: 11 } as const;
 
@@ -91,6 +92,10 @@ export interface Events {
   /** To the warned member only: a moderator (or AutoMod) warned them in this server. */
   MOD_WARNING: { guildId: Id; guildName: string; reason: string; createdAt: string };
   /** To the caller's own sessions: a private note about another user changed (`note: null` = removed). */
+  /** To me: a notification digest entry was added to my Inbox. */
+  DIGEST_CREATE: DigestEntry;
+  /** To the participants of my secret chats: a device was added or revoked, so re-fetch GET /channels/:id/e2ee/devices and re-check the safety number. */
+  E2EE_DEVICES_UPDATE: { userId: Id };
   /** To me: a DM became (or stopped being) a message request. */
   MESSAGE_REQUEST_UPDATE: { channelId: Id; request: boolean };
   /** To me: a reminder came due (the message is the one I asked to be reminded about). */

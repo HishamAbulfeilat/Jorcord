@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { LIMITS, MessageFlags, Perm, STANDARD_STICKER_ID_RE, has, snowflake, snowflakeTime, type ForwardSnapshot } from '@jorcord/shared';
+import { E2EE_MAX_ENVELOPE_CHARS, LIMITS, MessageFlags, Perm, STANDARD_STICKER_ID_RE, has, snowflake, snowflakeTime, type ForwardSnapshot } from '@jorcord/shared';
 import type { Ctx } from '../ctx';
 import { checkVerification } from '../services/safety';
 import { ApiError, badRequest, forbidden, notFound } from '../errors';
@@ -20,11 +20,12 @@ import { joinThread } from '../services/threads';
 import { hasSearchCriteria, searchMessages, searchQuerySchema } from '../services/search';
 import { ageConfirmed, ageGate } from '../services/agegate';
 import { messageDTO, messagesDTO, usersByIds } from '../services/serializers';
+import { assertEncryptedPayload } from '../services/e2ee';
 
 const cm = z.object({ id: idSchema });
 const mm = z.object({ id: idSchema, mid: idSchema });
 const sendBody = z.object({
-  content: z.string().max(LIMITS.maxMessageLength * 2).optional(), replyTo: idSchema.nullable().optional(),
+  content: z.string().max(E2EE_MAX_ENVELOPE_CHARS).optional(), replyTo: idSchema.nullable().optional(),
   attachments: z.array(idSchema).max(10).optional(), stickerIds: z.array(z.union([idSchema, z.string().regex(STANDARD_STICKER_ID_RE)])).max(3).optional(),
   /** Bots only: action rows of buttons / select menus (validated by lib/components). */
   components: z.unknown().optional(),
@@ -59,6 +60,7 @@ function parseEmoji(raw: string): { emoji: string; emojiId: string | null } {
 async function snapshotForForward(ctx: Ctx, userId: string, channelId: string, messageId: string): Promise<ForwardSnapshot> {
   const src = await channelAccess(ctx, userId, channelId);
   need(src.perms, Perm.READ_MESSAGE_HISTORY);
+  if (src.channel.encrypted) throw badRequest('Messages from a secret chat cannot be forwarded');
   const [m] = await ctx.db.query('SELECT * FROM messages WHERE id = $1 AND channel_id = $2', [messageId, channelId]);
   if (!m || !['default', 'reply'].includes(m.type)) throw notFound('Message');
   if (m.forward) return m.forward as ForwardSnapshot;
@@ -117,6 +119,10 @@ export function messageRoutes(app: FastifyInstance, ctx: Ctx) {
       } catch (e: any) { if (e instanceof SyntaxError) throw badRequest('Invalid JSON field'); throw e; }
       body = parse(sendBody, { ...fields, attachments: [...((fields.attachments as string[]) ?? []), ...uploaded] });
     } else body = parse(sendBody, req.body);
+    if (a.channel.encrypted) { // secret chat: ciphertext only (docs/E2EE_DMS.md)
+      if (uploaded.length || body.attachments?.length || body.stickerIds?.length || body.embeds !== undefined || body.components !== undefined || body.poll !== undefined || body.forward || body.flags) throw badRequest('Secret chats carry encrypted text only: no attachments, stickers, embeds, polls or forwards');
+      await assertEncryptedPayload(ctx, a.channel, req.userId, body.content ?? '');
+    } else if ((body.content?.length ?? 0) > LIMITS.maxMessageLength * 2) throw badRequest('Message is too long');
     if (body.attachments?.length) need(a.perms, Perm.ATTACH_FILES);
     if (body.replyTo) need(a.perms, Perm.READ_MESSAGE_HISTORY);
     // SUPPRESS_EMBEDS | SUPPRESS_NOTIFICATIONS (@silent); bots may also set IS_COMPONENTS_V2
@@ -164,6 +170,7 @@ export function messageRoutes(app: FastifyInstance, ctx: Ctx) {
     if (b.content === undefined && b.components === undefined) throw badRequest('Provide content and/or components');
     limitOrThrow(ctx.rl, `msg-edit:${req.userId}`, 15, 10_000, ctx.config.rateLimit);
     const a = await channelAccess(ctx, req.userId, p.id);
+    if (a.channel.encrypted) throw badRequest('Messages in a secret chat cannot be edited; delete and resend');
     const [m] = await ctx.db.query('SELECT * FROM messages WHERE id = $1 AND channel_id = $2', [p.mid, p.id]);
     if (!m) throw notFound('Message');
     if (m.author_id !== req.userId || m.webhook_id || !['default', 'reply'].includes(m.type)) throw forbidden('You can only edit your own messages');

@@ -16,6 +16,7 @@ import { audit, buildGuildFull } from '../services/guilds';
 import { trackVisibility } from '../services/visibility';
 import { refreshMember } from '../services/linkedroles';
 import { onMemberJoined } from '../services/sysbots';
+import { applyLargeServerDefault } from '../services/digest';
 import { postSystemMessage } from '../services/messages';
 import { disconnectMember } from '../services/voice';
 import { channelAccess, guildAccess, guildPerms, loadGuildPerm, need, needOutrank, needOutrankMember } from '../services/perms';
@@ -54,6 +55,7 @@ export async function joinGuild(ctx: Ctx, userId: string, guildId: string, invit
     }
     await ctx.db.query('INSERT INTO members (guild_id, user_id, pending) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING', [guildId, userId, screening]);
     await ctx.pcache.invalidate({ k: 'member', guildId, userId: userId });
+    await applyLargeServerDefault(ctx, userId, guildId).catch((e) => ctx.log.warn({ err: e }, 'large-server notification default failed')); // big servers start as mentions-only
     const full = await buildGuildFull(ctx, guildId, userId);
     await ctx.hub.toUser(userId, 'GUILD_CREATE', full);
     const m = await memberDTO(ctx, guildId, userId);

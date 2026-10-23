@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { BookOpen, Inbox, FileText, PanelTop, BarChart3, ShieldCheck, Tag, Volume2, Ban, Bot, Compass, GripVertical, Hash, Webhook as WebhookIcon, Sticker as StickerIcon, Copy as CopyIcon, Link2, ListChecks, Rocket, Settings as Cog, Shield, Smile, Trash2, Users, ScrollText, Plus, Search, Crown, UserCircle } from 'lucide-react';
+import { ArrowLeftRight, BookOpen, Inbox, FileText, PanelTop, BarChart3, ShieldCheck, Tag, Volume2, Ban, Bot, Compass, GripVertical, Hash, Webhook as WebhookIcon, Sticker as StickerIcon, Copy as CopyIcon, Link2, ListChecks, Rocket, Settings as Cog, Shield, Smile, Trash2, Users, ScrollText, Plus, Search, Crown, UserCircle } from 'lucide-react';
 import { Perm } from '@jorcord/shared';
 import type { AutoModPreset, AutoModRule, Channel } from '@jorcord/shared';
 import { api } from '@/lib/api';
@@ -36,6 +36,7 @@ import { LinkedRolesTab } from './LinkedRolesTab';
 import { BotsAppsTab } from './BotsAppsTab';
 import { ModToolsTab } from './ModToolsTab';
 import { OnboardingTab } from './OnboardingTab';
+import { ServerPortTab } from './ServerPortTab';
 import { TemplateTab, WidgetTab, InsightsTab, VanityUrl } from './ServerExtrasTabs';
 import { AUDIT_FILTER_GROUPS, actionLabel, entryDetail, entryType } from '@/lib/audit';
 
@@ -46,7 +47,7 @@ export function GuildSettings({ guildId, initialTab }: { guildId: string; initia
   const items = useMemo(() => {
     const it = (id: string, label: string, icon: any, ok: boolean) => (ok ? [{ id, label: t(label), icon }] : []);
     return [
-      { title: g?.guild.name ?? 'Server', items: [...it('overview', T('Overview'), Cog, can(perms, Perm.MANAGE_GUILD)), ...it('roles', T('Roles'), Shield, can(perms, Perm.MANAGE_ROLES)), ...it('channels', T('Channels'), Hash, can(perms, Perm.MANAGE_CHANNELS)), ...it('emoji', T('Emoji'), Smile, can(perms, Perm.MANAGE_EMOJIS)), ...it('stickers', T('Stickers'), StickerIcon, can(perms, Perm.MANAGE_EMOJIS)), ...it('soundboard', T('Soundboard'), Volume2, can(perms, Perm.MANAGE_EMOJIS)), ...it('safety', T('Safety Setup'), ShieldCheck, can(perms, Perm.MANAGE_GUILD)), ...it('onboarding', T('Onboarding'), ListChecks, can(perms, Perm.MANAGE_GUILD)), ...it('template', T('Server Template'), FileText, can(perms, Perm.MANAGE_GUILD)), ...it('widget', T('Widget'), PanelTop, can(perms, Perm.MANAGE_GUILD)), ...it('insights', T('Insights'), BarChart3, can(perms, Perm.MANAGE_GUILD)), ...it('servertag', T('Server Tag'), Tag, can(perms, Perm.MANAGE_GUILD)), ...it('welcome', T('Welcome Screen'), BookOpen, can(perms, Perm.MANAGE_GUILD) && !!g?.guild.features.includes('COMMUNITY')), ...it('apps', T('Bots & Apps'), Bot, can(perms, Perm.MANAGE_GUILD)), ...it('integrations', T('Integrations'), WebhookIcon, can(perms, Perm.MANAGE_WEBHOOKS) || can(perms, Perm.MANAGE_GUILD)), ...it('commands', T('Command Permissions'), Bot, can(perms, Perm.MANAGE_GUILD) && can(perms, Perm.MANAGE_ROLES)), ...it('boosts', T('Server Boost'), Rocket, true), ...it('linkedroles', T('Linked Roles'), Link2, true), ...it('profile', T('Server Profile'), UserCircle, true)] },
+      { title: g?.guild.name ?? 'Server', items: [...it('overview', T('Overview'), Cog, can(perms, Perm.MANAGE_GUILD)), ...it('roles', T('Roles'), Shield, can(perms, Perm.MANAGE_ROLES)), ...it('channels', T('Channels'), Hash, can(perms, Perm.MANAGE_CHANNELS)), ...it('emoji', T('Emoji'), Smile, can(perms, Perm.MANAGE_EMOJIS)), ...it('stickers', T('Stickers'), StickerIcon, can(perms, Perm.MANAGE_EMOJIS)), ...it('soundboard', T('Soundboard'), Volume2, can(perms, Perm.MANAGE_EMOJIS)), ...it('safety', T('Safety Setup'), ShieldCheck, can(perms, Perm.MANAGE_GUILD)), ...it('onboarding', T('Onboarding'), ListChecks, can(perms, Perm.MANAGE_GUILD)), ...it('template', T('Server Template'), FileText, can(perms, Perm.MANAGE_GUILD)), ...it('port', T('Import & Export'), ArrowLeftRight, can(perms, Perm.MANAGE_GUILD)), ...it('widget', T('Widget'), PanelTop, can(perms, Perm.MANAGE_GUILD)), ...it('insights', T('Insights'), BarChart3, can(perms, Perm.MANAGE_GUILD)), ...it('servertag', T('Server Tag'), Tag, can(perms, Perm.MANAGE_GUILD)), ...it('welcome', T('Welcome Screen'), BookOpen, can(perms, Perm.MANAGE_GUILD) && !!g?.guild.features.includes('COMMUNITY')), ...it('apps', T('Bots & Apps'), Bot, can(perms, Perm.MANAGE_GUILD)), ...it('integrations', T('Integrations'), WebhookIcon, can(perms, Perm.MANAGE_WEBHOOKS) || can(perms, Perm.MANAGE_GUILD)), ...it('commands', T('Command Permissions'), Bot, can(perms, Perm.MANAGE_GUILD) && can(perms, Perm.MANAGE_ROLES)), ...it('boosts', T('Server Boost'), Rocket, true), ...it('linkedroles', T('Linked Roles'), Link2, true), ...it('profile', T('Server Profile'), UserCircle, true)] },
       { title: t('Moderation'), items: [...it('members', T('Members'), Users, can(perms, Perm.KICK_MEMBERS) || can(perms, Perm.MANAGE_ROLES) || can(perms, Perm.MANAGE_GUILD)), ...it('invites', T('Invites'), Link2, can(perms, Perm.MANAGE_GUILD) || can(perms, Perm.CREATE_INVITE)), ...it('automod', T('AutoMod'), Bot, can(perms, Perm.MANAGE_GUILD)), ...it('audit', T('Audit Log'), ScrollText, can(perms, Perm.VIEW_AUDIT_LOG)), ...it('bans', T('Bans'), Ban, can(perms, Perm.BAN_MEMBERS)), ...it('appeals', T('Appeals'), Inbox, can(perms, Perm.BAN_MEMBERS)), ...it('modtools', T('Mod Tools'), Shield, can(perms, Perm.KICK_MEMBERS) || can(perms, Perm.BAN_MEMBERS) || can(perms, Perm.VIEW_AUDIT_LOG))] },
       ...(isOwner ? [{ items: [{ id: 'delete', label: t('Delete Server'), icon: Trash2, danger: true }] }] : []),
     ].filter((gr) => gr.items.length);
@@ -65,6 +66,7 @@ export function GuildSettings({ guildId, initialTab }: { guildId: string; initia
       {tab === 'safety' && <SafetyTab guildId={guildId} />}
       {tab === 'onboarding' && <OnboardingTab guildId={guildId} />}
       {tab === 'template' && <TemplateTab guildId={guildId} />}
+      {tab === 'port' && <ServerPortTab guildId={guildId} />}
       {tab === 'widget' && <WidgetTab guildId={guildId} />}
       {tab === 'insights' && <InsightsTab guildId={guildId} />}
       {tab === 'servertag' && <ServerTagTab guildId={guildId} />}

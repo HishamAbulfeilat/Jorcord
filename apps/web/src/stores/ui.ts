@@ -88,7 +88,7 @@ export type ModalSpec =
   | { kind: 'interactionModal'; interactionId: Id; channelId: Id; modal: Modal }
   | { kind: 'createPoll'; channelId: Id } | { kind: 'pollVoters'; channelId: Id; messageId: Id; answerId?: number }
   | { kind: 'events'; guildId: Id } | { kind: 'eventEditor'; guildId: Id; eventId?: Id; channelId?: Id }
-  | { kind: 'customize'; guildId: Id } | { kind: 'followChannel'; channelId: Id }| { kind: 'forward'; message: Message } | { kind: 'report'; messageId: Id; guildId: Id; channelId: Id } | { kind: 'modView'; guildId: Id; userId: Id } | { kind: 'inbox'; tab?: 'mentions' | 'saved' | 'reminders' | 'scheduled' } | { kind: 'screening'; guildId: Id } | { kind: 'threadSettings'; channelId: Id } | { kind: 'stage'; channelId: Id; mode: 'start' | 'edit' }
+  | { kind: 'customize'; guildId: Id } | { kind: 'followChannel'; channelId: Id }| { kind: 'forward'; message: Message } | { kind: 'report'; messageId: Id; guildId: Id; channelId: Id } | { kind: 'modView'; guildId: Id; userId: Id } | { kind: 'inbox'; tab?: 'mentions' | 'digest' | 'saved' | 'reminders' | 'scheduled' } | { kind: 'safetyNumber'; channelId: Id } | { kind: 'screening'; guildId: Id } | { kind: 'threadSettings'; channelId: Id } | { kind: 'stage'; channelId: Id; mode: 'start' | 'edit' }
   | { kind: 'scheduleMessage'; channelId: Id; content: string; replyTo?: Id | null; files?: File[]; edit?: ScheduledMessage; onDone?: () => void }
   | { kind: 'externalLink'; url: string } | { kind: 'riskyFile'; url: string; filename: string; download: boolean }
   | { kind: 'gifPicker'; title?: string; onPick: (url: string) => void };

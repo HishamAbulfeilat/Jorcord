@@ -1,7 +1,7 @@
 /** Context-menu builders. Pure functions over store state; navigation goes through a window event the shell listens to. */
 import { Perm } from '@jorcord/shared';
 import type { Channel, Id, Message } from '@jorcord/shared';
-import { ShieldAlert, Rocket, Star, Megaphone, EyeOff, ListChecks, AlarmClock, Bookmark, Forward, ArrowDown, ArrowUp, Bell, FolderMinus, FolderPlus as FolderAdd, Folder as FolderI, MonitorUp, Unlink, Bot, AtSign, BellOff, Check, Copy, Edit3, Hash, LogOut, MessageSquare, Pencil, Pin, PinOff, Reply, Settings, ShieldBan, Smile, Trash2, UserMinus, UserPlus, Link2, UserX, Clock, BookOpen, Plus, FolderPlus, Mail, Ban } from 'lucide-react';
+import { Lock, ShieldAlert, Rocket, Star, Megaphone, EyeOff, ListChecks, AlarmClock, Bookmark, Forward, ArrowDown, ArrowUp, Bell, FolderMinus, FolderPlus as FolderAdd, Folder as FolderI, MonitorUp, Unlink, Bot, AtSign, BellOff, Check, Copy, Edit3, Hash, LogOut, MessageSquare, Pencil, Pin, PinOff, Reply, Settings, ShieldBan, Smile, Trash2, UserMinus, UserPlus, Link2, UserX, Clock, BookOpen, Plus, FolderPlus, Mail, Ban } from 'lucide-react';
 import { api } from './api';
 import { queryClient } from './queryClient';
 import { useSocial } from '@/stores/social';
@@ -34,6 +34,7 @@ export function markChannelRead(c: Channel) { if (!c.lastMessageId) return; useD
 import { favoriteCandidate } from './gifFavorites';
 import { addAppPath } from './directory';
 import { navigateTo } from './navigate';
+import { ensureLocalDevice } from './e2ee/service';
 export function guildMenu(gid: Id): MenuItem[] {
   const s = useData.getState(); const g = s.guilds[gid]?.guild; if (!g) return [];
   const p = gperms(gid); const muted = ui().prefs.mutedGuilds[gid]; const isOwner = g.ownerId === s.me?.id;
@@ -116,11 +117,21 @@ export async function openDmWith(userId: Id) {
   try { const c = await api.users.openDm([userId]); useData.getState().putDm(c); goto(null, c.id); } catch (e) { toastError(e); }
 }
 
+/** Opens (creating if needed) the end-to-end encrypted 1:1 chat with someone. This device's key is created and published first. */
+export async function openSecretChatWith(userId: Id) {
+  try {
+    const meId = useData.getState().me?.id; if (!meId) return;
+    await ensureLocalDevice(meId);
+    const c = await api.users.openDm([userId], { encrypted: true }); useData.getState().putDm(c); goto(null, c.id);
+  } catch (e) { toastError(e); }
+}
+
 export function userMenu(userId: Id, guildId?: Id | null): MenuItem[] {
   const s = useData.getState(); const me = s.me; const isMe = me?.id === userId;
   const rel = s.relationships[userId]?.type;
   const items: MenuItem[] = [{ label: t('Profile'), icon: BookOpen, onClick: () => ui().openModal({ kind: 'profile', userId, guildId: guildId ?? undefined }) }];
   if (!isMe) items.push({ label: t('Message'), icon: MessageSquare, onClick: () => openDmWith(userId) });
+  if (!isMe && typeof globalThis.crypto?.subtle !== 'undefined') items.push({ label: t('Start Secret Chat'), icon: Lock, onClick: () => openSecretChatWith(userId) });
   if (!isMe) {
     items.push({ separator: true });
     if (rel === 'friend') items.push({ label: t('Remove Friend'), icon: UserMinus, onClick: () => api.users.removeRelationship(userId).then(() => s.apply('RELATIONSHIP_REMOVE', { userId })).catch(toastError) });

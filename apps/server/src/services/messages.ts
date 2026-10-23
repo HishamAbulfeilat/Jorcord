@@ -11,6 +11,8 @@ import { applyMediaFilter, checkVerification } from './safety';
 import { loadGuildPerms, viewersAmong, permsFor, loadOverwrites } from './perms';
 import { channelDTO, messageDTO } from './serializers';
 import { unfurl } from './unfurl';
+import { assertEncryptedPayload } from './e2ee';
+import { digestHolders, holdForDigest } from './digest';
 
 const URL_RE = /https?:\/\/[^\s<>()]+/gi;
 
@@ -81,13 +83,18 @@ export async function consumeBurstQuota(ctx: Ctx, userId: string): Promise<void>
 export async function createMessage(ctx: Ctx, m: NewMessage): Promise<Message> {
   const { channel } = m;
   const content = m.content;
-  if (content.length > LIMITS.maxMessageLength) throw badRequest(`Message exceeds ${LIMITS.maxMessageLength} characters`);
+  // Secret chats: the content is a ciphertext envelope. Whatever path got here (scheduled sends included) must have encrypted it already;
+  // the server never unfurls, searches, mention-parses or content-scans it.
+  const kind = m.type ?? (m.replyTo ? 'reply' : 'default');
+  const secret = !!channel.encrypted && (kind === 'default' || kind === 'reply');
+  if (secret) await assertEncryptedPayload(ctx, channel, m.authorId, content);
+  else if (content.length > LIMITS.maxMessageLength) throw badRequest(`Message exceeds ${LIMITS.maxMessageLength} characters`);
   const attachments = !m.skipChecks && !m.webhookId ? await applyMediaFilter(ctx, channel, m.authorId, m.attachments ?? []) : m.attachments ?? [];
   if (m.requireMedia && !attachments.some(isMediaAttachment)) throw badRequest('Media channels only accept posts with an image or video');
   if (!content.trim() && !attachments.length && !(m.stickerIds?.length) && !m.components?.length && !m.poll && !m.allowEmpty && !m.embeds?.length && !m.forward && m.type !== 'join' && m.type !== 'boost' && m.type !== 'thread_created' && m.type !== 'poll_result') throw badRequest('Cannot send an empty message');
   if (channel.guild_id && !m.skipChecks && !m.webhookId) await checkVerification(ctx, channel.guild_id, m.authorId, m.senderPerms);
   if (channel.guild_id && !m.skipChecks && !m.webhookId) await assertEmojiAllowed(ctx, channel.guild_id, content, m.memberRoleIds, m.senderPerms);
-  const ment = await parseMentions(ctx, channel, content, m.senderPerms);
+  const ment: MentionResult = secret ? { mentions: [], mentionRoles: [], mentionEveryone: false } : await parseMentions(ctx, channel, content, m.senderPerms);
   if (channel.guild_id && !m.skipChecks) await checkAutomod(ctx, channel.guild_id, m.authorId, m.memberRoleIds ?? [], m.senderPerms, m.forward ? `${content}\n${m.forward.content}` : content, ment.mentions.length + ment.mentionRoles.length, [channel.id, ...(channel.parent_id ? [channel.parent_id] : [])]);
   if (channel.type === 'dm' && !m.skipChecks && !m.webhookId) await guardFirstContact(ctx, channel, m.authorId, content);
   if (m.replyTo) {
@@ -112,7 +119,7 @@ export async function createMessage(ctx: Ctx, m: NewMessage): Promise<Message> {
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10::jsonb,$11::jsonb,$12::jsonb,$13,$14,$15,$16,$17,$18,$19,$20::jsonb,$21,$22,$23::jsonb,$24::jsonb,$25,$26::jsonb)`,
     [id, channel.id, channel.guild_id ?? null, m.authorId, content, type, m.replyTo ?? null, ment.mentionEveryone, JSON.stringify(ment.mentions),
       JSON.stringify(ment.mentionRoles), JSON.stringify(attachments), JSON.stringify(stickerIds), m.webhookId ?? null, m.threadId ?? null,
-      /https?:\/\//i.test(content), attachments.some((a) => a.contentType.startsWith('image/')), attachments.length > 0, m.webhookUsername ?? null, m.webhookAvatar ?? null,
+      !secret && /https?:\/\//i.test(content), attachments.some((a) => a.contentType.startsWith('image/')), attachments.length > 0, m.webhookUsername ?? null, m.webhookAvatar ?? null,
       JSON.stringify(m.components ?? []), m.flags ?? 0, m.applicationId ?? null, m.interaction ? JSON.stringify(m.interaction) : null, m.poll ? JSON.stringify(m.poll) : null, m.pollExpiry ?? null,
       m.allowedMentions ? JSON.stringify(m.allowedMentions) : null]);
   if (m.forward) await ctx.db.query('UPDATE messages SET forward = $2::jsonb WHERE id = $1', [id, JSON.stringify(m.forward)]);
@@ -127,10 +134,10 @@ export async function createMessage(ctx: Ctx, m: NewMessage): Promise<Message> {
   const dto = await messageDTO(ctx, row, null);
   if (channel.type === 'dm') await settleMessageRequest(ctx, channel, m.authorId, !channel.last_message_id);
   await ctx.hub.toChannel(channel.id, 'MESSAGE_CREATE', dto);
-  await bumpMentionCounts(ctx, channel, m.authorId, ment, m.replyTo ?? null, !channel.guild_id, m.allowedMentions).catch((e) => ctx.log.warn({ err: e }, 'mention count failed'));
+  await bumpMentionCounts(ctx, channel, m.authorId, ment, m.replyTo ?? null, !channel.guild_id, m.allowedMentions, id).catch((e) => ctx.log.warn({ err: e }, 'mention count failed'));
   if (channel.guild_id && !m.skipChecks && !m.webhookId) void noteMessage(ctx, channel.guild_id, m.authorId).catch((e) => ctx.log.warn({ err: e }, 'linked role check failed')); // message_count criteria
   ctx.push.notifyMessage(channel, dto); // async + best effort; honours presence, DND, mute and block rules
-  if (ctx.config.unfurlOnSend && has(m.senderPerms, Perm.EMBED_LINKS)) void unfurlMessage(ctx, row, channel).catch(() => {});
+  if (!secret && ctx.config.unfurlOnSend && has(m.senderPerms, Perm.EMBED_LINKS)) void unfurlMessage(ctx, row, channel).catch(() => {});
   return dto;
 }
 
@@ -160,7 +167,7 @@ async function settleMessageRequest(ctx: Ctx, channel: any, authorId: string, fi
  * and the explicit `users` / `roles` id lists ping in addition to parse. DM participants are message
  * recipients, not parsed mentions, so they always collect a badge.
  */
-async function bumpMentionCounts(ctx: Ctx, channel: any, authorId: string, ment: MentionResult, replyTo: string | null, isDm: boolean, allowedMentions?: AllowedMentions | null) {
+async function bumpMentionCounts(ctx: Ctx, channel: any, authorId: string, ment: MentionResult, replyTo: string | null, isDm: boolean, allowedMentions: AllowedMentions | null | undefined, messageId: string) {
   const am = allowedMentions ? { parse: new Set(allowedMentions.parse ?? []), users: new Set(allowedMentions.users ?? []), roles: new Set(allowedMentions.roles ?? []) } : null;
   let targets = new Set<string>(am ? ment.mentions.filter((u) => am.parse.has('users') || am.users.has(u)) : ment.mentions);
   if (isDm) {
@@ -182,7 +189,11 @@ async function bumpMentionCounts(ctx: Ctx, channel: any, authorId: string, ment:
   }
   targets.delete(authorId);
   if (!targets.size) return;
-  const viewers = await viewersAmong(ctx, channel, [...targets]);
+  const seen = await viewersAmong(ctx, channel, [...targets]);
+  // Quiet mode: people who put this server / channel in their digest get no badge and no push; it is held for their next digest (services/digest.ts)
+  const held = await digestHolders(ctx, channel, seen);
+  if (held.size) await holdForDigest(ctx, channel, messageId, [...held], new Set(isDm ? seen : ment.mentions));
+  const viewers = seen.filter((u) => !held.has(u));
   if (!viewers.length) return;
   const rows = await ctx.db.query(
     `INSERT INTO read_states (user_id, channel_id, mention_count) SELECT u, $2, 1 FROM unnest($1::text[]) AS u

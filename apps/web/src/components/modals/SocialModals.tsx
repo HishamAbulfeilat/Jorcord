@@ -1,8 +1,8 @@
 /** Social-layer modals: Inbox (mentions), later saved items and reminders. */
 import { useMemo, useState } from 'react';
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlarmClock, AtSign, CalendarClock, Bookmark, Hash, Paperclip, Pencil, Trash2, Users, ShieldBan } from 'lucide-react';
-import type { Id, Message, Report, ScheduledMessage, ReportReason, ReportStatus } from '@jorcord/shared';
+import { AlarmClock, BellRing, AtSign, CalendarClock, Bookmark, Hash, Paperclip, Pencil, Trash2, Users, ShieldBan } from 'lucide-react';
+import type { DigestEntry, Id, Message, Report, ScheduledMessage, ReportReason, ReportStatus } from '@jorcord/shared';
 import { api } from '@/lib/api';
 import { useData } from '@/stores/data';
 import { useUI, toast, toastError } from '@/stores/ui';
@@ -10,12 +10,13 @@ import { Perm } from '@jorcord/shared';
 import { myChannelPerms } from '@/lib/session';
 import { Avatar } from '@/components/ui/Avatar';
 import { useSocial } from '@/stores/social';
-import { dmName } from '@/lib/format';
+import { dmName, fmtStamp } from '@/lib/format';
+import { goto } from '@/lib/menus';
 import { Modal, Tabs, Spinner, Empty } from '@/components/ui/primitives';
 import { ResultCard } from '@/components/chat/Panels';
 import { t } from '@/i18n';
 
-type InboxTab = 'mentions' | 'saved' | 'reminders' | 'scheduled';
+type InboxTab = 'mentions' | 'digest' | 'saved' | 'reminders' | 'scheduled';
 
 function MentionsList({ close }: { close: () => void }) {
   const guilds = useData((s) => s.guilds);
@@ -41,6 +42,52 @@ function MentionsList({ close }: { close: () => void }) {
         ))}
       </ul>
       {q.hasNextPage && <button className="btn btn-secondary mx-auto mt-2 block" disabled={q.isFetchingNextPage} onClick={() => void q.fetchNextPage()}>{t('Load more')}</button>}
+    </div>
+  );
+}
+
+/** Quiet mode: batches of notifications that were held back instead of pinging. Counts only; the messages themselves stay in their channels. */
+function DigestList({ close }: { close: () => void }) {
+  const guilds = useData((s) => s.guilds); const dms = useData((s) => s.dms); const me = useData((s) => s.me?.id); const qc = useQueryClient();
+  const q = useQuery({ queryKey: ['inbox', 'digest'], queryFn: () => api.digest.list({ limit: 25 }), retry: false });
+  const refresh = () => { void qc.invalidateQueries({ queryKey: ['inbox', 'digest'] }); void qc.invalidateQueries({ queryKey: ['digest-prefs'] }); };
+  const label = (it: DigestEntry['items'][number]) => {
+    const g = it.guildId ? guilds[it.guildId] : undefined;
+    if (!it.guildId) { const d = dms[it.channelId]; return { where: t('Direct Message'), name: d ? dmName(d, me) : t('a conversation') }; }
+    return { where: g?.guild.name ?? t('a server'), name: `#${g?.channels[it.channelId]?.name ?? t('channel')}` };
+  };
+  const unread = q.data?.filter((e) => !e.readAt).length ?? 0;
+  return (
+    <div>
+      <div className="mb-3 flex items-center justify-between text-sm text-muted">
+        <span>{t('Servers and channels set to "Add to my digest" collect here instead of pinging you.')}</span>
+        {unread > 0 && <button className="btn btn-secondary shrink-0" onClick={() => void api.digest.markAllRead().then(refresh).catch(toastError)}>{t('Mark all read')}</button>}
+      </div>
+      {q.isLoading && <Spinner className="mx-auto my-6" />}
+      {q.isError && <p className="text-sm text-muted">{t('This server does not support notification digests.')}</p>}
+      {!q.isLoading && !q.isError && !q.data?.length && <Empty icon={<BellRing size={40} />} title={t('No digests yet')}>{t('Turn on "Add to my digest" in a server or channel\'s notification settings.')}</Empty>}
+      <ul aria-label={t('Notification digests')}>
+        {q.data?.map((e) => (
+          <li key={e.id} data-inbox-item={e.id} className={`mb-3 rounded-lg p-3 ${e.readAt ? 'bg-side' : 'bg-side ring-1 ring-brand'}`}>
+            <div className="mb-2 flex items-center gap-2 text-xs text-muted">
+              <span className="font-semibold text-header">{t('{n} notifications', { n: e.total })}</span><span>{fmtStamp(new Date(e.periodStart).getTime())} – {fmtStamp(new Date(e.periodEnd).getTime())}</span>
+              <span className="ms-auto flex gap-2">
+                {!e.readAt && <button className="hover:text-header" onClick={() => void api.digest.markRead(e.id).then(refresh).catch(toastError)}>{t('Mark read')}</button>}
+                <button aria-label={t('Delete digest')} className="hover:text-danger" onClick={() => void api.digest.remove(e.id).then(refresh).catch(toastError)}><Trash2 size={14} /></button>
+              </span>
+            </div>
+            <ul>
+              {e.items.map((it) => { const l = label(it); return (
+                <li key={it.channelId}>
+                  <button className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-start hover:bg-hover" onClick={() => { void api.digest.markRead(e.id).then(refresh).catch(() => {}); close(); goto(it.guildId, it.channelId); }}>
+                    <span className="min-w-0 flex-1 truncate"><b className="text-header">{l.name}</b> <span className="text-muted">{l.where}</span></span>
+                    <span className="shrink-0 text-sm text-interactive">{t('{n} new', { n: it.count })}{it.mentions > 0 && <b className="ms-2 rounded bg-danger px-1.5 py-0.5 text-[11px] text-white">{t('{n} @', { n: it.mentions })}</b>}</span>
+                  </button>
+                </li>); })}
+            </ul>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
@@ -115,11 +162,12 @@ function ScheduledList() {
 
 export function InboxModal({ initialTab, close }: { initialTab?: InboxTab; close: () => void }) {
   const [tab, setTab] = useState<InboxTab>(initialTab ?? 'mentions');
+  const digestUnread = useQuery({ queryKey: ['inbox', 'digest'], queryFn: () => api.digest.list({ limit: 25 }), retry: false }).data?.filter((e) => !e.readAt).length ?? 0;
   const due = useQuery({ queryKey: ['inbox', 'reminders'], queryFn: api.users.reminders }).data?.filter((r) => r.firedAt).length ?? 0;
   return (
     <Modal title={t('Inbox')} onClose={close} width={560}>
-      <div className="mb-3"><Tabs label={t('Inbox')} value={tab} onChange={setTab} tabs={[{ id: 'mentions', label: t('Mentions') }, { id: 'saved', label: t('Saved') }, { id: 'reminders', label: t('Reminders'), badge: due }, { id: 'scheduled', label: t('Scheduled') }]} /></div>
-      <div className="max-h-[60dvh] overflow-y-auto" data-testid="inbox">{tab === 'mentions' && <MentionsList close={close} />}{tab === 'saved' && <SavedList close={close} />}{tab === 'reminders' && <RemindersList close={close} />}{tab === 'scheduled' && <ScheduledList />}</div>
+      <div className="mb-3"><Tabs label={t('Inbox')} value={tab} onChange={setTab} tabs={[{ id: 'mentions', label: t('Mentions') }, { id: 'digest', label: t('Digest'), badge: digestUnread }, { id: 'saved', label: t('Saved') }, { id: 'reminders', label: t('Reminders'), badge: due }, { id: 'scheduled', label: t('Scheduled') }]} /></div>
+      <div className="max-h-[60dvh] overflow-y-auto" data-testid="inbox">{tab === 'mentions' && <MentionsList close={close} />}{tab === 'digest' && <DigestList close={close} />}{tab === 'saved' && <SavedList close={close} />}{tab === 'reminders' && <RemindersList close={close} />}{tab === 'scheduled' && <ScheduledList />}</div>
     </Modal>
   );
 }

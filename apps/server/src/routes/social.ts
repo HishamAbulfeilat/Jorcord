@@ -105,6 +105,8 @@ export function socialRoutes(app: FastifyInstance, ctx: Ctx) {
   const readable = async (userId: string, channelId: string, messageId: string) => {
     const [m] = await ctx.db.query('SELECT id, guild_id, type FROM messages WHERE id = $1 AND channel_id = $2', [messageId, channelId]);
     if (!m || !(await canReadChannel(ctx, userId, channelId))) throw notFound('Message');
+    const [sc] = await ctx.db.query('SELECT encrypted FROM channels WHERE id = $1', [channelId]);
+    if (sc?.encrypted) throw new ApiError(400, 'E2EE_UNSUPPORTED', 'Messages in a secret chat cannot be saved or used for reminders: the server cannot read them');
     return m;
   };
   app.put('/users/@me/saved/:channelId/:messageId', async (req, reply) => {

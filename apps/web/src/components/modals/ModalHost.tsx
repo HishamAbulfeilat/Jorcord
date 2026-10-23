@@ -1,3 +1,4 @@
+import { SafetyNumberModal } from '@/components/chat/SecretChat';
 import { useEffect, useRef, useState } from 'react';
 import { ScheduleModal } from './ScheduleModal';
 import { ExternalLinkModal, RiskyFileModal } from './LinkGuard';
@@ -273,6 +274,7 @@ function ModalBody({ m, close }: { m: ModalSpec; close: () => void }) {
     case 'report': return <ReportModal messageId={m.messageId} guildId={m.guildId} channelId={m.channelId} close={close} />;
     case 'modView': return <ModViewModal guildId={m.guildId} userId={m.userId} close={close} />;
     case 'inbox': return <InboxModal initialTab={m.tab} close={close} />;
+    case 'safetyNumber': return <SafetyNumberModal channelId={m.channelId} close={close} />;
     case 'followChannel': return <FollowChannelModal channelId={m.channelId} close={close} />;
     case 'customize': return <CustomizeModal guildId={m.guildId} close={close} />;
     case 'onboarding': return <OnboardingModal guildId={m.guildId} step={m.step} close={close} />;

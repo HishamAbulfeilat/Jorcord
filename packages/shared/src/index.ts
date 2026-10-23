@@ -10,3 +10,4 @@ export * from './userFlags';
 export * from './stickers';
 export * from './streamfeeds';
 export * from './trust';
+export * from './privacykit';

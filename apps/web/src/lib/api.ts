@@ -3,6 +3,7 @@ import type {
   Activity, Attachment, AuditEntry, AutoModRule, Channel, Emoji, Guild, GuildFull, Invite, Member, Message, MessageEdit, Relationship, ReadState, Role, SelfUser, Sticker, User, VoiceToken, VoiceRecording, Id, Presence, OverwriteDTO,
   AllowedMentions, ConnectionOAuthStart, ConnectionProviderInfo, StreamFeed, StreamFeedsResponse, GuildIntegration, WelcomeScreen, VoiceState, StageQueueEntry, StageBlock, StreamInfo,
   Reminder, ScheduledMessage, ModView, ModWarning, ModNote, BulkModerationFilter, BulkModerationResult, PruneResult, BoostSummary, LinkedRoleView, LinkedCriterion, RoleMetadataApp, DirectoryApp, DirectoryCategory, SoundboardSound, Connection, PublicConnection, GifFavorite, GuildTemplate, GuildWidgetSettings, GuildInsights, ChannelFollow, Onboarding, OnboardingResponse, GuildSafety, ImpersonationEntry, SafetyPreset, Application, ApplicationCommand, CommandPermissionOverwrite, CommandOptionChoice, CreatePoll, ForumTag, InteractionOptionValue, ModalSubmitRow, OAuthAuthorizePreview, OAuthAuthorizeResult, ScheduledEvent, StageInstance, Report, RecurrenceRule, ChannelActivity, ChannelActivityKind,
+  E2eeDevice, DigestEntry, DigestPrefs, ImportReport,
 } from '@jorcord/shared';
 import { send } from './transport';
 
@@ -32,8 +33,8 @@ export interface DataExportJob { id: Id; status: 'queued' | 'running' | 'ready' 
 export interface Passkey { id: Id; name: string; createdAt: string; lastUsedAt: string | null; deviceType: string | null; backedUp: boolean; transports: string[] }
 export interface PushDevice { id: Id; platform: 'web' | 'android' | 'ios' | 'desktop'; createdAt: string | null; lastUsedAt: string | null; current?: boolean }
 export type PushRegistration = { platform: 'web' | 'desktop'; subscription: { endpoint: string; expirationTime?: number | null; keys: { p256dh: string; auth: string } } } | { platform: 'android' | 'ios'; token: string };
-export interface GuildNotify { muted: boolean; mutedUntil: string | null; suppressEveryone: boolean; suppressRoles: boolean; level: 'all' | 'mentions' | 'none' | null }
-export interface ChannelNotify { muted: boolean; mutedUntil: string | null }
+export interface GuildNotify { muted: boolean; mutedUntil: string | null; suppressEveryone: boolean; suppressRoles: boolean; level: 'all' | 'mentions' | 'none' | null; /** batch pings into the digest */ digest?: boolean }
+export interface ChannelNotify { muted: boolean; mutedUntil: string | null; digest?: boolean }
 export interface NotificationSettings { pushEnabled: boolean; guilds: (GuildNotify & { guildId: Id })[]; channels: (ChannelNotify & { channelId: Id })[] }
 export interface AutoModTestResult { ruleId: Id; name: string; trigger: string; enabled: boolean; testMode: boolean; actions: string[]; matched: boolean; evaluated: boolean }
 export interface GifResult { id: string; url: string; preview: string; title?: string }
@@ -101,7 +102,8 @@ export const api = {
     setPresence: (presence: Presence) => send({ method: 'PUT', path: '/users/@me/presence', body: { presence } }),
     guilds: () => send<Guild[]>({ method: 'GET', path: '/users/@me/guilds' }).then((x) => arr<Guild>(x)),
     leaveGuild: (id: Id) => send({ method: 'DELETE', path: `/users/@me/guilds/${id}` }),
-    openDm: (recipientIds: Id[]) => send<Channel>({ method: 'POST', path: '/users/@me/channels', body: { recipientIds } }),
+    /** `encrypted: true` opens (or finds) the 1:1 end-to-end encrypted "secret chat" with that person. */
+    openDm: (recipientIds: Id[], opts: { encrypted?: boolean } = {}) => send<Channel>({ method: 'POST', path: '/users/@me/channels', body: opts.encrypted ? { recipientIds, encrypted: true } : { recipientIds } }),
     /** Message requests: move a DM from non-friends to the regular list, or delete it and bar the sender. */
     acceptRequest: (channelId: Id) => send({ method: 'POST', path: `/channels/${channelId}/accept-request` }),
     ignoreRequest: (channelId: Id) => send({ method: 'POST', path: `/channels/${channelId}/ignore-request` }),
@@ -430,6 +432,28 @@ export const api = {
     putGuild: (guildId: Id, b: Partial<GuildNotify>) => send<GuildNotify & { guildId: Id }>({ method: 'PUT', path: `/users/@me/notification-settings/guilds/${guildId}`, body: b }),
     putChannel: (channelId: Id, b: Partial<ChannelNotify>) => send<ChannelNotify & { channelId: Id }>({ method: 'PUT', path: `/users/@me/notification-settings/channels/${channelId}`, body: b }),
     reset: (scope: 'guilds' | 'channels', targetId: Id) => send({ method: 'DELETE', path: `/users/@me/notification-settings/${scope}/${targetId}` }),
+  },
+  /** Secret chats (end-to-end encrypted DMs): published device keys. The server never sees private keys or plaintext. */
+  e2ee: {
+    devices: () => send<E2eeDevice[]>({ method: 'GET', path: '/users/@me/e2ee/devices' }).then((x) => arr<E2eeDevice>(x)),
+    register: (publicKey: string, label?: string) => send<E2eeDevice>({ method: 'POST', path: '/users/@me/e2ee/devices', body: label ? { publicKey, label } : { publicKey } }),
+    revoke: (id: Id) => send({ method: 'DELETE', path: `/users/@me/e2ee/devices/${id}` }),
+    channelDevices: (channelId: Id) => send<{ channelId: Id; devices: E2eeDevice[] }>({ method: 'GET', path: `/channels/${channelId}/e2ee/devices`, query: { includeRevoked: 'true' } }),
+  },
+  /** Quiet mode: notification digest preferences and Inbox entries. The per-server / per-channel switch is `digest` in `notifications`. */
+  digest: {
+    prefs: () => send<DigestPrefs & { unread: number }>({ method: 'GET', path: '/users/@me/notification-digest' }),
+    setPrefs: (b: Partial<Pick<DigestPrefs, 'frequency' | 'largeServerMentionsOnly'>>) => send<DigestPrefs & { unread: number }>({ method: 'PATCH', path: '/users/@me/notification-digest', body: b }),
+    list: (q: { limit?: number; before?: Id } = {}) => send<DigestEntry[]>({ method: 'GET', path: '/users/@me/digests', query: q }).then((x) => arr<DigestEntry>(x)),
+    markRead: (id: Id) => send({ method: 'POST', path: `/users/@me/digests/${id}/read` }),
+    markAllRead: () => send({ method: 'POST', path: '/users/@me/digests/read' }),
+    remove: (id: Id) => send({ method: 'DELETE', path: `/users/@me/digests/${id}` }),
+  },
+  /** Server structure backup / migration helper (owner or Manage Server). */
+  serverPort: {
+    exportFile: (guildId: Id, format: 'json' | 'zip') => send<Blob>({ method: 'GET', path: `/guilds/${guildId}/export`, query: { format }, raw: 'blob' }),
+    importDoc: (guildId: Id, doc: unknown, o: { dryRun?: boolean; applyEveryone?: boolean } = {}) => send<ImportReport>({ method: 'POST', path: `/guilds/${guildId}/import`, query: { dryRun: String(!!o.dryRun), applyEveryone: String(!!o.applyEveryone) }, body: doc }),
+    importFile: (guildId: Id, file: File, o: { dryRun?: boolean; applyEveryone?: boolean } = {}) => { const f = new FormData(); f.set('file', file, file.name); return send<ImportReport>({ method: 'POST', path: `/guilds/${guildId}/import`, query: { dryRun: String(!!o.dryRun), applyEveryone: String(!!o.applyEveryone) }, form: f }); },
   },
   /** Instance super admin (404 for everyone else). */
   admin: {

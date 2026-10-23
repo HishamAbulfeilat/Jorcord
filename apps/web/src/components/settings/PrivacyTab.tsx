@@ -12,6 +12,7 @@ import { ACTIVITY_TYPES } from '@/lib/activity';
 import { toast } from '@/stores/ui';
 import type { ActivityType } from '@jorcord/shared';
 import { MyBansPanel } from './MyBansPanel';
+import { SecretChatsPanel } from './SecretChatsPanel';
 import { t } from '@/i18n';
 
 type Patch = { [K in keyof Privacy]?: Privacy[K] extends object ? Partial<Privacy[K]> : Privacy[K] };
@@ -54,6 +55,7 @@ export function PrivacyTab() {
       <Toggle label={t('Allow access to age-restricted channels')} checked={!!me.ageConfirmed} disabled={busy}
         onChange={(v) => { setBusy(true); (v ? api.users.confirmAge() : api.users.unconfirmAge()).then(() => useData.setState((st) => ({ me: st.me ? { ...st.me, ageConfirmed: v } : st.me }))).catch(toastError).finally(() => setBusy(false)); }} />
     </Row>
+    <SecretChatsPanel />
     <MyBansPanel />
 </>);
 }

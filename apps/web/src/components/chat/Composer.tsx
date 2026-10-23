@@ -25,6 +25,9 @@ import { SlashForm, useCommandCatalog } from './SlashCommands';
 import { filterCommands, parseSlash } from '@/lib/commands';
 import { can } from '@/lib/perms';
 import { selfMember } from '@/stores/data';
+import { SecretBar } from './SecretChat';
+import { SecretChatError, sendSecretMessage } from '@/lib/e2ee/service';
+import { useSecret } from '@/stores/secret';
 
 interface Staged { id: string; file: File; spoiler: boolean; preview?: string }
 type Suggest = { kind: 'user' | 'role' | 'channel' | 'emoji' | 'command'; items: { key: string; label: string; sub?: string; insert: string; token?: [string, string]; avatar?: any; icon?: string; color?: string; command?: ApplicationCommand; app?: string }[]; index: number; start: number; end: number } | null;
@@ -33,7 +36,9 @@ export function Composer({ channel, stagedExternal }: { channel: Channel; staged
   const cid = channel.id; const gid = channel.guildId;
   const perms = useGuildPerms(gid ?? undefined, channel);
   const pending = useData((s) => (gid ? !!selfMember(s, gid)?.pending : false));
-  const cs = gid ? composerState(perms, channel, { pending }) : composerState(myChannelPerms(cid) | (1n << 15n) | (1n << 11n), channel);
+  const secret = !!channel.encrypted; // end-to-end encrypted 1:1 chat: text only, encrypted on this device before it is sent
+  const cs0 = gid ? composerState(perms, channel, { pending }) : composerState(myChannelPerms(cid) | (1n << 15n) | (1n << 11n), channel);
+  const cs = secret ? { ...cs0, canAttach: false } : cs0;
   const canSlash = !!gid && cs.canSend && can(perms, Perm.USE_SLASH_COMMANDS);
   const catalog = useCommandCatalog(gid, cid, canSlash);
   const catalogRef = useRef(catalog.data); catalogRef.current = catalog.data;
@@ -55,7 +60,7 @@ export function Composer({ channel, stagedExternal }: { channel: Channel; staged
   const replyUser = useData((s) => (replyMsg ? s.users[replyMsg.author.id] ?? replyMsg.author : undefined));
   const guild = useData((s) => (gid ? s.guilds[gid] : undefined));
   const users = useData((s) => s.users);
-  const placeholder = !cs.canSend ? (cs.reason ?? 'You cannot send messages here.') : channel.type === 'dm' || channel.type === 'group_dm' ? `Message @${dmName(channel, me?.id)}` : `Message #${channel.name}`;
+  const placeholder = !cs.canSend ? (cs.reason ?? 'You cannot send messages here.') : channel.type === 'dm' || channel.type === 'group_dm' ? `${secret ? 'Secret message to' : 'Message'} @${dmName(channel, me?.id)}` : `Message #${channel.name}`;
 
   useEffect(() => { setText(draft); tokens.current.clear(); setFiles([]); setSlash(null); /* eslint-disable-next-line */ }, [cid]);
   useEffect(() => { if (stagedExternal?.length) addFiles(stagedExternal); /* eslint-disable-next-line */ }, [stagedExternal]);
@@ -74,7 +79,7 @@ export function Composer({ channel, stagedExternal }: { channel: Channel; staged
   useEffect(resize, [text]);
 
   const addFiles = useCallback((fs: File[]) => {
-    if (!cs.canAttach) { toast(t('You do not have permission to attach files here.'), 'error'); return; }
+    if (!cs.canAttach) { toast(secret ? t('Secret chats are text only: attachments are not supported.') : t('You do not have permission to attach files here.'), 'error'); return; }
     const ok = fs.filter((f) => { if (f.size > LIMITS.maxUploadBytes) { toast(`${f.name} is larger than ${fmtBytes(LIMITS.maxUploadBytes)}.`, 'error'); return false; } return true; });
     setFiles((cur) => [...cur, ...ok.map((file) => ({ id: snowflake(), file, spoiler: false, preview: isImage(file.type) ? URL.createObjectURL(file) : undefined }))].slice(0, 10));
   }, [cs.canAttach]);
@@ -155,12 +160,13 @@ export function Composer({ channel, stagedExternal }: { channel: Channel; staged
     useMessages.getState().addPending({ nonce, channelId: cid, content, files: toSend.map((f) => ({ name: f.name, size: f.size })), replyTo: reply, allowedMentions, status: 'sending', createdAt: Date.now() });
     if (!gif) { setText(''); setFiles([]); setDraft(cid, ''); tokens.current.clear(); }
     setPingReply(true); setReply(cid, null); setSuggest(null);
-    await deliver(nonce, cid, content, toSend, reply, allowedMentions);
+    await (secret && me ? deliverSecret(nonce, channel, me.id, content, reply) : deliver(nonce, cid, content, toSend, reply, allowedMentions));
     const last = useMessages.getState().ch[cid]?.list.at(-1); if (last) ackLater(cid, last.id);
   };
 
   const sendSticker = async (stickerId: string) => {
     if (!cs.canSend) return;
+    if (secret) { toast(t('Secret chats are text only: stickers are not supported.'), 'error'); return; }
     try { const msg = await api.messages.send(cid, { content: '', stickerIds: [stickerId] }); useMessages.getState().upsert(msg); useData.getState().apply('MESSAGE_CREATE', msg); ackLater(cid, msg.id); } catch (err) { toastError(err); }
   };
 
@@ -198,10 +204,10 @@ export function Composer({ channel, stagedExternal }: { channel: Channel; staged
       const nonce = (e as CustomEvent).detail as string; const p = useMessages.getState().pending.find((x) => x.nonce === nonce);
       if (!p || p.channelId !== cid) return;
       useMessages.getState().patchPending(nonce, { status: 'sending' });
-      await deliver(nonce, cid, p.content, [], p.replyTo, p.allowedMentions);
+      await (secret && me ? deliverSecret(nonce, channel, me.id, p.content, p.replyTo) : deliver(nonce, cid, p.content, [], p.replyTo, p.allowedMentions));
     };
     window.addEventListener('jorcord:retry', h); return () => window.removeEventListener('jorcord:retry', h);
-  }, [cid]);
+  }, [cid, channel, me, secret]);
 
   const onKey = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (suggest) {
@@ -230,7 +236,7 @@ export function Composer({ channel, stagedExternal }: { channel: Channel; staged
   };
   const insert = (s: string) => { const t = ta.current; const p = t?.selectionStart ?? text.length; setText(text.slice(0, p) + s + text.slice(p)); requestAnimationFrame(() => { t?.focus(); t?.setSelectionRange(p + s.length, p + s.length); }); };
 
-  const canPoll = cs.canSend && (!gid || can(perms, Perm.SEND_POLLS)) && channel.type !== 'category';
+  const canPoll = cs.canSend && !secret && (!gid || can(perms, Perm.SEND_POLLS)) && channel.type !== 'category';
   const over = text.length > LIMITS.maxMessageLength - 200;
   const canPostEmpty = files.length > 0; const hasText = text.trim().length > 0;
   const replyName = useMemo(() => (replyUser ? displayName(replyUser, gid ? guild?.members[replyUser.id] : undefined) : ''), [replyUser, gid, guild]);
@@ -238,6 +244,7 @@ export function Composer({ channel, stagedExternal }: { channel: Channel; staged
 
   return (
     <div className="relative shrink-0 px-4 pb-6 pt-0 max-md:pb-2" style={{ paddingBottom: mobile ? 'max(8px, var(--sab))' : undefined }}>
+      {secret && <div className="-mx-4"><SecretBar channelId={cid} /></div>}
       {suggest && (
         <ul role="listbox" aria-label={t('Suggestions')} className="absolute inset-x-4 bottom-full z-30 mb-1 max-h-72 overflow-y-auto rounded-md bg-float p-2 shadow-elev">
           <li className="px-2 pb-1 text-xs font-bold uppercase text-muted">{suggest.kind === 'user' ? 'Members' : suggest.kind === 'channel' ? 'Channels' : suggest.kind === 'command' ? t('Commands') : 'Emoji'}</li>
@@ -310,7 +317,7 @@ export function Composer({ channel, stagedExternal }: { channel: Channel; staged
           {over && <span className={cx('self-center pe-2 text-xs font-semibold', text.length > LIMITS.maxMessageLength ? 'text-danger' : 'text-muted')}>{LIMITS.maxMessageLength - text.length}</span>}
           <button aria-label={t('Choose emoji or GIF')} disabled={!cs.canSend} onClick={(e) => openPopout({ kind: 'emoji', rect: e.currentTarget.getBoundingClientRect(), guildId: gid ?? undefined, stickers: true, externalStickers: !gid || can(perms, Perm.USE_EXTERNAL_STICKERS), onPick: (p) => { if (p.sticker) void sendSticker(p.sticker); else if ((p as any).gif) send((p as any).gif); else if (p.char) insert(p.char); else if (p.id) { tokens.current.set(`:${p.name}:`, `<${p.animated ? 'a' : ''}:${p.name}:${p.id}>`); insert(`:${p.name}: `); } } })} className="flex h-11 w-11 shrink-0 items-center justify-center text-interactive hover:text-interactive-hover disabled:opacity-40"><Smile size={24} /></button>
           <button aria-label={t('Open GIF picker')} data-testid="composer-gif" disabled={!cs.canSend} onClick={(e) => openPopout({ kind: 'emoji', gifOnly: true, rect: e.currentTarget.getBoundingClientRect(), guildId: gid ?? undefined, onPick: (p) => { if ((p as any).gif) void send((p as any).gif); } })} className="flex h-11 w-9 shrink-0 items-center justify-center text-interactive hover:text-interactive-hover disabled:opacity-40"><span aria-hidden className="rounded border-2 border-current px-0.5 text-[10px] font-extrabold leading-[14px]">GIF</span></button>
-          {(hasText || files.length > 0) && cs.canSend && !text.startsWith('/') && text.length <= LIMITS.maxMessageLength && <button aria-label={t('Schedule message')} title={t('Send later')} data-testid="composer-schedule" onClick={() => openModal({ kind: 'scheduleMessage', channelId: cid, content: hasText ? finalize(text) : '', replyTo: replyId ?? null, files: files.map((f) => (f.spoiler && !f.file.name.startsWith('SPOILER_') ? new File([f.file], 'SPOILER_' + f.file.name, { type: f.file.type }) : f.file)), onDone: () => { setText(''); setFiles([]); setDraft(cid, ''); tokens.current.clear(); setReply(cid, null); setSuggest(null); } })} className="flex h-11 w-9 shrink-0 items-center justify-center text-interactive hover:text-interactive-hover"><CalendarClock size={20} /></button>}
+          {(hasText || files.length > 0) && cs.canSend && !secret && !text.startsWith('/') && text.length <= LIMITS.maxMessageLength && <button aria-label={t('Schedule message')} title={t('Send later')} data-testid="composer-schedule" onClick={() => openModal({ kind: 'scheduleMessage', channelId: cid, content: hasText ? finalize(text) : '', replyTo: replyId ?? null, files: files.map((f) => (f.spoiler && !f.file.name.startsWith('SPOILER_') ? new File([f.file], 'SPOILER_' + f.file.name, { type: f.file.type }) : f.file)), onDone: () => { setText(''); setFiles([]); setDraft(cid, ''); tokens.current.clear(); setReply(cid, null); setSuggest(null); } })} className="flex h-11 w-9 shrink-0 items-center justify-center text-interactive hover:text-interactive-hover"><CalendarClock size={20} /></button>}
           {mobile && (hasText || canPostEmpty) && <button aria-label={t('Send message')} onClick={() => send()} className="m-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand text-white"><SendHorizonal size={18} /></button>}
           {!mobile && <span className="hidden"><Gift size={0} /></span>}
         </div>
@@ -321,6 +328,22 @@ export function Composer({ channel, stagedExternal }: { channel: Channel; staged
 
 const lastTyping = new Map<string, number>();
 function throttledTyping(cid: string) { const n = Date.now(); if ((lastTyping.get(cid) ?? 0) + 8000 > n) return; lastTyping.set(cid, n); api.channels.typing(cid).catch(() => {}); }
+
+/** Secret chat send: encrypted here, on this device. Blocks (and opens the safety number dialog) when the other person's keys changed. */
+async function deliverSecret(nonce: string, channel: Channel, meId: string, content: string, reply: string | null) {
+  const st = useMessages.getState();
+  try {
+    const msg = await sendSecretMessage(channel, { id: meId }, content, reply);
+    useSecret.setState((s) => ({ opened: { ...s.opened, [msg.id]: { ok: true, text: content } } })); // we just wrote it: no need to decrypt our own message
+    st.upsert(msg); st.dropPending(nonce);
+    useData.getState().apply('MESSAGE_CREATE', msg);
+    void useSecret.getState().load(channel, meId, true);
+  } catch (e) {
+    st.patchPending(nonce, { status: 'failed' });
+    if (e instanceof SecretChatError && e.code === 'KEY_CHANGED') useUI.getState().openModal({ kind: 'safetyNumber', channelId: channel.id });
+    toastError(e);
+  }
+}
 
 async function deliver(nonce: string, cid: string, content: string, files: File[], reply: string | null, allowedMentions?: AllowedMentions | null) {
   const st = useMessages.getState();

@@ -93,6 +93,9 @@ export function NotifSettingsModal({ scope, id, close }: { scope: 'guild' | 'cha
         <Toggle label={scope === 'guild' ? t('Mute Server') : t('Mute Channel')} checked={muted} onChange={(v) => (v ? apply() : setMuted(scope, id, false))} />
       </Row>
       {!muted && <label className="mt-3 block text-sm"><span className="label">{t('Mute duration')}</span><select aria-label={t('Mute duration')} className="field" value={muteOpt} onChange={(e) => setMuteOpt(Number(e.target.value))}>{MUTE_FOR.map(([l], i) => <option key={l} value={i}>{t(l)}</option>)}</select><span className="mt-1 block text-xs text-muted">{t('Choose how long, then switch the toggle on.')}</span></label>}
+      <Row title={t('Quiet mode: add to my digest')} desc={t('Instead of pinging you, what would have notified you here is collected into one Inbox entry, hourly or daily (set in Notifications).')}>
+        <Toggle label={t('Add to my notification digest')} checked={!!row?.digest} onChange={(v) => void (scope === 'guild' ? notif.setGuild(id, { digest: v }) : notif.setChannel(id, { digest: v }))} />
+      </Row>
       {scope === 'guild' && (<>
         <h3 className="section-title mb-2 mt-5">{t('Server Notification Settings')}</h3>
         <div role="radiogroup" aria-label={t('Server Notification Settings')} className="grid gap-2">

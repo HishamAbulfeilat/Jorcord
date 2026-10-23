@@ -33,7 +33,7 @@ export function fieldErrorSummary(e: unknown): string | null {
 export const limiter = new Limiter();
 export const setRateLimitNotifier = (fn: ((ms: number, why: 'bucket' | '429') => void) | undefined) => { limiter.onWait = fn; };
 
-export interface Req { method: string; path: string; query?: Record<string, unknown>; body?: unknown; form?: FormData; auth?: boolean; signal?: AbortSignal }
+export interface Req { method: string; path: string; query?: Record<string, unknown>; body?: unknown; form?: FormData; auth?: boolean; signal?: AbortSignal; /** 'blob': resolve with the response body as a Blob (file downloads that need the bearer token) */ raw?: 'blob' }
 export type Transport = (req: Req) => Promise<any>;
 
 export interface TokenStore {
@@ -126,6 +126,7 @@ export const fetchTransport: Transport = async (req) => {
     else if (outcome === 'rejected') { tokens.onLogout(); }
     else throw new ApiException(0, { code: 'NETWORK', message: 'Cannot reach the server. Check your connection.' }); // keep the session: it is not proven dead
   }
+  if (req.raw === 'blob' && res.ok) return await res.blob();
   const data = early !== undefined ? early : await parse(res);
   if (!res.ok) throw new ApiException(res.status, (typeof data === 'object' && data) || { message: String(data ?? '') }, res.status === 429 ? retryAfterMs(data, res.headers) : undefined);
   return data;

@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { SignJWT, importPKCS8 } from 'jose';
 import webpush from 'web-push';
 import { MessageFlags, type Message } from '@jorcord/shared';
+import { digestHolders, holdForDigest } from './digest';
 import type { Ctx } from '../ctx';
 import { safeLookup } from '../lib/ssrf';
 import { viewersAmong } from './perms';
@@ -300,12 +301,19 @@ async function notifyMessage(ctx: Ctx, svc: PushService, channel: any, msg: Mess
     const viewers = new Set(await viewersAmong(ctx, channel, [...cands.keys()]));
     for (const id of [...cands.keys()]) if (!viewers.has(id)) cands.delete(id);
   }
+  // Quiet mode: digest holders are not pinged; what would have pinged them waits for their next digest (a no-op when the badge path already held it)
+  const held = await digestHolders(ctx, channel, [...cands.keys()]);
+  if (held.size) {
+    await holdForDigest(ctx, channel, msg.id, [...held], new Set([...held].filter((id) => cands.get(id) === 'dm' || cands.get(id) === 'mention')));
+    for (const id of held) cands.delete(id);
+    if (!cands.size) return;
+  }
   const channelIds = [channel.id, ...(channel.type === 'thread' && channel.parent_id ? [channel.parent_id] : [])];
   const to = await filterRecipients(ctx, cands, { authorId, guildId: channel.guild_id ?? null, channelIds, respectBlocks: true });
   if (!to.length) return;
   const reasonOf = (id: string) => cands.get(id) ?? 'mention';
   const author = msg.author.displayName || msg.author.username;
-  const text = previewText(msg.content, msg.attachments.length) || (msg.stickerIds.length ? 'Sent a sticker' : 'Sent a message');
+  const text = channel.encrypted ? 'Sent an encrypted message' : previewText(msg.content, msg.attachments.length) || (msg.stickerIds.length ? 'Sent a sticker' : 'Sent a message');
   let where = '';
   if (channel.guild_id) { const [g] = await ctx.db.query('SELECT name FROM guilds WHERE id = $1', [channel.guild_id]); where = ` (#${channel.name ?? 'channel'}${g ? `, ${g.name}` : ''})`; }
   // one payload per reason bucket keeps "mentioned you" wording accurate

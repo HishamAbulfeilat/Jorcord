@@ -54,6 +54,8 @@ export interface Channel {
   parentId: Id | null; nsfw: boolean; slowmode: number; bitrate: number | null; userLimit: number | null;
   overwrites: OverwriteDTO[]; lastMessageId: Id | null; recipients?: User[]; ownerId?: Id | null;
   archived?: boolean; createdAt: string;
+  /** 1:1 DMs only: an end-to-end encrypted "secret chat". The server stores only ciphertext envelopes (docs/E2EE_DMS.md). */
+  encrypted?: boolean;
   /** Additive (platform pass). Forum parents: tag catalogue; threads: tags applied + lifecycle. */
   availableTags?: ForumTag[]; requireTag?: boolean; defaultAutoArchiveDuration?: number;
   /** Forum/media defaults: post sort order, default layout, and the reaction auto-added to every new post. */
@@ -150,6 +152,6 @@ export interface WebPushSubscriptionJSON { endpoint: string; expirationTime?: nu
 export interface RegisterPushDevice { platform: PushPlatform; token?: string; subscription?: WebPushSubscriptionJSON }
 export interface PushDevice { id: Id; platform: PushPlatform; createdAt: string; lastUsedAt: string; current: boolean }
 export type NotificationLevel = 'all' | 'mentions' | 'none';
-export interface GuildNotificationSettings { guildId: Id; muted: boolean; mutedUntil: string | null; suppressEveryone: boolean; suppressRoles: boolean; level: NotificationLevel | null }
-export interface ChannelNotificationSettings { channelId: Id; muted: boolean; mutedUntil: string | null }
+export interface GuildNotificationSettings { guildId: Id; muted: boolean; mutedUntil: string | null; suppressEveryone: boolean; suppressRoles: boolean; level: NotificationLevel | null; /** batch pings into the digest instead of notifying */ digest?: boolean }
+export interface ChannelNotificationSettings { channelId: Id; muted: boolean; mutedUntil: string | null; digest?: boolean }
 export interface NotificationSettings { pushEnabled: boolean; guilds: GuildNotificationSettings[]; channels: ChannelNotificationSettings[] }

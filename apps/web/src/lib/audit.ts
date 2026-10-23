@@ -17,6 +17,7 @@ const LABELS: Record<string, string> = {
   LINKED_ROLE_CREATE: 'created a linked role', LINKED_ROLE_UPDATE: 'updated a linked role', LINKED_ROLE_DELETE: 'removed a linked role', BOOST_UPDATE: 'updated boost settings',
   POLL_END: 'ended a poll', APPLICATION_UPDATE: 'updated an application', APPLICATION_TOKEN_RESET: 'reset a bot token', FORUM_TAG_UPDATE: 'updated forum tags',
   STAGE_BLOCK_SPEAKER: 'blocked a member from speaking on a stage', STAGE_UNBLOCK_SPEAKER: 'allowed a member to speak on a stage again', STREAM_VIEWER_KICK: 'removed a viewer from a stream',
+  GUILD_IMPORT: 'imported a server structure', GUILD_EXPORT: 'exported the server structure',
   STREAM_FEED_CREATE: 'added a stream or video feed', STREAM_FEED_UPDATE: 'updated a stream or video feed', STREAM_FEED_DELETE: 'removed a stream or video feed',
 };
 export const humanize = (a: string) => a.replace(/_/g, ' ').toLowerCase().replace(/^./, (c) => c.toUpperCase());

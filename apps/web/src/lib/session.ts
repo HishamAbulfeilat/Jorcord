@@ -26,6 +26,7 @@ import { toast } from '@/stores/ui';
 import { emitOverlayToast } from './overlay';
 import { useCalls, wireCallEvents } from '@/stores/calls';
 import { useLiveVoice } from '@/stores/livevoice';
+import { useSecret } from '@/stores/secret';
 
 let unsubs: (() => void)[] = [];
 
@@ -60,6 +61,11 @@ export function startSession(token: string) {
     void queryClient.invalidateQueries({ queryKey: ['inbox', 'scheduled'] });
     if (s.status === 'failed') toast(`A scheduled message could not be sent: ${(s.error ?? 'unknown error').slice(0, 120)}`, 'error');
   }));
+  // secret chats (end-to-end encrypted DMs): a device was added / revoked -> re-check keys and the safety number
+  unsubs.push(gw.on('E2EE_DEVICES_UPDATE', (d) => { const me = meId(); if (me) useSecret.getState().devicesChanged(d.userId, me, useData.getState().dms); }));
+  // quiet mode: a digest landed in the Inbox; joining a big server may have set mentions-only for it
+  unsubs.push(gw.on('DIGEST_CREATE', () => { void queryClient.invalidateQueries({ queryKey: ['inbox', 'digest'] }); toast('Your notification digest is ready in the Inbox', 'info'); }));
+  unsubs.push(gw.on('GUILD_CREATE', () => { void useNotif.getState().load(); }));
   unsubs.push(gw.on('LINKED_ROLES_UPDATE', (d) => queryClient.invalidateQueries({ queryKey: ['linked-roles', d.guildId] })));
   unsubs.push(gw.on('USER_NOTE_UPDATE', (d) => queryClient.setQueryData(['user', d.userId], (old: any) => (old ? { ...old, note: d.note } : old))));
   unsubs.push(gw.on('SOUNDBOARD_SOUNDS_UPDATE', (d) => queryClient.setQueryData(['sounds', d.guildId], d.sounds)));
@@ -117,7 +123,7 @@ function refreshPoll(channelId: string, messageId: string) {
 export function endSession(reset = true) {
   unsubs.forEach((u) => u()); unsubs = [];
   getGateway().disconnect();
-  if (reset) { useData.getState().reset(); usePlatform.getState().reset(); useSocial.getState().reset(); useChannelActivities.getState().reset(); useCalls.getState().setAll([]); }
+  if (reset) { useSecret.getState().reset(); useData.getState().reset(); usePlatform.getState().reset(); useSocial.getState().reset(); useChannelActivities.getState().reset(); useCalls.getState().setAll([]); }
 }
 
 function onMessageCreate(m: Message) {
@@ -132,6 +138,8 @@ function onMessageCreate(m: Message) {
   if (mine) { data.setRead(m.channelId, m.id, 0); return; }
   if (viewing) { ackLater(m.channelId, m.id); return; }
   const gn = m.guildId ? useNotif.getState().guilds[m.guildId] : undefined;
+  // quiet mode: a server / channel in the digest never pings; the server holds it for the next digest (see docs: notification digest)
+  if (gn?.digest || useNotif.getState().channels[m.channelId]?.digest) return;
   const prefsNow = useUI.getState().prefs;
   const everyoneOff = prefsNow.suppressEveryone || !!gn?.suppressEveryone;
   const roleMention = m.guildId ? m.mentionRoles.some((r) => selfMember(data, m.guildId!)?.roles.includes(r)) : false;
@@ -149,7 +157,8 @@ function onMessageCreate(m: Message) {
   if (wants) {
     const ch = findChannel(data, m.channelId);
     const gm = m.guildId ? data.guilds[m.guildId]?.members[m.author.id] : undefined;
-    const preview = toPlain(parseInline(m.content)).slice(0, 200);
+    const secret = !!data.dms[m.channelId]?.encrypted; // the preview of a secret chat must not touch the ciphertext, and must not be decrypted into a notification
+    const preview = secret ? 'Sent an encrypted message' : toPlain(parseInline(m.content)).slice(0, 200);
     if (prefs.overlayEnabled && !(streaming && prefs.streamerNoNotifications)) void emitOverlayToast({ id: m.id, author: displayName(m.author, gm), channel: m.guildId ? ch?.name ?? null : null, text: preview });
     if (prefs.notificationSounds && !(streaming && prefs.streamerNoSounds)) playSound('message');
     if (prefs.desktopNotifications && !(streaming && prefs.streamerNoNotifications) && typeof Notification !== 'undefined' && Notification.permission === 'granted') {

@@ -6,6 +6,7 @@ import { Avatar } from '@/components/ui/Avatar';
 import { ServerTagBadge } from '@/components/ui/Cosmetics';
 import { Markdown } from './Markdown';
 import { LinkWarningBanner } from '@/components/ui/TrustBits';
+import { MessageText } from './SecretChat';
 import { AttachmentView, EmbedView } from './Attachments';
 import { Forward as ForwardIcon } from 'lucide-react';
 import { ReactionBar, addReaction } from './Reactions';
@@ -56,7 +57,7 @@ function ReplyPreview({ m }: { m: Message }) {
         <>
           <Avatar user={info.user} size={16} />
           <button className="shrink-0 font-medium hover:underline" style={info.nameStyle ?? { color: info.color }} onClick={(e) => open({ kind: 'user', userId: ref.author.id, guildId: m.guildId ?? undefined, rect: e.currentTarget.getBoundingClientRect() })}>@{info.name}</button>
-          <button onClick={jump} className="min-w-0 flex-1 truncate text-start text-interactive hover:text-header">{ref.content ? toPlain(parseInline(ref.content)) : ref.attachments.length ? 'Click to see attachment' : 'Message'}</button>
+          <button onClick={jump} className="min-w-0 flex-1 truncate text-start text-interactive hover:text-header">{ref.content.startsWith('jc-e2ee1:') ? t('Encrypted message') : ref.content ? toPlain(parseInline(ref.content)) : ref.attachments.length ? 'Click to see attachment' : 'Message'}</button>
         </>
       ) : <button onClick={jump} className="italic">Original message was deleted</button>}
     </div>
@@ -142,7 +143,7 @@ export const MessageItem = memo(function MessageItem({ m, grouped, highlighted, 
     <>
       {isLoadingMsg(m) ? <ThinkingBody m={m} /> : m.type === 'poll_result' ? <PollResultBody m={m} /> : editing ? <Editor m={m} done={() => setEditing(null)} /> : m.content ? (
         <div className="relative pe-4 text-[16px] leading-[1.375rem] text-normal">
-          <Markdown content={m.content} guildId={m.guildId} />
+          <MessageText m={m} guildId={m.guildId} />
           {m.editedAt && (onEditHistory
             ? <button data-testid="edit-history-trigger" className="ms-1 cursor-pointer select-none text-[10px] text-muted hover:text-interactive-hover" title={fmtFull(new Date(m.editedAt).getTime())} onClick={(e) => { e.stopPropagation(); onEditHistory(m, e.currentTarget.getBoundingClientRect()); }}>(edited)</button>
             : <time className="ms-1 select-none text-[10px] text-muted" title={fmtFull(new Date(m.editedAt).getTime())}>(edited)</time>)}

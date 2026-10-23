@@ -1,3 +1,4 @@
+import { DigestSettings } from './DigestSettings';
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Monitor, Smartphone, Globe, Trash2, Check } from 'lucide-react';
@@ -77,13 +78,14 @@ export function NotificationsTab() {
 
     <H3>{t('Default notification setting for new servers')}</H3>
     <div role="radiogroup" className="grid gap-2">{([['all', T('All Messages')], ['mentions', T('Only @mentions')], ['none', T('Nothing')]] as const).map(([v, l]) => <label key={v} className={cx('flex cursor-pointer items-center gap-3 rounded-lg border-2 p-3', p.defaultNotify === v ? 'border-brand' : 'border-divider')}><input type="radio" className="accent-brand" name="dn" checked={p.defaultNotify === v} onChange={() => set('defaultNotify', v)} /><span className="font-medium text-header">{t(l)}</span></label>)}</div>
+    <DigestSettings />
     <ServerOverrides />
   </>);
 }
 
 function ServerOverrides() {
   const guilds = useData((s) => s.guilds); const gs = useNotif((s) => s.guilds); const open = useUI((s) => s.openModal);
-  const rows = Object.entries(gs).filter(([id, r]) => guilds[id] && (r.muted || r.level || r.suppressEveryone || r.suppressRoles));
+  const rows = Object.entries(gs).filter(([id, r]) => guilds[id] && (r.muted || r.level || r.suppressEveryone || r.suppressRoles || r.digest));
   if (!rows.length) return null;
   return (<>
     <H3>{t('Servers with custom settings')}</H3>

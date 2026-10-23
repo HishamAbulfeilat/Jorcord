@@ -22,12 +22,12 @@ const registerBody = z.object({
 const removeBody = z.object({ platform: z.enum(['web', 'android', 'ios', 'desktop']).optional(), token: z.string().max(2048).optional(), endpoint: z.string().max(2048).optional() }).strict();
 
 const guildSettings = z.object({
-  muted: z.boolean(), mutedUntil: z.string().datetime().nullable(), suppressEveryone: z.boolean(), suppressRoles: z.boolean(), level: z.enum(['all', 'mentions', 'none']).nullable(),
+  muted: z.boolean(), mutedUntil: z.string().datetime().nullable(), suppressEveryone: z.boolean(), suppressRoles: z.boolean(), level: z.enum(['all', 'mentions', 'none']).nullable(), digest: z.boolean(),
 }).partial().strict();
-const channelSettings = z.object({ muted: z.boolean(), mutedUntil: z.string().datetime().nullable() }).partial().strict();
+const channelSettings = z.object({ muted: z.boolean(), mutedUntil: z.string().datetime().nullable(), digest: z.boolean() }).partial().strict();
 
 const settingsRow = (r: any) => ({
-  muted: !!r.muted, mutedUntil: iso(r.muted_until), suppressEveryone: !!r.suppress_everyone, suppressRoles: !!r.suppress_roles, level: (r.level ?? null) as 'all' | 'mentions' | 'none' | null,
+  muted: !!r.muted, mutedUntil: iso(r.muted_until), suppressEveryone: !!r.suppress_everyone, suppressRoles: !!r.suppress_roles, level: (r.level ?? null) as 'all' | 'mentions' | 'none' | null, digest: !!r.digest,
 });
 
 export function pushPublicRoutes(app: FastifyInstance, ctx: Ctx) {
@@ -91,7 +91,7 @@ export function pushRoutes(app: FastifyInstance, ctx: Ctx) {
     return {
       pushEnabled: !!u?.push_enabled,
       guilds: rows.filter((r) => r.scope === 'guild').map((r) => ({ guildId: r.target_id as string, ...settingsRow(r) })),
-      channels: rows.filter((r) => r.scope === 'channel').map((r) => ({ channelId: r.target_id as string, muted: !!r.muted, mutedUntil: iso(r.muted_until) })),
+      channels: rows.filter((r) => r.scope === 'channel').map((r) => ({ channelId: r.target_id as string, muted: !!r.muted, mutedUntil: iso(r.muted_until), digest: !!r.digest })),
     };
   };
   app.get('/users/@me/notification-settings', async (req) => allSettings(req.userId));
@@ -108,9 +108,9 @@ export function pushRoutes(app: FastifyInstance, ctx: Ctx) {
     // un-muting clears a pending timed mute; muting without a time is indefinite
     const mutedUntil = b.muted === false ? null : pick<string | null>('mutedUntil', 'muted_until', null);
     const [row] = await ctx.db.query(
-      `INSERT INTO notification_settings (user_id, scope, target_id, muted, muted_until, suppress_everyone, suppress_roles, level) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-       ON CONFLICT (user_id, scope, target_id) DO UPDATE SET muted = $4, muted_until = $5, suppress_everyone = $6, suppress_roles = $7, level = $8 RETURNING *`,
-      [userId, scope, target, muted, mutedUntil, pick('suppressEveryone', 'suppress_everyone', false), pick('suppressRoles', 'suppress_roles', false), pick('level', 'level', null)]);
+      `INSERT INTO notification_settings (user_id, scope, target_id, muted, muted_until, suppress_everyone, suppress_roles, level, digest) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+       ON CONFLICT (user_id, scope, target_id) DO UPDATE SET muted = $4, muted_until = $5, suppress_everyone = $6, suppress_roles = $7, level = $8, digest = $9 RETURNING *`,
+      [userId, scope, target, muted, mutedUntil, pick('suppressEveryone', 'suppress_everyone', false), pick('suppressRoles', 'suppress_roles', false), pick('level', 'level', null), pick('digest', 'digest', false)]);
     return row;
   }
 
@@ -127,7 +127,7 @@ export function pushRoutes(app: FastifyInstance, ctx: Ctx) {
     limitOrThrow(ctx.rl, `notifset:${req.userId}`, 60, 60_000, ctx.config.rateLimit);
     await channelAccess(ctx, req.userId, channelId);
     const r = await upsert(req.userId, 'channel', channelId, b);
-    return { channelId, muted: !!r.muted, mutedUntil: iso(r.muted_until) };
+    return { channelId, muted: !!r.muted, mutedUntil: iso(r.muted_until), digest: !!r.digest };
   });
   app.delete('/users/@me/notification-settings/:scope/:targetId', async (req, reply) => {
     const p = parse(z.object({ scope: z.enum(['guilds', 'channels']), targetId: idSchema }), req.params);

@@ -41,6 +41,7 @@ export function scheduledMessageRoutes(app: FastifyInstance, ctx: Ctx) {
     validContent(b.content, ids.length);
     const at = checkWindow(b.sendAt);
     const a = await channelAccess(ctx, req.userId, id);
+    if (a.channel.encrypted) throw badRequest('Secret chats cannot hold scheduled messages: the server would have to read them');
     await ageGate(ctx, req.userId, false, a);
     await assertCanPostIn(ctx, a, req.userId, { slowmode: false });
     await checkReply(id, b.replyTo);

@@ -112,6 +112,9 @@ export function buildSearchSql(mode: Ctx['search'], p: Omit<SearchParams, 'viewe
 
 export async function searchMessages(ctx: Ctx, p: SearchParams) {
   if (!p.channelIds.length) return [];
+  // secret chats are never searchable: the server holds only ciphertext (docs/E2EE_DMS.md)
+  const secret = new Set((await ctx.db.query('SELECT id FROM channels WHERE id = ANY($1::text[]) AND encrypted', [p.channelIds])).map((r) => r.id as string));
+  if (secret.size) { p = { ...p, channelIds: p.channelIds.filter((c) => !secret.has(c)) }; if (!p.channelIds.length) return []; }
   const { sql, params } = buildSearchSql(ctx.search, p);
   return messagesDTO(ctx, await ctx.db.query(sql, params), p.viewerId);
 }

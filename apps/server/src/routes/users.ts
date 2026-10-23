@@ -207,7 +207,7 @@ export function userRoutes(app: FastifyInstance, ctx: Ctx) {
     return channelsDTO(ctx, rows);
   });
   app.post('/users/@me/channels', async (req, reply) => {
-    const { recipientIds } = parse(z.object({ recipientIds: z.array(idSchema).min(1).max(9) }).strict(), req.body);
+    const { recipientIds, encrypted } = parse(z.object({ recipientIds: z.array(idSchema).min(1).max(9), /** opt-in end-to-end encrypted 1:1 "secret chat" (docs/E2EE_DMS.md) */ encrypted: z.boolean().optional() }).strict(), req.body);
     limitOrThrow(ctx.rl, `dmcreate:${req.userId}`, 20, 60_000, ctx.config.rateLimit); // DM spam brake
     const others = [...new Set(recipientIds)];
     if (others.includes(req.userId)) throw badRequest('Cannot DM yourself');
@@ -217,7 +217,8 @@ export function userRoutes(app: FastifyInstance, ctx: Ctx) {
     if (blocked.length) throw forbidden('Cannot message this user', 'BLOCKED');
     const all = [req.userId, ...others];
     const isGroup = others.length > 1;
-    const dmKey = isGroup ? null : [...all].sort().join(':');
+    if (encrypted && isGroup) throw badRequest('Secret chats are 1:1 only; there is no end-to-end encryption for group DMs');
+    const dmKey = isGroup ? null : [...all].sort().join(':') + (encrypted ? ':e2ee' : ''); // a secret chat lives next to the normal DM with the same person
     if (dmKey) {
       const [ex] = await ctx.db.query('SELECT * FROM channels WHERE dm_key = $1', [dmKey]);
       if (ex) return channelDTO(ctx, ex);
@@ -238,7 +239,7 @@ export function userRoutes(app: FastifyInstance, ctx: Ctx) {
     }
     const id = snowflake();
     await ctx.db.tx(async (q) => {
-      await q.query('INSERT INTO channels (id, guild_id, type, dm_key, owner_id, name) VALUES ($1,NULL,$2,$3,$4,NULL)', [id, isGroup ? 'group_dm' : 'dm', dmKey, isGroup ? req.userId : null]);
+      await q.query('INSERT INTO channels (id, guild_id, type, dm_key, owner_id, name, encrypted) VALUES ($1,NULL,$2,$3,$4,NULL,$5)', [id, isGroup ? 'group_dm' : 'dm', dmKey, isGroup ? req.userId : null, !!encrypted]);
       for (const u of all) await q.query('INSERT INTO dm_participants (channel_id, user_id, request) VALUES ($1,$2,$3)', [id, u, requestFor.has(u)]);
     });
     await ctx.pcache.invalidate({ k: 'dm', channelId: id });
