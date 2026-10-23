@@ -20,7 +20,7 @@ export async function serializeGuild(ctx: Ctx, guildId: string): Promise<Seriali
   return {
     v: 1,
     settings: { verificationLevel: g.verification_level ?? 0, explicitFilter: g.explicit_filter ?? 0, defaultNotifications: g.default_notifications ?? 'mentions', everyonePermissions: everyone?.permissions ?? DEFAULT_EVERYONE.toString() },
-    roles: roles.map((r) => ({ key: roleKey.get(r.id)!, name: r.name, color: r.color, hoist: r.hoist, mentionable: r.mentionable, permissions: r.permissions, position: r.position })),
+    roles: roles.map((r) => ({ key: roleKey.get(r.id)!, name: r.name, color: r.color, ...(r.color_secondary != null && r.color ? { colorSecondary: r.color_secondary as number } : {}), hoist: r.hoist, mentionable: r.mentionable, permissions: r.permissions, position: r.position })),
     channels: chRows.map((c) => ({
       key: chKey.get(c.id)!, type: c.type, name: c.name ?? '', topic: c.topic ?? null, nsfw: !!c.nsfw, slowmode: c.slowmode ?? 0, bitrate: c.bitrate ?? null, userLimit: c.user_limit ?? null,
       position: c.position, parentKey: c.parent_id ? chKey.get(c.parent_id) ?? null : null,
@@ -56,7 +56,7 @@ export async function createGuildFromTemplate(ctx: Ctx, ownerId: string, t: Seri
     const roleIds = new Map<string, string>([['everyone', id]]);
     for (const r of [...t.roles].sort((a, b) => a.position - b.position)) {
       const rid = snowflake(); roleIds.set(r.key, rid);
-      await q.query('INSERT INTO roles (id, guild_id, name, color, hoist, position, permissions, mentionable) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)', [rid, id, r.name, r.color, r.hoist, Math.max(1, r.position), r.permissions, r.mentionable]);
+      await q.query('INSERT INTO roles (id, guild_id, name, color, color_secondary, hoist, position, permissions, mentionable) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)', [rid, id, r.name, r.color, Number.isInteger(r.colorSecondary) && r.color ? r.colorSecondary : null, r.hoist, Math.max(1, r.position), r.permissions, r.mentionable]);
     }
     const chIds = new Map<string, string>(); let firstText: string | null = null;
     const ordered = [...t.channels].sort((a, b) => (a.type === 'category' ? 0 : 1) - (b.type === 'category' ? 0 : 1) || a.position - b.position); // categories first so children can point at them

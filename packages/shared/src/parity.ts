@@ -97,7 +97,7 @@ export interface ChannelFollow {
 export const MAX_FOLLOWERS_PER_CHANNEL = 25;
 
 // ---------- server templates, widget, insights ----------
-export interface TemplateRole { key: string; name: string; color: number; hoist: boolean; mentionable: boolean; permissions: string; position: number }
+export interface TemplateRole { key: string; name: string; color: number; /** Second stop of a gradient role colour; absent for a plain colour. */ colorSecondary?: number | null; hoist: boolean; mentionable: boolean; permissions: string; position: number }
 export interface TemplateChannel {
   key: string; type: 'text' | 'voice' | 'announcement' | 'stage' | 'forum' | 'category'; name: string; topic: string | null; nsfw: boolean; slowmode: number;
   bitrate: number | null; userLimit: number | null; position: number; parentKey: string | null;

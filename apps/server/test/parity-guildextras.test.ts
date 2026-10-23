@@ -57,6 +57,24 @@ describe('server templates', () => {
     expect((await api.req('POST', `/guilds/templates/${t.body.code}`, m.token, { name: 'Gone' })).status).toBe(404);
     wm.close();
   });
+
+  it('carries the gradient (secondary) role colour into a server created from the template, and plain roles stay plain', async () => {
+    const { owner, guild, m } = await setup();
+    const grad = (await api.req('POST', `/guilds/${guild.id}/roles`, owner.token, { name: 'Gradient', color: 0xff0000, colorSecondary: 0x0000ff })).body;
+    expect(grad.colorSecondary).toBe(0x0000ff);
+    await api.req('POST', `/guilds/${guild.id}/roles`, owner.token, { name: 'Plain', color: 0x00ff00 });
+    const t = await api.req('POST', `/guilds/${guild.id}/templates`, owner.token, { name: 'Gradient kit' });
+    expect(t.status).toBeLessThan(300);
+    const stored = (await env.ctx.db.query('SELECT serialized FROM guild_templates WHERE code = $1', [t.body.code]))[0].serialized;
+    expect(stored.roles.find((r: any) => r.name === 'Gradient').colorSecondary).toBe(0x0000ff);
+    expect('colorSecondary' in stored.roles.find((r: any) => r.name === 'Plain')).toBe(false); // old-format roles keep the same shape, so isDirty stays accurate
+    expect((await api.req('GET', `/guilds/${guild.id}/templates`, owner.token)).body[0].isDirty).toBe(false);
+    const made = await api.req('POST', `/guilds/templates/${t.body.code}`, m.token, { name: 'Gradient copy' });
+    expect(made.status).toBe(201);
+    const roles = (await api.req('GET', `/guilds/${made.body.id}`, m.token)).body.roles;
+    expect(roles.find((r: any) => r.name === 'Gradient')).toMatchObject({ color: 0xff0000, colorSecondary: 0x0000ff });
+    expect(roles.find((r: any) => r.name === 'Plain').colorSecondary ?? null).toBeNull();
+  });
 });
 
 describe('widget', () => {
