@@ -160,6 +160,28 @@ export async function checkAutomod(ctx: Ctx, guildId: string, userId: string, me
   }
 }
 
+/** Triggers that judge the words themselves; the others (links, caps, spam, mention counts) describe how a *person* types and do not fit bot output (a feed post always has a link). */
+const BOT_OUTPUT_TRIGGERS = ['keyword', 'keyword_preset', 'regex', 'invite_link'];
+
+/**
+ * Public bot / system output (8-ball, channel reminders, welcome and stream-feed posts) echoes user-controlled text (questions, reminder texts, usernames, stream titles),
+ * so it passes the server's content rules too. True when an enabled, non-test rule that blocks would hit `content` in these channels.
+ * No side effects (no warning, timeout or alert: nobody typed it). Callers fall back to an ephemeral reply or skip the post.
+ */
+export async function botOutputBlocked(ctx: Ctx, guildId: string | null | undefined, content: string, channelIds: string[] = []): Promise<boolean> {
+  if (!guildId || !content.trim()) return false;
+  const rules = await ctx.db.query('SELECT * FROM automod_rules WHERE guild_id = $1 AND enabled AND NOT test_mode AND trigger = ANY($2::text[])', [guildId, BOT_OUTPUT_TRIGGERS]);
+  const deadline = Date.now() + REGEX_BUDGET_MS;
+  for (const r of rules) {
+    if ((r.exempt_channels as string[]).some((x) => channelIds.includes(x))) continue;
+    if (!rowActions(r).some((a) => a !== 'alert')) continue; // alert-only rules never stop a message
+    let hit = false;
+    try { hit = ruleMatches(ruleLike(r), content, 0, deadline); } catch { hit = false; }
+    if (hit) return true;
+  }
+  return false;
+}
+
 /** Dry run for the admin UI: which enabled-or-not rules would match this text (spam needs history and is reported as not evaluated). No side effects. */
 export function testRules(rules: any[], content: string, mentionCount: number) {
   return rules.map((r) => ({ ruleId: r.id as string, name: r.name as string, trigger: r.trigger as string, enabled: !!r.enabled, testMode: !!r.test_mode, actions: rowActions(r),

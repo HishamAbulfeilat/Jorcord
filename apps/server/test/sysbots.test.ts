@@ -313,6 +313,28 @@ describe('Utility bot', () => {
     expect(e.text).toMatch(/^<@\d+> asked: Will it work\?\n8-ball says: .+/);
   });
 
+  it('public bot replies pass AutoMod: a blocked /8ball reply becomes ephemeral, a blocked channel reminder goes to DM', async () => {
+    const w = await world(['am1']);
+    const [u] = w.members as [Client];
+    const rule = await api.req('POST', `/guilds/${w.guild.id}/automod/rules`, w.owner.token, { name: 'kw', trigger: 'keyword', keywords: ['badword'], action: 'block' });
+    expect(rule.status).toBeLessThan(300);
+    const ok = await run(w, u, '8ball', opts({ question: 'harmless?' }));
+    expect(ok.msg.flags & 64).toBe(0); // clean text is still public
+    const blocked = await run(w, u, '8ball', opts({ question: 'is badword fine?' }));
+    expect(blocked.msg.flags & 64).toBe(64); // only the caller sees it
+    expect(blocked.text).toMatch(/Not posted publicly/);
+    expect((await history(w)).some((m) => m.content.includes('badword'))).toBe(false);
+    const add = (when: string, message: string, where?: string) => [{ name: 'add', type: 1, options: [{ name: 'in', type: 3, value: when }, { name: 'message', type: 3, value: message }, ...(where ? [{ name: 'where', type: 3, value: where }] : [])] } as any];
+    await run(w, u, 'remind', add('1h', 'say badword here', 'channel'));
+    await env.ctx.db.query(`UPDATE bot_reminders SET remind_at = now() - interval '1 second' WHERE user_id = $1 AND fired_at IS NULL`, [u.id]);
+    const ws = await listen(u);
+    await runSweeps(env.ctx);
+    const dm = await ws.waitEvent('MESSAGE_CREATE', (m) => m.content === 'Reminder: say badword here');
+    expect(dm.d.guildId ?? null).toBeNull();
+    expect((await history(w)).some((m) => m.content.includes('badword'))).toBe(false);
+    await env.ctx.db.query('DELETE FROM bot_reminders WHERE user_id = $1', [u.id]); // the /remind test below counts fired rows globally
+  });
+
   it('/poll: creates a real poll message authored by the bot; answers validated; SEND_POLLS required; the bot must be allowed to talk', async () => {
     const w = await world(['po', 'pnone']);
     const [u, nopoll] = w.members as [Client, Client];

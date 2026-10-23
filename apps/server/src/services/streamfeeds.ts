@@ -4,6 +4,7 @@ import { badRequest, ApiError } from '../errors';
 import { iso } from '../lib/ids';
 import { http, ProviderError } from '../lib/providerHttp';
 import { createMessage } from './messages';
+import { botOutputBlocked } from './automod';
 import { loadGuildPerm, permsFor } from './perms';
 
 /** Bot user that authors the announcements (same idea as the AutoMod user). */
@@ -190,6 +191,10 @@ async function announce(ctx: Ctx, f: any, v: { channel: string; title: string; u
   if (!channel || !['text', 'announcement'].includes(channel.type)) throw new Error('The announcement channel is gone');
   const plan = await mentionPlan(ctx, f);
   const content = (plan.prefix + renderTemplate(f.template, { channel: defang(v.channel, 100), title: defang(v.title, 150), url: v.url })).slice(0, 2000);
+  if (await botOutputBlocked(ctx, f.guild_id, content, [channel.id, ...(channel.parent_id ? [channel.parent_id] : [])])) { // titles are streamer-controlled: skip what the server's word filters block
+    ctx.log.info({ feed: f.id, guild: f.guild_id }, 'stream feed announcement skipped by AutoMod');
+    return;
+  }
   await createMessage(ctx, { channel, authorId: await feedUserId(ctx), content, senderPerms: plan.senderPerms, skipChecks: true, allowedMentions: { parse: [], roles: plan.roles } });
 }
 

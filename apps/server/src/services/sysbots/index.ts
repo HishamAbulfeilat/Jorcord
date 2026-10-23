@@ -12,6 +12,7 @@ import { parseCommand } from '../../lib/commands';
 import { loadGuildPerm } from '../perms';
 import { applyCallback, failInteraction } from '../interactions';
 import { isInstalled } from '../apps';
+import { botOutputBlocked } from '../automod';
 import { isUserFacing, permsIn, type CmdCtx, type SysBot } from './kit';
 import { moderationBot } from './moderation';
 import { utilityBot, fireDueBotReminders } from './utility';
@@ -90,13 +91,23 @@ export function runSystemInteraction(ctx: Ctx, app: any, row: any, payload: Inte
   void dispatch(ctx, app, row, payload).catch(async (e) => { ctx.log.warn({ err: e, bot: app.system_key }, 'system bot command failed'); await failInteraction(ctx, row.id).catch(() => {}); });
 }
 
+async function publicReplyBlocked(ctx: Ctx, row: any, content: string) {
+  const [ch] = await ctx.db.query('SELECT parent_id FROM channels WHERE id = $1', [row.channel_id]);
+  return botOutputBlocked(ctx, row.guild_id, content, [row.channel_id, ...(ch?.parent_id ? [ch.parent_id] : [])]);
+}
+
 async function dispatch(ctx: Ctx, app: any, row: any, payload: Interaction) {
   const bot = SYSTEM_BOTS.find((b) => b.key === app.system_key);
   const def = bot?.commands.find((c) => c.name === payload.data?.name);
   if (!bot || !def || row.type !== IT.APPLICATION_COMMAND || !row.guild_id) return failInteraction(ctx, row.id);
   const reply = async (content: string, o: { ephemeral?: boolean } = {}) => {
     const [fresh] = await ctx.db.query('SELECT * FROM interactions WHERE id = $1', [row.id]);
-    await applyCallback(ctx, fresh ?? row, { type: 4, data: { content: content.slice(0, 4000), flags: o.ephemeral === false ? 0 : MessageFlags.EPHEMERAL } });
+    let text = content;
+    let eph = o.ephemeral !== false;
+    if (!eph && (await publicReplyBlocked(ctx, row, content))) { // public output goes through the server's content rules; blocked -> only the caller sees it
+      eph = true; text = `${content}\n\n(Not posted publicly: it matches this server's AutoMod rules.)`;
+    }
+    await applyCallback(ctx, fresh ?? row, { type: 4, data: { content: text.slice(0, 4000), flags: eph ? MessageFlags.EPHEMERAL : 0 } });
   };
   try {
     // the install may have been removed between the click and now

@@ -3,6 +3,7 @@ import type { Ctx } from '../../ctx';
 import { badRequest, forbidden } from '../../errors';
 import { audit } from '../guilds';
 import { createMessage } from '../messages';
+import { botOutputBlocked } from '../automod';
 import { loadGuildPerm, needOutrank } from '../perms';
 import { memberDTO } from '../serializers';
 import { bool, channelOpt, roleOpt, str, sub, type CmdCtx, type SysBot } from './kit';
@@ -49,6 +50,7 @@ export async function greetNewMember(ctx: Ctx, app: any, guildId: string, userId
   if (!channel) return;
   const [n] = await ctx.db.query('SELECT count(*)::int AS n FROM members WHERE guild_id = $1', [guildId]);
   const content = render(cfg.message || DEFAULT_WELCOME, { user: userId, username: u.display_name ?? u.username, server: g.name, count: n.n });
+  if (await botOutputBlocked(ctx, guildId, content, [channel.id, ...(channel.parent_id ? [channel.parent_id] : [])])) return; // e.g. a username that trips a word filter: skip the public greeting
   await createMessage(ctx, { channel, authorId: app.bot_user_id, content: content.slice(0, 2000), applicationId: app.id, senderPerms: 0n, skipChecks: true, allowedMentions: { parse: [], users: [userId] } });
 }
 

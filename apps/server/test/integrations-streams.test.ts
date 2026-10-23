@@ -357,6 +357,21 @@ describe('stream feeds: polling and announcing', () => {
     expect((await api.req('GET', `/guilds/${guild.id}/stream-feeds`, owner.token)).body.feeds[0].lastAnnouncedAt).toBeTruthy();
   });
 
+  it('skips an announcement that the server\'s AutoMod word filter blocks, and still announces clean ones', async () => {
+    const { owner, guild, general } = await setup();
+    await api.req('POST', `/guilds/${guild.id}/automod/rules`, owner.token, { name: 'kw', trigger: 'keyword', keywords: ['forbidden'], action: 'block' });
+    const feed = { author: 'Chan', items: [{ id: 'oldoldold02', title: 'Old', at: Date.now() - DAY }] };
+    fakeYoutube({ [UC(41)]: feed });
+    await post(guild, owner, { provider: 'youtube', channel: UC(41), channelId: general.id });
+    await makeDue(); await pollStreamFeeds(env.ctx);
+    feed.items.unshift({ id: 'badbadbad01', title: 'Something forbidden here', at: Date.now() + 1000 });
+    await makeDue(); await pollStreamFeeds(env.ctx);
+    expect(await messagesIn(general.id)).toHaveLength(0);
+    feed.items.unshift({ id: 'goodgoodgo1', title: 'Fine title', at: Date.now() + 2000 });
+    await makeDue(); await pollStreamFeeds(env.ctx);
+    const msgs = await messagesIn(general.id); expect(msgs).toHaveLength(1); expect(msgs[0].content).toContain('Fine title');
+  });
+
   it('announces at most three uploads per check, oldest first, and skips the rest', async () => {
     const { owner, guild, general } = await setup();
     const feed = { author: 'Busy', items: [] as { id: string; title: string; at: number }[] };

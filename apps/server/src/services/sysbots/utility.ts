@@ -3,6 +3,7 @@ import { Perm, has, snowflake } from '@jorcord/shared';
 import type { Ctx } from '../../ctx';
 import { badRequest } from '../../errors';
 import { createMessage } from '../messages';
+import { botOutputBlocked } from '../automod';
 import { DM_PERMS, channelPermsLite } from '../perms';
 import { buildPoll } from '../polls';
 import { channelDTO } from '../serializers';
@@ -148,7 +149,8 @@ async function deliverReminder(ctx: Ctx, app: any, r: any) {
     const [channel] = await ctx.db.query('SELECT * FROM channels WHERE id = $1', [r.channel_id]);
     const mine = member && installed && channel ? await channelPermsLite(ctx, r.user_id, r.channel_id) : null;
     const bot = member && installed && channel ? await channelPermsLite(ctx, app.bot_user_id, r.channel_id) : null;
-    if (channel && mine && bot && has(mine.perms, Perm.SEND_MESSAGES) && has(bot.perms, Perm.SEND_MESSAGES)) { // still allowed to talk there: say it in public
+    const clean = channel && !(await botOutputBlocked(ctx, r.guild_id, text, [channel.id, ...(channel.parent_id ? [channel.parent_id] : [])])); // blocked by AutoMod -> falls through to the DM
+    if (channel && clean && mine && bot && has(mine.perms, Perm.SEND_MESSAGES) && has(bot.perms, Perm.SEND_MESSAGES)) { // still allowed to talk there: say it in public
       await createMessage(ctx, { channel, authorId: app.bot_user_id, content: `<@${r.user_id}> ${text}`.slice(0, 2000), applicationId: app.id, senderPerms: 0n, skipChecks: true, allowedMentions: { parse: [], users: [r.user_id] } });
       return;
     }
