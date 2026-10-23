@@ -38,8 +38,9 @@ function useMeasuredDuration(video: React.RefObject<HTMLVideoElement>) {
 
 export function ClipPreviewModal({ close }: { close: () => void }) {
   const clip = useClipUI((s) => s.clip);
-  const url = useMemo(() => (clip ? URL.createObjectURL(clip.blob) : ''), [clip]);
-  useEffect(() => () => { if (url) URL.revokeObjectURL(url); }, [url]);
+  // Created and revoked in the same effect: StrictMode runs effects twice in dev, which would revoke a memoized URL the <video> is still loading.
+  const [url, setUrl] = useState('');
+  useEffect(() => { if (!clip) { setUrl(''); return; } const u = URL.createObjectURL(clip.blob); setUrl(u); return () => URL.revokeObjectURL(u); }, [clip]);
   const video = useRef<HTMLVideoElement>(null); useMeasuredDuration(video);
   const targets = useMemo(shareTargets, []);
   const [, bump] = useState(0); useEffect(() => { void loadClipLimits().then(() => bump((n) => n + 1)); }, []); // the server's cap decides what can be shared
@@ -58,9 +59,9 @@ export function ClipPreviewModal({ close }: { close: () => void }) {
   return (
     <Modal title={t('Your clip')} onClose={done} width={560}
       footer={<><button className="btn btn-link" onClick={done}>{t('Discard')}</button>
-        <a className="btn btn-secondary inline-flex items-center gap-2" href={url} download={clipFileName(clip.at, clip.mimeType)}><Download size={16} />{t('Download')}</a>
+        <a className="btn btn-secondary inline-flex items-center gap-2" href={url || undefined} download={clipFileName(clip.at, clip.mimeType)}><Download size={16} />{t('Download')}</a>
         <button className="btn btn-primary inline-flex items-center gap-2" disabled={busy || !shareable || !target} onClick={() => void share()}><Share2 size={16} />{busy ? t('Sharing…') : t('Share to clips channel')}</button></>}>
-      <video ref={video} src={url} controls playsInline data-testid="clip-preview" className="aspect-video w-full rounded-lg bg-black" />
+      <video ref={video} src={url || undefined} controls playsInline data-testid="clip-preview" className="aspect-video w-full rounded-lg bg-black" />
       <p className="mt-2 text-sm text-muted" data-testid="clip-meta">{Math.round(clip.durationSec)} s · {fmtBytes(clip.blob.size)}</p>
       {!shareable && <p role="note" className="mt-2 text-sm text-warn" data-testid="clip-too-long">{t('Clips shared to a channel can be at most {n} seconds. Download this one, or save a shorter clip to share it.').replace('{n}', String(getShareMax()))}</p>}
       {shareable && targets.length === 0 && <p role="note" className="mt-2 text-sm text-muted" data-testid="clip-no-channel">{t('None of your servers has a clips channel you can post in. A server admin can mark a text channel as a clips channel in its settings.')}</p>}

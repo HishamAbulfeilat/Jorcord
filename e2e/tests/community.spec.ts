@@ -66,8 +66,8 @@ test('scheduled events: voice event, start/end lifecycle shows LIVE, cancel remo
   await A.page.getByTestId('events-entry').click();
   await A.page.getByRole('dialog', { name: 'Events' }).getByRole('button', { name: 'Create Event' }).click();
   const dlg = A.page.getByRole('dialog', { name: 'Create Event' });
-  await expect(dlg.locator('select')).toContainText('General'); // first voice channel
-  await dlg.locator('select').selectOption({ label: 'Lounge' });
+  await expect(dlg.getByLabel('Channel', { exact: true })).toContainText('General'); // first voice channel
+  await dlg.getByLabel('Channel', { exact: true }).selectOption({ label: 'Lounge' });
   await dlg.getByLabel('Event Topic').fill('Game night'); await dlg.getByLabel('Start Date').fill(local(inDays(2, 21)));
   await dlg.getByRole('button', { name: 'Create Event' }).click();
   const card = A.page.locator('[data-event]').filter({ hasText: 'Game night' });

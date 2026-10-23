@@ -49,6 +49,8 @@ test('record the last 30 s of my camera, preview it, share it to the clips chann
 
   // viewer (header button of a clips channel)
   await A.page.getByRole('navigation', { name: 'Channels' }).getByRole('button', { name: /clips/ }).first().click();
+  // wait for the route to land: until then the voice view's own "Clips" (recorder) button is the only match
+  await expect(A.page.getByRole('heading', { level: 1, name: 'clips', exact: true })).toBeVisible();
   await A.page.getByRole('button', { name: 'Clips', exact: true }).first().click();
   const card = A.page.getByTestId('clip-card');
   await expect(card).toHaveCount(1);

@@ -104,7 +104,7 @@ export async function openGuildSettings(page: Page, name: string, tab?: string |
 export const closeSettings = (page: Page) => page.getByRole('button', { name: 'Close settings' }).click();
 
 /** Pretend to be the Capacitor / Tauri wrapper before any app code runs. */
-export async function injectNative(ctx: BrowserContext, kind: 'android' | 'ios' | 'tauri', opts: { launchUrl?: string; deepLinks?: string[] } = {}) {
+export async function injectNative(ctx: BrowserContext, kind: 'android' | 'ios' | 'tauri', opts: { launchUrl?: string; deepLinks?: string[]; /** JorcordScreenShare native plugin: reports supported or not (default unsupported) */ screenShare?: 'supported' | 'unsupported' } = {}) {
   await ctx.addInitScript(({ kind, opts }) => {
     const w = window as any; w.__nativeLog = [] as any[]; w.__listeners = {} as Record<string, (d: any) => void>;
     const plugin = (name: string, extra: Record<string, unknown> = {}) => new Proxy({ ...extra }, {
@@ -129,6 +129,7 @@ export async function injectNative(ctx: BrowserContext, kind: 'android' | 'ios' 
             unregister: () => Promise.resolve(),
           }),
           StatusBar: plugin('StatusBar'), Keyboard: plugin('Keyboard'), Haptics: plugin('Haptics'), CallService: plugin('CallService'),
+          JorcordScreenShare: plugin('JorcordScreenShare', { isSupported: () => Promise.resolve({ supported: opts.screenShare === 'supported' }) }),
         },
       };
     }

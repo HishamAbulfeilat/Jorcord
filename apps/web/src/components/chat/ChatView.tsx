@@ -4,6 +4,7 @@ import { Megaphone, Bell, BellOff, Hash, Menu, MessagesSquare, Pin, Search, Uplo
 import type { Channel } from '@jorcord/shared';
 import { useData } from '@/stores/data';
 import { useUI } from '@/stores/ui';
+import { useSidebarChannels } from '@/lib/useGuild';
 import { MessageList } from './MessageList';
 import { Composer } from './Composer';
 import { TypingIndicator } from './TypingIndicator';
@@ -153,6 +154,10 @@ function ThreadBanner({ channel }: { channel: Channel }) {
 /** Age-restricted channel interstitial: the person attests they are 18+ (saved on the account), or goes back. */
 function AgeGate({ channel }: { channel: Channel }) {
   const nav = useNav(); const [busy, setBusy] = useState(false);
+  // "Back" must not land on another gated channel (the server's last-visited / first channel may be this one)
+  const { uncategorized, categories } = useSidebarChannels(channel.guildId ?? '');
+  const safe = [...uncategorized, ...categories.flatMap((c) => c.children)].find((c) => c.id !== channel.id && !c.nsfw && (c.type === 'text' || c.type === 'announcement' || c.type === 'forum' || c.type === 'media'));
+  const back = () => nav.go(channel.guildId, safe?.id);
   const yes = async () => { setBusy(true); try { await api.users.confirmAge(); useData.setState((s) => ({ me: s.me ? { ...s.me, ageConfirmed: true } : s.me })); } catch (e) { toastError(e); } finally { setBusy(false); } };
   return (
     <div role="alertdialog" aria-labelledby="age-title" data-testid="age-gate" className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-8 text-center">
@@ -160,7 +165,7 @@ function AgeGate({ channel }: { channel: Channel }) {
       <h2 id="age-title" className="text-xl font-bold text-header">{t('This channel is age-restricted')}</h2>
       <p className="max-w-sm text-sm text-muted">{t('#{name} may contain content that is not appropriate for everyone. Are you 18 or older?', { name: channel.name ?? '' })}</p>
       <div className="mt-2 flex gap-2">
-        <button className="btn btn-secondary" onClick={() => nav.go(channel.guildId)}>{t('No, take me back')}</button>
+        <button className="btn btn-secondary" onClick={back}>{t('No, take me back')}</button>
         <button className="btn btn-danger" disabled={busy} onClick={() => void yes()}>{t('Yes, I am 18 or older')}</button>
       </div>
     </div>

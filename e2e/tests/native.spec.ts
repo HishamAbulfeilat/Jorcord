@@ -5,7 +5,7 @@ const SERVER = 'http://127.0.0.1:3100';
 test('Capacitor wrapper: connect screen, cross-origin API/WS, deep link, back button, push, no screen share', async ({ browser }) => {
   const host = await newUser(browser, 'Hosty'); await createServer(host.page, 'Native HQ'); const invite = await makeInvite(host.page);
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, baseURL: 'http://127.0.0.1:5273', serviceWorkers: 'block', permissions: ['microphone', 'camera'], userAgent: 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 Chrome/130.0.0.0 Mobile Safari/537.36' });
-  await injectNative(ctx, 'android');
+  await injectNative(ctx, 'android', { screenShare: 'unsupported' });
   const page = await ctx.newPage(); const hits: string[] = []; page.on('request', (r) => hits.push(r.url()));
   await page.goto('/');
   await expect(page).toHaveURL(/\/connect/); await expect(page.getByTestId('server-setup')).toBeVisible();
@@ -46,12 +46,12 @@ test('Capacitor wrapper: connect screen, cross-origin API/WS, deep link, back bu
   await ctx.close(); await host.ctx.close();
 });
 
-test('Capacitor: screen share is hidden in a voice channel', async ({ browser }) => {
+for (const mode of ['unsupported', 'supported'] as const) test(`Capacitor: screen share is ${mode === 'supported' ? 'offered' : 'hidden'} in a voice channel when the native plugin reports ${mode}`, async ({ browser }) => {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, baseURL: 'http://127.0.0.1:5273', serviceWorkers: 'block', permissions: ['microphone', 'camera'] });
-  await injectNative(ctx, 'ios');
+  await injectNative(ctx, 'ios', { screenShare: mode });
   const page = await ctx.newPage(); await page.addInitScript((s) => localStorage.setItem('jorcord.server.v1', s), SERVER);
   await page.goto('/register');
-  const u = 'ios' + Math.random().toString(36).slice(2, 8);
+  const u = 'ios' + mode.slice(0, 3) + Math.random().toString(36).slice(2, 8);
   await page.getByLabel('Email').fill(`${u}@example.test`); await page.getByLabel('Username').fill(u); await page.getByLabel('Password').fill('correct-horse-battery'); await page.getByLabel(/I agree/).check();
   await page.getByRole('button', { name: /continue/i }).click(); await page.waitForURL(/\/channels\/@me/);
   const t = await page.evaluate(() => JSON.parse(localStorage.getItem('jorcord.auth.v1')!).access);
@@ -61,7 +61,7 @@ test('Capacitor: screen share is hidden in a voice channel', async ({ browser })
   await page.getByRole('button', { name: 'Open navigation' }).click();
   await page.getByRole('dialog', { name: 'Navigation' }).getByRole('navigation', { name: 'Channels' }).getByRole('button', { name: 'General', exact: true }).click();
   await expect(page.getByTestId('voice-view').getByRole('button', { name: 'Disconnect' })).toBeVisible();
-  await expect(page.getByRole('button', { name: /Share Your Screen|Go Live/ })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /Share Your Screen/ })).toHaveCount(mode === 'supported' ? 1 : 0);
   await ctx.close();
 });
 
