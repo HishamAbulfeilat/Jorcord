@@ -243,6 +243,19 @@ jobs:
           sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev patchelf rpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @jorcord/shared build --if-present
+      - name: Windows code signing setup
+        if: matrix.name == 'windows'
+        shell: bash
+        env:
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          TRUSTED_SIGNING_ENDPOINT: ${{ secrets.TRUSTED_SIGNING_ENDPOINT }}
+          TRUSTED_SIGNING_ACCOUNT: ${{ secrets.TRUSTED_SIGNING_ACCOUNT }}
+          TRUSTED_SIGNING_PROFILE: ${{ secrets.TRUSTED_SIGNING_PROFILE }}
+        run: bash .github/scripts/windows-sign-setup.sh
       - name: Build bundles
         shell: bash
         working-directory: apps/desktop
@@ -256,6 +269,9 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
           NO_STRIP: 'true'
           APPIMAGE_EXTRACT_AND_RUN: '1'
         run: |
@@ -266,7 +282,16 @@ jobs:
           for v in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do
             eval "[ -n \"\$$v\" ] || unset $v"
           done
+          ARGS="$ARGS ${WIN_SIGN_ARGS:-}"
           pnpm exec tauri build $ARGS
+      - name: Verify signatures (only when signing is configured)
+        shell: bash
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+        run: |
+          if [ "${{ matrix.name }}" = windows ] && [ "${WIN_SIGNED:-}" = 1 ]; then bash .github/scripts/verify-signatures.sh windows apps/desktop/src-tauri/target
+          elif [ "${{ startsWith(matrix.os, 'macos') }}" = true ] && [ -n "$APPLE_CERTIFICATE" ]; then bash .github/scripts/verify-signatures.sh macos apps/desktop/src-tauri/target
+          else echo "Signing not configured for ${{ matrix.name }}: skipped"; fi
       - name: Collect installers
         shell: bash
         run: |
@@ -361,7 +386,7 @@ jobs:
 
   # ---------------------------------------------------------------- ios
   ios:
-    # Unsigned: Apple signing needs your account. We package the unsigned archive as an .ipa that sideloaders can re-sign.
+    # Signed .ipa (and optional TestFlight upload) when the IOS_* secrets exist; otherwise an unsigned archive packaged as an .ipa for sideloaders.
     needs: [prepare, draft]
     runs-on: macos-15
     timeout-minutes: 60
@@ -378,24 +403,20 @@ jobs:
       - run: pnpm --filter @jorcord/shared build --if-present
       - run: pnpm --filter @jorcord/web build
       - run: pnpm --filter @jorcord/mobile exec cap sync ios
-      - name: Unsigned archive
-        working-directory: apps/mobile/ios/App
+      - name: Build .ipa (signed when the iOS secrets are set, otherwise unsigned)
         env:
           APP_VERSION: ${{ needs.prepare.outputs.version }}
-        run: |
-          WS=App.xcworkspace; [ -d "$WS" ] || WS=""
-          if [ -d App.xcworkspace ]; then TARGET="-workspace App.xcworkspace"; else TARGET="-project App.xcodeproj"; fi
-          xcodebuild $TARGET -scheme App -configuration Release -sdk iphoneos \
-            -archivePath "$RUNNER_TEMP/Jorcord.xcarchive" archive \
-            MARKETING_VERSION="$APP_VERSION" CURRENT_PROJECT_VERSION="${{ github.run_number }}" \
-            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" | tail -n 60
-      - name: Package unsigned .ipa
-        run: |
-          set -e
-          mkdir -p out ipa/Payload
-          cp -R "$RUNNER_TEMP/Jorcord.xcarchive/Products/Applications/App.app" ipa/Payload/
-          (cd ipa && zip -qry "$GITHUB_WORKSPACE/out/Jorcord-${{ needs.prepare.outputs.version }}-ios-unsigned.ipa" Payload)
-          ls -la out
+          BUILD_NUMBER: ${{ github.run_number }}
+          IOS_CERTIFICATE_P12_B64: ${{ secrets.IOS_CERTIFICATE_P12_B64 }}
+          IOS_CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
+          IOS_PROVISIONING_PROFILE_B64: ${{ secrets.IOS_PROVISIONING_PROFILE_B64 }}
+          IOS_EXTRA_PROFILES_B64: ${{ secrets.IOS_EXTRA_PROFILES_B64 }}
+          IOS_EXPORT_METHOD: ${{ vars.IOS_EXPORT_METHOD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APP_STORE_CONNECT_KEY_B64: ${{ secrets.APP_STORE_CONNECT_KEY_B64 }}
+        run: bash .github/scripts/ios-build.sh
       - run: .github/scripts/upload-assets.sh ${{ needs.draft.outputs.release_id }} out/*
 
   # ---------------------------------------------------------------- publish (single, non-draft release)

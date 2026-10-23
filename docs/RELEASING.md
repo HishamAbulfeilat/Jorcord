@@ -51,6 +51,10 @@ If the iOS job fails the release is still published (the notes say so). Any othe
 | `GOOGLE_SERVICES_JSON_B64` | Android push (FCM) enabled | app builds, push disabled |
 | `TAURI_SIGNING_PRIVATE_KEY(_PASSWORD)` | desktop updater artifacts are produced and `latest.json` is published. The matching public key is already committed in `apps/desktop/src-tauri/tauri.conf.json` (`plugins.updater.pubkey`, endpoint `releases/latest/download/latest.json`); the secret must be the private half of that key pair, otherwise installed apps reject the update | the build switches to `tauri.noupdater.conf.json`, updater artifacts and `latest.json` are skipped, installed apps get no update |
 | `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY`, `APPLE_ID`, `APPLE_PASSWORD`, `APPLE_TEAM_ID` | macOS builds are signed + notarized | unsigned `.dmg` (right-click > Open, or `xattr -cr`) |
+| `WINDOWS_CERTIFICATE(_PASSWORD)` or `AZURE_*` + `TRUSTED_SIGNING_*` | Windows installers are Authenticode signed | unsigned (SmartScreen warning) |
+| `IOS_CERTIFICATE_P12_B64`, `IOS_CERTIFICATE_PASSWORD`, `IOS_PROVISIONING_PROFILE_B64`, `APPLE_TEAM_ID` (+ optional `APP_STORE_CONNECT_*`) | signed iOS `.ipa`, optional TestFlight upload | unsigned sideload `.ipa` |
+
+Details and how to obtain each: `docs/CODE_SIGNING.md`.
 
 Create the Android key once and keep it forever:
 `keytool -genkeypair -v -keystore release.jks -alias jorcord -keyalg RSA -keysize 2048 -validity 10000` then

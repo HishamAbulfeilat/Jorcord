@@ -39,7 +39,7 @@ the placeholder key; for local unsigned builds set `"createUpdaterArtifacts": fa
 Screen sharing: works via the web app's `getDisplayMedia` on Windows (WebView2) and macOS 13+ (grant Screen Recording in System
 Settings). WebKitGTK on Linux has limited support (Wayland portals); document or hide the button there.
 
-Code signing (optional): macOS needs `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY`, `APPLE_ID`, `APPLE_PASSWORD`, `APPLE_TEAM_ID`; Windows needs a code-signing cert (not wired; unsigned builds show SmartScreen warnings).
+Code signing (optional): macOS needs `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY`, `APPLE_ID`, `APPLE_PASSWORD`, `APPLE_TEAM_ID`; Windows takes a PFX certificate or Azure Trusted Signing; iOS takes a distribution certificate and provisioning profile. All are wired in the release workflow and skipped when the secrets are absent. See `docs/CODE_SIGNING.md` for the secrets and how to create them.
 
 ## Android (Capacitor)
 
