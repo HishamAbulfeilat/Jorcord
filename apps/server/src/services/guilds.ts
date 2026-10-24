@@ -1,4 +1,5 @@
 import { AuditActionType, DEFAULT_EVERYONE, Perm, has, snowflake, type Overwrite, type GuildFull } from '@jorcord/shared';
+import { currentAuditReason } from '../lib/auditReason';
 import type { Ctx } from '../ctx';
 import type { Queryable } from '../db';
 import { badRequest, notFound } from '../errors';
@@ -9,7 +10,7 @@ import { loadGuildPerm, permsFor } from './perms';
 export async function audit(ctx: Ctx, guildId: string, actorId: string, action: string, targetId: string | null = null, changes: unknown = null, reason: string | null = null) {
   const actionType = (AuditActionType as Record<string, number>)[action] ?? null; // numeric taxonomy; the string `action` stays the primary key for clients
   await ctx.db.query('INSERT INTO audit_log (id, guild_id, actor_id, action, target_id, changes, reason, action_type) VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,$8)',
-    [snowflake(), guildId, actorId, action, targetId, changes === null ? null : JSON.stringify(changes), reason, actionType]);
+    [snowflake(), guildId, actorId, action, targetId, changes === null ? null : JSON.stringify(changes), reason ?? currentAuditReason(), actionType]);
 }
 
 type TemplateChannel = { name: string; type: 'text' | 'voice' | 'announcement' | 'stage' | 'forum' };

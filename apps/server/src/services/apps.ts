@@ -24,7 +24,7 @@ export async function applicationDTO(ctx: Ctx, r: any, secrets: { token?: string
   const [bot] = await ctx.db.query('SELECT * FROM users WHERE id = $1', [r.bot_user_id]);
   return {
     id: r.id, ownerId: r.owner_id, name: r.name, description: r.description ?? '', icon: r.icon ?? null, botUser: userDTO(ctx, bot), botPublic: r.bot_public,
-    redirectUris: r.redirect_uris ?? [], publicKey: r.public_key, interactionsEndpointUrl: r.interactions_endpoint_url ?? null, privilegedIntents: r.privileged_intents ?? 0, createdAt: iso(r.created_at)!,
+    redirectUris: r.redirect_uris ?? [], publicKey: r.public_key, interactionsEndpointUrl: r.interactions_endpoint_url ?? null, privilegedIntents: r.privileged_intents ?? 0, activityUrl: r.activity_url ?? null, createdAt: iso(r.created_at)!,
     directory: { listed: !!r.directory_listed, category: r.directory_category ?? 'other', summary: r.directory_summary ?? '', tags: r.directory_tags ?? [], permissions: r.directory_permissions ?? '0' },
     ...(secrets.token ? { token: secrets.token } : {}), ...(secrets.clientSecret ? { clientSecret: secrets.clientSecret } : {}),
   };

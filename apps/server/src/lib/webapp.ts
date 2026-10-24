@@ -28,6 +28,8 @@ export interface CspOptions {
   host?: string; secure?: boolean;
   /** Absolute LiveKit signalling origins from LIVEKIT_URL (ws/wss/http/https); empty for LIVEKIT_URL=auto (same origin). */
   livekitConnect?: string[];
+  /** https origins of registered third-party embedded activities (frame-src allowlist; nothing else may be framed). */
+  frameSrc?: string[];
 }
 
 const LOOPBACK = /^(localhost|127\.0\.0\.1|\[::1\])$/i;
@@ -52,6 +54,7 @@ export function buildCsp(o: CspOptions = {}): string {
     "default-src 'self'", "script-src 'self' 'wasm-unsafe-eval'", "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "font-src 'self' data: https://fonts.gstatic.com", "img-src 'self' data: blob: https:", "media-src 'self' data: blob: https:",
     `connect-src ${[...connect].join(' ')}`, "worker-src 'self' blob:", "manifest-src 'self'", "object-src 'none'",
+    `frame-src 'self'${(o.frameSrc ?? []).filter((x) => /^https:\/\/[a-z0-9.\-]+(:\d+)?$/i.test(x)).map((x) => ` ${x}`).join('')}`,
     "base-uri 'self'", "form-action 'self'", "frame-ancestors 'none'",
   ].join('; ');
 }
@@ -64,15 +67,16 @@ function cacheControl(rel: string): string {
   return 'no-cache'; // index.html, sw.js, registerSW.js, manifest, icons: always revalidate (ETag makes it cheap)
 }
 
-export function createWebApp(root: string, opts: { livekitConnect?: string[] } = {}): WebApp {
+export function createWebApp(root: string, opts: { livekitConnect?: string[]; activityOrigins?: () => Promise<string[]> } = {}): WebApp {
   const base = resolve(root);
 
   async function send(req: FastifyRequest, reply: FastifyReply, abs: string, rel: string): Promise<boolean> {
     const st = await stat(abs).catch(() => null);
     if (!st?.isFile()) return false;
+    const frameSrc = rel === 'index.html' && opts.activityOrigins ? await opts.activityOrigins().catch(() => []) : [];
     const etag = `W/"${st.size.toString(16)}-${Math.floor(st.mtimeMs).toString(16)}"`;
     reply.header('etag', etag).header('last-modified', st.mtime.toUTCString()).header('cache-control', cacheControl(rel))
-      .header('content-security-policy', buildCsp({ host: req.headers.host, secure: req.protocol === 'https', livekitConnect: opts.livekitConnect })).header('x-content-type-options', 'nosniff').header('cross-origin-resource-policy', 'same-origin')
+      .header('content-security-policy', buildCsp({ host: req.headers.host, secure: req.protocol === 'https', livekitConnect: opts.livekitConnect, frameSrc })).header('x-content-type-options', 'nosniff').header('cross-origin-resource-policy', 'same-origin')
       .header('referrer-policy', 'same-origin').header('permissions-policy', 'camera=(self), microphone=(self), display-capture=(self), geolocation=(), payment=(), usb=()');
     if (rel === 'sw.js') reply.header('service-worker-allowed', '/');
     if (req.headers['if-none-match'] === etag) { reply.code(304).send(); return true; }

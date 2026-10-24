@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { ALL_PERMS, DIRECTORY_CATEGORY_IDS, has, DIRECTORY_TAG_RE, OAuthScopes, PRIVILEGED_INTENTS, Perm, snowflake, type OAuthAuthorizePreview, type OAuthAuthorizeResult, type OAuthScope } from '@jorcord/shared';
+import { activityOrigin, ALL_PERMS, DIRECTORY_CATEGORY_IDS, has, DIRECTORY_TAG_RE, OAuthScopes, PRIVILEGED_INTENTS, Perm, snowflake, type OAuthAuthorizePreview, type OAuthAuthorizeResult, type OAuthScope } from '@jorcord/shared';
 import type { Ctx } from '../ctx';
 import { ApiError, badRequest, forbidden, notFound, unauthorized } from '../errors';
 import { generateAppKeys } from '../lib/interactionSig';
@@ -10,6 +10,8 @@ import { assetUrl, idSchema, parse } from '../lib/ids';
 import { limitOrThrow } from '../lib/ratelimit';
 import { applicationDTO, getApplication, installApplication, newBotToken } from '../services/apps';
 import { audit, buildGuildFull } from '../services/guilds';
+import { resetActivityOriginCache } from '../services/embeddedActivities';
+import { installApplicationForUser } from '../services/userInstalls';
 import { pingInteractionsEndpoint } from '../services/interactions';
 import { guildAccess, guildPerms, need } from '../services/perms';
 import { userDTO } from '../services/serializers';
@@ -27,6 +29,8 @@ const appFields = {
   /** App Directory listing (public bots only). */
   directoryListed: z.boolean(), directoryCategory: z.enum(DIRECTORY_CATEGORY_IDS), directorySummary: z.string().trim().max(140),
   directoryTags: z.array(z.string().regex(DIRECTORY_TAG_RE, 'tags are 2-20 chars: a-z 0-9 -')).max(5), directoryPermissions: z.string().regex(/^\d{1,20}$/),
+  /** Embedded (iframe) activity: https URL, no credentials. */
+  activityUrl: z.string().max(512).nullable().refine((u) => u === null || activityOrigin(u) !== null, 'must be an https URL without credentials'),
 };
 const MAX_APPS_PER_USER = 25;
 
@@ -76,7 +80,7 @@ export function applicationRoutes(app: FastifyInstance, ctx: Ctx) {
     if (b.interactionsEndpointUrl) await pingInteractionsEndpoint(ctx, row, b.interactionsEndpointUrl); // must answer a signed PING with {type:1}
     const sets: string[] = [], vals: unknown[] = [id];
     const col: Record<string, string> = { name: 'name', description: 'description', icon: 'icon', redirectUris: 'redirect_uris', botPublic: 'bot_public', interactionsEndpointUrl: 'interactions_endpoint_url', privilegedIntents: 'privileged_intents',
-      directoryListed: 'directory_listed', directoryCategory: 'directory_category', directorySummary: 'directory_summary', directoryTags: 'directory_tags', directoryPermissions: 'directory_permissions' };
+      directoryListed: 'directory_listed', directoryCategory: 'directory_category', directorySummary: 'directory_summary', directoryTags: 'directory_tags', directoryPermissions: 'directory_permissions', activityUrl: 'activity_url' };
     // a private bot is never listed; listing needs a public bot with a real description and summary
     const bag = b as Record<string, any>;
     if (bag.botPublic === false) bag.directoryListed = false;
@@ -92,6 +96,7 @@ export function applicationRoutes(app: FastifyInstance, ctx: Ctx) {
     for (const [k, v] of Object.entries(b)) { vals.push(jsonCols.has(k) ? JSON.stringify(v) : v); sets.push(`${col[k]} = $${vals.length}${jsonCols.has(k) ? '::jsonb' : ''}`); }
     if (bag.directoryListed === true && !row.directory_listed) sets.push('directory_listed_at = now()');
     const dropped = b.privilegedIntents !== undefined && (row.privileged_intents & ~b.privilegedIntents) !== 0;
+    if (b.activityUrl !== undefined) resetActivityOriginCache();
     if (sets.length) await ctx.db.query(`UPDATE applications SET ${sets.join(', ')} WHERE id = $1`, vals);
     if (dropped) ctx.hub.disconnectAuthSession(`bot:${id}`); // sessions that rely on a switched-off privileged intent must re-identify
     if (b.name !== undefined || b.icon !== undefined) await ctx.db.query('UPDATE users SET display_name = COALESCE($2, display_name), username = COALESCE($2, username), avatar = CASE WHEN $4 THEN $3 ELSE avatar END WHERE id = $1', [row.bot_user_id, b.name ?? null, b.icon ?? null, b.icon !== undefined]);
@@ -165,14 +170,18 @@ export function applicationRoutes(app: FastifyInstance, ctx: Ctx) {
   });
 
   app.post('/oauth2/authorize', async (req, reply): Promise<OAuthAuthorizeResult> => {
-    const b = parse(z.object({ clientId: idSchema, scope: scopeParam, permissions: permsParam.optional(), guildId: idSchema.optional(), redirectUri: z.string().max(512).optional(), state: z.string().max(512).optional(), codeChallenge: pkceChallenge.optional(), codeChallengeMethod: z.literal('S256').optional() }).strict(), req.body);
+    const b = parse(z.object({ clientId: idSchema, scope: scopeParam, permissions: permsParam.optional(), guildId: idSchema.optional(), integrationType: z.union([z.literal(0), z.literal(1)]).optional(), redirectUri: z.string().max(512).optional(), state: z.string().max(512).optional(), codeChallenge: pkceChallenge.optional(), codeChallengeMethod: z.literal('S256').optional() }).strict(), req.body);
     if (!!b.codeChallenge !== !!b.codeChallengeMethod) throw badRequest('codeChallenge and codeChallengeMethod (S256) go together');
     limitOrThrow(ctx.rl, `oauth-authz:${req.userId}`, 20, 60_000, ctx.config.rateLimit);
     const scopes = parseScopes(b.scope);
     const row = await getApplication(ctx, b.clientId);
     if (!row || ((scopes.includes('bot') || scopes.includes('applications.commands')) && !row.bot_public && row.owner_id !== req.userId)) throw notFound('Application');
     const out: OAuthAuthorizeResult = {};
-    if (scopes.includes('bot') || scopes.includes('applications.commands')) {
+    if (b.integrationType === 1) { // user install: no server, no bot member, only the app's user-installable commands
+      if (!scopes.includes('applications.commands') || scopes.includes('bot')) throw badRequest('A user install takes the applications.commands scope only');
+      await installApplicationForUser(ctx, row.id, req.userId);
+      out.userInstalled = true;
+    } else if (scopes.includes('bot') || scopes.includes('applications.commands')) {
       if (!b.guildId) throw badRequest('guildId is required for the bot and applications.commands scopes');
       const gp = await guildAccess(ctx, req.userId, b.guildId); // 404 for non-members
       const perms = guildPerms(gp);

@@ -11,3 +11,4 @@ export * from './stickers';
 export * from './streamfeeds';
 export * from './trust';
 export * from './privacykit';
+export * from './parity3d';

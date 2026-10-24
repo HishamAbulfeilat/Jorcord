@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { Perm, has } from '@jorcord/shared';
 import {
   ComponentType, INTERACTION_ACK_DEADLINE_MS, INTERACTION_TOKEN_TTL_MS, InteractionCallbackType as CB, InteractionType as IT, MessageFlags, CommandType,
-  snowflake, type Component, type Interaction, type Message,
+  snowflake, InteractionContextType as CTX, type Component, type Interaction, type Message,
 } from '@jorcord/shared';
 import type { Ctx } from '../ctx';
 import { ApiError, badRequest, forbidden, notFound } from '../errors';
@@ -15,6 +15,7 @@ import { canUseCommand, validateInvocation } from './commands';
 import { createMessage } from './messages';
 import { DM_PERMS, loadGuildPerm, loadOverwrites, permsFor, type Access } from './perms';
 import { isInstalled } from './apps';
+import { commandAllowsContext, commandAllowsIntegration, isUserInstalled } from './userInstalls';
 import { runSystemInteraction } from './sysbots';
 import { memberDTO, messageDTO, userDTO } from './serializers';
 
@@ -51,6 +52,8 @@ async function payloadFor(ctx: Ctx, row: any, token: string, app: any, channel: 
     id: row.id, applicationId: app.id, type: row.type, token, version: 1, guildId: row.guild_id ?? null, channelId: row.channel_id ?? null, user: userDTO(ctx, userRow),
     ...(row.guild_id ? { member: await memberDTO(ctx, row.guild_id, row.user_id) } : {}), appPermissions: (await botChannelPerms(ctx, app.bot_user_id, channel)).toString(), locale: 'en-US',
     ...(extra.data ? { data: extra.data } : {}), ...(extra.message ? { message: extra.message } : {}),
+    ...(row.context != null ? { context: row.context } : {}),
+    authorizingIntegrationOwners: row.integration_type === 1 ? { '1': row.user_id } : row.integration_type === 0 ? { '0': row.guild_id ?? '0' } : {},
   };
 }
 
@@ -87,11 +90,15 @@ const invokeSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal(IT.MODAL_SUBMIT), channelId: z.string().regex(/^\d{1,20}$/), interactionId: z.string().regex(/^\d{1,20}$/), data: z.object({ customId: z.string().max(100), components: modalRows }).strict() }).strict(),
 ]);
 
-async function newRow(ctx: Ctx, o: { app: any; type: number; userId: string; channel: any; messageId?: string | null; data: unknown }) {
+interface Reach { integrationType: number | null; context: number }
+/** User-installed app used where the bot is not a member: the app can only answer the user privately (interaction-token messages, ephemeral). */
+const userOnly = (row: any) => row.integration_type === 1 && row.context !== CTX.BOT_DM;
+
+async function newRow(ctx: Ctx, o: { app: any; type: number; userId: string; channel: any; messageId?: string | null; data: unknown; reach?: Reach }) {
   const id = snowflake(), token = randomToken(32), now = Date.now();
   const [row] = await ctx.db.query(
-    `INSERT INTO interactions (id, application_id, type, token_hash, user_id, guild_id, channel_id, message_id, data, created_at, expires_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10,$11) RETURNING *`,
-    [id, o.app.id, o.type, sha256(token), o.userId, o.channel.guild_id ?? null, o.channel.id, o.messageId ?? null, JSON.stringify(o.data), new Date(now), new Date(now + INTERACTION_TOKEN_TTL_MS)]);
+    `INSERT INTO interactions (id, application_id, type, token_hash, user_id, guild_id, channel_id, message_id, data, created_at, expires_at, integration_type, context) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10,$11,$12,$13) RETURNING *`,
+    [id, o.app.id, o.type, sha256(token), o.userId, o.channel.guild_id ?? null, o.channel.id, o.messageId ?? null, JSON.stringify(o.data), new Date(now), new Date(now + INTERACTION_TOKEN_TTL_MS), o.reach?.integrationType ?? null, o.reach?.context ?? null]);
   return { row, token };
 }
 
@@ -103,9 +110,20 @@ export async function invoke(ctx: Ctx, userId: string, raw: unknown, access: (ch
   if (['category', 'forum', 'media'].includes(channel.type)) throw badRequest('Interactions cannot be used in this channel');
   if (a.gp?.timedOut) throw forbidden('You cannot use apps while timed out or before accepting the server rules').num(50013); // read-only members must not trigger bot actions (role pickers, ticket buttons...)
   const [userRow] = await ctx.db.query('SELECT * FROM users WHERE id = $1', [userId]);
-  const mustReach = async (app: any) => { // bot must be able to act where the interaction happens
-    if (channel.guild_id) { if (!(await isInstalled(ctx, app.id, channel.guild_id))) throw forbidden('The application is not installed in this server', 'MISSING_ACCESS').num(50001); }
-    else if (!(await ctx.db.query('SELECT 1 AS x FROM dm_participants WHERE channel_id = $1 AND user_id = $2', [channel.id, app.bot_user_id]))[0]) throw forbidden('This application is not part of the conversation', 'MISSING_ACCESS').num(50001);
+  /** The bot must be able to act where the interaction happens: a guild install, the bot being in the DM, or (user-installable apps) the user's own install. */
+  const mustReach = async (app: any, cmd?: any): Promise<Reach> => {
+    const userInstalled = async () => (!cmd || (commandAllowsIntegration(cmd, 1) && !cmd.guild_id)) && (await isUserInstalled(ctx, app.id, userId));
+    if (channel.guild_id) {
+      if ((await isInstalled(ctx, app.id, channel.guild_id)) && (!cmd || commandAllowsIntegration(cmd, 0))) return { integrationType: 0, context: CTX.GUILD };
+      if ((await userInstalled()) && (!cmd || commandAllowsContext(cmd, CTX.GUILD))) {
+        if (!has(a.perms, Perm.USE_EXTERNAL_APPS) || !has(a.perms, Perm.USE_SLASH_COMMANDS)) throw forbidden('You cannot use external apps in this channel').num(50013);
+        return { integrationType: 1, context: CTX.GUILD };
+      }
+      throw forbidden('The application is not installed in this server', 'MISSING_ACCESS').num(50001);
+    }
+    if ((await ctx.db.query('SELECT 1 AS x FROM dm_participants WHERE channel_id = $1 AND user_id = $2', [channel.id, app.bot_user_id]))[0]) return { integrationType: (await isUserInstalled(ctx, app.id, userId)) ? 1 : null, context: CTX.BOT_DM };
+    if ((await userInstalled()) && (!cmd || commandAllowsContext(cmd, CTX.PRIVATE_CHANNEL))) return { integrationType: 1, context: CTX.PRIVATE_CHANNEL };
+    throw forbidden('This application is not part of the conversation', 'MISSING_ACCESS').num(50001);
   };
 
   if (b.type === IT.APPLICATION_COMMAND || b.type === IT.APPLICATION_COMMAND_AUTOCOMPLETE) {
@@ -113,9 +131,11 @@ export async function invoke(ctx: Ctx, userId: string, raw: unknown, access: (ch
     if (!cmd) throw notFound('Command');
     const [app] = await ctx.db.query('SELECT * FROM applications WHERE id = $1', [cmd.application_id]);
     if (!app) throw notFound('Command');
-    await mustReach(app);
+    const reach = await mustReach(app, cmd);
     limitOrThrowUser(ctx, userId, app.id);
-    const allowed = await canUseCommand(ctx, cmd, { guildId: channel.guild_id ?? null, userId, channelId: channel.id, perms: a.perms, memberRoleIds: a.gp?.memberRoleIds ?? [], channelParentId: channel.parent_id });
+    const userPath = reach.integrationType === 1 && reach.context !== CTX.BOT_DM; // not a guild install / bot DM: guild command permission overwrites do not apply
+    const allowed = userPath ? commandAllowsContext(cmd, reach.context)
+      : (await canUseCommand(ctx, cmd, { guildId: channel.guild_id ?? null, userId, channelId: channel.id, perms: a.perms, memberRoleIds: a.gp?.memberRoleIds ?? [], channelParentId: channel.parent_id })) && commandAllowsContext(cmd, reach.context);
     if (!allowed) throw forbidden('You cannot use this command here').num(50013);
     if (cmd.nsfw && !channel.nsfw && channel.guild_id) throw forbidden('This command is age-restricted');
     const ac = b.type === IT.APPLICATION_COMMAND_AUTOCOMPLETE;
@@ -135,7 +155,7 @@ export async function invoke(ctx: Ctx, userId: string, raw: unknown, access: (ch
       if (!m) throw notFound('Message');
       data.targetId = b.data.targetId; resolved = { messages: { [m.id]: await messageDTO(ctx, m, userId) } };
     } else if (b.data.targetId) throw badRequest('targetId only applies to user and message commands');
-    const { row, token } = await newRow(ctx, { app, type: b.type, userId, channel, data });
+    const { row, token } = await newRow(ctx, { app, type: b.type, userId, channel, data, reach });
     const payload = await payloadFor(ctx, row, token, app, channel, userRow, { data: { ...data, ...(resolved ? { resolved } : {}) } as any });
     deliver(ctx, app, row, payload);
     return { id: row.id };
@@ -154,7 +174,7 @@ export async function invoke(ctx: Ctx, userId: string, raw: unknown, access: (ch
     if (!appId) throw badRequest('This message has no interactive components');
     const [app] = await ctx.db.query('SELECT * FROM applications WHERE id = $1', [appId]);
     if (!app) throw notFound('Application');
-    await mustReach(app);
+    const reach = await mustReach(app);
     limitOrThrowUser(ctx, userId, app.id);
     const comp = findComponent(comps, b.data.customId);
     if (!comp) throw notFound('Message');
@@ -177,7 +197,7 @@ export async function invoke(ctx: Ctx, userId: string, raw: unknown, access: (ch
       }
     }
     const data = { customId: comp.customId!, componentType: comp.type, ...(comp.type === ComponentType.BUTTON ? {} : { values }) };
-    const { row, token } = await newRow(ctx, { app, type: IT.MESSAGE_COMPONENT, userId, channel, messageId: b.messageId, data });
+    const { row, token } = await newRow(ctx, { app, type: IT.MESSAGE_COMPONENT, userId, channel, messageId: b.messageId, data, reach });
     const eph = !m;
     if (eph) await ctx.db.query('UPDATE interactions SET ephemeral = true WHERE id = $1', [row.id]);
     deliver(ctx, app, row, await payloadFor(ctx, row, token, app, channel, userRow, { data, message: msgDto }));
@@ -200,10 +220,10 @@ export async function invoke(ctx: Ctx, userId: string, raw: unknown, access: (ch
     const [claim] = await ctx.db.query('UPDATE interactions SET modal = NULL WHERE id = $1 AND modal IS NOT NULL RETURNING id', [orig.id]); // a modal is submitted once
     if (!claim) throw notFound('Interaction');
     const [app] = await ctx.db.query('SELECT * FROM applications WHERE id = $1', [orig.application_id]);
-    await mustReach(app);
+    const reach = await mustReach(app);
     limitOrThrowUser(ctx, userId, app.id);
     const data = { customId: b.data.customId, components: b.data.components as any };
-    const { row, token } = await newRow(ctx, { app, type: IT.MODAL_SUBMIT, userId, channel, messageId: orig.message_id, data });
+    const { row, token } = await newRow(ctx, { app, type: IT.MODAL_SUBMIT, userId, channel, messageId: orig.message_id, data, reach });
     if (orig.ephemeral) await ctx.db.query('UPDATE interactions SET ephemeral = true WHERE id = $1', [row.id]);
     let message: Message | undefined;
     if (orig.message_id) { const [m] = await ctx.db.query('SELECT * FROM messages WHERE id = $1', [orig.message_id]); if (m) message = await messageDTO(ctx, m, userId); }
@@ -233,14 +253,14 @@ const messageData = z.object({
 }).strict();
 const callbackSchema = z.object({ type: z.number().int(), data: z.unknown().optional() }).strict();
 
-function parseMessageData(raw: unknown, needsBody: boolean) {
+function parseMessageData(raw: unknown, needsBody: boolean, forceEphemeral = false) {
   const d = messageData.parse(raw ?? {});
   if ((d.flags ?? 0) & ~ALLOWED_RESPONSE_FLAGS) throw badRequest('Unsupported message flags');
   const v2 = ((d.flags ?? 0) & MessageFlags.IS_COMPONENTS_V2) !== 0;
   if (v2 && (d.content?.length || d.components === undefined)) throw badRequest('A Components V2 response is made of components only (no content)');
   const components = d.components !== undefined ? parseComponents(d.components, { v2 }) : undefined;
   if (needsBody && !d.content?.length && !components?.length) throw badRequest('A response needs content or components');
-  return { content: d.content, components, flags: d.flags ?? 0 };
+  return { content: d.content, components, flags: (d.flags ?? 0) | (forceEphemeral ? MessageFlags.EPHEMERAL : 0) };
 }
 
 const metaFor = (row: any, name: string | null) => ({ id: row.id, type: row.type, name, userId: row.user_id });
@@ -285,7 +305,7 @@ export async function applyCallback(ctx: Ctx, row: any, raw: unknown): Promise<{
   switch (cb.type) {
     case CB.CHANNEL_MESSAGE_WITH_SOURCE: {
       if (row.type === IT.APPLICATION_COMMAND_AUTOCOMPLETE) throw badRequest('Autocomplete interactions take type 8');
-      const d = parseMessageData(cb.data, true);
+      const d = parseMessageData(cb.data, true, userOnly(row));
       const eph = !!(d.flags & MessageFlags.EPHEMERAL);
       await claim(eph ? ', ephemeral = true' : '');
       const message = eph ? await ephemeralCreate(ctx, row, app, d) : await publicCreate(ctx, row, app, d);
@@ -294,7 +314,7 @@ export async function applyCallback(ctx: Ctx, row: any, raw: unknown): Promise<{
     }
     case CB.DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE: {
       if (row.type === IT.APPLICATION_COMMAND_AUTOCOMPLETE) throw badRequest('Autocomplete interactions take type 8');
-      const d = parseMessageData(cb.data, false);
+      const d = parseMessageData(cb.data, false, userOnly(row));
       const eph = !!(d.flags & MessageFlags.EPHEMERAL);
       await claim(`, deferred = true${eph ? ', ephemeral = true' : ''}`);
       if (!eph) { const message = await publicCreate(ctx, row, app, { flags: d.flags }, true); await ctx.db.query('UPDATE interactions SET response_message_id = $2 WHERE id = $1', [row.id, message.id]); return { message }; }
@@ -359,7 +379,7 @@ async function editMessage(ctx: Ctx, row: any, app: any, messageId: string, d: {
 export async function createFollowup(ctx: Ctx, row: any, raw: unknown): Promise<Message> {
   const [app] = await ctx.db.query('SELECT * FROM applications WHERE id = $1', [row.application_id]);
   if (!row.acked) throw badRequest('Respond to the interaction before sending followups');
-  const d = parseMessageData(raw, true);
+  const d = parseMessageData(raw, true, userOnly(row));
   const eph = !!(d.flags & MessageFlags.EPHEMERAL);
   // First followup after a deferred response fills the "thinking" placeholder.
   if (row.deferred && !row.response_message_id && !eph === !row.ephemeral) {

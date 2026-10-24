@@ -62,6 +62,7 @@ export interface Application {
   id: Id; ownerId: Id; name: string; description: string; icon: string | null; botUser: User; botPublic: boolean; redirectUris: string[];
   /** Hex Ed25519 public key; Jorcord signs HTTP interaction deliveries and bots verify with this key. */
   publicKey: string; interactionsEndpointUrl: string | null; createdAt: string;
+  /** https URL of the app's embedded (iframe) activity, if it has one. */ activityUrl?: string | null;
   /** App Directory listing settings (additive). */
   directory?: { listed: boolean; category: string; summary: string; tags: string[]; permissions: string };
   /** Privileged gateway intents the owner enabled (bitfield of Intents.GUILD_MEMBERS | GUILD_PRESENCES | MESSAGE_CONTENT). */ privilegedIntents?: number;
@@ -69,7 +70,7 @@ export interface Application {
   token?: string; clientSecret?: string;
 }
 export interface OAuthAuthorizePreview { application: Pick<Application, 'id' | 'name' | 'description' | 'icon' | 'botUser'>; scopes: OAuthScope[]; permissions: string; guilds: { id: Id; name: string; icon: string | null; /** permission bits the approver holds there, i.e. the most they may give the bot */ grantable: string }[] }
-export interface OAuthAuthorizeResult { guildId?: Id; code?: string; redirectUri?: string; state?: string }
+export interface OAuthAuthorizeResult { guildId?: Id; /** true after a user install (integrationType 1) */ userInstalled?: boolean; code?: string; redirectUri?: string; state?: string }
 
 // ---------- application commands ----------
 export const CommandType = { CHAT_INPUT: 1, USER: 2, MESSAGE: 3 } as const;
@@ -82,6 +83,8 @@ export interface CommandOption {
 export interface ApplicationCommand {
   id: Id; applicationId: Id; guildId: Id | null; type: number; name: string; description: string; options: CommandOption[];
   /** Permission bitfield string; null = everyone. */ defaultMemberPermissions: string | null; dmPermission: boolean; nsfw: boolean; version: Id;
+  /** IntegrationType values the command is available for (default [0]). */ integrationTypes?: number[];
+  /** InteractionContextType values the command may run in (default: every context the install allows). */ contexts?: number[] | null;
 }
 export interface CommandPermissionOverwrite { id: Id; type: 1 | 2 | 3; permission: boolean } // 1 role, 2 user, 3 channel
 
@@ -96,6 +99,8 @@ export interface InteractionOptionValue { name: string; type: number; value?: st
 export interface Interaction {
   id: Id; applicationId: Id; type: number; token: string; version: 1; guildId: Id | null; channelId: Id | null; user: User; member?: unknown;
   appPermissions: string; locale: string;
+  /** InteractionContextType: 0 guild, 1 bot DM, 2 private channel / group DM. */ context?: number;
+  /** Which install authorized this interaction, keyed by IntegrationType ("0" guild id, "1" user id). */ authorizingIntegrationOwners?: Record<string, Id>;
   data?: {
     id?: Id; name?: string; type?: number; options?: InteractionOptionValue[]; targetId?: Id;
     customId?: string; componentType?: number; values?: string[]; components?: ModalSubmitRow[];

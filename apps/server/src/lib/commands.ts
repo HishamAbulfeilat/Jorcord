@@ -53,10 +53,11 @@ function checkOptions(opts: CommandOption[], depth: number, path: string) {
   }
 }
 
-export interface ParsedCommand { type: number; name: string; description: string; options: CommandOption[]; defaultMemberPermissions: string | null; dmPermission: boolean; nsfw: boolean }
+export interface ParsedCommand { type: number; name: string; description: string; options: CommandOption[]; defaultMemberPermissions: string | null; dmPermission: boolean; nsfw: boolean; integrationTypes: number[]; contexts: number[] | null }
 const body = z.object({
   type: z.number().int().min(1).max(3).optional(), name: z.string().min(1).max(32), description: z.string().max(100).optional(), options: z.array(optionSchema).max(25).optional(),
   defaultMemberPermissions: z.string().regex(/^\d{1,20}$/).nullable().optional(), dmPermission: z.boolean().optional(), nsfw: z.boolean().optional(),
+  integrationTypes: z.array(z.union([z.literal(0), z.literal(1)])).min(1).max(2).optional(), contexts: z.array(z.union([z.literal(0), z.literal(1), z.literal(2)])).min(1).max(3).nullable().optional(),
 }).strict();
 
 export function parseCommand(raw: unknown): ParsedCommand {
@@ -73,7 +74,11 @@ export function parseCommand(raw: unknown): ParsedCommand {
   }
   checkOptions(c.options ?? [], 0, 'options');
   if (JSON.stringify(c).length > 8000) throw fail('Command is too large (8000 characters)');
-  return { type, name: c.name, description: c.description ?? '', options: c.options ?? [], defaultMemberPermissions: c.defaultMemberPermissions ?? null, dmPermission: c.dmPermission ?? true, nsfw: c.nsfw ?? false };
+  const contexts = c.contexts ? [...new Set(c.contexts)].sort() : null;
+  return {
+    type, name: c.name, description: c.description ?? '', options: c.options ?? [], defaultMemberPermissions: c.defaultMemberPermissions ?? null,
+    dmPermission: c.dmPermission ?? (contexts ? contexts.includes(1) : true), nsfw: c.nsfw ?? false, integrationTypes: [...new Set(c.integrationTypes ?? [0])].sort(), contexts,
+  };
 }
 
 /** Per-scope limits (Discord's public numbers): 100 slash, 15 user, 15 message commands. */

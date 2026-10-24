@@ -7,6 +7,7 @@ import { loadGuildPerm, permsFor, loadOverwrites } from './perms';
 export const commandDTO = (r: any): ApplicationCommand => ({
   id: r.id, applicationId: r.application_id, guildId: r.guild_id ?? null, type: r.type, name: r.name, description: r.description, options: r.options ?? [],
   defaultMemberPermissions: r.default_member_permissions ?? null, dmPermission: r.dm_permission, nsfw: r.nsfw, version: r.version,
+  integrationTypes: r.integration_types ?? [0], contexts: r.contexts ?? null,
 });
 
 export interface InvokerInfo { guildId: string | null; userId: string; channelId: string; perms: bigint; memberRoleIds: string[]; channelParentId?: string | null }

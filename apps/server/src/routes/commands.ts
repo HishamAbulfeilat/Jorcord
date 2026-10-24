@@ -41,15 +41,16 @@ export function commandRoutes(app: FastifyInstance, ctx: Ctx) {
       if (n.n >= (COMMAND_LIMITS[c.type] ?? 15)) throw new ApiError(400, 'MAX_COMMANDS', 'Maximum number of application commands reached').num(30032);
     }
     const version = snowflake();
-    const vals = [c.description, JSON.stringify(c.options), c.defaultMemberPermissions, c.dmPermission && !scope.guildId, c.nsfw, version];
+    if (scope.guildId && c.integrationTypes.includes(1)) throw badRequest('Guild commands cannot be user-installable (integrationTypes must be [0])');
+    const vals = [c.description, JSON.stringify(c.options), c.defaultMemberPermissions, c.dmPermission && !scope.guildId, c.nsfw, version, JSON.stringify(c.integrationTypes), c.contexts ? JSON.stringify(c.contexts) : null];
     if (existing) {
-      const [r] = await q.query('UPDATE application_commands SET description=$2, options=$3::jsonb, default_member_permissions=$4, dm_permission=$5, nsfw=$6, version=$7 WHERE id=$1 RETURNING *', [existing.id, ...vals]);
+      const [r] = await q.query('UPDATE application_commands SET description=$2, options=$3::jsonb, default_member_permissions=$4, dm_permission=$5, nsfw=$6, version=$7, integration_types=$8::jsonb, contexts=$9::jsonb WHERE id=$1 RETURNING *', [existing.id, ...vals]);
       return { row: r, created: false };
     }
     const id = snowflake();
     const [r] = await q.query(
-      `INSERT INTO application_commands (id, application_id, guild_id, scope_key, type, name, description, options, default_member_permissions, dm_permission, nsfw, version)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10,$11,$12) RETURNING *`, [id, appId, scope.guildId, scope.key, c.type, c.name, ...vals]);
+      `INSERT INTO application_commands (id, application_id, guild_id, scope_key, type, name, description, options, default_member_permissions, dm_permission, nsfw, version, integration_types, contexts)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10,$11,$12,$13::jsonb,$14::jsonb) RETURNING *`, [id, appId, scope.guildId, scope.key, c.type, c.name, ...vals]);
     return { row: r, created: true };
   }
 
@@ -84,14 +85,16 @@ export function commandRoutes(app: FastifyInstance, ctx: Ctx) {
       const merged = parseCommand({
         type: cur.type, name: b.name ?? cur.name, description: b.description ?? cur.description, options: b.options ?? cur.options,
         defaultMemberPermissions: b.defaultMemberPermissions !== undefined ? b.defaultMemberPermissions : cur.default_member_permissions, dmPermission: b.dmPermission ?? cur.dm_permission, nsfw: b.nsfw ?? cur.nsfw,
+        integrationTypes: b.integrationTypes ?? cur.integration_types ?? [0], contexts: b.contexts !== undefined ? b.contexts : cur.contexts ?? null,
       });
-      const bodyKeys = Object.keys(b).filter((k) => !['name', 'description', 'options', 'defaultMemberPermissions', 'dmPermission', 'nsfw'].includes(k));
+      if (sc.guildId && merged.integrationTypes.includes(1)) throw badRequest('Guild commands cannot be user-installable (integrationTypes must be [0])');
+      const bodyKeys = Object.keys(b).filter((k) => !['name', 'description', 'options', 'defaultMemberPermissions', 'dmPermission', 'nsfw', 'integrationTypes', 'contexts'].includes(k));
       if (bodyKeys.length) throw badRequest(`Unknown field ${bodyKeys[0]}`);
       const [dup] = merged.name !== cur.name ? await ctx.db.query('SELECT 1 AS x FROM application_commands WHERE application_id = $1 AND scope_key = $2 AND type = $3 AND name = $4', [row.id, sc.key, cur.type, merged.name]) : [];
       if (dup) throw new ApiError(409, 'CONFLICT', 'A command with that name already exists');
       const [r] = await ctx.db.query(
-        'UPDATE application_commands SET name=$2, description=$3, options=$4::jsonb, default_member_permissions=$5, dm_permission=$6, nsfw=$7, version=$8 WHERE id=$1 RETURNING *',
-        [p.cid, merged.name, merged.description, JSON.stringify(merged.options), merged.defaultMemberPermissions, merged.dmPermission && !sc.guildId, merged.nsfw, snowflake()]);
+        'UPDATE application_commands SET name=$2, description=$3, options=$4::jsonb, default_member_permissions=$5, dm_permission=$6, nsfw=$7, version=$8, integration_types=$9::jsonb, contexts=$10::jsonb WHERE id=$1 RETURNING *',
+        [p.cid, merged.name, merged.description, JSON.stringify(merged.options), merged.defaultMemberPermissions, merged.dmPermission && !sc.guildId, merged.nsfw, snowflake(), JSON.stringify(merged.integrationTypes), merged.contexts ? JSON.stringify(merged.contexts) : null]);
       await emit('APPLICATION_COMMAND_UPDATE', r);
       return commandDTO(r);
     });

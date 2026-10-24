@@ -62,6 +62,10 @@ import { createPush } from './services/push';
 import { PermCache } from './services/permcache';
 import { createWebApp, hasWebBuild } from './lib/webapp';
 import { livekitProxyRoutes, livekitConnectSources } from './routes/voice-livekit';
+import { activityOriginsCached } from './services/embeddedActivities';
+import { installAuditReason } from './lib/auditReason';
+import { userInstallRoutes } from './routes/userInstalls';
+import { appEmojiRoutes, emojiPublicRoutes } from './routes/appEmojis';
 import { securityHeaders, logSerializers, LOG_REDACT } from './lib/security';
 
 export interface BuildOptions { config?: Partial<Config>; memoryDb?: boolean; env?: NodeJS.ProcessEnv }
@@ -74,6 +78,8 @@ export async function buildApp(opts: BuildOptions = {}): Promise<{ app: FastifyI
       redact: LOG_REDACT, serializers: logSerializers,
     },
     trustProxy: config.trustProxy, bodyLimit: 1_048_576, genReqId: () => crypto.randomUUID(),
+    // REST compat: /api/v10 and /api/v9 are aliases of /api/v1 (same handlers, rate limits and bot gates, because the URL is rewritten before routing)
+    rewriteUrl: (req) => { const u = req.url ?? '/'; return u.startsWith('/api/v') ? u.replace(/^\/api\/v(?:9|10)(?=\/|\?|$)/, '/api/v1') : u; },
   });
   // Bot libraries and curl always send content-type: application/json, even with no body: treat an empty body as {} (poisoned-prototype protection stays on).
   const defaultJson = app.getDefaultJsonParser('error', 'error');
@@ -104,6 +110,7 @@ export async function buildApp(opts: BuildOptions = {}): Promise<{ app: FastifyI
   });
   await app.register(multipart, { limits: { fileSize: config.maxUploadBytes, files: 10, fields: 20, fieldSize: 64 * 1024 } });
   await app.register(websocket, { options: { maxPayload: 64 * 1024 } });
+  installAuditReason(app); // X-Audit-Log-Reason for every moderation/management route
   installRateLimit(app, rl, config.rateLimit, config.jwtSecret);
 
   app.addHook('onSend', async (req, reply) => {
@@ -123,7 +130,7 @@ export async function buildApp(opts: BuildOptions = {}): Promise<{ app: FastifyI
     return reply.code(500).send({ code: 'INTERNAL', message: 'Internal server error' });
   });
   // Optional same-origin web client (WEB_DIST). Real routes win; this only sees what nothing else matched.
-  let web = config.webDist ? createWebApp(config.webDist, { livekitConnect: livekitConnectSources(config.livekit.url) }) : null;
+  let web = config.webDist ? createWebApp(config.webDist, { livekitConnect: livekitConnectSources(config.livekit.url), activityOrigins: () => activityOriginsCached(db) }) : null;
   if (config.webDist && !(await hasWebBuild(config.webDist))) { app.log.warn({ webDist: config.webDist }, 'WEB_DIST has no index.html: serving the API only'); web = null; }
   app.setNotFoundHandler(async (req, reply) => {
     if (web && await web.handle(req, reply)) return reply;
@@ -154,6 +161,7 @@ export async function buildApp(opts: BuildOptions = {}): Promise<{ app: FastifyI
     oauthPublicRoutes(api, ctx);
     connectionOAuthPublicRoutes(api, ctx);
     interactionPublicRoutes(api, ctx);
+    emojiPublicRoutes(api, ctx);
     fileRoutes(api, ctx);
     widgetPublicRoutes(api, ctx);
     await api.register(async (scope) => voiceWebhookRoutes(scope, ctx));
@@ -167,7 +175,7 @@ export async function buildApp(opts: BuildOptions = {}): Promise<{ app: FastifyI
       digestRoutes(priv, ctx);
       guildPortRoutes(priv, ctx);
       memberRoutes(priv, ctx); messageRoutes(priv, ctx); miscRoutes(priv, ctx); voiceRoutes(priv, ctx); pushRoutes(priv, ctx);
-      applicationRoutes(priv, ctx); commandRoutes(priv, ctx); interactionRoutes(priv, ctx); pollRoutes(priv, ctx); eventRoutes(priv, ctx); socialRoutes(priv, ctx); soundboardRoutes(priv, ctx); activityRoutes(priv, ctx); safetyRoutes(priv, ctx); onboardingRoutes(priv, ctx); followRoutes(priv, ctx); guildExtrasRoutes(priv, ctx); favoriteRoutes(priv, ctx); connectionRoutes(priv, ctx); streamFeedRoutes(priv, ctx); linkedRoleRoutes(priv, ctx); directoryRoutes(priv, ctx); integrationRoutes(priv, ctx); modToolRoutes(priv, ctx); adminRoutes(priv, ctx);
+      applicationRoutes(priv, ctx); appEmojiRoutes(priv, ctx); userInstallRoutes(priv, ctx); commandRoutes(priv, ctx); interactionRoutes(priv, ctx); pollRoutes(priv, ctx); eventRoutes(priv, ctx); socialRoutes(priv, ctx); soundboardRoutes(priv, ctx); activityRoutes(priv, ctx); safetyRoutes(priv, ctx); onboardingRoutes(priv, ctx); followRoutes(priv, ctx); guildExtrasRoutes(priv, ctx); favoriteRoutes(priv, ctx); connectionRoutes(priv, ctx); streamFeedRoutes(priv, ctx); linkedRoleRoutes(priv, ctx); directoryRoutes(priv, ctx); integrationRoutes(priv, ctx); modToolRoutes(priv, ctx); adminRoutes(priv, ctx);
     });
   }, { prefix: '/api/v1' });
 

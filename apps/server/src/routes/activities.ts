@@ -8,10 +8,11 @@ import { limitOrThrow } from '../lib/ratelimit';
 import { channelAccess, has, need, Perm } from '../services/perms';
 import { applyTttMove, initialTtt, readStored } from '../services/tictactoe';
 import { activitiesSchema, normalizeActivities } from '../services/activities';
+import { assertMayLaunchEmbedded } from '../services/embeddedActivities';
 
 const activityDTO = (r: any): ChannelActivity => ({
   id: r.id, channelId: r.channel_id, guildId: r.guild_id ?? null, kind: r.kind, hostId: r.host_id,
-  state: r.state ?? {}, startedAt: iso(r.started_at)!, updatedAt: iso(r.updated_at)!,
+  state: r.state ?? {}, startedAt: iso(r.started_at)!, updatedAt: iso(r.updated_at)!, ...(r.application_id ? { applicationId: r.application_id } : {}),
 });
 
 /** The state blob is opaque to the server, but it may not be used as bulk storage. */
@@ -82,21 +83,34 @@ export function activityRoutes(app: FastifyInstance, ctx: Ctx) {
 
   app.post('/channels/:id/activities', async (req, reply) => {
     const { id } = parse(channelParams, req.params);
-    const b = parse(z.object({ kind: activityKind, state: activityState.optional() }).strict(), req.body);
+    const b = parse(z.union([
+      z.object({ kind: activityKind, state: activityState.optional() }).strict(),
+      z.object({ applicationId: idSchema, state: activityState.optional() }).strict(), // third-party embedded activity
+    ]), req.body);
     const acc = await channelAccess(ctx, req.userId, id);
     if (acc.channel.type !== 'voice' && acc.channel.type !== 'stage') throw badRequest('Not a voice channel');
     if (acc.channel.guild_id) need(acc.perms, Perm.USE_EMBEDDED_ACTIVITIES);
     limitOrThrow(ctx.rl, `activity-start:${req.userId}`, 10, 60_000, ctx.config.rateLimit);
     await requireInCall(ctx, req.userId, id);
-    let initial: unknown;
-    if (b.kind === 'tictactoe') initial = initialTtt();
-    else initial = parse(youtubeState, b.state);
-    const [existing] = await ctx.db.query('SELECT 1 AS x FROM channel_activities WHERE channel_id = $1 AND kind = $2', [id, b.kind]);
+    let initial: unknown, kind: string, applicationId: string | null = null;
+    if ('applicationId' in b) {
+      if (req.isBot) throw forbidden('Bots cannot launch activities');
+      assertMayLaunchEmbedded(acc.perms);
+      const [capp] = await ctx.db.query('SELECT id, owner_id, bot_public, activity_url FROM applications WHERE id = $1', [b.applicationId]);
+      // an unlisted/private app is only launchable by its owner; an app without an activity URL has nothing to frame
+      if (!capp || !capp.activity_url || (!capp.bot_public && capp.owner_id !== req.userId)) throw notFound('Application');
+      kind = 'app'; applicationId = capp.id; initial = b.state ?? {};
+    } else {
+      kind = b.kind;
+      if (b.kind === 'tictactoe') initial = initialTtt();
+      else initial = parse(youtubeState, b.state);
+    }
+    const [existing] = await ctx.db.query(`SELECT 1 AS x FROM channel_activities WHERE channel_id = $1 AND kind = $2 AND COALESCE(application_id, '') = $3`, [id, kind, applicationId ?? '']);
     if (existing) throw new ApiError(409, 'ACTIVITY_EXISTS', 'That activity is already running in this channel');
     const aid = snowflake();
     const [row] = await ctx.db.query(
-      'INSERT INTO channel_activities (id, channel_id, guild_id, kind, host_id, state) VALUES ($1,$2,$3,$4,$5,$6::jsonb) RETURNING *',
-      [aid, id, acc.channel.guild_id ?? null, b.kind, req.userId, JSON.stringify(initial)],
+      'INSERT INTO channel_activities (id, channel_id, guild_id, kind, host_id, state, application_id) VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7) RETURNING *',
+      [aid, id, acc.channel.guild_id ?? null, kind, req.userId, JSON.stringify(initial), applicationId],
     );
     const dto = activityDTO(row);
     await ctx.hub.toChannel(id, 'ACTIVITY_START', dto);
@@ -118,6 +132,12 @@ export function activityRoutes(app: FastifyInstance, ctx: Ctx) {
     limitOrThrow(ctx.rl, `activity-update:${req.userId}`, 60, 60_000, ctx.config.rateLimit);
     await requireInCall(ctx, req.userId, row.channel_id);
     let nextState: unknown;
+    if (row.kind === 'app') { // shared document owned by the third-party activity: any participant in the call may write it (size-capped), last writer wins
+      const [u] = await ctx.db.query('UPDATE channel_activities SET state = $2::jsonb, updated_at = now() WHERE id = $1 RETURNING *', [id, JSON.stringify(b.state ?? {})]);
+      const dto = activityDTO(u);
+      await ctx.hub.toChannel(row.channel_id, 'ACTIVITY_UPDATE', dto);
+      return dto;
+    }
     if (row.kind === 'tictactoe') nextState = applyTttMove(readStored(row.state), row.host_id, req.userId, b.state);
     else {
       if (row.host_id !== req.userId) throw forbidden('Only the host can change the activity');
