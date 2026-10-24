@@ -3,6 +3,7 @@ import type { Events, Id } from '@jorcord/shared';
 import { fileUrl } from './format';
 import { useUI } from '@/stores/ui';
 import { useVoiceUI } from '@/stores/voiceui';
+import { useVoiceEffects } from '@/stores/voiceEffects';
 
 /** Should I hear this effect? Only in my current call, never while deafened, and respecting my own and per-person soundboard mutes. */
 export function shouldPlayEffect(d: Events['VOICE_CHANNEL_EFFECT_SEND'], me: Id | undefined): boolean {
@@ -19,5 +20,6 @@ export function playClip(url: string, volume: number) {
   } catch { /* autoplay blocked */ }
 }
 export function onVoiceEffect(d: Events['VOICE_CHANNEL_EFFECT_SEND'], me: Id | undefined) {
-  if (shouldPlayEffect(d, me)) playClip(d.sound.url, d.sound.volume);
+  if (d.sound) { if (shouldPlayEffect(d, me)) playClip(d.sound.url, d.sound.volume); return; }
+  if (d.emoji && useVoiceUI.getState().connectedChannelId === d.channelId) useVoiceEffects.getState().add(d.userId, d.emoji, d.emojiId ?? null);
 }

@@ -12,9 +12,9 @@ import { H1, H3, SaveBar, SettingsLayout } from './SettingsLayout';
 import { OverwriteGrid } from './PermGrid';
 import { Field, Toggle } from '@/components/ui/primitives';
 import { intToHex } from '@/lib/perms';
+import { SLOWMODES, syncState } from '@/lib/channelSync';
 import { cx, displayName } from '@/lib/format';
 
-const SLOWMODES = [[0, 'Off'], [5, '5s'], [10, '10s'], [15, '15s'], [30, '30s'], [60, '1m'], [120, '2m'], [300, '5m'], [600, '10m'], [900, '15m'], [1800, '30m'], [3600, '1h'], [7200, '2h'], [21600, '6h']] as const;
 
 export function ChannelSettings({ channelId, close }: { channelId: string; close: () => void }) {
   const ch = useData((s) => Object.values(s.guilds).map((g) => g.channels[channelId]).find(Boolean)) as Channel | undefined;
@@ -42,6 +42,14 @@ export function ChannelSettings({ channelId, close }: { channelId: string; close
       useData.getState().apply('CHANNEL_UPDATE', { ...ch, overwrites: ows }); toast(t('Permissions saved'), 'success');
     } catch (e) { toastError(e); } setBusy(false);
   };
+  const category = ch.parentId ? g.channels[ch.parentId] : undefined;
+  const synced = syncState({ type: ch.type, parentId: ch.parentId, overwrites: ch.overwrites }, category);
+  const syncNow = async () => {
+    if (!category) return;
+    setBusy(true);
+    try { await api.channels.syncPermissions(ch.id); useData.getState().apply('CHANNEL_UPDATE', { ...ch, overwrites: category.overwrites }); toast(t('Permissions synced'), 'success'); } catch (e) { toastError(e); }
+    setBusy(false);
+  };
   const cur = ows.find((o) => o.id === sel);
   const addables = [...Object.values(g.roles).map((r) => ({ id: r.id, type: 'role' as const, name: r.name, color: r.color })), ...Object.values(g.members).slice(0, 200).map((m) => ({ id: m.user.id, type: 'member' as const, name: displayName(m.user, m), color: 0 }))].filter((x) => !ows.find((o) => o.id === x.id));
   const [adding, setAdding] = useState(false); const [aq, setAq] = useState('');
@@ -60,6 +68,12 @@ export function ChannelSettings({ channelId, close }: { channelId: string; close
       {tab === 'permissions' && (<>
         <H1>{t('Channel Permissions')}</H1>
         <p className="mb-4 text-sm text-muted">{t('Use permissions to customize who can do what in this channel. Overwrites here take priority over server-wide role permissions.')}</p>
+        {synced !== undefined && category && (
+          <div data-testid="perm-sync" data-synced={synced} className="mb-4 flex flex-wrap items-center gap-3 rounded bg-side p-3">
+            <div className="min-w-0 flex-1"><div className="font-medium text-header">{synced ? t('Synced with category') : t('Not synced with category')}</div><div className="text-sm text-muted">{synced ? `${t('Permissions match')} ${category.name}.` : `${t('Permissions differ from')} ${category.name}.`}</div></div>
+            <button className="btn btn-secondary" disabled={busy || synced || dirtyOws} title={dirtyOws ? t('Save or reset your changes first') : undefined} onClick={syncNow}>{t('Sync now')}</button>
+          </div>
+        )}
         <div className="flex flex-col gap-4 md:flex-row">
           <div className="md:w-52 md:shrink-0">
             <div className="mb-2 flex items-center justify-between"><span className="section-title">Roles / Members</span><button aria-label={t('Add role or member')} onClick={() => setAdding(!adding)} className="text-interactive hover:text-header"><Plus size={18} /></button></div>
@@ -87,17 +101,17 @@ let tagKey = 0;
 function ForumTagsTab({ ch }: { ch: Channel }) {
   const init = (): TagDraft[] => (ch.availableTags ?? []).map((tg) => ({ ...tg, key: tg.id }));
   const [tags, setTags] = useState<TagDraft[]>(init); const [require, setRequire] = useState(!!ch.requireTag); const [auto, setAuto] = useState(ch.defaultAutoArchiveDuration ?? 1440); const [busy, setBusy] = useState(false);
-  const [sortOrder, setSortOrder] = useState(ch.defaultSortOrder ?? 'latest_activity'); const [forumLayout, setForumLayout] = useState(ch.defaultForumLayout ?? 'list'); const [defaultEmoji, setDefaultEmoji] = useState(ch.defaultReactionEmoji ?? '');
-  const dirty = JSON.stringify(tags.map(({ key, ...r }) => r)) !== JSON.stringify(init().map(({ key, ...r }) => r)) || require !== !!ch.requireTag || auto !== (ch.defaultAutoArchiveDuration ?? 1440) || sortOrder !== (ch.defaultSortOrder ?? 'latest_activity') || forumLayout !== (ch.defaultForumLayout ?? 'list') || defaultEmoji !== (ch.defaultReactionEmoji ?? '');
+  const [threadSlow, setThreadSlow] = useState(ch.defaultThreadSlowmode ?? 0); const [sortOrder, setSortOrder] = useState(ch.defaultSortOrder ?? 'latest_activity'); const [forumLayout, setForumLayout] = useState(ch.defaultForumLayout ?? 'list'); const [defaultEmoji, setDefaultEmoji] = useState(ch.defaultReactionEmoji ?? '');
+  const dirty = JSON.stringify(tags.map(({ key, ...r }) => r)) !== JSON.stringify(init().map(({ key, ...r }) => r)) || threadSlow !== (ch.defaultThreadSlowmode ?? 0) || require !== !!ch.requireTag || auto !== (ch.defaultAutoArchiveDuration ?? 1440) || sortOrder !== (ch.defaultSortOrder ?? 'latest_activity') || forumLayout !== (ch.defaultForumLayout ?? 'list') || defaultEmoji !== (ch.defaultReactionEmoji ?? '');
   const set = (key: string, p: Partial<TagDraft>) => setTags((l) => l.map((x) => (x.key === key ? { ...x, ...p } : x)));
   const save = async () => {
     setBusy(true);
     try {
-      const u = await api.channels.patch(ch.id, { availableTags: tags.filter((x) => x.name.trim()).map(({ key, id, name, emoji, moderated }) => ({ ...(id ? { id } : {}), name: name.trim(), emoji: emoji || null, moderated })) as ForumTag[], requireTag: require, defaultAutoArchiveDuration: auto, defaultSortOrder: sortOrder, defaultForumLayout: forumLayout, defaultReactionEmoji: defaultEmoji.trim() || null });
+      const u = await api.channels.patch(ch.id, { availableTags: tags.filter((x) => x.name.trim()).map(({ key, id, name, emoji, moderated }) => ({ ...(id ? { id } : {}), name: name.trim(), emoji: emoji || null, moderated })) as ForumTag[], requireTag: require, defaultAutoArchiveDuration: auto, defaultThreadSlowmode: threadSlow, defaultSortOrder: sortOrder, defaultForumLayout: forumLayout, defaultReactionEmoji: defaultEmoji.trim() || null });
       useData.getState().apply('CHANNEL_UPDATE', { ...ch, ...u }); setTags((u.availableTags ?? []).map((tg) => ({ ...tg, key: tg.id }))); toast(t('Tags saved'), 'success');
     } catch (e) { toastError(e); } setBusy(false);
   };
-  const reset = () => { setTags(init()); setRequire(!!ch.requireTag); setAuto(ch.defaultAutoArchiveDuration ?? 1440); setSortOrder(ch.defaultSortOrder ?? 'latest_activity'); setForumLayout(ch.defaultForumLayout ?? 'list'); setDefaultEmoji(ch.defaultReactionEmoji ?? ''); };
+  const reset = () => { setTags(init()); setRequire(!!ch.requireTag); setAuto(ch.defaultAutoArchiveDuration ?? 1440); setThreadSlow(ch.defaultThreadSlowmode ?? 0); setSortOrder(ch.defaultSortOrder ?? 'latest_activity'); setForumLayout(ch.defaultForumLayout ?? 'list'); setDefaultEmoji(ch.defaultReactionEmoji ?? ''); };
   return (<>
     <H1>{t('Tags')}</H1>
     <p className="mb-4 text-sm text-muted">{t('Tags help people find the right posts. Moderated tags can only be applied by members who manage threads.')}</p>
@@ -111,6 +125,7 @@ function ForumTagsTab({ ch }: { ch: Channel }) {
     <button className="btn btn-secondary mb-5" disabled={tags.length >= 20} onClick={() => setTags((l) => [...l, { key: 'n' + ++tagKey, name: '', emoji: null, moderated: false }])}><Plus size={14} />{t('Add Tag')}</button>
     <div className="flex items-center justify-between border-t border-divider py-4"><div><div className="font-medium text-header">{t('Require tag on new posts')}</div><div className="text-sm text-muted">{t('Members must pick at least one tag when they create a post.')}</div></div><Toggle label={t('Require tag')} checked={require} onChange={setRequire} /></div>
     <Field label={t('Hide After Inactivity')} hint={t('Default for new posts.')}><select className="field" value={auto} onChange={(e) => setAuto(Number(e.target.value))}>{AUTO_ARCHIVE_DURATIONS.map((d) => <option key={d} value={d}>{AUTO_LABEL[d]}</option>)}</select></Field>
+    <Field label={t('Default Post Slowmode')} hint={t('New posts start with this slowmode, so people can reply only once per interval.')}><select className="field" aria-label={t('Default Post Slowmode')} value={threadSlow} onChange={(e) => setThreadSlow(Number(e.target.value))}>{SLOWMODES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></Field>
     <Field label={t('Sort Order')} hint={t('How posts are ordered by default.')}><select className="field" value={sortOrder} onChange={(e) => setSortOrder(e.target.value as 'latest_activity' | 'creation_date')}><option value="latest_activity">{t('Latest Activity')}</option><option value="creation_date">{t('Creation Date')}</option></select></Field>
     <Field label={t('Forum Layout')} hint={t('How the post list is presented by default.')}><select className="field" value={forumLayout} onChange={(e) => setForumLayout(e.target.value as 'list' | 'gallery')}><option value="list">{t('List')}</option><option value="gallery">{t('Gallery')}</option></select></Field>
     <Field label={t('Default Reaction Emoji')} hint={t('Automatically added to every new post.')}><input className="field" aria-label={t('Default Reaction Emoji')} maxLength={16} value={defaultEmoji} onChange={(e) => setDefaultEmoji(e.target.value)} placeholder="👋" /></Field>

@@ -9,6 +9,7 @@ import { useData, selfMember } from '@/stores/data';
 import { useUI, toast, toastError } from '@/stores/ui';
 import { usePlatform, useLoadEvents } from '@/stores/platform';
 import { useMessages } from '@/stores/messages';
+import { SLOWMODES } from '@/lib/channelSync';
 import { Field, Modal, Spinner, Toggle, Row, Empty } from '@/components/ui/primitives';
 import { Markdown } from '@/components/chat/Markdown';
 import { Avatar } from '@/components/ui/Avatar';
@@ -269,14 +270,14 @@ export function ThreadSettingsModal({ channelId, close }: { channelId: string; c
   const th = useData((s) => Object.values(s.guilds).map((g) => g.channels[channelId]).find(Boolean));
   const g = useData((s) => (th?.guildId ? s.guilds[th.guildId] : undefined)); const parent = th?.parentId ? g?.channels[th.parentId] : undefined;
   const perms = th ? myChannelPerms(th.id) : 0n; const me = useData((s) => s.me); const manage = can(perms, Perm.MANAGE_THREADS); const owner = th?.ownerId === me?.id;
-  const [f, setF] = useState({ name: th?.name ?? '', auto: th?.autoArchiveDuration ?? parent?.defaultAutoArchiveDuration ?? 1440, locked: !!th?.locked, tags: th?.appliedTags ?? [] as string[] });
+  const [f, setF] = useState({ name: th?.name ?? '', auto: th?.autoArchiveDuration ?? parent?.defaultAutoArchiveDuration ?? 1440, locked: !!th?.locked, slow: th?.slowmode ?? 0, tags: th?.appliedTags ?? [] as string[] });
   const [busy, setBusy] = useState(false);
   if (!th || !g) return null;
   const tags = parent?.availableTags ?? [];
   const save = async () => {
     setBusy(true);
     try {
-      const u = await api.channels.patch(th.id, { ...(f.name !== th.name ? { name: f.name.trim() } : {}), autoArchiveDuration: f.auto, ...(manage ? { locked: f.locked } : {}), ...(parent?.type === 'forum' || parent?.type === 'media' ? { appliedTags: f.tags } : {}) });
+      const u = await api.channels.patch(th.id, { ...(f.name !== th.name ? { name: f.name.trim() } : {}), autoArchiveDuration: f.auto, ...(manage ? { locked: f.locked, ...(f.slow !== th.slowmode ? { slowmode: f.slow } : {}) } : {}), ...(parent?.type === 'forum' || parent?.type === 'media' ? { appliedTags: f.tags } : {}) });
       useData.getState().apply('THREAD_UPDATE', { ...th, ...u }); toast(t('Thread updated'), 'success'); close();
     } catch (e) { toastError(e); setBusy(false); }
   };
@@ -285,6 +286,7 @@ export function ThreadSettingsModal({ channelId, close }: { channelId: string; c
     <Modal title={t('Thread Settings')} onClose={close} footer={<><button className="btn btn-link" onClick={close}>{t('Cancel')}</button><button className="btn btn-primary btn-lg sm:ms-auto" disabled={busy || !f.name.trim()} onClick={save}>{t('Save Changes')}</button></>}>
       <Field label={t('Thread Name')}><input className="field" value={f.name} maxLength={100} onChange={(e) => setF({ ...f, name: e.target.value })} /></Field>
       <Field label={t('Hide After Inactivity')} hint={t('The thread archives itself after this long without messages. Any new message keeps it open.')}><select className="field" value={f.auto} onChange={(e) => setF({ ...f, auto: Number(e.target.value) })}>{AUTO_ARCHIVE_DURATIONS.map((d) => <option key={d} value={d}>{ARCHIVE_LABEL[d]}</option>)}</select></Field>
+      {manage && <Field label={t('Slowmode')} hint={t('Members can post once per interval in this thread, unless they can manage threads or bypass slowmode.')}><select className="field" aria-label={t('Thread slowmode')} value={f.slow} onChange={(e) => setF({ ...f, slow: Number(e.target.value) })}>{SLOWMODES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></Field>}
       {manage && <Row title={t('Lock Thread')} desc={t('Only people with Manage Threads can send messages or unarchive a locked thread.')}><Toggle label={t('Lock thread')} checked={f.locked} onChange={(v) => setF({ ...f, locked: v })} /></Row>}
       {(parent?.type === 'forum' || parent?.type === 'media') && tags.length > 0 && (
         <div className="mt-3"><span className="label">{t('Tags')}</span>

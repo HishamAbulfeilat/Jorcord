@@ -11,6 +11,7 @@ import { useVoiceUI } from '@/stores/voiceui';
 import { SelfViewPainter, effectsEnabled, isCanvasFilterSupported } from './cameraEffects';
 import { cx } from '@/lib/format';
 import { StreamAudience, useStreamGate } from './StreamAudience';
+import { TileEffects } from './TileEffects';
 
 export function useVoiceUser(identity: string) {
   return useData((s) => s.users[identity]);
@@ -98,6 +99,7 @@ export function ParticipantTile({ p, size = 'lg', focused, onClick, showStats }:
               <Avatar user={user ?? { id: p.identity, username: p.name, displayName: p.name, avatar: null }} size={sm ? 44 : 88} />
             </span>
           </div>}
+      <TileEffects userId={p.identity} />
       <NamePill p={p} extra={p.handRaised ? <Hand size={13} className="text-warn" aria-label="Hand raised" /> : null} />
       {p.priority && <Crown size={14} aria-label="Priority speaker" role="img" data-testid="priority-badge" className="absolute start-2 top-2 z-[5] text-warn" />}
       <span data-testid="tile-netbars" className={cx('pointer-events-none absolute end-2 top-2 z-[5] transition-opacity', showStats ? 'opacity-100' : 'opacity-0 group-hover:opacity-100')}><NetBars quality={p.quality} /></span>

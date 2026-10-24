@@ -35,7 +35,7 @@ let unsubs: (() => void)[] = [];
 export function startSession(token: string) {
   endSession(false);
   const gw = getGateway();
-  const names: (keyof Events)[] = ['READY', 'GUILD_CREATE', 'GUILD_UPDATE', 'GUILD_DELETE', 'CHANNEL_CREATE', 'CHANNEL_UPDATE', 'CHANNEL_DELETE', 'ROLE_CREATE', 'ROLE_UPDATE', 'ROLE_DELETE', 'MEMBER_ADD', 'MEMBER_UPDATE', 'MEMBER_REMOVE', 'TYPING_START', 'PRESENCE_UPDATE', 'USER_UPDATE', 'RELATIONSHIP_ADD', 'RELATIONSHIP_REMOVE', 'READ_STATE_UPDATE', 'VOICE_STATE_UPDATE', 'VOICE_RECORDING_UPDATE', 'EMOJIS_UPDATE', 'STICKERS_UPDATE', 'THREAD_CREATE', 'THREAD_UPDATE', 'THREAD_DELETE', 'MESSAGE_REQUEST_UPDATE'];
+  const names: (keyof Events)[] = ['READY', 'GUILD_CREATE', 'GUILD_UPDATE', 'GUILD_DELETE', 'CHANNEL_CREATE', 'CHANNEL_UPDATE', 'CHANNEL_DELETE', 'CHANNEL_VOICE_STATUS_UPDATE', 'ROLE_CREATE', 'ROLE_UPDATE', 'ROLE_DELETE', 'MEMBER_ADD', 'MEMBER_UPDATE', 'MEMBER_REMOVE', 'TYPING_START', 'PRESENCE_UPDATE', 'USER_UPDATE', 'RELATIONSHIP_ADD', 'RELATIONSHIP_REMOVE', 'READ_STATE_UPDATE', 'VOICE_STATE_UPDATE', 'VOICE_RECORDING_UPDATE', 'EMOJIS_UPDATE', 'STICKERS_UPDATE', 'THREAD_CREATE', 'THREAD_UPDATE', 'THREAD_DELETE', 'MESSAGE_REQUEST_UPDATE'];
   let readies = 0;
   unsubs.push(gw.on('READY', () => { void useSocial.getState().load(); void queryClient.invalidateQueries({ queryKey: ['inbox', 'reminders'] }); }));
   for (const n of names) unsubs.push(gw.on(n, (d: any) => { if (n === 'READY' && ++readies > 1) { useMessages.setState({ ch: {} }); usePlatform.setState({ eventsLoaded: {}, stagesLoaded: {} }); } /* missed events after a failed resume: reload open channels */ useData.getState().apply(n, d); }));

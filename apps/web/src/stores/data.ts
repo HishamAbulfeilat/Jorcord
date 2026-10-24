@@ -103,6 +103,7 @@ export const useData = create<DataState>((set, get) => ({
         if (!c.guildId) return get().putDm(c);
         return patchGuild(c.guildId, (g) => ({ ...g, channels: { ...g.channels, [c.id]: { ...g.channels[c.id], ...c } } }));
       }
+      case 'CHANNEL_VOICE_STATUS_UPDATE': return patchGuild(d.guildId, (g) => (g.channels[d.channelId] ? { ...g, channels: { ...g.channels, [d.channelId]: { ...g.channels[d.channelId], voiceStatus: d.status } } } : g));
       case 'CHANNEL_DELETE': {
         if (!d.guildId) return set((st) => { const { [d.id]: _, ...rest } = st.dms; return { dms: rest, messageRequests: omit(st.messageRequests, d.id) }; });
         return patchGuild(d.guildId, (g) => { const { [d.id]: _, ...rest } = g.channels; return { ...g, channels: rest }; });

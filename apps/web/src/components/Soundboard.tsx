@@ -41,6 +41,7 @@ export function SoundboardButton({ channelId, guildId }: { channelId: Id; guildI
             <button aria-pressed={prefs.soundboardMuted} aria-label={prefs.soundboardMuted ? t('Unmute soundboard') : t('Mute soundboard')} onClick={() => setPref('soundboardMuted', !prefs.soundboardMuted)} className="rounded p-1 text-interactive hover:bg-hover">{prefs.soundboardMuted ? <VolumeX size={16} /> : <Volume2 size={16} />}</button>
           </div>
           <label className="mb-2 flex items-center gap-2 text-xs text-muted">{t('Volume')}<input type="range" min={0} max={100} value={prefs.soundboardVolume} aria-label={t('Soundboard volume')} onChange={(e) => setPref('soundboardVolume', Number(e.target.value))} className="flex-1 accent-brand" /></label>
+          <EffectRow channelId={channelId} guildId={guildId} />
           {q.isLoading && <Spinner />}
           {!allowed && <p className="text-sm text-muted">{t('You do not have permission to use the soundboard.')}</p>}
           {allowed && !q.isLoading && !q.data?.length && <p className="text-sm text-muted">{t('This server has no sounds yet.')}</p>}
@@ -51,6 +52,27 @@ export function SoundboardButton({ channelId, guildId }: { channelId: Id; guildI
           </ul>
         </div>
       )}
+    </div>
+  );
+}
+
+/** Quick emoji bursts shown floating over your tile for everybody in the call (rate limited by the server to one per 3 seconds). */
+export const EFFECT_EMOJIS = ['👏', '❤️', '😂', '🔥', '🎉', '👍', '😮', '😢'] as const;
+function EffectRow({ channelId, guildId }: { channelId: Id; guildId: Id }) {
+  const perms = useGuildPerms(guildId); const allowed = can(perms, Perm.USE_SOUNDBOARD) || can(perms, Perm.ADD_REACTIONS);
+  const [cool, setCool] = useState(false);
+  if (!allowed) return null;
+  const send = (e: string) => {
+    if (cool) return;
+    setCool(true); setTimeout(() => setCool(false), 3000);
+    api.voice.effect(channelId, e).catch((err) => { setCool(false); toastError(err); });
+  };
+  return (
+    <div className="mb-2" role="group" aria-label={t('Voice effects')} data-testid="effect-row">
+      <span className="mb-1 block text-xs font-bold uppercase tracking-wide text-interactive">{t('Effects')}</span>
+      <div className="flex flex-wrap gap-1">
+        {EFFECT_EMOJIS.map((e) => <button key={e} disabled={cool} aria-label={`${t('Send effect')} ${e}`} onClick={() => send(e)} className="h-8 w-8 rounded bg-[rgb(var(--active))] text-lg leading-none hover:bg-[rgb(var(--divider))] disabled:opacity-50">{e}</button>)}
+      </div>
     </div>
   );
 }

@@ -3,6 +3,7 @@ import { useRovingTabindex } from '@/lib/hooks';
 import { ListChecks, CalendarDays, ChevronDown, ChevronRight, Hash, Image as ImageIcon, Megaphone, MessagesSquare, Plus, Radio, UserPlus, Volume2, Settings, X, Lock, Volume1, Video, VolumeX, MicOff, Crown, Eye } from 'lucide-react';
 import { useVoiceSnapshot } from '@jorcord/voice/react';
 import { joinVoice } from '@/voice/controller';
+import { VoiceStatusText } from '@/voice/VoiceStatus';
 import { voiceUserMenu } from '@/voice/menu';
 import type { Channel } from '@jorcord/shared';
 import { Perm } from '@jorcord/shared';
@@ -26,6 +27,7 @@ import { toastError } from '@/stores/ui';
 import { CAT, applyChannelDrop, layoutOf, orderDiff, plainAttrs } from '@/lib/channelOrder';
 import { t } from '@/i18n';
 import { useChannelHides } from '@/lib/channelHide';
+import { syncState } from '@/lib/channelSync';
 import { usePlatform, useLoadEvents } from '@/stores/platform';
 import { useGuildStages } from '@/voice/StageBar';
 import { isLive, isUpcoming } from '@/lib/events';
@@ -118,6 +120,7 @@ function ChannelRow({ c, guildId, canManage, canInvite }: { c: Channel; guildId:
         </span>
       </div>
       {stage && <div data-testid="stage-live" className="mx-2 -mt-0.5 mb-1 ms-[34px] truncate text-xs text-success" title={stage.topic}><span aria-hidden>● </span><span className="sr-only">{t('Live')}: </span>{stage.topic}</div>}
+      {(c.type === 'voice' || c.type === 'stage') && c.voiceStatus && <VoiceStatusText status={c.voiceStatus} className="mx-2 -mt-0.5 mb-1 block truncate ps-[34px] pe-2 text-xs text-muted" />}
       {(c.type === 'voice' || c.type === 'stage') && <VoiceMembers channelId={c.id} />}
     </li>
   );
@@ -162,7 +165,18 @@ export function ChannelSidebar({ guildId }: { guildId: string }) {
     // optimistic: update the store, roll back on failure
     const before = diff.map((d) => channels[d.id]!).filter(Boolean);
     diff.forEach((d) => useData.getState().apply('CHANNEL_UPDATE', { ...channels[d.id]!, position: d.position, parentId: d.parentId }));
-    try { await api.guilds.reorderChannels(guildId, diff); } catch (err) { before.forEach((c) => useData.getState().apply('CHANNEL_UPDATE', c)); toastError(err); }
+    try { await api.guilds.reorderChannels(guildId, diff); } catch (err) { before.forEach((c) => useData.getState().apply('CHANNEL_UPDATE', c)); toastError(err); return; }
+    offerSync(before, diff);
+  };
+  /** A channel dropped into another category: offer to copy that category's permissions onto it (only when they differ). */
+  const offerSync = (before: Channel[], diff: { id: string; parentId: string | null }[]) => {
+    if (!can(perms, Perm.MANAGE_ROLES) || !channels) return;
+    const moved = diff.filter((d) => d.parentId && before.find((b) => b.id === d.id)?.parentId !== d.parentId);
+    if (moved.length !== 1) return;
+    const ch = channels[moved[0]!.id]; const cat = channels[moved[0]!.parentId!];
+    if (!ch || !cat || syncState({ type: ch.type, parentId: cat.id, overwrites: ch.overwrites }, cat) !== false) return;
+    open({ kind: 'confirm', title: t('Sync permissions?'), body: `${t('Copy the permissions of')} ${cat.name} ${t('onto')} ${ch.name}? ${t('Its current permission overwrites are replaced.')}`, confirmLabel: t('Sync permissions'),
+      onConfirm: async () => { try { await api.channels.syncPermissions(ch.id); } catch (err) { toastError(err); } } });
   };
   const row = (c: Channel) => <ChannelRow key={c.id} c={c} guildId={guildId} canManage={canManage} canInvite={canInvite} />;
   return (

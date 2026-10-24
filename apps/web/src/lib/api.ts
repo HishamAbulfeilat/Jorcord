@@ -305,6 +305,8 @@ export const api = {
     patch: (id: Id, b: Partial<Channel>) => send<Channel>({ method: 'PATCH', path: `/channels/${id}`, body: b }),
     delete: (id: Id) => send({ method: 'DELETE', path: `/channels/${id}` }),
     putOverwrite: (id: Id, ow: OverwriteDTO) => send({ method: 'PUT', path: `/channels/${id}/permissions/${ow.id}`, body: { type: ow.type, allow: ow.allow, deny: ow.deny } }),
+    /** Make this channel's overwrites identical to its category's (needs Manage Roles). */
+    syncPermissions: (id: Id) => send({ method: 'POST', path: `/channels/${id}/permissions/sync` }),
     deleteOverwrite: (id: Id, owId: Id) => send({ method: 'DELETE', path: `/channels/${id}/permissions/${owId}` }),
     ack: (id: Id, messageId: Id) => send({ method: 'POST', path: `/channels/${id}/ack`, body: { messageId } }),
     typing: (id: Id) => send({ method: 'POST', path: `/channels/${id}/typing` }),
@@ -413,6 +415,10 @@ export const api = {
     /** Priority speaker: others are ducked while you talk (requires PRIORITY_SPEAKER). The server stores it in your voice state and broadcasts it. */
     prioritySpeaker: (channelId: Id, on: boolean) => send<{ channelId: Id; prioritySpeaker: boolean; voiceState: VoiceState | null }>({ method: on ? 'PUT' : 'DELETE', path: `/channels/${channelId}/voice/priority-speaker` }),
     /** Go Live: streams in the channel and who watches them (`kicked` for your own stream / moderators). */
+    /** Voice channel status (needs Set Voice Channel Status and being connected); null clears it. */
+    setStatus: (channelId: Id, status: string | null) => send<{ channelId: Id; status: string | null }>({ method: 'PUT', path: `/channels/${channelId}/voice-status`, body: { status } }),
+    /** Float an emoji over everybody's tile in the call (unicode emoji or `name:id`); the server allows one per 3 seconds. */
+    effect: (channelId: Id, emoji: string) => send({ method: 'POST', path: `/channels/${channelId}/voice-effect`, body: { emoji } }),
     streams: (channelId: Id) => send<StreamInfo[]>({ method: 'GET', path: `/channels/${channelId}/voice/streams` }),
     /** Go Live: cap the audience of my stream (null = server maximum). */
     streamLimit: (channelId: Id, viewerLimit: number | null) => send<VoiceState>({ method: 'PUT', path: `/channels/${channelId}/voice/stream`, body: { viewerLimit } }),

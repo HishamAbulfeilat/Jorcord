@@ -25,6 +25,7 @@ import { useState } from 'react';
 import { SoundboardButton } from '@/components/Soundboard';
 import { t } from '@/i18n';
 import { StageBar, canModerateStage } from './StageBar';
+import { VoiceStatusEditor, VoiceStatusText } from './VoiceStatus';
 import { VoiceChatPanel } from '@/components/chat/VoiceChat';
 import { channelUnread } from '@/stores/data';
 
@@ -58,6 +59,7 @@ export function VoiceChannelView({ channel }: { channel: Channel }) {
         {mobile && <button aria-label={t('Open navigation')} onClick={() => setLeft(true)} className="flex h-11 w-11 items-center justify-center text-interactive"><Menu size={24} /></button>}
         <Icon size={24} className="shrink-0 text-muted" />
         <h1 className="truncate text-base font-semibold text-header">{channel.name}</h1>
+        {channel.voiceStatus && <VoiceStatusText status={channel.voiceStatus} className="hidden min-w-0 max-w-[40%] truncate border-s border-divider ps-2 text-sm text-muted sm:inline" />}
         {stage && <span className="rounded bg-brand/20 px-1.5 py-0.5 text-[11px] font-bold uppercase tracking-wide text-mention">{t('Stage')}</span>}
         <span className="ms-auto flex items-center gap-2 text-xs text-muted">
           {mine && <><NetBars quality={snap.networkQuality} />{snap.status === 'connected' ? 'Connected' : snap.status}</>}
@@ -123,6 +125,7 @@ export function VoiceDock() {
             {conn === 'reconnecting' && snap.reconnect.attempt > 0 && <span className="text-[11px] font-medium">({snap.reconnect.attempt}/{snap.reconnect.maxAttempts})</span>}
           </button>
           <div className="truncate text-xs text-muted">{ch ? (isDm ? dmName(ch, me) : `${ch.name} / ${guild?.name ?? ''}`) : ''}</div>
+          {ch?.guildId && conn === 'connected' && <VoiceStatusEditor channelId={ch.id} />}
         </div>
         <Tip text="Disconnect" side="top"><button aria-label={t('Disconnect')} onClick={() => void leaveVoice()} className="flex h-8 w-8 items-center justify-center rounded text-interactive hover:bg-hover hover:text-interactive-hover"><PhoneOff size={20} /></button></Tip>
       </div>
