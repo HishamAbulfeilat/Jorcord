@@ -3,6 +3,7 @@ import { finalizeDuePolls } from './polls';
 import { sweepEvents } from './scheduled';
 import { endEmptyStages, sweepHandQueue } from './stage';
 import { sweepPrioritySpeakers } from './voice';
+import { sweepVoiceStatuses } from './voicestatus';
 import { channelsDTO } from './serializers';
 import { fireDueReminders } from './reminders';
 import { syncGuild } from './linkedroles';
@@ -64,6 +65,7 @@ export async function runSweeps(ctx: Ctx) {
   await step('stages', () => endEmptyStages(ctx));
   await step('stage-hands', () => sweepHandQueue(ctx));
   await step('priority-speakers', () => sweepPrioritySpeakers(ctx));
+  await step('voice-statuses', () => sweepVoiceStatuses(ctx));
   await step('threads', () => archiveIdleThreads(ctx));
   await step('statuses', () => expireStatuses(ctx));
   await step('reminders', () => fireDueReminders(ctx));

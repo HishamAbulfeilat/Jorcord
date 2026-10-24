@@ -112,6 +112,10 @@ export async function channelAccess(ctx: Ctx, userId: string, channelId: string,
 export function need(perms: bigint, ...bits: bigint[]) {
   for (const b of bits) if (!has(perms, b)) throw forbidden('Missing permissions');
 }
+/** Passes when at least one of the bits is held (Administrator and the owner always pass through `has`). */
+export function needAny(perms: bigint, ...bits: bigint[]) {
+  if (!bits.some((b) => has(perms, b))) throw forbidden('Missing permissions');
+}
 export async function guildAccess(ctx: Ctx, userId: string, guildId: string): Promise<GuildPerm> {
   const gp = await loadGuildPerm(ctx, guildId, userId);
   if (!gp) throw notFound('Guild');

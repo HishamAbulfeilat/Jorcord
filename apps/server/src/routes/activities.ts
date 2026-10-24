@@ -5,7 +5,7 @@ import type { Ctx } from '../ctx';
 import { ApiError, badRequest, forbidden, notFound } from '../errors';
 import { idSchema, iso, parse } from '../lib/ids';
 import { limitOrThrow } from '../lib/ratelimit';
-import { channelAccess, has, Perm } from '../services/perms';
+import { channelAccess, has, need, Perm } from '../services/perms';
 import { applyTttMove, initialTtt, readStored } from '../services/tictactoe';
 import { activitiesSchema, normalizeActivities } from '../services/activities';
 
@@ -85,6 +85,7 @@ export function activityRoutes(app: FastifyInstance, ctx: Ctx) {
     const b = parse(z.object({ kind: activityKind, state: activityState.optional() }).strict(), req.body);
     const acc = await channelAccess(ctx, req.userId, id);
     if (acc.channel.type !== 'voice' && acc.channel.type !== 'stage') throw badRequest('Not a voice channel');
+    if (acc.channel.guild_id) need(acc.perms, Perm.USE_EMBEDDED_ACTIVITIES);
     limitOrThrow(ctx.rl, `activity-start:${req.userId}`, 10, 60_000, ctx.config.rateLimit);
     await requireInCall(ctx, req.userId, id);
     let initial: unknown;

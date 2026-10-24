@@ -3,6 +3,7 @@ import type { Ctx } from '../ctx';
 import { ApiError, badRequest, forbidden } from '../errors';
 import { channelAccess } from './perms';
 import { onVoiceJoined, onVoiceLeft, startRing } from './calls';
+import { clearVoiceStatusIfEmpty } from './voicestatus';
 import { listHandQueue, lowerHand, markHandAway, publishHandQueue, raiseHand, restoreHand, speakerBlockReason } from './stage';
 
 export const VOICE_TYPES = ['voice', 'stage', 'dm', 'group_dm'];
@@ -41,6 +42,7 @@ export async function clearVoiceState(ctx: Ctx, userId: string) {
   if (prev.streaming) await clearWatchers(ctx, prev.channelId, userId);
   await parkHand(ctx, prev.channelId, userId);
   await onVoiceLeft(ctx, userId, prev.channelId);
+  await clearVoiceStatusIfEmpty(ctx, prev.channelId);
 }
 
 /**
@@ -139,7 +141,7 @@ export async function updateVoiceState(ctx: Ctx, userId: string, p: VoiceStateUp
   if (prev?.channelId && prev.channelId !== p.channelId) await publishVoice(ctx, prev.channelId, leaveState(prev));
   await publishVoice(ctx, p.channelId, state);
   if (streamEnded) await clearWatchers(ctx, prev!.channelId!, userId);
-  if (prev?.channelId && prev.channelId !== p.channelId) { await parkHand(ctx, prev.channelId, userId); await onVoiceLeft(ctx, userId, prev.channelId); }
+  if (prev?.channelId && prev.channelId !== p.channelId) { await parkHand(ctx, prev.channelId, userId); await onVoiceLeft(ctx, userId, prev.channelId); await clearVoiceStatusIfEmpty(ctx, prev.channelId); }
   if (!!prev?.prioritySpeaker && !state.prioritySpeaker && inChannel) await applyPriorityAttribute(ctx, state); // permission or speaking right was lost
   if (hand) await publishHandQueue(ctx, p.channelId, userId);
   if (!inChannel) await onVoiceJoined(ctx, userId, p.channelId); // answering on this device stops the ring on the others
@@ -171,6 +173,7 @@ export async function disconnectMember(ctx: Ctx, targetId: string) {
   await publishVoice(ctx, st.channelId, leaveState(st));
   if (st.streaming) await clearWatchers(ctx, st.channelId, targetId);
   await parkHand(ctx, st.channelId, targetId);
+  await clearVoiceStatusIfEmpty(ctx, st.channelId);
   return st;
 }
 
@@ -198,6 +201,7 @@ export async function moveMember(ctx: Ctx, targetId: string, destChannelId: stri
   if (st.streaming) await clearWatchers(ctx, st.channelId, targetId);
   await parkHand(ctx, st.channelId, targetId);
   await publishVoice(ctx, destChannelId, next);
+  await clearVoiceStatusIfEmpty(ctx, st.channelId);
   return next;
 }
 

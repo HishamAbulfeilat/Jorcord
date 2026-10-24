@@ -2,7 +2,9 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { Perm, has } from '@jorcord/shared';
 import type { Ctx } from '../ctx';
-import { badRequest, forbidden, notFound } from '../errors';
+import { ApiError, badRequest, forbidden, notFound } from '../errors';
+import { limitOrThrow } from '../lib/ratelimit';
+import { MAX_VOICE_STATUS, cleanStatus, writeVoiceStatus } from '../services/voicestatus';
 import { idSchema, parse } from '../lib/ids';
 import { claimAttachments } from '../services/files';
 import { audit, visibleChannelRows } from '../services/guilds';
@@ -13,6 +15,9 @@ import { declineRing } from '../services/calls';
 import { VOICE_TYPES, disconnectMember, moveMember, publishVoice, requestToSpeak, setPrioritySpeaker, setServerVoiceFlags, setSuppressed } from '../services/voice';
 import { blockDTO, listBlocks, listHandQueue, lowerHand, publishHandQueue } from '../services/stage';
 import { kickViewer, listStreams, readmitViewer, setStreamLimit, stopWatching, watchStream } from '../services/streams';
+
+/** A short run of emoji (ZWJ sequences, flags and keycaps included): nothing else, so the field cannot carry arbitrary text to every client. */
+export const isUnicodeEmoji = (s: string) => s.length <= 32 && /^(?:\p{Extended_Pictographic}|\p{Regional_Indicator}|[\u{1F3FB}-\u{1F3FF}\u200d\ufe0f\u20e3#*0-9])+$/u.test(s) && /\p{Extended_Pictographic}|\p{Regional_Indicator}|\u20e3/u.test(s);
 
 const memberParams = z.object({ id: idSchema, userId: idSchema });
 
@@ -296,6 +301,47 @@ export function voiceRoutes(app: FastifyInstance, ctx: Ctx) {
     const st = await ctx.voice.get(userId);
     if (!st?.channelId || st.channelId !== channelId) throw badRequest('Join the voice channel first');
   };
+
+  // ---------- voice channel status ----------
+  /** The short text under a voice channel's name. Needs SET_VOICE_CHANNEL_STATUS and being connected to that channel; `null` / empty clears it. Cleared automatically when the channel empties. */
+  app.put('/channels/:id/voice-status', async (req) => {
+    const { id } = parse(stageParams, req.params);
+    const { status } = parse(z.object({ status: z.string().max(MAX_VOICE_STATUS).nullable() }).strict(), req.body);
+    const a = await channelAccess(ctx, req.userId, id);
+    if (!a.channel.guild_id || (a.channel.type !== 'voice' && a.channel.type !== 'stage')) throw badRequest('Only server voice channels have a status');
+    need(a.perms, Perm.SET_VOICE_CHANNEL_STATUS);
+    await requireInChannel(req.userId, id);
+    limitOrThrow(ctx.rl, `voice-status:${req.userId}`, 10, 60_000, ctx.config.rateLimit);
+    const next = cleanStatus(status);
+    if (await writeVoiceStatus(ctx, a.channel, next)) await audit(ctx, a.channel.guild_id, req.userId, 'VOICE_CHANNEL_STATUS_UPDATE', id, { status: next });
+    return { channelId: id, status: next };
+  });
+
+  // ---------- voice effects (emoji bursts) ----------
+  /** Float an emoji over everybody's tile in the call. USE_SOUNDBOARD or ADD_REACTIONS; one per 3 seconds per member. */
+  app.post('/channels/:id/voice-effect', async (req, reply) => {
+    const { id } = parse(stageParams, req.params);
+    const { emoji } = parse(z.object({ emoji: z.string().min(1).max(64) }).strict(), req.body);
+    const a = await channelAccess(ctx, req.userId, id);
+    if (a.channel.type !== 'voice' && a.channel.type !== 'stage' && a.channel.type !== 'dm' && a.channel.type !== 'group_dm') throw badRequest('Not a voice channel');
+    if (a.channel.guild_id && !has(a.perms, Perm.CONNECT)) throw forbidden('Missing permissions');
+    if (a.channel.guild_id && !has(a.perms, Perm.USE_SOUNDBOARD) && !has(a.perms, Perm.ADD_REACTIONS)) throw forbidden('Missing permissions');
+    const st = await ctx.voice.get(req.userId);
+    if (!st || st.channelId !== id) throw new ApiError(400, 'NOT_IN_VOICE', 'Join the voice channel first');
+    if (st.serverMute || st.suppress || st.selfDeaf) throw forbidden('You are muted', 'MUTED');
+    let payloadEmoji = emoji; let emojiId: string | null = null;
+    const custom = /^(\w{2,32}):(\d{1,20})$/.exec(emoji);
+    if (custom) {
+      const [e] = await ctx.db.query('SELECT e.guild_id FROM emojis e JOIN members m ON m.guild_id = e.guild_id AND m.user_id = $3 WHERE e.id = $1 AND e.name = $2', [custom[2], custom[1], req.userId]);
+      if (!e) throw badRequest('Unknown emoji');
+      if (e.guild_id !== a.channel.guild_id && !(a.perms === 0n || has(a.perms, Perm.USE_EXTERNAL_EMOJIS))) throw forbidden('Missing permissions');
+      payloadEmoji = custom[1]!; emojiId = custom[2]!;
+    } else if (!isUnicodeEmoji(emoji)) throw badRequest('emoji must be a unicode emoji or `name:id`');
+    limitOrThrow(ctx.rl, `voice-effect:${req.userId}`, 1, 3_000, ctx.config.rateLimit); // after validation: a refused request does not burn the slot
+    const inRoom = (await ctx.voice.inChannel(id)).map((v) => v.userId);
+    await ctx.hub.toUsers(inRoom, 'VOICE_CHANNEL_EFFECT_SEND', { guildId: a.channel.guild_id ?? null, channelId: id, userId: req.userId, emoji: payloadEmoji, emojiId });
+    return reply.code(204).send();
+  });
 
   app.post('/channels/:id/voice/recording/start', async (req) => {
     const { id } = parse(stageParams, req.params);

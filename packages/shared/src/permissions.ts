@@ -20,6 +20,8 @@ export const Perm = {
   MODERATE_MEMBERS: 1n << 40n, SEND_POLLS: 1n << 41n, USE_EXTERNAL_APPS: 1n << 42n,
   RECORD_VOICE: 1n << 43n,
   PIN_MESSAGES: 1n << 44n, BYPASS_SLOWMODE: 1n << 45n, USE_EXTERNAL_STICKERS: 1n << 46n,
+  SET_VOICE_CHANNEL_STATUS: 1n << 47n, USE_EXTERNAL_SOUNDS: 1n << 48n, CREATE_GUILD_EXPRESSIONS: 1n << 49n,
+  VIEW_GUILD_INSIGHTS: 1n << 50n, USE_EMBEDDED_ACTIVITIES: 1n << 51n,
 } as const;
 export type PermName = keyof typeof Perm;
 export const ALL_PERMS = Object.values(Perm).reduce((a, b) => a | b, 0n);
@@ -29,11 +31,18 @@ export const DEFAULT_EVERYONE =
   Perm.USE_EXTERNAL_EMOJIS | Perm.CONNECT | Perm.SPEAK | Perm.USE_VAD |
   Perm.CHANGE_NICKNAME | Perm.USE_SLASH_COMMANDS | Perm.REQUEST_TO_SPEAK |
   Perm.CREATE_PUBLIC_THREADS | Perm.SEND_IN_THREADS | Perm.USE_SOUNDBOARD | Perm.SEND_POLLS | Perm.USE_EXTERNAL_APPS |
-  Perm.SEND_VOICE_MESSAGES | Perm.USE_EXTERNAL_STICKERS;
+  Perm.SEND_VOICE_MESSAGES | Perm.USE_EXTERNAL_STICKERS |
+  Perm.USE_EXTERNAL_SOUNDS | Perm.USE_EMBEDDED_ACTIVITIES;
 /** Bits added after the first release; migration 005 ORs them into existing @everyone roles. */
 export const PERMS_ADDED_TO_EVERYONE_IN_005 = Perm.SEND_POLLS | Perm.USE_EXTERNAL_APPS;
 /** Added by migration 052: PIN_MESSAGES + BYPASS_SLOWMODE go to roles/overwrites that hold MANAGE_MESSAGES (BYPASS_SLOWMODE also MANAGE_CHANNELS), USE_EXTERNAL_STICKERS to @everyone. */
 export const PERMS_ADDED_IN_052 = Perm.PIN_MESSAGES | Perm.BYPASS_SLOWMODE | Perm.USE_EXTERNAL_STICKERS;
+/**
+ * Added by migration 110 (bits 47..51). Each goes to roles/overwrites holding the permission it was split from:
+ * SET_VOICE_CHANNEL_STATUS <- MANAGE_CHANNELS, USE_EXTERNAL_SOUNDS <- USE_SOUNDBOARD (and @everyone), CREATE_GUILD_EXPRESSIONS <- MANAGE_EMOJIS,
+ * VIEW_GUILD_INSIGHTS <- MANAGE_GUILD, USE_EMBEDDED_ACTIVITIES <- CONNECT (and @everyone).
+ */
+export const PERMS_ADDED_IN_110 = Perm.SET_VOICE_CHANNEL_STATUS | Perm.USE_EXTERNAL_SOUNDS | Perm.CREATE_GUILD_EXPRESSIONS | Perm.VIEW_GUILD_INSIGHTS | Perm.USE_EMBEDDED_ACTIVITIES;
 // RECORD_VOICE is deliberately absent from DEFAULT_EVERYONE: only administrators and holders of MANAGE_CHANNELS may record voice by default.
 
 /** Jorcord permission name -> the bit position Discord uses for the equivalent permission (public docs, topics/permissions). Informational only: never put Discord positions on the wire. */
@@ -47,6 +56,7 @@ export const DISCORD_PERMISSION_BITS: Record<PermName, number> = {
   // Discord has no voice-recording permission; the closest voice-management bit is used for documentation only.
   RECORD_VOICE: 48,
   PIN_MESSAGES: 51, BYPASS_SLOWMODE: 52, USE_EXTERNAL_STICKERS: 37,
+  SET_VOICE_CHANNEL_STATUS: 48, USE_EXTERNAL_SOUNDS: 46 /* Discord: 45; 45 is already taken by SEND_VOICE_MESSAGES here, positions must stay unique */, CREATE_GUILD_EXPRESSIONS: 43, VIEW_GUILD_INSIGHTS: 19, USE_EMBEDDED_ACTIVITIES: 39,
 };
 
 export const has = (perms: bigint, p: bigint) => (perms & Perm.ADMINISTRATOR) !== 0n || (perms & p) === p;

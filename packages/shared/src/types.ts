@@ -67,6 +67,10 @@ export interface Channel {
   icon?: string | null;
   /** A channel that hosts clips (short videos) and exposes the clips API. */
   isClipsChannel?: boolean;
+  /** Voice/stage channels: the short status shown under the channel name (set by members holding SET_VOICE_CHANNEL_STATUS; cleared when the channel empties). */
+  voiceStatus?: string | null;
+  /** Forum/media parents: slowmode (seconds) given to every new post. */
+  defaultThreadSlowmode?: number;
 }
 export interface Member {
   guildId: Id; user: User; nick: string | null; roles: Id[]; joinedAt: string; timeoutUntil: string | null; avatar?: string | null;

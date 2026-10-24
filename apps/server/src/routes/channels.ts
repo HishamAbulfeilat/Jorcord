@@ -126,13 +126,14 @@ export function channelRoutes(app: FastifyInstance, ctx: Ctx) {
     else {
       need(a.perms, Perm.MANAGE_CHANNELS);
       allowed = ch.type === 'forum' || ch.type === 'media'
-        ? z.object({ ...chanFields, availableTags: z.array(tagSchema).max(20), requireTag: z.boolean(), defaultAutoArchiveDuration: archiveDuration, defaultSortOrder: z.enum(['latest_activity', 'creation_date']), defaultForumLayout: z.enum(['list', 'gallery']), defaultReactionEmoji: z.string().min(1).max(64).regex(/^(\w{2,32}:\d{1,20}|\S{1,16})$/u, 'must be a unicode emoji or `name:id`').nullable() }).partial().strict()
+        ? z.object({ ...chanFields, availableTags: z.array(tagSchema).max(20), requireTag: z.boolean(), defaultAutoArchiveDuration: archiveDuration, defaultThreadSlowmode: chanFields.slowmode, defaultSortOrder: z.enum(['latest_activity', 'creation_date']), defaultForumLayout: z.enum(['list', 'gallery']), defaultReactionEmoji: z.string().min(1).max(64).regex(/^(\w{2,32}:\d{1,20}|\S{1,16})$/u, 'must be a unicode emoji or `name:id`').nullable() }).partial().strict()
         : z.object(chanFields).partial().strict();
     }
     const b = parse(allowed, req.body) as Record<string, any>;
     if (ch.type === 'thread') {
       // locked threads: only MANAGE_THREADS may (un)lock or unarchive; moderated forum tags need MANAGE_THREADS too
       if ((b.locked !== undefined || (ch.locked && b.archived === false)) && !has(a.perms, Perm.MANAGE_THREADS)) throw forbidden('Missing permissions').num(50083);
+      if (b.slowmode !== undefined && b.slowmode !== ch.slowmode && !has(a.perms, Perm.MANAGE_THREADS)) throw forbidden('Slowmode needs Manage Threads');
       if (b.appliedTags !== undefined) b.appliedTags = await checkAppliedTags(ch.parent_id, b.appliedTags, has(a.perms, Perm.MANAGE_THREADS), ch.applied_tags ?? []);
     }
     if (ch.type === 'group_dm' && b.ownerId !== undefined && b.ownerId !== ch.owner_id) { // ownership transfer: current owner -> another participant
@@ -150,7 +151,7 @@ export function channelRoutes(app: FastifyInstance, ctx: Ctx) {
     if (b.availableTags !== undefined) b.availableTags = await normaliseTags(id, ch.available_tags ?? [], b.availableTags);
     if (b.parentId !== undefined) await validateParent(ch.guild_id, b.parentId, ch.type);
     const col: Record<string, string> = { icon: 'icon', ownerId: 'owner_id', name: 'name', topic: 'topic', nsfw: 'nsfw', slowmode: 'slowmode', bitrate: 'bitrate', userLimit: 'user_limit', parentId: 'parent_id', position: 'position', archived: 'archived',
-      requireTag: 'require_tag', defaultAutoArchiveDuration: 'default_auto_archive', autoArchiveDuration: 'auto_archive_minutes', locked: 'locked', availableTags: 'available_tags', appliedTags: 'applied_tags', defaultSortOrder: 'default_sort_order', defaultForumLayout: 'default_forum_layout', defaultReactionEmoji: 'default_reaction_emoji', isClipsChannel: 'is_clips_channel' };
+      requireTag: 'require_tag', defaultAutoArchiveDuration: 'default_auto_archive', autoArchiveDuration: 'auto_archive_minutes', locked: 'locked', availableTags: 'available_tags', appliedTags: 'applied_tags', defaultSortOrder: 'default_sort_order', defaultForumLayout: 'default_forum_layout', defaultReactionEmoji: 'default_reaction_emoji', defaultThreadSlowmode: 'default_thread_slowmode', isClipsChannel: 'is_clips_channel' };
     const sets: string[] = [], vals: unknown[] = [id];
     for (const [k, v] of Object.entries(b)) { if (!col[k]) continue; vals.push(k === 'availableTags' || k === 'appliedTags' ? JSON.stringify(v) : v); sets.push(`${col[k]} = $${vals.length}${k === 'availableTags' || k === 'appliedTags' ? '::jsonb' : ''}`); }
     if (ch.type === 'thread' && (b.archived === false || b.autoArchiveDuration !== undefined)) sets.push('activity_at = now()'); // unarchiving / changing the timer restarts the idle clock
@@ -208,6 +209,28 @@ export function channelRoutes(app: FastifyInstance, ctx: Ctx) {
     await audit(ctx, a.channel.guild_id, req.userId, 'OVERWRITE_UPDATE', p.id, { target: p.overwriteId, ...b });
     const [row] = await ctx.db.query('SELECT * FROM channels WHERE id = $1', [p.id]);
     await ctx.hub.toChannel(p.id, 'CHANNEL_UPDATE', await channelDTO(ctx, row));
+    return reply.code(204).send();
+  });
+  /** Make the channel's overwrites identical to its category's (Discord's "Sync permissions with category"). */
+  app.post('/channels/:id/permissions/sync', async (req, reply) => {
+    const { id } = parse(z.object({ id: idSchema }), req.params);
+    const a = await channelAccess(ctx, req.userId, id);
+    const ch = a.channel;
+    if (!ch.guild_id || ch.type === 'thread' || ch.type === 'category') throw badRequest('Only channels inside a category can be synced');
+    if (!ch.parent_id) throw badRequest('This channel is not in a category');
+    need(a.perms, Perm.MANAGE_ROLES);
+    const parent = await ctx.db.query('SELECT target_id, type, allow, deny FROM overwrites WHERE channel_id = $1', [ch.parent_id]);
+    await checkOverwrites(ch.guild_id, a.perms, a.gp, parent.map((o) => ({ id: o.target_id, type: o.type, allow: o.allow, deny: o.deny })));
+    const settled = await trackVisibility(ctx, ch.guild_id, { channelIds: [id] });
+    await ctx.db.tx(async (q) => {
+      await q.query('DELETE FROM overwrites WHERE channel_id = $1', [id]);
+      for (const o of parent) await q.query('INSERT INTO overwrites (channel_id, target_id, type, allow, deny) VALUES ($1,$2,$3,$4,$5)', [id, o.target_id, o.type, o.allow, o.deny]);
+    });
+    await ctx.pcache.invalidate({ k: 'overwrites', channelId: id });
+    await settled();
+    await audit(ctx, ch.guild_id, req.userId, 'CHANNEL_PERMISSIONS_SYNC', id, { parentId: ch.parent_id, overwrites: parent.length });
+    const [row] = await ctx.db.query('SELECT * FROM channels WHERE id = $1', [id]);
+    await ctx.hub.toChannel(id, 'CHANNEL_UPDATE', await channelDTO(ctx, row));
     return reply.code(204).send();
   });
   app.delete('/channels/:id/permissions/:overwriteId', async (req, reply) => {
@@ -376,7 +399,7 @@ export function channelRoutes(app: FastifyInstance, ctx: Ctx) {
     return uniq;
   }
   async function createThread(a: Awaited<ReturnType<typeof channelAccess>>, userId: string, id: string, name: string, o: { autoArchive?: number; appliedTags?: string[]; private?: boolean; invitable?: boolean } = {}) {
-    await insertChannel(ctx.db, { id, guildId: a.channel.guild_id, type: 'thread', name, parentId: a.channel.id, ownerId: userId, slowmode: 0 });
+    await insertChannel(ctx.db, { id, guildId: a.channel.guild_id, type: 'thread', name, parentId: a.channel.id, ownerId: userId, slowmode: a.channel.type === 'forum' || a.channel.type === 'media' ? a.channel.default_thread_slowmode ?? 0 : 0 });
     await ctx.db.query('UPDATE channels SET auto_archive_minutes = $2, applied_tags = $3::jsonb, activity_at = now(), thread_private = $4, thread_invitable = $5 WHERE id = $1', [id, o.autoArchive ?? a.channel.default_auto_archive ?? 1440, JSON.stringify(o.appliedTags ?? []), !!o.private, o.invitable ?? true]);
     const [row] = await ctx.db.query('SELECT * FROM channels WHERE id = $1', [id]);
     const dto = await channelDTO(ctx, row);

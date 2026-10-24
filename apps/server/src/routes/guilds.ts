@@ -14,7 +14,7 @@ import { MAX_REGEX_RULES_PER_GUILD, rowActions, testRules, validateRegexPatterns
 import { deleteAttachmentFiles } from '../services/files';
 import { audit, buildGuildFull, createGuild, deleteGuildCascade, GUILD_TEMPLATES, transferGuildOwnership } from '../services/guilds';
 import { postSystemMessage } from '../services/messages';
-import { guildAccess, guildPerms, need } from '../services/perms';
+import { guildAccess, guildPerms, need, needAny } from '../services/perms';
 import { GUILD_SELECT, guildDTO } from '../services/serializers';
 
 const gid = z.object({ id: idSchema });
@@ -236,7 +236,7 @@ export function guildRoutes(app: FastifyInstance, ctx: Ctx) {
   app.post('/guilds/:id/emojis', async (req, reply) => {
     const { id } = parse(gid, req.params);
     const b = parse(z.object({ name: nameSchema, url: assetUrl, animated: z.boolean().optional(), roleIds: z.array(idSchema).max(20).optional() }).strict(), req.body);
-    need(guildPerms(await guildAccess(ctx, req.userId, id)), Perm.MANAGE_EMOJIS);
+    needAny(guildPerms(await guildAccess(ctx, req.userId, id)), Perm.MANAGE_EMOJIS, Perm.CREATE_GUILD_EXPRESSIONS);
     const roleIds = await checkEmojiRoles(id, b.roleIds ?? []);
     const [c] = await ctx.db.query('SELECT count(*)::int AS n FROM emojis WHERE guild_id = $1', [id]);
     const slots = await slotLimits(ctx, id);
@@ -272,7 +272,7 @@ export function guildRoutes(app: FastifyInstance, ctx: Ctx) {
   app.post('/guilds/:id/stickers', async (req, reply) => {
     const { id } = parse(gid, req.params);
     const b = parse(z.object({ name: z.string().trim().min(2).max(30), url: assetUrl, format: z.enum(['png', 'apng', 'lottie', 'gif']).optional() }).strict(), req.body);
-    need(guildPerms(await guildAccess(ctx, req.userId, id)), Perm.MANAGE_EMOJIS);
+    needAny(guildPerms(await guildAccess(ctx, req.userId, id)), Perm.MANAGE_EMOJIS, Perm.CREATE_GUILD_EXPRESSIONS);
     const [c] = await ctx.db.query('SELECT count(*)::int AS n FROM stickers WHERE guild_id = $1', [id]);
     const slots = await slotLimits(ctx, id);
     if (c.n >= slots.stickerSlots) throw new ApiError(400, 'MAX_STICKERS', `Sticker limit reached (${slots.stickerSlots} at boost level ${slots.level}; boosting is free)`);

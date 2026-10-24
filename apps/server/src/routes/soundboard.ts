@@ -6,7 +6,7 @@ import { ApiError, badRequest, forbidden, notFound } from '../errors';
 import { idSchema, iso, parse } from '../lib/ids';
 import { limitOrThrow } from '../lib/ratelimit';
 import { audit } from '../services/guilds';
-import { channelAccess, guildAccess, guildPerms, need } from '../services/perms';
+import { channelAccess, guildAccess, guildPerms, need, needAny } from '../services/perms';
 
 export const soundDTO = (r: any): SoundboardSound => ({ id: r.id, guildId: r.guild_id, name: r.name, emoji: r.emoji ?? null, volume: Number(r.volume), url: r.url, creatorId: r.creator_id, createdAt: iso(r.created_at)! });
 
@@ -38,7 +38,7 @@ export function soundboardRoutes(app: FastifyInstance, ctx: Ctx) {
   app.post('/guilds/:id/soundboard-sounds', async (req, reply) => {
     const { id } = parse(gid, req.params);
     const b = parse(z.object({ name, url: z.string().max(512), emoji: emoji.optional(), volume: volume.optional() }).strict(), req.body);
-    need(guildPerms(await guildAccess(ctx, req.userId, id)), Perm.MANAGE_EMOJIS);
+    needAny(guildPerms(await guildAccess(ctx, req.userId, id)), Perm.MANAGE_EMOJIS, Perm.CREATE_GUILD_EXPRESSIONS);
     limitOrThrow(ctx.rl, `sound-create:${req.userId}`, 20, 60_000, ctx.config.rateLimit);
     const [c] = await ctx.db.query('SELECT count(*)::int AS n FROM soundboard_sounds WHERE guild_id = $1', [id]);
     if (c.n >= LIMITS.maxSoundsPerServer) throw new ApiError(400, 'MAX_SOUNDS', 'Soundboard is full');
@@ -72,7 +72,7 @@ export function soundboardRoutes(app: FastifyInstance, ctx: Ctx) {
   /**
    * Play a clip into the voice channel the caller is connected to. Delivered as a gateway event to everybody in that channel
    * (each client plays it locally and may mute individual users' sounds); the caller must hold USE_SOUNDBOARD + CONNECT there
-   * and must not be server-muted / suppressed. Sounds of any server the caller belongs to are allowed (no Nitro "external sounds" paywall).
+   * and must not be server-muted / suppressed. Sounds of another server the caller belongs to need USE_EXTERNAL_SOUNDS (no Nitro paywall).
    */
   app.post('/channels/:id/send-soundboard-sound', async (req, reply) => {
     const { id } = parse(gid, req.params);
@@ -86,6 +86,8 @@ export function soundboardRoutes(app: FastifyInstance, ctx: Ctx) {
     if (st.serverMute || st.suppress || st.selfDeaf) throw forbidden('You are muted', 'MUTED');
     const [row] = await ctx.db.query('SELECT s.* FROM soundboard_sounds s JOIN members m ON m.guild_id = s.guild_id AND m.user_id = $2 WHERE s.id = $1', [b.soundId, req.userId]);
     if (!row) throw notFound('Sound');
+    // a sound of another server is an "external sound"
+    if (acc.channel.guild_id && row.guild_id !== acc.channel.guild_id) need(acc.perms, Perm.USE_EXTERNAL_SOUNDS);
     const sound = soundDTO(row);
     const inRoom = (await ctx.voice.inChannel(id)).map((v) => v.userId);
     await ctx.hub.toUsers(inRoom, 'VOICE_CHANNEL_EFFECT_SEND', { guildId: acc.channel.guild_id ?? null, channelId: id, userId: req.userId, sound });

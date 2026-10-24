@@ -107,7 +107,10 @@ export interface Events {
   USER_NOTE_UPDATE: { userId: Id; note: string | null };
   /** Soundboard: a guild's sound list changed / someone played a sound in a voice channel (sent to the people in that channel). */
   SOUNDBOARD_SOUNDS_UPDATE: { guildId: Id; sounds: SoundboardSound[] };
-  VOICE_CHANNEL_EFFECT_SEND: { guildId: Id | null; channelId: Id; userId: Id; sound: SoundboardSound };
+  /** A soundboard sound (`sound`) or an emoji burst (`emoji`, a unicode emoji or `name:id` of a custom one) shown floating in the call. Exactly one is set. */
+  VOICE_CHANNEL_EFFECT_SEND: { guildId: Id | null; channelId: Id; userId: Id; sound?: SoundboardSound; emoji?: string; emojiId?: Id | null };
+  /** The short status under a voice channel's name changed (null = cleared). */
+  CHANNEL_VOICE_STATUS_UPDATE: { guildId: Id | null; channelId: Id; status: string | null };
   /** Shared voice-channel activity started/updated/ended; sent only to members who can view the channel. */
   ACTIVITY_START: ChannelActivity; ACTIVITY_UPDATE: ChannelActivity; ACTIVITY_END: { id: Id; channelId: Id; guildId: Id | null };
   /** To my own sessions: a GIF favorite was added or removed. */

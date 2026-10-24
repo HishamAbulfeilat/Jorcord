@@ -149,7 +149,7 @@ export function guildExtrasRoutes(app: FastifyInstance, ctx: Ctx) {
   app.get('/guilds/:id/insights', async (req) => {
     const { id } = parse(gid, req.params);
     const { days } = parse(z.object({ days: z.coerce.number().int().refine((n) => n === 7 || n === 14 || n === 30, 'days must be 7, 14 or 30').default(7) }), req.query);
-    await manage(req.userId, id);
+    need(guildPerms(await guildAccess(ctx, req.userId, id)), Perm.VIEW_GUILD_INSIGHTS);
     const today = new Date(); today.setUTCHours(0, 0, 0, 0);
     const dayList = Array.from({ length: days }, (_, i) => new Date(today.getTime() - (days - 1 - i) * 86_400_000));
     const daily = await ctx.db.query(`SELECT to_char(day, 'YYYY-MM-DD') AS d, joins, leaves FROM guild_daily WHERE guild_id = $1 AND day >= $2::date`, [id, dayStr(dayList[0]!)]);
