@@ -1,4 +1,5 @@
 import { LIMITS } from '@jorcord/shared';
+import { resolveNoiseTuning, type NoiseStrength, type NoiseTuning } from './noiseTuning';
 
 export type NoiseMode = 'off' | 'browser' | 'rnnoise' | 'high';
 export const NOISE_MODES: NoiseMode[] = ['off', 'browser', 'rnnoise', 'high'];
@@ -12,6 +13,10 @@ export interface AudioSettings {
    * 'high' = RNNoise plus the browser's own suppression on the capture. Overrides noiseSuppression.
    */
   noiseSuppressionMode: NoiseMode;
+  /** Strength of the RNNoise path (off/light/standard/strong): sets the wet/dry mix and the gate. See noiseTuning.ts. */
+  noiseStrength: NoiseStrength;
+  /** Manual wet/dry override for the RNNoise path (0 = all original voice, 1 = all denoised); null = follow the strength. */
+  noiseMix: number | null;
   /** Music mode: stereo, no processing, high bitrate. */
   musicMode: boolean;
   bitrateKbps: number;
@@ -23,7 +28,7 @@ export interface AudioSettings {
 
 export const DEFAULT_AUDIO: AudioSettings = {
   echoCancellation: true, noiseSuppression: true, autoGainControl: true,
-  noiseSuppressionMode: 'browser', musicMode: false,
+  noiseSuppressionMode: 'browser', noiseStrength: 'standard', noiseMix: null, musicMode: false,
   bitrateKbps: 64, dtx: true, red: true,
 };
 
@@ -39,6 +44,8 @@ export interface ResolvedAudio {
   capture: { echoCancellation: boolean; noiseSuppression: boolean; autoGainControl: boolean; channelCount: number; sampleRate: number; deviceId?: string };
   publish: { audioBitrate: number; dtx: boolean; red: boolean; forceStereo: boolean };
   useRnnoise: boolean;
+  /** Mix + gate for the RNNoise path (only used when `useRnnoise`). */
+  noiseTuning: NoiseTuning;
 }
 
 /** Pure: map user-facing settings -> getUserMedia constraints + Opus publish options. */
@@ -62,6 +69,7 @@ export function resolveAudio(s: AudioSettings): ResolvedAudio {
       red: stereo ? false : s.red,
       forceStereo: stereo,
     },
-    useRnnoise: !stereo && s.noiseSuppression && (s.noiseSuppressionMode === 'rnnoise' || s.noiseSuppressionMode === 'high'),
+    noiseTuning: resolveNoiseTuning(s.noiseStrength ?? 'standard', s.noiseMix),
+    useRnnoise: !stereo && s.noiseSuppression && s.noiseStrength !== 'off' && (s.noiseSuppressionMode === 'rnnoise' || s.noiseSuppressionMode === 'high'),
   };
 }

@@ -9,7 +9,11 @@ function fakeAudio(opts: { addModule?: () => Promise<void> } = {}) {
   const ctx: any = {
     state: 'running', resume: vi.fn(async () => {}), close: vi.fn(async () => {}),
     audioWorklet: { addModule: vi.fn(opts.addModule ?? (async () => {})) },
+    currentTime: 0,
     createMediaStreamSource: vi.fn(() => mkNode()),
+    createGain: vi.fn(() => Object.assign(mkNode(), { gain: { value: 1, setTargetAtTime: vi.fn() } })),
+    createDelay: vi.fn(() => Object.assign(mkNode(), { delayTime: { value: 0 } })),
+    createAnalyser: vi.fn(() => Object.assign(mkNode(), { fftSize: 0, getFloatTimeDomainData: vi.fn() })),
     createMediaStreamDestination: vi.fn(() => Object.assign(mkNode(), { stream: { getAudioTracks: () => [outTrack] } })),
   };
   const worklets: any[] = [];
@@ -47,7 +51,7 @@ describe('createRnnoiseProcessor', () => {
   });
   it('wires source -> worklet -> destination and publishes the processed track', async () => {
     const f = fakeAudio();
-    const r = await createRnnoiseProcessor({ AudioContextCtor: f.Ctx, AudioWorkletNodeCtor: f.Worklet, url: '/w.js', supported: true });
+    const r = await createRnnoiseProcessor({ AudioContextCtor: f.Ctx, AudioWorkletNodeCtor: f.Worklet, url: '/w.js', supported: true, graph: { setInterval: () => 0, clearInterval: () => {} } });
     expect(r.processor).toBeDefined();
     const p = r.processor!;
     expect(f.ctx.audioWorklet.addModule).toHaveBeenCalledWith('/w.js');

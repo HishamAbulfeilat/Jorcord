@@ -9,7 +9,9 @@ import type { VoiceToken } from '@jorcord/shared';
 import { DEFAULT_AUDIO, resolveAudio, type AudioSettings } from './audio';
 import { mapVoiceError, type VoiceError } from './errors';
 import { mapConnectionQuality, type NetworkQuality, type StreamStats } from './network';
-import { createRnnoiseProcessor, type NoiseFallbackReason } from './noise';
+import { createRnnoiseProcessor, type NoiseFallbackReason, type RnnoiseProcessor } from './noise';
+import { resolveScreenPlan, normalizeLock, type DegradationChoice, type QualityLock } from './screenQuality';
+import { BitrateGovernor, bitrateLadder, parseScreenSignals } from './adaptation';
 import { createPushToTalk, type PttOptions } from './ptt';
 import { effectiveVolume, clampUserVolume, isPriorityIdentity, DuckGate } from './priority';
 import { MicMonitor, MutedSpeakingDetector, MUTED_HINT_VISIBLE_MS } from './mutedSpeaking';
@@ -56,6 +58,10 @@ export interface VoiceSettings {
   screenPreset: StreamPresetId;
   screenHint: Exclude<ContentHint, 'text'> | 'text';
   screenAudio: boolean;
+  /** What the encoder gives up first when the connection is tight (see screenQuality.ts). */
+  screenDegradation: DegradationChoice;
+  /** Manual quality lock (resolution / fps / bitrate); null = automatic. A locked share is never stepped down by the adaptive governor. */
+  screenLock: QualityLock | null;
   codec: VideoCodecName | 'auto';
   /** Detect speech into a muted mic and raise `speakingWhileMuted` (the app shows a "you are muted" hint). Listens locally only. */
   mutedSpeakingHint: boolean;
@@ -64,7 +70,7 @@ export interface VoiceSettings {
 export const DEFAULT_SETTINGS: VoiceSettings = {
   audio: DEFAULT_AUDIO, inputMode: 'open', pttCode: 'Backquote', pttReleaseMs: 200, vadThreshold: 0.03,
   cameraPreset: '720p30', cameraQuality: 'auto', cameraFps: 30,
-  screenPreset: '1080p60', screenHint: 'motion', screenAudio: true, codec: 'auto', mutedSpeakingHint: true,
+  screenPreset: '1080p60', screenHint: 'motion', screenAudio: true, screenDegradation: 'auto', screenLock: null, codec: 'auto', mutedSpeakingHint: true,
 };
 
 export interface VoiceSnapshot {
@@ -417,6 +423,7 @@ export class VoiceClient {
         const { stats, sample } = parseConnectionStats(reports, Date.now(), this.connPrev);
         this.connPrev = sample;
         this.emit({ connection: stats });
+        if (this.snap.screenOn && reports[0]) void this.adaptScreen(reports[0]);
       } catch { /* stats are best effort */ }
     };
     void tick();
@@ -486,16 +493,26 @@ export class VoiceClient {
     const want = resolveAudio(s).useRnnoise;
     const requested = s.noiseSuppression ? s.noiseSuppressionMode : 'off';
     if (want && !this.rnnoiseAttached) {
-      const res = await createRnnoiseProcessor();
+      const res = await createRnnoiseProcessor({}, { tuning: resolveAudio(s).noiseTuning, onFallback: (reason) => { void this.noiseUnderrun(reason); } });
       if (res.processor) {
-        try { await track.setProcessor(res.processor); this.rnnoiseAttached = true; this.emit({ noise: { active: requested, fallback: null } }); return; }
+        try { await track.setProcessor(res.processor); this.rnnoiseAttached = true; this.rnnoiseProc = res.processor; this.emit({ noise: { active: requested, fallback: null } }); return; }
         catch { await this.noiseFallback('start-failed', track); return; }
       }
       await this.noiseFallback(res.reason, track);
     } else if (!want && this.rnnoiseAttached) {
-      await track.stopProcessor?.(); this.rnnoiseAttached = false;
+      await track.stopProcessor?.(); this.rnnoiseAttached = false; this.rnnoiseProc = undefined;
       this.emit({ noise: { active: requested, fallback: null } });
     } else if (!want) this.emit({ noise: { active: requested, fallback: null } });
+  }
+
+  private rnnoiseProc?: RnnoiseProcessor;
+  /** The worklet stalled or crashed mid-call (robotic / cut-out voice): drop it and keep the mic on the browser's suppression. */
+  private async noiseUnderrun(reason: NoiseFallbackReason) {
+    const track: any = this.room.localParticipant.getTrackPublication(Track.Source.Microphone)?.track;
+    if (!track || !this.rnnoiseAttached) return;
+    try { await track.stopProcessor?.(); } catch { /* */ }
+    this.rnnoiseAttached = false; this.rnnoiseProc = undefined;
+    await this.noiseFallback(reason, track);
   }
 
   /** RNNoise could not run: keep the mic working with the browser's built-in suppression and tell the UI why. */
@@ -516,6 +533,9 @@ export class VoiceClient {
     const audio = { ...this.snap.settings.audio, ...patch };
     this.snap = { ...this.snap, settings: { ...this.snap.settings, audio } };
     const lp = this.room.localParticipant;
+    // strength / wet-dry sliders: retune the running processor, no re-capture (the voice must not cut out while dragging)
+    const keys = Object.keys(patch);
+    if (keys.length && keys.every((k) => k === 'noiseStrength' || k === 'noiseMix') && this.rnnoiseAttached && this.rnnoiseProc) { this.rnnoiseProc.setTuning(resolveAudio(audio).noiseTuning); this.emit(); return; }
     this.room.options.audioCaptureDefaults = { ...resolveAudio(audio).capture };
     this.room.options.publishDefaults = { ...this.room.options.publishDefaults, ...this.audioPublishDefaults() };
     if (patch.outputDeviceId) await this.setOutputDevice(patch.outputDeviceId);
@@ -699,16 +719,20 @@ export class VoiceClient {
   private publishOptsFor(source: StreamSource, presetId: StreamPresetId, hint: ContentHint) {
     const codec = this.codecFor();
     const platform = this.snap.platform;
-    const r = selectPreset(presetId, codec, hint, mobileConstraints(platform));
+    const s = this.snap.settings;
+    // camera keeps the preset ladder; screen share goes through the plan (degradation preference, content defaults, manual lock)
+    const plan = source === 'screen' ? resolveScreenPlan({ preset: presetId, hint, degradation: s.screenDegradation, lock: s.screenLock, codec, constraints: mobileConstraints(platform) }) : null;
+    const base = selectPreset(presetId, codec, hint, mobileConstraints(platform));
+    const r = plan ? { ...base, width: plan.width, height: plan.height, fps: plan.fps, maxBitrateKbps: plan.maxBitrateKbps } : base;
     const svc = isScalableCodec(codec);
-    const layers = simulcastLayers(r, codec, hint).map((l) => new VideoPreset(l.width, l.height, l.maxBitrateKbps * 1000, l.fps));
+    const layers = (plan ? plan.layers : simulcastLayers(r, codec, hint)).map((l) => new VideoPreset(l.width, l.height, l.maxBitrateKbps * 1000, l.fps));
     const encoding = { maxBitrate: r.maxBitrateKbps * 1000, maxFramerate: r.fps };
     const o: TrackPublishOptions = {
       videoCodec: codec as VideoCodec,
       backupCodec: codec === 'h264' || codec === 'vp8' ? false : { codec: 'h264' },
       simulcast: !svc,
       ...(svc ? { scalabilityMode: 'L3T3_KEY' as const } : {}),
-      degradationPreference: hint === 'detail' || hint === 'text' ? 'maintain-resolution' : 'maintain-framerate',
+      degradationPreference: plan ? plan.degradationPreference : hint === 'detail' || hint === 'text' ? 'maintain-resolution' : 'maintain-framerate',
       ...(source === 'camera'
         ? { videoEncoding: encoding, videoSimulcastLayers: layers }
         : { screenShareEncoding: encoding, screenShareSimulcastLayers: layers }),
@@ -887,22 +911,63 @@ export class VoiceClient {
     const track = pub?.track as LocalVideoTrack | undefined;
     if (!track) return false;
     const h = hint ?? this.snap.settings.screenHint;
-    const r = selectPreset(presetId, this.codecFor(), h, mobileConstraints(this.snap.platform));
+    const st = this.snap.settings;
+    const r = resolveScreenPlan({ preset: presetId, hint: h, degradation: st.screenDegradation, lock: st.screenLock, codec: this.codecFor(), constraints: mobileConstraints(this.snap.platform) });
     try {
       await track.mediaStreamTrack.applyConstraints({ width: r.width, height: r.height, frameRate: r.fps });
       track.mediaStreamTrack.contentHint = h;
       const sender = track.sender;
       if (sender) {
-        const p = sender.getParameters();
+        const p: any = sender.getParameters();
         for (const enc of p.encodings ?? []) {
           if (!enc.rid || enc.rid === 'f' || (p.encodings?.length ?? 0) === 1) { enc.maxBitrate = r.maxBitrateKbps * 1000; enc.maxFramerate = r.fps; }
         }
+        p.degradationPreference = r.degradationPreference;
         await sender.setParameters(p);
       }
       this.snap = { ...this.snap, settings: { ...this.snap.settings, screenPreset: presetId, screenHint: h } };
+      this.governor = undefined; // the ladder is rebuilt from the new top bitrate on the next stats tick
       this.emit();
       return true;
     } catch { return false; }
+  }
+
+  /** Clarity vs smoothness, live. Applies the encoder's degradation preference to the running share. */
+  async setScreenDegradation(choice: DegradationChoice) {
+    this.snap = { ...this.snap, settings: { ...this.snap.settings, screenDegradation: choice } };
+    const t = this.room.localParticipant.getTrackPublication(Track.Source.ScreenShare)?.track as LocalVideoTrack | undefined;
+    if (t) await this.setLiveStreamQuality(this.snap.settings.screenPreset);
+    else this.emit();
+  }
+  /** Lock the share to a resolution / fps / bitrate (null unlocks). A locked share is not stepped down by the governor; slow viewers get a lower simulcast layer. */
+  async setScreenLock(lock: QualityLock | null) {
+    const l = normalizeLock(lock);
+    this.snap = { ...this.snap, settings: { ...this.snap.settings, screenLock: l, ...(l ? { screenPreset: l.preset } : {}) } };
+    this.governor = undefined;
+    const t = this.room.localParticipant.getTrackPublication(Track.Source.ScreenShare)?.track as LocalVideoTrack | undefined;
+    if (t) await this.setLiveStreamQuality(this.snap.settings.screenPreset);
+    else this.emit();
+  }
+
+  /**
+   * Adaptive bitrate on top of libwebrtc's estimator, with hysteresis (adaptation.ts): moves the share's bitrate cap along a ladder
+   * slowly and only on sustained trouble, so quality stops pumping. Off while the share is locked or not running.
+   */
+  private governor?: { g: BitrateGovernor; top: number };
+  private async adaptScreen(report: { forEach(cb: (s: any) => void): void }) {
+    const st = this.snap.settings;
+    const track = this.room.localParticipant.getTrackPublication(Track.Source.ScreenShare)?.track as LocalVideoTrack | undefined;
+    if (!track || st.screenLock || this.nativeSession) { this.governor = undefined; return; }
+    const plan = resolveScreenPlan({ preset: st.screenPreset, hint: st.screenHint, degradation: st.screenDegradation, lock: null, codec: this.codecFor(), constraints: mobileConstraints(this.snap.platform) });
+    if (!this.governor || this.governor.top !== plan.maxBitrateKbps) this.governor = { g: new BitrateGovernor(bitrateLadder(plan.maxBitrateKbps)), top: plan.maxBitrateKbps };
+    const d = this.governor.g.push(parseScreenSignals(report, Date.now()));
+    if (!d.changed) return;
+    const sender: any = track.sender; if (!sender) return;
+    try {
+      const p = sender.getParameters();
+      for (const enc of p.encodings ?? []) if (!enc.rid || enc.rid === 'f' || (p.encodings?.length ?? 0) === 1) enc.maxBitrate = d.kbps * 1000;
+      await sender.setParameters(p);
+    } catch { /* best effort: the browser's own estimator still protects the link */ }
   }
 
   setContentHint(hint: ContentHint) {
