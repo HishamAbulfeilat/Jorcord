@@ -12,6 +12,7 @@ import './cosmetics.css';
 
 import { queryClient as qc } from './lib/queryClient';
 import { isNative, isTauri } from './lib/server';
+import { setSwUpdater } from './lib/updates';
 import { setLocale } from './i18n';
 import { useUI } from './stores/ui';
 import { useAuth } from './stores/auth';
@@ -19,7 +20,14 @@ import { hydrateSecureAuth, loadAuth } from './lib/authStorage';
 
 setLocale(useUI.getState().prefs.language);
 // Wrappers bundle their assets already (docs/WRAPPER_WEB_NEEDS.md section 7): no PWA service worker there.
-if (!isNative()) registerSW({ immediate: true });
+if (!isNative()) {
+  const updateSW = registerSW({
+    immediate: true,
+    // long-lived tabs: look for a new service worker every hour instead of only on navigation
+    onRegisteredSW(_url, reg) { if (reg) setInterval(() => { void reg.update().catch(() => {}); }, 3600_000); },
+  });
+  setSwUpdater(updateSW);
+}
 
 // The overlay is a second Tauri window that loads this same bundle: render only the overlay card there.
 if (isOverlayWindow()) {

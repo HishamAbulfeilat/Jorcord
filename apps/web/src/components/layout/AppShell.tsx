@@ -1,9 +1,10 @@
 import { UpdateBanner } from './UpdateBanner';
+import { ConnectionBanner } from './ConnectionBanner';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { DiscoveryPage } from '@/components/home/DiscoveryPage';
 import { t } from '@/i18n';
-import { Home, MessageSquare, Users, UserCircle, WifiOff } from 'lucide-react';
+import { Home, MessageSquare, Users, UserCircle } from 'lucide-react';
 import { useData, findChannel, channelUnread } from '@/stores/data';
 import { useUI } from '@/stores/ui';
 import { ServerRail } from './ServerRail';
@@ -22,7 +23,6 @@ import { BaseCtx, useNav, useRouteIds } from '@/lib/nav';
 import { useIsMobile } from '@/lib/hooks';
 import { useFirstTextChannel } from '@/lib/useGuild';
 import { cx } from '@/lib/format';
-import { getGateway, type GatewayStatus } from '@/lib/gateway';
 import { ReportQueuePanel } from '@/components/chat/Panels';
 import { Badge } from '@/components/ui/primitives';
 import { comboFromEvent } from '@/lib/combo';
@@ -86,13 +86,6 @@ function MobileTabBar() {
       <T id="you" label={me?.displayName || 'You'} icon={UserCircle} onClick={() => openSettings({ kind: 'user' })} />
     </div>
   );
-}
-
-function ConnectionBanner() {
-  const [status, setStatus] = useState<GatewayStatus>(getGateway().status);
-  useEffect(() => getGateway().onStatus(setStatus), []);
-  if (status === 'connected' || status === 'idle' || status === 'closed') return null;
-  return <div role="status" className="flex items-center justify-center gap-2 bg-warn px-3 py-1 text-xs font-semibold text-black safe-top"><WifiOff size={14} />{status === 'connecting' ? 'Connecting…' : 'Reconnecting…'}</div>;
 }
 
 export function AppShell({ base = '' }: { base?: string }) {

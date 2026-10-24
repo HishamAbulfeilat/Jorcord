@@ -112,6 +112,8 @@ function bindClient(c: VoiceClient) {
     const ui = useVoiceUI.getState();
     const conn = s.status === 'connected' ? 'connected' : s.status === 'connecting' ? 'connecting' : s.status === 'reconnecting' ? 'reconnecting' : ui.conn === 'connecting' && s.status === 'idle' ? 'connecting' : s.status === 'idle' || s.status === 'disconnected' ? (wantChannel ? 'reconnecting' : 'idle') : 'idle';
     if (conn === 'reconnecting' && s.status === 'reconnecting' && ui.connectingSince === null) ui.patch({ connectingSince: Date.now() });
+    // the client gave up (or was closed) while the UI still says "reconnecting": that banner would never go away
+    if ((s.status === 'idle' || s.status === 'disconnected') && ui.conn === 'reconnecting' && !joining) ui.patch({ conn: 'idle', connectingSince: null });
     if (ui.streaming !== s.screenOn) ui.patch({ streaming: s.screenOn });
     if (ui.speakingWhileMuted !== s.speakingWhileMuted) ui.patch({ speakingWhileMuted: s.speakingWhileMuted });
     if (s.status === 'connected' || s.status === 'reconnecting') {

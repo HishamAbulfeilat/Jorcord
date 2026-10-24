@@ -1,7 +1,22 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { CHECK_INTERVAL_MS, compareVersions, latestRelease, newerRelease, toReleaseInfo, webBuildChanged } from './updates';
+import { applyWebUpdate, reloadAlreadyTried, serverBuild, setSwUpdater, CHECK_INTERVAL_MS, compareVersions, latestRelease, newerRelease, toReleaseInfo, webBuildChanged } from './updates';
 
 afterEach(() => { localStorage.clear(); });
+
+describe('web update apply flow', () => {
+  it('serverBuild ignores non-JSON fallbacks and failures', async () => {
+    const html = vi.fn(async () => ({ ok: true, headers: new Headers({ 'content-type': 'text/html' }), json: async () => { throw new Error('no'); } }) as unknown as Response);
+    expect(await serverBuild('/', html)).toBeNull();
+    const ok = vi.fn(async () => ({ ok: true, headers: new Headers({ 'content-type': 'application/json' }), json: async () => ({ build: 'abc' }) }) as unknown as Response);
+    expect(await serverBuild('/', ok)).toBe('abc');
+  });
+  it('applyWebUpdate activates the worker, remembers the attempt (no reload loop) and reloads', async () => {
+    const sw = vi.fn(async () => {}); const reload = vi.fn();
+    setSwUpdater(sw); await applyWebUpdate('b2', reload);
+    expect(sw).toHaveBeenCalledWith(true); expect(reload).toHaveBeenCalledTimes(1); expect(reloadAlreadyTried('b2')).toBe(true); expect(reloadAlreadyTried('b3')).toBe(false);
+    setSwUpdater(null); sessionStorage.clear();
+  });
+});
 
 const release = (tag: string) => ({ tag_name: tag, html_url: `https://github.com/HishamAbulfeilat/Jorcord/releases/tag/${tag}`, assets: [
   { name: `Jorcord-${tag.slice(1)}-android-arm64-v8a.apk`, browser_download_url: 'https://github.com/x/arm64.apk' },

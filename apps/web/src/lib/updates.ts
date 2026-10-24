@@ -47,12 +47,53 @@ export async function newerRelease(current: string, now = Date.now(), fetcher: t
   return r && compareVersions(r.version, current) > 0 ? r : null;
 }
 
-/** Plain web: true when the server now deploys a different build than the one running in this tab. */
-export async function webBuildChanged(current: string, base: string, fetcher: typeof fetch = fetch): Promise<boolean> {
+/** Plain web: the build id the server deploys right now, or null when it cannot be read (offline, no version.json, dev server). */
+export async function serverBuild(base: string, fetcher: typeof fetch = fetch): Promise<string | null> {
   try {
     const r = await fetcher(`${base}version.json?t=${Date.now()}`, { cache: 'no-store' });
-    if (!r.ok) return false;
+    if (!r.ok) return null;
+    const ct = r.headers?.get?.('content-type');
+    if (ct && !/json/i.test(ct)) return null; // an SPA fallback page, not our file
     const j = await r.json();
-    return typeof j?.build === 'string' && j.build !== '' && j.build !== current;
-  } catch { return false; }
+    return typeof j?.build === 'string' && j.build !== '' ? j.build : null;
+  } catch { return null; }
+}
+
+/** Plain web: true when the server now deploys a different build than the one running in this tab. */
+export async function webBuildChanged(current: string, base: string, fetcher: typeof fetch = fetch): Promise<boolean> {
+  const b = await serverBuild(base, fetcher);
+  return b !== null && b !== current;
+}
+
+const DISMISSED = 'jorcord.update.dismissed';
+const RELOADED = 'jorcord.update.reloaded';
+/** Dismissal is remembered per version (desktop / mobile) or per server build (web): a newer one shows again, the same one never does. */
+export const dismissedUpdate = (): string | null => { try { return localStorage.getItem(DISMISSED); } catch { return null; } };
+export const dismissUpdate = (id: string) => { try { localStorage.setItem(DISMISSED, id); } catch { /* */ } };
+export const webUpdateId = (build: string) => `web:${build}`;
+
+/** Registered by main.tsx: asks the service worker to activate the waiting build (workbox-window `updateServiceWorker`). */
+let swUpdater: ((reload?: boolean) => Promise<void>) | null = null;
+export const setSwUpdater = (f: ((reload?: boolean) => Promise<void>) | null) => { swUpdater = f; };
+
+/** True when we already reloaded for `build` and the tab still runs another one: the deploy is inconsistent, so stay quiet instead of looping or nagging. */
+export function reloadAlreadyTried(build: string): boolean {
+  try { return sessionStorage.getItem(RELOADED) === build; } catch { return false; }
+}
+
+/**
+ * Apply a new web build. The old service worker keeps serving the old shell on a plain reload, so activate the new one first; if that is not possible
+ * (no worker, update fails) drop the worker + caches and reload from the network. Marks the build so a failed attempt never loops.
+ */
+export async function applyWebUpdate(build: string, reload: () => void = () => location.reload()): Promise<void> {
+  try { sessionStorage.setItem(RELOADED, build); } catch { /* */ }
+  try {
+    if (swUpdater) { await Promise.race([swUpdater(true), new Promise((r) => setTimeout(r, 4000))]); }
+  } catch { /* fall through to the hard path */ }
+  try {
+    const regs = await navigator.serviceWorker?.getRegistrations?.();
+    await Promise.all((regs ?? []).map((r) => r.unregister()));
+    if (typeof caches !== 'undefined') await Promise.all((await caches.keys()).map((k) => caches.delete(k)));
+  } catch { /* */ }
+  reload();
 }

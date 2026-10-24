@@ -104,7 +104,7 @@ export function startSession(token: string) {
   }));
   (gw as any).getToken = () => useAuth.getState().access;
   (gw as any).authFailed = () => {
-    api.users.me().then((u) => { useData.getState().setMe(u); (gw as any).reconnect?.(useAuth.getState().access ?? token); }).catch((e) => { if (e?.status === 401) useAuth.getState().clear(); }); // only a rejected session ends it: being offline must not log anyone out
+    api.users.me().then((u) => { useData.getState().setMe(u); (gw as any).reconnect?.(useAuth.getState().access ?? token); }).catch((e) => { if (e?.status === 401) { useAuth.getState().clear(); (gw as any).markAuthFailed?.(); } else (gw as any).scheduleRetry?.(); }); // only a rejected session ends it: being offline must not log anyone out
   };
   gw.connect(token);
 }
