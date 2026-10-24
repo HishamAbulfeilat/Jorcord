@@ -23,6 +23,18 @@ export async function consumeAuthToken(ctx: Ctx, raw: string, kind: TokenKind): 
   return rows[0]?.user_id ?? null;
 }
 
+/** The user a still-usable token belongs to, without consuming it. */
+export async function peekAuthToken(ctx: Ctx, raw: string, kind: TokenKind): Promise<string | null> {
+  const rows = await ctx.db.query(
+    `SELECT user_id FROM auth_tokens WHERE token_hash = $1 AND kind = $2 AND used_at IS NULL AND expires_at > now()`, [sha256(raw), kind]);
+  return rows[0]?.user_id ?? null;
+}
+
+/** Burns a token without using it (too many wrong second-factor attempts). */
+export async function burnAuthToken(ctx: Ctx, raw: string, kind: TokenKind): Promise<void> {
+  await ctx.db.query(`UPDATE auth_tokens SET used_at = now() WHERE token_hash = $1 AND kind = $2 AND used_at IS NULL`, [sha256(raw), kind]);
+}
+
 /** True when the token can still be used (not consumed, not expired). Used by the reset page before asking for a password. */
 export async function isAuthTokenUsable(ctx: Ctx, raw: string, kind: TokenKind): Promise<boolean> {
   const rows = await ctx.db.query(

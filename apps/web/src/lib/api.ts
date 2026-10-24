@@ -50,7 +50,7 @@ export const api = {
     categories: () => send<{ id: DirectoryCategory; name: string; count: number }[]>({ method: 'GET', path: '/directory/categories' }).then((x) => arr<{ id: DirectoryCategory; name: string; count: number }>(x)),
   },
   auth: {
-    register: (b: { email: string; username: string; password: string; displayName?: string }) => send<AuthResult>({ method: 'POST', path: '/auth/register', body: b, auth: false }),
+    register: (b: { email: string; username: string; password: string; displayName?: string }) => send<AuthResult & { verificationRequired?: boolean }>({ method: 'POST', path: '/auth/register', body: b, auth: false }),
     login: (b: { email: string; password: string; totp?: string }) => send<AuthResult>({ method: 'POST', path: '/auth/login', body: b, auth: false }),
     logout: () => send({ method: 'POST', path: '/auth/logout' }),
     /** WebAuthn passkeys. The *Options calls return the JSON for @simplewebauthn/browser. */
@@ -76,8 +76,9 @@ export const api = {
     verifyEmail: (token: string) => send({ method: 'POST', path: '/auth/verify-email', body: { token }, auth: false }),
     sendVerifyEmail: () => send({ method: 'POST', path: '/auth/verify-email/send' }),
     forgotPassword: (email: string) => send({ method: 'POST', path: '/auth/password/forgot', body: { email }, auth: false }),
-    validateResetToken: (token: string) => send<{ valid: boolean }>({ method: 'POST', path: '/auth/password/reset/validate', body: { token }, auth: false }),
-    resetPassword: (token: string, newPassword: string) => send({ method: 'POST', path: '/auth/password/reset', body: { token, newPassword }, auth: false }),
+    validateResetToken: (token: string) => send<{ valid: boolean; mfaRequired?: boolean }>({ method: 'POST', path: '/auth/password/reset/validate', body: { token }, auth: false }),
+    resetPassword: (token: string, newPassword: string, mfaCode?: string) => send({ method: 'POST', path: '/auth/password/reset', body: { token, newPassword, ...(mfaCode ? { mfaCode } : {}) }, auth: false }),
+    resendVerification: (email: string) => send({ method: 'POST', path: '/auth/verify-email/resend', body: { email }, auth: false }),
     password: (b: { currentPassword: string; newPassword: string }) => send({ method: 'POST', path: '/auth/password', body: b }),
   },
   myBans: {

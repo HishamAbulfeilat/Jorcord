@@ -34,6 +34,8 @@ export interface Config {
   superAdminId: string | null;
   /** SMTP connection URL (smtp://user:pass@host:587). Without it, mail is logged (dev) or dropped (prod). */
   smtpUrl: string | null; mailFrom: string;
+  /** REQUIRE_EMAIL_VERIFICATION: new sessions are refused (403 EMAIL_NOT_VERIFIED) until the account's email is verified. */
+  requireEmailVerification: boolean;
   /** 'auto' = full-text search on Postgres, ILIKE on PGlite. */
   searchMode: 'auto' | 'fts' | 'ilike';
   storage: { driver: 'local' | 's3'; s3: { bucket: string; region: string; endpoint: string | null; accessKeyId: string | null; secretAccessKey: string | null; forcePathStyle: boolean; prefix: string } };
@@ -128,7 +130,7 @@ export function loadConfig(overrides: Partial<Config> = {}, env: NodeJS.ProcessE
     migrationsDir: resolve(here, '../migrations'),
     superAdminId: env.SUPER_ADMIN_USER_ID?.trim() || null,
     webDist: env.WEB_DIST?.trim() ? resolve(env.WEB_DIST.trim()) : null,
-    smtpUrl: env.SMTP_URL || null, mailFrom: env.MAIL_FROM ?? 'Jorcord <no-reply@localhost>',
+    smtpUrl: env.SMTP_URL || null, mailFrom: env.MAIL_FROM ?? 'Jorcord <no-reply@localhost>', requireEmailVerification: env.REQUIRE_EMAIL_VERIFICATION === 'true' || env.REQUIRE_EMAIL_VERIFICATION === '1',
     searchMode: (['fts', 'ilike'].includes(env.SEARCH_MODE ?? '') ? env.SEARCH_MODE : 'auto') as Config['searchMode'],
     storage: {
       driver: (env.STORAGE_DRIVER ?? (env.S3_BUCKET ? 's3' : 'local')) === 's3' ? 's3' : 'local',

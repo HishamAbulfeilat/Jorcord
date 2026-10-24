@@ -10,7 +10,7 @@ import { verifyTotp } from '../lib/totp';
 import { dropPushDevices } from '../services/pushDevices';
 import { idSchema, iso, parse } from '../lib/ids';
 import { limitOrThrow } from '../lib/ratelimit';
-import { consumeAuthToken, isAuthTokenUsable, sendPasswordChangedEmail, sendPasswordResetEmail, sendVerificationEmail } from '../services/authTokens';
+import { burnAuthToken, consumeAuthToken, peekAuthToken, sendPasswordChangedEmail, sendPasswordResetEmail, sendVerificationEmail } from '../services/authTokens';
 import { mfaTicketFor } from './passkeys';
 import { selfUserDTO } from '../services/serializers';
 
@@ -34,7 +34,18 @@ export function publicAuthRoutes(app: FastifyInstance, ctx: Ctx) {
     }
     const [row] = await ctx.db.query('SELECT * FROM users WHERE id = $1', [id]);
     await sendVerificationEmail(ctx, row).catch((e) => ctx.log.warn({ err: e }, 'verification email failed')); // never block sign-up on mail
+    if (ctx.config.requireEmailVerification) return reply.code(201).send({ verificationRequired: true, email: row.email }); // no session until the mailbox is proven
     return reply.code(201).send(await issueTokens(ctx, row, req));
+  });
+
+  /** Always 204 (no enumeration); only an existing, unverified, non-bot account actually gets mail. */
+  app.post('/auth/verify-email/resend', async (req, reply) => {
+    const { email } = parse(z.object({ email: z.string().trim().toLowerCase().email().max(254) }).strict(), req.body);
+    limitOrThrow(ctx.rl, `verify-resend:ip:${req.ip}`, 10, 15 * 60_000, ctx.config.rateLimit);
+    if (ctx.config.rateLimit && ctx.rl.hit(`verify-resend:email:${email}`, 3, 3600_000)) return reply.code(204).send(); // silently capped per address
+    const [row] = await ctx.db.query('SELECT id, email FROM users WHERE lower(email) = $1 AND NOT bot AND NOT verified AND deleted_at IS NULL', [email]);
+    if (row) void sendVerificationEmail(ctx, row).catch((e) => ctx.log.warn({ err: e }, 'verification email failed'));
+    return reply.code(204).send();
   });
 
   app.post('/auth/login', async (req) => {
@@ -81,11 +92,30 @@ export function publicAuthRoutes(app: FastifyInstance, ctx: Ctx) {
   app.post('/auth/password/reset/validate', async (req, reply) => {
     limitOrThrow(ctx.rl, `reset-check:${req.ip}`, 30, 15 * 60_000, ctx.config.rateLimit);
     const { token } = parse(z.object({ token: z.string().min(20).max(128) }).strict(), req.body);
-    return reply.send({ valid: await isAuthTokenUsable(ctx, token, 'reset_password') });
+    const userId = await peekAuthToken(ctx, token, 'reset_password');
+    if (!userId) return reply.send({ valid: false, mfaRequired: false });
+    const [u] = await ctx.db.query('SELECT mfa_enabled FROM users WHERE id = $1', [userId]);
+    return reply.send({ valid: true, mfaRequired: !!u?.mfa_enabled }); // the token holder already controls the mailbox; only the need for a code is disclosed
   });
   app.post('/auth/password/reset', async (req, reply) => {
     limitOrThrow(ctx.rl, `reset:${req.ip}`, 20, 15 * 60_000, ctx.config.rateLimit);
-    const b = parse(z.object({ token: z.string().min(20).max(128), newPassword: passwordSchema }).strict(), req.body);
+    const b = parse(z.object({ token: z.string().min(20).max(128), newPassword: passwordSchema, mfaCode: z.string().trim().regex(/^\d{6}$/, 'mfaCode must be 6 digits').optional() }).strict(), req.body);
+    // A mailbox alone must not defeat two-factor: an account with 2FA also needs a valid TOTP code. A wrong code does not consume the token,
+    // but 5 wrong guesses per token burn it (the 6-digit space cannot be walked), whatever IP they come from.
+    const peeked = await peekAuthToken(ctx, b.token, 'reset_password');
+    if (!peeked) throw new ApiError(400, 'INVALID_TOKEN', 'This link is invalid or has expired');
+    const [owner] = await ctx.db.query('SELECT id, mfa_enabled, mfa_secret FROM users WHERE id = $1 AND deleted_at IS NULL', [peeked]);
+    if (owner?.mfa_enabled) {
+      if (!b.mfaCode) throw new ApiError(401, 'MFA_REQUIRED', 'Enter the 6-digit code from your authenticator app to reset this password');
+      const tkey = `reset-mfa:${sha256(b.token)}`;
+      if (!(await verifyTotp(ctx, owner, b.mfaCode))) {
+        if (ctx.rl.hit(tkey, 4, 3600_000)) { // 5th wrong code: the token is dead
+          await burnAuthToken(ctx, b.token, 'reset_password');
+          throw new ApiError(400, 'INVALID_TOKEN', 'Too many wrong codes. Request a new reset link');
+        }
+        throw new ApiError(400, 'INVALID_CODE', 'Invalid authentication code');
+      }
+    }
     const userId = await consumeAuthToken(ctx, b.token, 'reset_password');
     if (!userId) throw new ApiError(400, 'INVALID_TOKEN', 'This link is invalid or has expired');
     const [account] = await ctx.db.query('UPDATE users SET password_hash = $2, verified = true WHERE id = $1 AND deleted_at IS NULL RETURNING id, email', [userId, await hashPassword(b.newPassword)]);

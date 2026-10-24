@@ -14,6 +14,7 @@ import { useStreamer, maskEmail } from '@/lib/streamer';
 import { profileGradient, isHex, headerBackground, isHexPair, type ThemePair } from '@/lib/profileTheme';
 import { api } from '@/lib/api';
 import { useData } from '@/stores/data';
+import { ResendVerification } from '@/pages/AuthPages';
 import { PasskeysPanel } from './PasskeysPanel';
 import { DataPrivacyPanel } from './DataPrivacyPanel';
 import { useUI, defaultKeybinds, toast, toastError, type Theme } from '@/stores/ui';
@@ -73,6 +74,7 @@ function Account({ go }: { go: (t: string) => void }) {
     <div className="overflow-hidden rounded-lg bg-side"><div className="h-24" style={{ background: headerBackground(me, me.banner ? fileUrl(me.banner) : null, idColor(me.id)) }} />
       <div className="flex items-center gap-4 px-4 pb-4"><div className="-mt-8 rounded-full border-[6px] border-[rgb(var(--side))]"><Avatar user={me} size={80} presence /></div><div className="mt-2 text-xl font-bold text-header">{me.displayName || me.username}</div><button className="btn btn-primary ms-auto" onClick={() => go('profile')}>{t('Edit User Profile')}</button></div>
       <dl className="m-4 space-y-4 rounded-lg bg-[rgb(var(--modal-alt))] p-4"><div><dt className="label !mb-0.5">{t('Username')}</dt><dd className="text-header">{me.username}</dd></div><div><dt className="label !mb-0.5">{t('Email')}</dt><dd className="text-header" data-testid="account-email">{st.hidePersonal ? maskEmail(me.email) : me.email}{!me.verified && <span className="ms-2 text-xs text-warn">unverified</span>}</dd></div></dl></div>
+    {!me.verified && me.email && <div role="status" data-testid="verify-banner" className="mt-4 rounded-lg bg-[rgb(var(--modal-alt))] p-4 text-sm text-header"><p className="mb-3">{t('Your email is not verified yet. Verify it so you can recover your account.')}</p><ResendVerification email={me.email} send={() => api.auth.sendVerifyEmail()} /></div>}
     <ServerSection />
     <AccountsSection />
     <H3>{t('Password')}</H3>

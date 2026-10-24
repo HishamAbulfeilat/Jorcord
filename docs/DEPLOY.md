@@ -62,7 +62,8 @@ All settings are environment variables (`apps/server/.env.example` lists them wi
 | `LIVEKIT_API_KEY/SECRET` | Must match LiveKit's `keys:`. |
 | `STORAGE_DRIVER` | `local` or `s3`. With `S3_BUCKET` set it defaults to `s3`. |
 | `S3_BUCKET`, `S3_REGION`, `S3_ENDPOINT`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_FORCE_PATH_STYLE`, `S3_PREFIX` | Any S3-compatible service. MinIO/R2: set `S3_ENDPOINT`; MinIO also needs `S3_FORCE_PATH_STYLE=true`. Omit the keys to use the AWS default credential chain (instance role etc.). |
-| `SMTP_URL`, `MAIL_FROM` | `smtp://user:pass@host:587` (`smtps://` for implicit TLS). |
+| `SMTP_URL`, `MAIL_FROM` | `smtp://user:pass@host:587` (`smtps://` for implicit TLS). Provider recipes: [EMAIL.md](EMAIL.md). |
+| `REQUIRE_EMAIL_VERIFICATION` | `true` blocks sign-in until the email is verified (default `false`; needs SMTP). |
 | `SEARCH_MODE` | `auto` (default), `fts`, `ilike`. |
 | `RATE_LIMIT_ENABLED` | Default on. Limits are per node (in memory). |
 

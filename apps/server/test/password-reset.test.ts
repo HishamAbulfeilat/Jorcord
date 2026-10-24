@@ -23,11 +23,11 @@ describe('password reset email', () => {
     expect(mail.text).toContain('expires in 1 hour');
 
     const token = tokenFrom(mail.text);
-    expect((await api.req('POST', '/auth/password/reset/validate', null, { token })).body).toEqual({ valid: true });
-    expect((await api.req('POST', '/auth/password/reset/validate', null, { token: 'z'.repeat(64) })).body).toEqual({ valid: false });
+    expect((await api.req('POST', '/auth/password/reset/validate', null, { token })).body).toEqual({ valid: true, mfaRequired: false });
+    expect((await api.req('POST', '/auth/password/reset/validate', null, { token: 'z'.repeat(64) })).body).toEqual({ valid: false, mfaRequired: false });
 
     expect((await api.req('POST', '/auth/password/reset', null, { token, newPassword: 'a brand new password' })).status).toBe(204);
-    expect((await api.req('POST', '/auth/password/reset/validate', null, { token })).body).toEqual({ valid: false });
+    expect((await api.req('POST', '/auth/password/reset/validate', null, { token })).body).toEqual({ valid: false, mfaRequired: false });
     expect((await api.req('POST', '/auth/password/reset', null, { token, newPassword: 'another password!!' })).status).toBe(400);
 
     expect((await api.req('POST', '/auth/login', null, { email: u.user.email, password: 'correct horse battery' })).status).toBe(401);
@@ -43,7 +43,7 @@ describe('password reset email', () => {
     await api.req('POST', '/auth/password/forgot', null, { email: u.user.email });
     const token = tokenFrom((await until(() => mailTo(u.user.email, 'Reset')[0])).text);
     await env.ctx.db.query(`UPDATE auth_tokens SET expires_at = now() - interval '1 minute' WHERE user_id = $1 AND kind = 'reset_password'`, [u.id]);
-    expect((await api.req('POST', '/auth/password/reset/validate', null, { token })).body).toEqual({ valid: false });
+    expect((await api.req('POST', '/auth/password/reset/validate', null, { token })).body).toEqual({ valid: false, mfaRequired: false });
     expect((await api.req('POST', '/auth/password/reset', null, { token, newPassword: 'a brand new password' })).status).toBe(400);
   });
 

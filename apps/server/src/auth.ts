@@ -49,6 +49,8 @@ export async function verifyGatewayToken(ctx: Ctx, token: string): Promise<{ use
 export async function issueTokens(ctx: Ctx, userRow: any, req: FastifyRequest, existingSessionId?: string) {
   // every login/register/refresh/MFA path ends here, so a disabled account can never get new tokens
   if (userRow.disabled_at) throw forbidden('This account has been disabled', 'ACCOUNT_DISABLED');
+  // REQUIRE_EMAIL_VERIFICATION: no new session (password, passkey or QR login) until the mailbox is proven; refreshes of existing sessions are unaffected
+  if (!existingSessionId && ctx.config.requireEmailVerification && !userRow.verified && !userRow.bot && userRow.email) throw forbidden('Verify your email address to sign in. Check your inbox or request a new link.', 'EMAIL_NOT_VERIFIED');
   const sid = existingSessionId ?? snowflake();
   const refresh = `${sid}.${randomToken(32)}`;
   const exp = new Date(Date.now() + ctx.config.refreshTtlSec * 1000);
