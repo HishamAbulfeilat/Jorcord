@@ -87,6 +87,17 @@ const ROUTE_LIMITS: { re: RegExp; max: number; windowMs: number }[] = [
 ];
 const IP_GLOBAL = { max: 600, windowMs: 60_000 }, USER_GLOBAL = { max: 50, windowMs: 1000 }, INVALID_LIMIT = 10_000, INVALID_WINDOW = 10 * 60_000;
 
+/** Machine-readable description of every limit (GET /api/v1/rate-limits, docs/BOTS.md#rate-limits). Kept next to the table so it cannot drift. */
+export function describeRateLimits() {
+  const readable = (re: RegExp) => re.source.replace(/^\^/, '').replace(/\\\//g, '/').replace(/\\/g, '').replace(/\(([A-Z|]+)\)/g, '$1').replace(/\$$/, '');
+  return {
+    headers: ['x-ratelimit-limit', 'x-ratelimit-remaining', 'x-ratelimit-reset', 'x-ratelimit-reset-after', 'x-ratelimit-bucket', 'retry-after (429 only)', 'x-ratelimit-scope (429 only: user | global | shared)', 'x-ratelimit-global (429 only)'],
+    global: { perIp: { limit: IP_GLOBAL.max, windowSeconds: IP_GLOBAL.windowMs / 1000 }, perUser: { limit: USER_GLOBAL.max, windowSeconds: USER_GLOBAL.windowMs / 1000 } },
+    routes: ROUTE_LIMITS.map((l) => ({ route: readable(l.re), limit: l.max, windowSeconds: l.windowMs / 1000 })),
+    publicPages: { perIp: { limit: 90, windowSeconds: 60 } },
+  };
+}
+
 /** Bucket principal: the authenticated user id when the bearer JWT verifies, else the client IP. */
 async function principalOf(req: FastifyRequest, jwtSecret: string): Promise<string> {
   const a = req.headers.authorization;

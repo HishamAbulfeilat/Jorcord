@@ -1,3 +1,4 @@
+import { clearPublicCache } from '../services/publicWeb';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { AUTO_ARCHIVE_DURATIONS, Perm, has, snowflake, type ForumTag } from '@jorcord/shared';
@@ -127,7 +128,8 @@ export function channelRoutes(app: FastifyInstance, ctx: Ctx) {
     else {
       need(a.perms, Perm.MANAGE_CHANNELS);
       allowed = ch.type === 'forum' || ch.type === 'media'
-        ? z.object({ ...chanFields, availableTags: z.array(tagSchema).max(20), requireTag: z.boolean(), defaultAutoArchiveDuration: archiveDuration, defaultThreadSlowmode: chanFields.slowmode, defaultSortOrder: z.enum(['latest_activity', 'creation_date']), defaultForumLayout: z.enum(['list', 'gallery']), defaultReactionEmoji: z.string().min(1).max(64).regex(/^(\w{2,32}:\d{1,20}|\S{1,16})$/u, 'must be a unicode emoji or `name:id`').nullable() }).partial().strict()
+        ? z.object({ ...chanFields, availableTags: z.array(tagSchema).max(20), requireTag: z.boolean(), defaultAutoArchiveDuration: archiveDuration, defaultThreadSlowmode: chanFields.slowmode, defaultSortOrder: z.enum(['latest_activity', 'creation_date']), defaultForumLayout: z.enum(['list', 'gallery']), defaultReactionEmoji: z.string().min(1).max(64).regex(/^(\w{2,32}:\d{1,20}|\S{1,16})$/u, 'must be a unicode emoji or `name:id`').nullable(), publicWeb: z.boolean() }).partial().strict()
+        : ch.type === 'announcement' ? z.object({ ...chanFields, publicWeb: z.boolean() }).partial().strict()
         : z.object(chanFields).partial().strict();
     }
     const b = parse(allowed, req.body) as Record<string, any>;
@@ -150,17 +152,23 @@ export function channelRoutes(app: FastifyInstance, ctx: Ctx) {
       } else if (/[\u0000-\u001f<>:]/.test(b.defaultReactionEmoji)) throw badRequest('Invalid emoji');
     }
     if (b.availableTags !== undefined) b.availableTags = await normaliseTags(id, ch.available_tags ?? [], b.availableTags);
+    if (b.publicWeb === true) { // opt-in per channel: never for age-restricted channels, and only where a logged-out visitor could already read it
+      const [pg] = await ctx.db.query('SELECT features FROM guilds WHERE id = $1', [ch.guild_id]);
+      if (!(pg?.features as string[] | undefined)?.includes('COMMUNITY')) throw badRequest('Public web view needs a Community server');
+      if (b.nsfw ?? ch.nsfw) throw badRequest('Age-restricted channels can never be public');
+    }
     if (b.parentId !== undefined) await validateParent(ch.guild_id, b.parentId, ch.type);
     const col: Record<string, string> = { icon: 'icon', ownerId: 'owner_id', name: 'name', topic: 'topic', nsfw: 'nsfw', slowmode: 'slowmode', bitrate: 'bitrate', userLimit: 'user_limit', parentId: 'parent_id', position: 'position', archived: 'archived',
-      requireTag: 'require_tag', defaultAutoArchiveDuration: 'default_auto_archive', autoArchiveDuration: 'auto_archive_minutes', locked: 'locked', availableTags: 'available_tags', appliedTags: 'applied_tags', defaultSortOrder: 'default_sort_order', defaultForumLayout: 'default_forum_layout', defaultReactionEmoji: 'default_reaction_emoji', defaultThreadSlowmode: 'default_thread_slowmode', isClipsChannel: 'is_clips_channel' };
+      requireTag: 'require_tag', defaultAutoArchiveDuration: 'default_auto_archive', autoArchiveDuration: 'auto_archive_minutes', locked: 'locked', availableTags: 'available_tags', appliedTags: 'applied_tags', defaultSortOrder: 'default_sort_order', defaultForumLayout: 'default_forum_layout', defaultReactionEmoji: 'default_reaction_emoji', defaultThreadSlowmode: 'default_thread_slowmode', isClipsChannel: 'is_clips_channel', publicWeb: 'public_web' };
     const sets: string[] = [], vals: unknown[] = [id];
     for (const [k, v] of Object.entries(b)) { if (!col[k]) continue; vals.push(k === 'availableTags' || k === 'appliedTags' ? JSON.stringify(v) : v); sets.push(`${col[k]} = $${vals.length}${k === 'availableTags' || k === 'appliedTags' ? '::jsonb' : ''}`); }
+    if (b.nsfw === true && ch.public_web && b.publicWeb === undefined) sets.push('public_web = false'); // age-restricted channels are never public
     if (ch.type === 'thread' && (b.archived === false || b.autoArchiveDuration !== undefined)) sets.push('activity_at = now()'); // unarchiving / changing the timer restarts the idle clock
     if (b.availableTags !== undefined) { // tags removed from the catalogue disappear from posts
       const keep = new Set((b.availableTags as ForumTag[]).map((t) => t.id));
       for (const gone of (ch.available_tags as ForumTag[]).filter((t) => !keep.has(t.id))) await ctx.db.query(`UPDATE channels SET applied_tags = applied_tags - $2::text WHERE parent_id = $1 AND type = 'thread'`, [id, gone.id]);
     }
-    if (sets.length) { await ctx.db.query(`UPDATE channels SET ${sets.join(', ')} WHERE id = $1`, vals); await ctx.pcache.invalidate({ k: 'channel', channelId: id }); }
+    if (sets.length) { await ctx.db.query(`UPDATE channels SET ${sets.join(', ')} WHERE id = $1`, vals); await ctx.pcache.invalidate({ k: 'channel', channelId: id }); clearPublicCache(); }
     const [row] = await ctx.db.query('SELECT * FROM channels WHERE id = $1', [id]);
     const dto = await channelDTO(ctx, row);
     if (ch.guild_id) await audit(ctx, ch.guild_id, req.userId, ch.type === 'thread' ? 'THREAD_UPDATE' : b.availableTags !== undefined ? 'FORUM_TAG_UPDATE' : 'CHANNEL_UPDATE', id, b, null, rowDiff(ch, row, CHANNEL_COLS));

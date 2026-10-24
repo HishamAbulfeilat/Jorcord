@@ -42,6 +42,8 @@ export interface Guild {
   verificationLevel?: 0 | 1 | 2 | 3 | 4; explicitFilter?: 0 | 1 | 2; defaultNotifications?: 'all' | 'mentions'; invitesPausedUntil?: string | null;
   /** 'optin': members must opt in (Privacy settings) before other members can DM them through this server. */
   memberDms?: 'open' | 'optin';
+  /** Public web view (docs/PUBLIC_PAGES.md): Community servers only; `publicNoindex` keeps the pages out of search engines. */
+  publicWeb?: boolean; publicNoindex?: boolean;
   /** Community servers only (null otherwise). */
   welcomeScreen?: WelcomeScreen | null;
 }
@@ -62,6 +64,8 @@ export interface Channel {
   availableTags?: ForumTag[]; requireTag?: boolean; defaultAutoArchiveDuration?: number;
   /** Forum/media defaults: post sort order, default layout, and the reaction auto-added to every new post. */
   defaultSortOrder?: 'latest_activity' | 'creation_date'; defaultForumLayout?: 'list' | 'gallery'; defaultReactionEmoji?: string | null;
+  /** Forum / announcement channels: readable without an account at /p/:guild/:channel (opt-in). */
+  publicWeb?: boolean;
   appliedTags?: Id[]; autoArchiveDuration?: number; locked?: boolean; archiveAt?: string | null;
   /** Threads: private threads are visible only to their members (and MANAGE_THREADS holders); `invitable` lets any member add others. */
   private?: boolean; invitable?: boolean;

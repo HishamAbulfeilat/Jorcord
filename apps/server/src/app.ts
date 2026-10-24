@@ -68,6 +68,8 @@ import { installAuditReason } from './lib/auditReason';
 import { modSuiteRoutes } from './routes/modsuite';
 import { userInstallRoutes } from './routes/userInstalls';
 import { appEmojiRoutes, emojiPublicRoutes } from './routes/appEmojis';
+import { publicWebRoutes } from './routes/publicWeb';
+import { rateLimitDocRoutes } from './routes/ratelimitdocs';
 import { securityHeaders, logSerializers, LOG_REDACT } from './lib/security';
 
 export interface BuildOptions { config?: Partial<Config>; memoryDb?: boolean; env?: NodeJS.ProcessEnv }
@@ -151,6 +153,7 @@ export async function buildApp(opts: BuildOptions = {}): Promise<{ app: FastifyI
   });
   gatewayRoutes(app, ctx);
   livekitProxyRoutes(app, ctx); // same-origin LiveKit signalling (LIVEKIT_URL=auto)
+  await app.register(async (pub) => publicWebRoutes(pub, ctx)); // /p/*, /sitemap.xml, /sitemaps/*, /robots.txt (opt-in public forum pages)
 
   await app.register(async (api) => {
     publicAuthRoutes(api, ctx);
@@ -167,6 +170,7 @@ export async function buildApp(opts: BuildOptions = {}): Promise<{ app: FastifyI
     emojiPublicRoutes(api, ctx);
     fileRoutes(api, ctx);
     widgetPublicRoutes(api, ctx);
+    rateLimitDocRoutes(api);
     await api.register(async (scope) => voiceWebhookRoutes(scope, ctx));
     await api.register(async (priv) => {
       priv.addHook('preHandler', authenticate(ctx));

@@ -46,7 +46,7 @@ export function guildDTO(r: any): Guild {
     systemChannelId: r.system_channel_id ?? null, rulesChannelId: r.rules_channel_id ?? null,
     boostLevel: boostLevel(r.boost_count ?? 0), boostCount: r.boost_count ?? 0, features: r.features ?? [], vanityUrl: r.vanity_url ?? null, createdAt: iso(r.created_at)!, tag: r.tag ?? null, tagBadge: r.tag_badge ?? null,
     verificationLevel: (r.verification_level ?? 0) as 0, explicitFilter: (r.explicit_filter ?? 0) as 0, defaultNotifications: r.default_notifications ?? 'mentions', welcomeScreen: r.welcome_screen ?? null,
-    memberDms: r.member_dms_restricted_at ? 'optin' : 'open',
+    memberDms: r.member_dms_restricted_at ? 'optin' : 'open', publicWeb: !!r.public_web, publicNoindex: !!r.public_noindex,
     invitesPausedUntil: r.invites_paused_until && new Date(r.invites_paused_until).getTime() > Date.now() ? iso(r.invites_paused_until) : null,
   };
 }
@@ -67,7 +67,7 @@ export async function channelsDTO(ctx: Ctx, rows: any[]): Promise<Channel[]> {
     ...(r.type === 'group_dm' ? { icon: r.icon ?? null } : {}),
     ...(r.type === 'dm' || r.type === 'group_dm' ? { recipients: recips.filter((p) => p.channel_id === r.id).map((p) => users.get(p.user_id)!).filter(Boolean) } : {}),
     ...(r.type === 'voice' || r.type === 'stage' ? { voiceStatus: r.voice_status ?? null } : {}),
-    ownerId: r.owner_id ?? null, archived: r.archived, createdAt: iso(r.created_at)!, isClipsChannel: !!r.is_clips_channel, ...(r.encrypted ? { encrypted: true } : {}), ...(r.message_ttl_seconds ? { messageTtlSeconds: r.message_ttl_seconds } : {}),
+    ...(r.public_web ? { publicWeb: true } : {}), ownerId: r.owner_id ?? null, archived: r.archived, createdAt: iso(r.created_at)!, isClipsChannel: !!r.is_clips_channel, ...(r.encrypted ? { encrypted: true } : {}), ...(r.message_ttl_seconds ? { messageTtlSeconds: r.message_ttl_seconds } : {}),
     ...(r.type === 'forum' || r.type === 'media' ? { availableTags: r.available_tags ?? [], requireTag: !!r.require_tag, defaultAutoArchiveDuration: r.default_auto_archive ?? 1440, defaultSortOrder: (r.default_sort_order ?? 'latest_activity') as 'latest_activity' | 'creation_date', defaultForumLayout: (r.default_forum_layout ?? 'list') as 'list' | 'gallery', defaultReactionEmoji: r.default_reaction_emoji ?? null, defaultThreadSlowmode: r.default_thread_slowmode ?? 0 } : {}),
     ...(r.type === 'thread' ? {
       appliedTags: r.applied_tags ?? [], autoArchiveDuration: r.auto_archive_minutes ?? 1440, locked: !!r.locked,

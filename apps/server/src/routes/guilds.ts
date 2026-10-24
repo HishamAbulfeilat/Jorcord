@@ -1,3 +1,4 @@
+import { clearPublicCache } from '../services/publicWeb';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { LIMITS, Perm, SERVER_TAG_RE, TAG_BADGE_IDS, WELCOME_SCREEN_MAX_CHANNELS, computePermissions, has, snowflake, type WelcomeScreen } from '@jorcord/shared';
@@ -21,7 +22,7 @@ import { GUILD_SELECT, guildDTO } from '../services/serializers';
 const gid = z.object({ id: idSchema });
 const patchGuild = z.object({
   name: z.string().trim().min(2).max(100), icon: assetUrl.nullable(), banner: assetUrl.nullable(), description: z.string().max(1000).nullable(),
-  systemChannelId: idSchema.nullable(), rulesChannelId: idSchema.nullable(), discoverable: z.boolean(), memberScreening: z.boolean(), community: z.boolean(),
+  systemChannelId: idSchema.nullable(), rulesChannelId: idSchema.nullable(), discoverable: z.boolean(), publicWeb: z.boolean(), publicNoindex: z.boolean(), memberScreening: z.boolean(), community: z.boolean(),
   vanityUrl: z.string().regex(/^[a-z0-9-]{3,32}$/).nullable(),
   tag: z.string().regex(SERVER_TAG_RE, 'tag must be 3-4 letters or digits').nullable(), tagBadge: z.enum(TAG_BADGE_IDS).nullable(),
 }).partial().strict();
@@ -68,10 +69,17 @@ export function guildRoutes(app: FastifyInstance, ctx: Ctx) {
       const v = b[k];
       if (v) { const [c] = await ctx.db.query(`SELECT 1 AS x FROM channels WHERE id = $1 AND guild_id = $2 AND type IN ('text','announcement')`, [v, id]); if (!c) throw badRequest(`${k} must be a text channel of this guild`); }
     }
-    const col: Record<string, string> = { name: 'name', icon: 'icon', banner: 'banner', description: 'description', systemChannelId: 'system_channel_id', rulesChannelId: 'rules_channel_id', vanityUrl: 'vanity_url', tag: 'tag', tagBadge: 'tag_badge' };
+    const col: Record<string, string> = { name: 'name', icon: 'icon', banner: 'banner', description: 'description', systemChannelId: 'system_channel_id', rulesChannelId: 'rules_channel_id', vanityUrl: 'vanity_url', publicNoindex: 'public_noindex', tag: 'tag', tagBadge: 'tag_badge' };
     const [guildBefore] = await ctx.db.query(`SELECT ${GUILD_COLS.join(', ')} FROM guilds WHERE id = $1`, [id]);
     const sets: string[] = [], vals: unknown[] = [id];
     for (const [k, v] of Object.entries(b)) { if (!col[k]) continue; vals.push(v); sets.push(`${col[k]} = $${vals.length}`); }
+    if (b.publicWeb !== undefined) { // public web view (docs/PUBLIC_PAGES.md): only Community servers may publish; switching it off always works
+      if (b.publicWeb) {
+        const [pg] = await ctx.db.query('SELECT features FROM guilds WHERE id = $1', [id]);
+        if (!(pg.features as string[]).includes('COMMUNITY')) throw badRequest('Public web view needs a Community server');
+      }
+      vals.push(b.publicWeb); sets.push(`public_web = $${vals.length}`);
+    }
     if (b.discoverable !== undefined || b.memberScreening !== undefined || b.community !== undefined) {
       const [g] = await ctx.db.query('SELECT features, rules_channel_id, welcome_screen FROM guilds WHERE id = $1', [id]);
       const f = new Set<string>(g.features);
@@ -84,6 +92,7 @@ export function guildRoutes(app: FastifyInstance, ctx: Ctx) {
         if (b.community && !(b.rulesChannelId ?? g.rules_channel_id)) throw badRequest('Set a rules channel before turning on Community');
         b.community ? f.add('COMMUNITY') : f.delete('COMMUNITY');
         // the welcome screen only exists for community servers: leaving Community switches it off (the content is kept)
+        if (!b.community && b.publicWeb === undefined) sets.push('public_web = false'); // leaving Community also unpublishes the web view
         if (!b.community && g.welcome_screen?.enabled) { vals.push(JSON.stringify({ ...g.welcome_screen, enabled: false })); sets.push(`welcome_screen = $${vals.length}::jsonb`); }
       }
       vals.push(JSON.stringify([...f])); sets.push(`features = $${vals.length}::jsonb`);
@@ -92,6 +101,7 @@ export function guildRoutes(app: FastifyInstance, ctx: Ctx) {
     catch (e: any) { if (e?.code === '23505' || /unique|duplicate/i.test(String(e?.message))) throw conflict('Vanity URL taken'); throw e; }
     const [guildAfter] = await ctx.db.query(`SELECT ${GUILD_COLS.join(', ')} FROM guilds WHERE id = $1`, [id]);
     await audit(ctx, id, req.userId, 'GUILD_UPDATE', id, b, null, rowDiff(guildBefore, guildAfter, GUILD_COLS));
+    if (b.publicWeb !== undefined || b.publicNoindex !== undefined || b.community !== undefined || b.vanityUrl !== undefined || b.name !== undefined) clearPublicCache();
     if (b.tag !== undefined || b.tagBadge !== undefined) await syncGuildTag(ctx, id);
     const dto = (await getGuildDTO(ctx, id))!;
     await ctx.hub.toGuild(id, 'GUILD_UPDATE', dto);
