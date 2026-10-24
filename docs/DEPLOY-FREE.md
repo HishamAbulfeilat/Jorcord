@@ -50,13 +50,13 @@ package):
 
 ```bash
 sudo apt-get -y install iptables-persistent
-for p in 80 443 7880 7881; do sudo iptables -I INPUT 6 -p tcp --dport "$p" -j ACCEPT; done
-for p in 7882 3478;   do sudo iptables -I INPUT 6 -p udp --dport "$p" -j ACCEPT; done
+for p in 80 443 7880 7881; do sudo iptables -I INPUT 5 -p tcp --dport "$p" -j ACCEPT; done
+for p in 7882 3478;   do sudo iptables -I INPUT 5 -p udp --dport "$p" -j ACCEPT; done
 sudo netfilter-persistent save
 ```
 
-The `-I INPUT 6` positions the accepts **before** the stock `-j REJECT` rule of the Oracle image —
-check with `sudo iptables -L INPUT --line-numbers` and adjust if your list looks different.
+The `-I INPUT 5` positions the accepts **before** the stock `-j REJECT` rule of the Oracle image —
+check with `sudo iptables -L INPUT --line-numbers`: the `REJECT` line must come **after** your ACCEPT lines (on Ubuntu 24.04 the stock REJECT is rule 5; inserting at 6 puts your rules behind it and they never match).
 
 ## 3. Free domain (DuckDNS)
 
