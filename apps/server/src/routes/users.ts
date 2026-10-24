@@ -2,9 +2,9 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { Relationship } from '@jorcord/shared';
 import { AVATAR_DECORATION_IDS, NAME_PLATE_IDS, PROFILE_EFFECT_IDS, snowflake } from '@jorcord/shared';
-import { bumpDaily } from './guildextras';
+import { removeMemberFromGuild } from './members';
 import { publicConnections } from './connections';
-import { clearServerTag, setServerTag } from '../services/cosmetics';
+import { setServerTag } from '../services/cosmetics';
 import type { Ctx } from '../ctx';
 import { ApiError, badRequest, forbidden, notFound } from '../errors';
 import { assetUrl, idSchema, iso, parse } from '../lib/ids';
@@ -12,7 +12,6 @@ import { limitOrThrow } from '../lib/ratelimit';
 import { storeImageFromUrl } from '../services/files';
 import { verifyPassword } from '../lib/crypto';
 import { verifyTotp } from '../lib/totp';
-import { uninstallBot } from '../services/apps';
 import { scheduleAccountDeletion } from '../services/accountDeletion';
 import { channelAccess } from '../services/perms';
 import { checkImpersonation } from '../services/impersonation';
@@ -191,13 +190,7 @@ export function userRoutes(app: FastifyInstance, ctx: Ctx) {
     const [m] = await ctx.db.query('SELECT 1 AS x FROM members WHERE guild_id = $1 AND user_id = $2', [guildId, req.userId]);
     if (!g || !m) throw notFound('Guild');
     if (g.owner_id === req.userId) throw new ApiError(400, 'OWNER_CANNOT_LEAVE', 'Transfer ownership or delete the guild instead');
-    await ctx.db.query('DELETE FROM members WHERE guild_id = $1 AND user_id = $2', [guildId, req.userId]);
-    await clearServerTag(ctx, guildId, req.userId);
-    await bumpDaily(ctx, guildId, 'leaves');
-    await ctx.pcache.invalidate({ k: 'member', guildId, userId: req.userId });
-    await ctx.hub.toUser(req.userId, 'GUILD_DELETE', { id: guildId });
-    await ctx.hub.toGuild(guildId, 'MEMBER_REMOVE', { guildId, userId: req.userId });
-    if (req.isBot) await uninstallBot(ctx, guildId, req.userId);
+    await removeMemberFromGuild(ctx, guildId, req.userId); // same cleanup as a kick: voice, private threads, tag, bot install
     return reply.code(204).send();
   });
 

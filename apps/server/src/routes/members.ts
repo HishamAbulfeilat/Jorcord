@@ -75,6 +75,8 @@ export async function removeMemberFromGuild(ctx: Ctx, guildId: string, userId: s
   const vs = await ctx.voice.get(userId);
   if (vs?.channelId && vs.guildId === guildId) await disconnectMember(ctx, userId).catch((e) => ctx.log.warn({ err: e }, 'voice disconnect on removal failed'));
   await ctx.db.query('DELETE FROM members WHERE guild_id = $1 AND user_id = $2', [guildId, userId]);
+  // thread membership is what grants access to private threads: it must not survive leaving (or being kicked), or a rejoin would restore it
+  await ctx.db.query('DELETE FROM thread_members WHERE user_id = $1 AND thread_id IN (SELECT id FROM channels WHERE guild_id = $2 AND type = \'thread\')', [userId, guildId]);
   await clearServerTag(ctx, guildId, userId);
   await bumpDaily(ctx, guildId, 'leaves');
   await ctx.pcache.invalidate({ k: 'member', guildId, userId });
