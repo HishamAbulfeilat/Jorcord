@@ -61,7 +61,12 @@ describe('resolveUser / toSearchRequest', () => {
     const { req, unresolved } = toSearchRequest(parseSearchTokens('hi from:alice mentions:bob has:image has:video before:2026-01-01 during:2026-01-02 pinned:true sort:relevance'), members);
     expect(req).toEqual({ q: 'hi', authorId: '11', mentions: '22', has: 'image,video', before: '2026-01-01', after: undefined, during: '2026-01-02', pinned: 'true', sort_by: 'relevance', sort_order: undefined });
     expect(unresolved).toEqual([]);
-    expect(toSearchRequest(parseSearchTokens('from:ghost'), members).unresolved).toEqual(['ghost']);
+    // names the member list does not know (someone who left) go to the server to resolve
+    const ghost = toSearchRequest(parseSearchTokens('from:ghost mentions:@Casper#0 link:https://example.com/x'), members);
+    expect(ghost.unresolved).toEqual([]);
+    expect(ghost.req).toMatchObject({ from: 'ghost', mentions_user: 'Casper#0', link: 'example.com/x' });
+    expect(ghost.req.authorId).toBeUndefined();
+    expect(toSearchRequest(parseSearchTokens('from:99'), members).req).toMatchObject({ authorId: '99' });
     expect(toSearchRequest(parseSearchTokens('pinned:false'), members).req).toMatchObject({ pinned: 'false', q: undefined });
   });
 });

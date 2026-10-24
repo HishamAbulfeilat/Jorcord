@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Search, X, Pin, PinOff, MessagesSquare, Hash, CornerDownRight, ShieldBan, Lock } from 'lucide-react';
+import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Clock, Search, X, Pin, PinOff, MessagesSquare, Hash, CornerDownRight, ShieldBan, Lock } from 'lucide-react';
 import { canPinMessage } from '@/lib/perms';
 import { myChannelPerms } from '@/lib/session';
 import { toastError } from '@/stores/ui';
@@ -19,6 +19,7 @@ import { displayName, fmtStamp, msgTime, cx } from '@/lib/format';
 import { useDebounced } from '@/lib/hooks';
 import { AttachmentView } from './Attachments';
 import { parseSearchTokens, toSearchRequest } from '@/lib/searchTokens';
+import { applyHighlight, clearRecent, hasToken, highlightTerms, loadRecent, pushRecent, saveRecent, toggleToken } from '@/lib/searchUi';
 
 function PanelShell({ title, onClose, children, actions }: { title: string; onClose: () => void; children: React.ReactNode; actions?: React.ReactNode }) {
   return (
@@ -29,22 +30,33 @@ function PanelShell({ title, onClose, children, actions }: { title: string; onCl
   );
 }
 
-export function ResultCard({ m, channel, onOpen }: { m: Message; channel?: Channel; onOpen?: () => void }) {
+export function ResultCard({ m, channel, onOpen, highlight }: { m: Message; channel?: Channel; onOpen?: () => void; highlight?: string[] }) {
   const nav = useNav(); const u = useData((s) => s.users[m.author.id]) ?? m.author;
   const member = useData((s) => (m.guildId ? s.guilds[m.guildId]?.members[m.author.id] : undefined));
+  const body = useRef<HTMLDivElement>(null);
+  const termKey = (highlight ?? []).join('\u0000');
+  useEffect(() => { if (!body.current || !highlight?.length) return; return applyHighlight(body.current, highlight); }, [termKey, m.id]); // eslint-disable-line
   const go = () => { onOpen?.(); nav.go(m.guildId, m.channelId); setTimeout(() => window.dispatchEvent(new CustomEvent('jorcord:jump', { detail: { channelId: m.channelId, messageId: m.id } })), 400); };
+  const embed = m.embeds.find((e) => e.title || e.description);
+  // authors who left the server (or are not cached) render from the author snapshot the server sent with the message
   return (
-    <button onClick={go} className="mb-2 block w-full rounded-md border border-divider bg-chat p-3 text-start hover:bg-chat-hover">
+    <button onClick={go} className="touch mb-2 block w-full rounded-md border border-divider bg-chat p-3 text-start hover:bg-chat-hover" data-testid="search-result">
       {channel && <div className="mb-1 flex items-center gap-1 text-xs text-muted"><Hash size={12} />{channel.name}</div>}
       <div className="flex items-center gap-2"><Avatar user={u} size={24} /><span className="font-medium text-header">{displayName(u, member)}</span><time className="text-xs text-muted">{fmtStamp(msgTime(m.id, m.createdAt))}</time></div>
-      <div className="mt-1 ps-8 text-sm"><Markdown content={m.content} guildId={m.guildId} />{m.attachments.slice(0, 1).map((a) => <div key={a.id} className="mt-1"><AttachmentView a={a} /></div>)}</div>
+      <div ref={body} className="mt-1 ps-8 text-sm"><Markdown content={m.content} guildId={m.guildId} />
+        {embed && <div className="mt-1 border-s-2 border-divider ps-2 text-xs text-muted">{embed.title && <div className="font-semibold text-normal">{embed.title}</div>}{embed.description && <div className="line-clamp-2">{embed.description}</div>}</div>}
+        {m.attachments.slice(0, 1).map((a) => <div key={a.id} className="mt-1"><AttachmentView a={a} />{a.description && <div className="mt-0.5 text-xs italic text-muted">{a.description}</div>}</div>)}</div>
     </button>
   );
 }
 
+const PAGE = 25;
+
 export function SearchPanel({ guildId, channel, onClose }: { guildId: string | undefined; channel: Channel; onClose: () => void }) {
   const q = useUI((s) => s.searchQuery); const setQ = useUI((s) => s.setSearchQuery);
+  const me = useData((s) => s.me);
   const [has, setHas] = useState(''); const [scope, setScope] = useState<'server' | 'channel'>('server');
+  const [recent, setRecent] = useState<string[]>(loadRecent);
   const dq = useDebounced(q, 350);
   const chans = useData((s) => (guildId ? s.guilds[guildId]?.channels : undefined));
   const members = useData((s) => (guildId ? s.guilds[guildId]?.members : undefined));
@@ -55,23 +67,49 @@ export function SearchPanel({ guildId, channel, onClose }: { guildId: string | u
     const hasAll = [...new Set([...(r.req.has ? r.req.has.split(',') : []), ...(has ? [has] : [])])];
     return { req: { ...r.req, has: hasAll.length ? hasAll.join(',') : undefined }, unresolved: r.unresolved };
   }, [parsed, members, chans, has]);
-  const filtered = !!(req.authorId || req.author_type || req.mentions || req.has || req.pinned || req.during);
-  const res = useQuery({
-    queryKey: ['search', guildId ?? channel.id, scope, req], enabled: ((req.q?.trim().length ?? 0) > 1 || filtered) && unresolved.length === 0,
-    queryFn: () => (guildId ? api.guilds.search(guildId, { ...req, channelId: req.channelId ?? (scope === 'channel' ? channel.id : undefined) }) : api.guilds.search('@me', { ...req, channelId: channel.id })),
+  const filtered = !!(req.authorId || req.from || req.author_type || req.mentions || req.mentions_user || req.link || req.has || req.pinned || req.during);
+  const terms = useMemo(() => highlightTerms(parsed.text), [parsed.text]);
+  const enabled = ((req.q?.trim().length ?? 0) > 1 || filtered) && unresolved.length === 0;
+  const scopeChannel = req.channelId ?? (scope === 'channel' ? channel.id : undefined);
+  const res = useInfiniteQuery({
+    queryKey: ['search', guildId ?? channel.id, scope, req], enabled, initialPageParam: null as null | { before?: string; offset?: number },
+    queryFn: ({ pageParam }) => (guildId ? api.guilds.search(guildId, { ...req, channelId: scopeChannel, limit: PAGE, ...pageParam }) : api.guilds.search('@me', { ...req, channelId: channel.id, limit: PAGE, ...pageParam })),
+    // newest-first pages continue from the last id (stable even while new messages arrive); other orders page by offset
+    getNextPageParam: (last, all) => {
+      if (last.length < PAGE) return undefined;
+      const byTime = (req.sort_by ?? 'timestamp') === 'timestamp' && (req.sort_order ?? 'desc') === 'desc';
+      return byTime ? { before: last[last.length - 1]!.id } : { offset: all.length * PAGE };
+    },
   });
+  const hits = useMemo(() => { const seen = new Set<string>(); return (res.data?.pages.flat() ?? []).filter((m) => !seen.has(m.id) && !!seen.add(m.id)); }, [res.data]);
+  const remember = () => { const next = pushRecent(recent, q); setRecent(next); saveRecent(next); };
+  const meTok = me ? `from:${me.username}` : ''; const mentionTok = me ? `mentions:${me.username}` : '';
+  const chip = (on: boolean) => cx('touch inline-flex shrink-0 items-center rounded-full px-3 py-1.5 text-xs font-semibold', on ? 'bg-brand text-white' : 'bg-active text-interactive');
   return (
     <PanelShell title={t('Search Results')} onClose={onClose}>
-      <div className="mb-2 flex items-center rounded bg-rail px-2"><input autoFocus value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search messages" placeholder="Search  (from: in: author_type: mentions: has: before: after:)" className="h-9 flex-1 bg-transparent text-sm outline-none placeholder:text-muted" /><Search size={16} className="text-muted" /></div>
-      <div className="mb-3 flex flex-wrap gap-1.5">
-        {guildId && (['server', 'channel'] as const).map((s) => <button key={s} aria-pressed={scope === s} onClick={() => setScope(s)} className={cx('rounded-full px-3 py-1 text-xs font-semibold', scope === s ? 'bg-brand text-white' : 'bg-active text-interactive')}>{s === 'server' ? 'Everywhere' : 'This channel'}</button>)}
-        {['image', 'video', 'file', 'link', 'embed'].map((h) => <button key={h} aria-pressed={has === h} onClick={() => setHas(has === h ? '' : h)} className={cx('rounded-full px-3 py-1 text-xs font-semibold', has === h ? 'bg-brand text-white' : 'bg-active text-interactive')}>has: {h}</button>)}
+      <form role="search" className="mb-2 flex items-center rounded bg-rail px-2" onSubmit={(e) => { e.preventDefault(); remember(); }}>
+        <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search messages" enterKeyHint="search" autoCapitalize="off" autoCorrect="off" placeholder="Search  (from: in: link: mentions: has: before: after:)" className="h-11 flex-1 bg-transparent text-base outline-none placeholder:text-muted md:h-9 md:text-sm" />
+        {q ? <button type="button" aria-label={t('Clear search')} onClick={() => setQ('')} className="touch flex h-8 w-8 items-center justify-center text-muted"><X size={16} /></button> : <Search size={16} className="text-muted" />}
+      </form>
+      <div className="-mx-2 mb-3 flex gap-1.5 overflow-x-auto px-2 pb-1" role="group" aria-label={t('Search filters')} data-testid="search-chips">
+        {guildId && (['server', 'channel'] as const).map((s) => <button key={s} aria-pressed={scope === s} onClick={() => setScope(s)} className={chip(scope === s)}>{s === 'server' ? 'Everywhere' : 'This channel'}</button>)}
+        {['image', 'video', 'file', 'link', 'embed'].map((h) => <button key={h} aria-pressed={has === h} onClick={() => setHas(has === h ? '' : h)} className={chip(has === h)}>has: {h}</button>)}
+        {me && <button aria-pressed={hasToken(q, meTok)} onClick={() => setQ(toggleToken(q, meTok))} className={chip(hasToken(q, meTok))}>{t('From me')}</button>}
+        {me && <button aria-pressed={hasToken(q, mentionTok)} onClick={() => setQ(toggleToken(q, mentionTok))} className={chip(hasToken(q, mentionTok))}>{t('Mentions me')}</button>}
       </div>
-      {unresolved.length > 0 && <p role="status" className="mb-2 text-xs text-danger">No member matches {unresolved.map((u) => `"${u}"`).join(', ')}.</p>}
-      {res.isFetching && <Spinner className="mx-auto my-6" />}
-      {!res.isFetching && res.data?.length === 0 && <Empty icon={<Search size={40} />} title="No results found">Try different keywords or filters.</Empty>}
-      {!res.isFetching && !res.data && unresolved.length === 0 && <Empty icon={<Search size={40} />} title="Search messages">Type at least two characters.</Empty>}
-      {res.data?.map((m) => <ResultCard key={m.id} m={m} channel={chans?.[m.channelId]} />)}
+      {unresolved.length > 0 && <p role="status" className="mb-2 text-xs text-danger">No channel matches {unresolved.map((u) => `"${u}"`).join(', ')}.</p>}
+      {!enabled && unresolved.length === 0 && recent.length > 0 && (
+        <section aria-label={t('Recent searches')} className="mb-3" data-testid="recent-searches">
+          <div className="mb-1 flex items-center justify-between px-1"><h3 className="section-title">{t('Recent searches')}</h3><button className="touch text-xs text-link" onClick={() => { clearRecent(); setRecent([]); }}>{t('Clear')}</button></div>
+          {recent.map((r) => <button key={r} onClick={() => setQ(r)} className="touch flex w-full items-center gap-2 rounded px-2 py-2 text-start text-sm text-normal hover:bg-chat-hover"><Clock size={14} className="shrink-0 text-muted" /><span className="truncate">{r}</span></button>)}
+        </section>
+      )}
+      {res.isFetching && !res.isFetchingNextPage && <Spinner className="mx-auto my-6" />}
+      {enabled && !res.isFetching && hits.length === 0 && <Empty icon={<Search size={40} />} title="No results found">Try different keywords or filters.</Empty>}
+      {!enabled && unresolved.length === 0 && recent.length === 0 && <Empty icon={<Search size={40} />} title="Search messages">Type at least two characters.</Empty>}
+      {!enabled && unresolved.length === 0 && recent.length > 0 && <p className="px-1 text-xs text-muted">Type at least two characters.</p>}
+      {hits.map((m) => <ResultCard key={m.id} m={m} channel={chans?.[m.channelId]} highlight={terms} onOpen={remember} />)}
+      {res.hasNextPage && <button disabled={res.isFetchingNextPage} onClick={() => void res.fetchNextPage()} className="touch mb-2 w-full rounded-md bg-active py-2 text-sm font-semibold text-header" data-testid="search-more">{res.isFetchingNextPage ? t('Loading') : t('Load more results')}</button>}
     </PanelShell>
   );
 }

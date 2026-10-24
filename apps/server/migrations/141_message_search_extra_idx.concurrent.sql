@@ -1,0 +1,1 @@
+CREATE INDEX CONCURRENTLY IF NOT EXISTS messages_search_extra_fts_idx ON messages USING GIN (to_tsvector('simple', regexp_replace(search_extra, '[^[:alnum:]]+', ' ', 'g'))) WHERE search_extra IS NOT NULL;

@@ -160,3 +160,6 @@ img[data-still] { image-rendering: auto; }
 /* Accessibility options (lib/a11y.ts). OpenDyslexic is bundled locally (@fontsource, SIL OFL); saturation is a user-set filter on the root. */
 :root[data-font="dyslexic"] body, :root[data-font="dyslexic"] button, :root[data-font="dyslexic"] input, :root[data-font="dyslexic"] textarea, :root[data-font="dyslexic"] select { font-family: 'OpenDyslexic', ui-sans-serif, system-ui, sans-serif; letter-spacing: 0.02em; }
 html { filter: saturate(var(--saturation, 1)); }
+
+/* search result hits (CSS Custom Highlight API; see lib/searchUi.ts) */
+::highlight(search-hit) { background-color: rgb(var(--brand) / 0.35); color: inherit; }

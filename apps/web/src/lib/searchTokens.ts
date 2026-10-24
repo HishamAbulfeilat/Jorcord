@@ -14,6 +14,8 @@ export interface ParsedSearch {
   /** `author_type:bot|user`. */
   authorType?: 'bot' | 'user';
   has: SearchHasValue[];
+  /** `link:example.com` — substring of a url in text, embeds or attachment names. */
+  link?: string;
   /** Snowflake or ISO date string, exactly as the server accepts it. */
   before?: string;
   after?: string;
@@ -47,12 +49,13 @@ export function parseSearchTokens(input: string): ParsedSearch {
   const out: ParsedSearch = { text: '', from: [], mentions: [], inChannel: [], has: [] };
   const rest: string[] = [];
   for (const tok of tokenize(input)) {
-    const m = /^(from|mentions|in|author_type|has|before|after|during|pinned|sort|order):(.*)$/i.exec(tok);
+    const m = /^(from|mentions|in|author_type|has|link|before|after|during|pinned|sort|order):(.*)$/i.exec(tok);
     const value = m ? m[2]!.replace(/^"(.*)"$/, '$1').trim() : '';
     if (!m || !value) { rest.push(tok); continue; }
     const key = m[1]!.toLowerCase();
     if (key === 'from') out.from.push(stripMention(value));
     else if (key === 'mentions') out.mentions.push(stripMention(value));
+    else if (key === 'link') out.link = value.replace(/^https?:\/\//i, '');
     else if (key === 'in') out.inChannel.push(value.replace(/^<#(\d+)>$/, '$1').replace(/^#/, ''));
     else if (key === 'author_type') {
       const v = value.toLowerCase();
@@ -99,17 +102,19 @@ export function resolveUser(value: string, members: Iterable<Pick<Member, 'user'
   return null;
 }
 
-export interface SearchRequest { q?: string; authorId?: Id; channelId?: Id; author_type?: string; mentions?: Id; has?: string; before?: string; after?: string; during?: string; pinned?: string; sort_by?: string; sort_order?: string }
+export interface SearchRequest { q?: string; /** Raw `from:` name the member list could not resolve (account may have left): the server resolves it. */ from?: string; mentions_user?: string; link?: string; authorId?: Id; channelId?: Id; author_type?: string; mentions?: Id; has?: string; before?: string; after?: string; during?: string; pinned?: string; sort_by?: string; sort_order?: string }
 
 /**
- * Turns parsed tokens into API query params. A `from:`/`mentions:` name that matches nobody sets `unresolved` so the UI can
- * say so instead of silently searching everyone. Only the first value of each user filter is sent (the API takes one).
+ * Turns parsed tokens into API query params. A `from:`/`mentions:` name the member list does not know (someone who left the
+ * server, or a username not in the loaded page) is sent as-is and resolved by the server, which knows every account that
+ * ever posted. `unresolved` now only lists `in:` channels that match nothing. Only the first value of each user filter is sent.
  */
 export function toSearchRequest(p: ParsedSearch, members: Iterable<Pick<Member, 'user' | 'nick'>>, channels: Iterable<{ id: Id; name?: string | null }> = []): { req: SearchRequest; unresolved: string[] } {
   const list = [...members]; const unresolved: string[] = [];
-  const one = (vals: string[]) => { for (const v of vals) { const id = resolveUser(v, list); if (id) return id; unresolved.push(v); } return undefined; };
+  const one = (vals: string[]): { id?: Id; raw?: string } => { for (const v of vals) { const id = resolveUser(v, list); return id ? { id } : { raw: v }; } return {}; };
+  const f = one(p.from), m = one(p.mentions);
   const req: SearchRequest = {
-    q: p.text || undefined, authorId: one(p.from), mentions: one(p.mentions), has: p.has.length ? p.has.join(',') : undefined,
+    q: p.text || undefined, authorId: f.id, from: f.raw, mentions: m.id, mentions_user: m.raw, link: p.link, has: p.has.length ? p.has.join(',') : undefined,
     before: p.before, after: p.after, during: p.during, pinned: p.pinned === undefined ? undefined : String(p.pinned),
     sort_by: p.sortBy, sort_order: p.sortOrder, author_type: p.authorType,
   };

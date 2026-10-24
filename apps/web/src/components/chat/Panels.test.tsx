@@ -20,6 +20,7 @@ const maybeWrap = (children: React.ReactNode) => <QueryClientProvider client={ne
 afterEach(cleanup);
 
 beforeEach(() => {
+  localStorage.clear();
   useUI.setState({ searchQuery: '' });
   useData.setState({ users: {}, guilds: {}, dms: {} } as never);
   search.mockReset();
@@ -67,11 +68,41 @@ describe('SearchPanel', () => {
     expect(navCalls).toEqual([['g1', 'ch1']]);
   });
 
-  it('warns instead of searching when a from: name matches no member', () => {
+  it('sends a from: name the member list does not know to the server (they may have left)', async () => {
     useUI.setState({ searchQuery: 'from:ghost' });
     useData.setState({ guilds: { g1: { channels: { ch1: chan }, members: { u1: { user: user('alice'), nick: null } } } } } as never);
+    search.mockResolvedValue([]);
     render(maybeWrap(<SearchPanel guildId="g1" channel={chan} onClose={vi.fn()} />));
-    expect(screen.getByText('No member matches "ghost".')).toBeTruthy();
+    await screen.findByText('No results found');
+    expect(search).toHaveBeenCalledWith('g1', expect.objectContaining({ from: 'ghost' }));
+  });
+
+  it('warns about an in: channel that does not exist', () => {
+    useUI.setState({ searchQuery: 'in:#nowhere hi' });
+    useData.setState({ guilds: { g1: { channels: { ch1: chan }, members: {} } } } as never);
+    render(maybeWrap(<SearchPanel guildId="g1" channel={chan} onClose={vi.fn()} />));
+    expect(screen.getByText('No channel matches "#nowhere".')).toBeTruthy();
     expect(search).not.toHaveBeenCalled();
+  });
+
+  it('shows recent searches when idle and re-runs one on tap', () => {
+    localStorage.setItem('jorcord.recentSearches.v1', JSON.stringify(['pizza night', 'from:alice']));
+    useUI.setState({ searchQuery: '' });
+    render(maybeWrap(<SearchPanel guildId={undefined} channel={chan} onClose={vi.fn()} />));
+    fireEvent.click(screen.getByText('pizza night'));
+    expect(useUI.getState().searchQuery).toBe('pizza night');
+  });
+
+  it('pages with a before cursor and appends the next page', async () => {
+    useUI.setState({ searchQuery: 'pizza' });
+    useData.setState({ guilds: { g1: { channels: { ch1: chan }, members: {} } } } as never);
+    const page = (from: number) => Array.from({ length: 25 }, (_, i) => msg({ id: String(2000 - (from + i)), content: `pizza ${from + i}`, guildId: 'g1', author: user('alice') }));
+    search.mockResolvedValueOnce(page(0)).mockResolvedValueOnce([msg({ id: '1', content: 'pizza last', guildId: 'g1', author: user('alice') })]);
+    render(maybeWrap(<SearchPanel guildId="g1" channel={chan} onClose={vi.fn()} />));
+    await screen.findByText('pizza 0');
+    fireEvent.click(screen.getByTestId('search-more'));
+    await screen.findByText('pizza last');
+    expect(search).toHaveBeenLastCalledWith('g1', expect.objectContaining({ before: '1976' }));
+    expect(screen.getByText('pizza 0')).toBeTruthy();
   });
 });
