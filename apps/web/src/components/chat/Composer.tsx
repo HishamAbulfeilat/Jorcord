@@ -94,6 +94,15 @@ export function Composer({ channel, stagedExternal }: { channel: Channel; staged
   const resize = () => { const t = ta.current; if (!t) return; t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight, window.innerHeight * 0.45) + 'px'; };
   useEffect(resize, [text]);
 
+  // Staged-image previews are blob: URLs that pin the whole file in memory until revoked: revoke them as soon as a file leaves the tray (removed, sent, channel switch) and on unmount.
+  const blobUrls = useRef(new Set<string>());
+  useEffect(() => {
+    const cur = new Set(files.map((f) => f.preview).filter((u): u is string => !!u));
+    for (const u of [...blobUrls.current]) if (!cur.has(u)) { URL.revokeObjectURL(u); blobUrls.current.delete(u); }
+    cur.forEach((u) => blobUrls.current.add(u));
+  }, [files]);
+  useEffect(() => () => { blobUrls.current.forEach((u) => URL.revokeObjectURL(u)); blobUrls.current.clear(); }, []);
+
   const addFiles = useCallback((fs: File[]) => {
     if (!cs.canAttach) { toast(secret ? t('Secret chats are text only: attachments are not supported.') : t('You do not have permission to attach files here.'), 'error'); return; }
     const ok = fs.filter((f) => { if (f.size > LIMITS.maxUploadBytes) { toast(`${f.name} is larger than ${fmtBytes(LIMITS.maxUploadBytes)}.`, 'error'); return false; } return true; });

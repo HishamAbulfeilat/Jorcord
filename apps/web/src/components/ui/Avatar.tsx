@@ -8,15 +8,18 @@ import { AvatarDecoration } from './Cosmetics';
 
 export const isAnimatedUrl = (u: string | null | undefined) => !!u && /\.(gif|apng|webp)(\?|#|$)/i.test(u);
 const stills = new Map<string, string | null>();
+/** First frames are data URLs: keep the cache bounded (oldest dropped first) so a long session does not accumulate them. */
+const STILL_CAP = 150;
+const putStill = (src: string, v: string | null) => { stills.delete(src); stills.set(src, v); while (stills.size > STILL_CAP) stills.delete(stills.keys().next().value as string); };
 /** First frame of an animated image as a data URL (null if the browser refuses: cross-origin without CORS). */
-function useStill(src: string | null, enabled: boolean): string | null {
+export function useStill(src: string | null, enabled: boolean): string | null {
   const [still, setStill] = useState<string | null>(src ? stills.get(src) ?? null : null);
   useEffect(() => {
     if (!enabled || !src) return;
     if (stills.has(src)) { setStill(stills.get(src)!); return; }
     let dead = false; const img = new Image(); img.crossOrigin = 'anonymous';
-    img.onload = () => { try { const c = document.createElement('canvas'); c.width = img.naturalWidth || 128; c.height = img.naturalHeight || 128; c.getContext('2d')!.drawImage(img, 0, 0); const d = c.toDataURL('image/png'); stills.set(src, d); if (!dead) setStill(d); } catch { stills.set(src, null); } };
-    img.onerror = () => { stills.set(src, null); };
+    img.onload = () => { try { const c = document.createElement('canvas'); c.width = img.naturalWidth || 128; c.height = img.naturalHeight || 128; c.getContext('2d')!.drawImage(img, 0, 0); const d = c.toDataURL('image/png'); putStill(src, d); if (!dead) setStill(d); } catch { putStill(src, null); } };
+    img.onerror = () => { putStill(src, null); };
     img.src = src; return () => { dead = true; };
   }, [src, enabled]);
   return enabled ? still : null;

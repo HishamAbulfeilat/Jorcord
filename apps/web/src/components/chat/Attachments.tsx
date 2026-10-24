@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { AnimatedImg } from '@/components/ui/AnimatedImage';
 import { Download, File as FileIcon, FileText, Music, Pause, Play } from 'lucide-react';
 import type { Attachment, Embed } from '@jorcord/shared';
 import { fileUrl, fmtBytes, isAudio, isImage, isVideo } from '@/lib/format';
@@ -32,7 +33,7 @@ export function AttachmentView({ a }: { a: Attachment }) {
     return (
       <Spoilered on={spoiler}>
         <button onClick={() => openModal({ kind: 'image', url, name: a.filename })} className="block cursor-zoom-in overflow-hidden rounded-lg" aria-label={`Open image ${a.description || a.filename}`} title={a.description || undefined}>
-          <img src={url} alt={a.description || a.filename} loading="lazy" width={d.width} height={d.height} style={{ aspectRatio: d.aspect, maxWidth: 'min(100%, 400px)', maxHeight: 300, width: d.width ? undefined : 'auto', height: 'auto' }} className="block rounded-lg object-contain" />
+          <AnimatedImg src={url} alt={a.description || a.filename} width={d.width} height={d.height} style={{ aspectRatio: d.aspect, maxWidth: 'min(100%, 400px)', maxHeight: 300, width: d.width ? undefined : 'auto', height: 'auto' }} className="block rounded-lg object-contain" />
         </button>
       </Spoilered>
     );
@@ -139,7 +140,7 @@ export function VoicePlayer({ src, durationHint }: { src: string; durationHint?:
 export function EmbedView({ e }: { e: Embed }) {
   const openModal = useUI((s) => s.openModal);
   const color = e.color != null ? '#' + (e.color >>> 0).toString(16).padStart(6, '0').slice(-6) : 'rgb(var(--active))';
-  if (e.type === 'image' && (e.image || e.url)) return <img src={e.image ?? e.url} alt="" loading="lazy" onClick={() => openModal({ kind: 'image', url: (e.image ?? e.url)! })} className="max-h-[300px] max-w-[min(100%,400px)] cursor-zoom-in rounded-lg" />;
+  if (e.type === 'image' && (e.image || e.url)) return <AnimatedImg src={(e.image ?? e.url)!} alt="" onClick={() => openModal({ kind: 'image', url: (e.image ?? e.url)! })} className="max-h-[300px] max-w-[min(100%,400px)] cursor-zoom-in rounded-lg" />;
   if (e.type === 'video' && e.video) return <video src={e.video} controls playsInline className="max-h-[300px] max-w-[min(100%,400px)] rounded-lg bg-black" poster={e.thumbnail} />;
   const hasThumbOnly = e.thumbnail && !e.image;
   return (
@@ -151,10 +152,10 @@ export function EmbedView({ e }: { e: Embed }) {
           {e.title && (e.url ? <a href={e.url} target="_blank" rel="noopener noreferrer nofollow" className="mb-1 block font-semibold" onClick={(ev) => guardLink(ev, e.url!)}>{e.title}</a> : <div className="mb-1 font-semibold text-header">{e.title}</div>)}
           {e.description && <div className="line-clamp-6 whitespace-pre-wrap break-words text-sm text-normal">{e.description}</div>}
           {e.fields && e.fields.length > 0 && <div className="mt-2 grid grid-cols-3 gap-2">{e.fields.map((f, i) => <div key={i} className={f.inline ? '' : 'col-span-3'}><div className="text-sm font-semibold text-header">{f.name}</div><div className="whitespace-pre-wrap text-sm">{f.value}</div></div>)}</div>}
-          {e.image && <img src={e.image} alt="" loading="lazy" onClick={() => openModal({ kind: 'image', url: e.image! })} className="mt-3 max-h-[300px] w-full cursor-zoom-in rounded object-cover" />}
+          {e.image && <AnimatedImg src={e.image} alt="" onClick={() => openModal({ kind: 'image', url: e.image! })} className="mt-3 max-h-[300px] w-full cursor-zoom-in rounded object-cover" />}
           {e.footer && <div className="mt-2 text-xs text-muted">{e.footer}</div>}
         </div>
-        {hasThumbOnly && <img src={e.thumbnail} alt="" loading="lazy" className="h-16 w-16 shrink-0 rounded object-cover" />}
+        {hasThumbOnly && <AnimatedImg src={e.thumbnail!} alt="" className="h-16 w-16 shrink-0 rounded object-cover" />}
       </div>
     </article>
   );

@@ -29,11 +29,13 @@ import { useVoiceUI } from '@/stores/voiceui';
 import { useCalls, wireCallEvents } from '@/stores/calls';
 import { useLiveVoice } from '@/stores/livevoice';
 import { useSecret } from '@/stores/secret';
+import { startMemoryManager, stopMemoryManager } from '@/lib/memoryManager';
 
 let unsubs: (() => void)[] = [];
 
 export function startSession(token: string) {
   endSession(false);
+  startMemoryManager();
   const gw = getGateway();
   const names: (keyof Events)[] = ['READY', 'GUILD_CREATE', 'GUILD_UPDATE', 'GUILD_DELETE', 'CHANNEL_CREATE', 'CHANNEL_UPDATE', 'CHANNEL_DELETE', 'CHANNEL_VOICE_STATUS_UPDATE', 'ROLE_CREATE', 'ROLE_UPDATE', 'ROLE_DELETE', 'MEMBER_ADD', 'MEMBER_UPDATE', 'MEMBER_REMOVE', 'TYPING_START', 'PRESENCE_UPDATE', 'USER_UPDATE', 'RELATIONSHIP_ADD', 'RELATIONSHIP_REMOVE', 'READ_STATE_UPDATE', 'VOICE_STATE_UPDATE', 'VOICE_RECORDING_UPDATE', 'EMOJIS_UPDATE', 'STICKERS_UPDATE', 'THREAD_CREATE', 'THREAD_UPDATE', 'THREAD_DELETE', 'MESSAGE_REQUEST_UPDATE'];
   let readies = 0;
@@ -139,6 +141,7 @@ function refreshPoll(channelId: string, messageId: string) {
 
 export function endSession(reset = true) {
   unsubs.forEach((u) => u()); unsubs = [];
+  stopMemoryManager();
   getGateway().disconnect();
   if (reset) { useSecret.getState().reset(); useData.getState().reset(); usePlatform.getState().reset(); useSocial.getState().reset(); useChannelActivities.getState().reset(); useCalls.getState().setAll([]); }
 }

@@ -55,6 +55,10 @@ export function MessageList({ channel, lastReadSnapshot }: { channel: Channel; l
   }, [cid, openEditHistory]);
   const anchor = useRef<{ key: string; delta: number } | null>(null);
   const store = useMsgStore.getState;
+  // mark this channel as viewed so the LRU never evicts it while it is on screen
+  useEffect(() => { store().view(cid); return () => store().unview(cid); }, [cid, store]);
+  // the row nearest the top of the viewport, kept fresh by onScroll: lets a far-end trim keep the scroll position
+  const visAnchor = useRef<{ key: string; delta: number } | null>(null);
 
   const rows = useMemo(() => buildRows(state?.list ?? [], pending, { lastRead: lastReadSnapshot, hasMoreOlder: state?.hasMoreOlder ?? true, meId: me?.id }), [state?.list, state?.hasMoreOlder, pending, lastReadSnapshot, me?.id]);
   const rowsRef = useRef(rows); rowsRef.current = rows;
@@ -90,7 +94,7 @@ export function MessageList({ channel, lastReadSnapshot }: { channel: Channel; l
 
   // preserve scroll when older messages prepended
   useLayoutEffect(() => {
-    const a = anchor.current; if (!a) return;
+    const a = anchor.current ?? (didInitial.current && !atBottom.current ? visAnchor.current : null); if (!a) return;
     const idx = rows.findIndex((r) => r.key === a.key); if (idx < 0) { anchor.current = null; return; }
     virt.scrollToIndex(idx, { align: 'start' });
     const el = scroller.current; if (el) el.scrollTop = el.scrollTop - a.delta;
@@ -131,7 +135,8 @@ export function MessageList({ channel, lastReadSnapshot }: { channel: Channel; l
     const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
     const bottom = dist < 80;
     atBottom.current = bottom && !state?.hasMoreNewer;
-    setShowJump(dist > 600 || !!state?.hasMoreNewer);
+    const top = virt.getVirtualItems()[0]; visAnchor.current = top && rows[top.index] ? { key: rows[top.index].key, delta: top.start - el.scrollTop } : null;
+    setShowJump(dist > 120 || !!state?.hasMoreNewer); // persistent 'jump to present' as soon as you leave the bottom
     if (bottom && !state?.hasMoreNewer) { setNewBelow(0); ackIfViewing(); }
     if (el.scrollTop < 500 && state?.hasMoreOlder && !state.loading && !loadingOlder.current && state.list.length) {
       loadingOlder.current = true;
@@ -144,8 +149,10 @@ export function MessageList({ channel, lastReadSnapshot }: { channel: Channel; l
         .finally(() => { loadingOlder.current = false; });
     }
     if (el.scrollTop + el.clientHeight > el.scrollHeight - 500 && state?.hasMoreNewer && !state.loading && state.list.length) {
+      const first = virt.getVirtualItems()[0];
+      if (first) anchor.current = { key: rows[first.index].key, delta: first.start - el.scrollTop }; // the oldest end may be trimmed
       store().setLoading(cid, true);
-      api.messages.list(cid, { after: state.list[state.list.length - 1].id, limit: PAGE }).then((r) => store().append(cid, r, PAGE)).catch(() => store().setLoading(cid, false));
+      api.messages.list(cid, { after: state.list[state.list.length - 1].id, limit: PAGE }).then((r) => { store().append(cid, r, PAGE); requestAnimationFrame(() => { anchor.current = null; }); }).catch(() => { anchor.current = null; store().setLoading(cid, false); });
     }
   };
 
@@ -197,7 +204,7 @@ export function MessageList({ channel, lastReadSnapshot }: { channel: Channel; l
         <div className="h-4" />
       </div>
       {(showJump || newBelow > 0) && (
-        <button onClick={toPresent} className={cx('absolute inset-x-4 bottom-2 z-10 flex items-center justify-between rounded-md px-3 py-1.5 text-sm font-semibold text-white shadow-high', newBelow > 0 ? 'bg-brand' : 'bg-[rgb(var(--float))] text-header')}>
+        <button onClick={toPresent} data-testid="jump-to-present" className={cx('touch absolute inset-x-4 bottom-2 z-10 flex min-h-[44px] items-center justify-between rounded-md px-3 py-1.5 text-sm font-semibold text-white shadow-high', newBelow > 0 ? 'bg-brand' : 'bg-[rgb(var(--float))] text-header')}>
           <span>{newBelow > 0 ? `${newBelow} new message${newBelow > 1 ? 's' : ''}` : 'You’re viewing older messages'}</span><span className="flex items-center gap-1">Jump To Present <ArrowDown size={14} /></span>
         </button>
       )}

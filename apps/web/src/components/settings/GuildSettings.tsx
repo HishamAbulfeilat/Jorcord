@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeftRight, BookOpen, Inbox, FileText, PanelTop, BarChart3, ShieldCheck, Tag, Volume2, Ban, Bot, Compass, GripVertical, Hash, Webhook as WebhookIcon, Sticker as StickerIcon, Copy as CopyIcon, Link2, ListChecks, Rocket, Settings as Cog, Shield, Smile, Trash2, Users, ScrollText, Plus, Search, Crown, UserCircle } from 'lucide-react';
 import { Perm } from '@jorcord/shared';
@@ -262,6 +262,7 @@ function stickerFormat(f: File): 'png' | 'apng' | 'gif' { return f.type === 'ima
 function StickersTab({ guildId }: { guildId: string }) {
   const g = useData((s) => s.guilds[guildId])!; const qc = useQueryClient(); const [name, setName] = useState(''); const [file, setFile] = useState<File | null>(null); const [busy, setBusy] = useState(false);
   const preview = useMemo(() => (file ? URL.createObjectURL(file) : null), [file]);
+  useEffect(() => () => { if (preview) URL.revokeObjectURL(preview); }, [preview]);
   const q = useQuery({ queryKey: ['stickers', guildId], queryFn: () => api.guilds.stickers(guildId), initialData: g.stickers });
   const put = (list: typeof g.stickers) => useData.setState((st) => ({ guilds: { ...st.guilds, [guildId]: { ...st.guilds[guildId]!, stickers: list } } }));
   const add = async () => {

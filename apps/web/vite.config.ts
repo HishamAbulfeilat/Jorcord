@@ -72,7 +72,7 @@ export default defineConfig({
         runtimeCaching: [
           { urlPattern: ({ url }) => /\/assets\/NoiseSuppressorWorklet-.*\.js$/.test(url.pathname), handler: 'CacheFirst', options: { cacheName: 'jorcord-noise', expiration: { maxEntries: 2 } } },
           // avatars / attachments / emoji are content-addressed by id: serve from cache, bounded
-          { urlPattern: ({ url, request }) => request.destination === 'image' && /^\/(api\/)?files\//.test(url.pathname), handler: 'StaleWhileRevalidate', options: { cacheName: 'jorcord-images', expiration: { maxEntries: 300, maxAgeSeconds: 30 * 24 * 3600 }, cacheableResponse: { statuses: [200] } } },
+          { urlPattern: ({ url, request }) => request.destination === 'image' && /^\/(api\/)?files\//.test(url.pathname), handler: 'StaleWhileRevalidate', options: { cacheName: 'jorcord-images', expiration: { maxEntries: 150, maxAgeSeconds: 14 * 24 * 3600, purgeOnQuotaError: true }, cacheableResponse: { statuses: [200] } } },
           { urlPattern: ({ url }) => url.origin === 'https://fonts.gstatic.com', handler: 'CacheFirst', options: { cacheName: 'jorcord-fonts', expiration: { maxEntries: 20 } } },
         ],
       },
