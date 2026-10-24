@@ -48,7 +48,7 @@ test.beforeAll(async ({ browser }) => {
   await joinViaInvite(B.page, await makeInvite(A.page));
   cdp = await A.ctx.newCDPSession(A.page);
   await cdp.send('Memory.getDOMCounters');
-});
+}, { timeout: 300_000 });
 test.afterAll(async () => { await A?.ctx.close(); await B?.ctx.close(); });
 
 test('long session keeps heap, caches and DOM bounded', async () => {

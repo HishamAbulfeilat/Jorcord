@@ -68,7 +68,8 @@ export const useMessages = create<MsgState>((set, get) => {
     // paging forward: the oldest end is far from the reader
     append: (cid, nf, limit) => patch(cid, (c) => { const o = { list: merge(c.list, nf), loading: false, hasMoreNewer: nf.length >= limit }; return { ...o, ...capList({ ...c, ...o }, 'start') }; }),
     setLoading: (cid, loading, error) => patch(cid, () => ({ loading, error })),
-    upsert: (m) => patchLoaded(m.channelId, (c) => {
+    // ephemeral replies are client-only, so they may open a list the channel load will later keep; everything else needs a loaded channel
+    upsert: (m) => (isEphemeral(m) ? patch : patchLoaded)(m.channelId, (c) => {
       const i = c.list.findIndex((x) => x.id === m.id);
       if (i >= 0) { const l = c.list.slice(); l[i] = m; return { list: l }; }
       if (c.hasMoreNewer) return {};

@@ -1,13 +1,16 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, useSyncExternalStore } from 'react';
 import { Mic } from 'lucide-react';
 import { useVoiceSnapshot } from '@jorcord/voice/react';
 import { useUI } from '@/stores/ui';
-import { useMedia } from '@/lib/hooks';
 import { cx } from '@/lib/format';
 import { t } from '@/i18n';
 
 /** True on touch-first devices, where there is no keyboard key to hold. */
-export const useCoarsePointer = () => useMedia('(pointer: coarse)');
+const Q = '(pointer: coarse)';
+const mm = () => (typeof window !== 'undefined' && typeof window.matchMedia === 'function' ? window.matchMedia(Q) : null);
+export const useCoarsePointer = () => useSyncExternalStore(
+  (cb) => { const m = mm(); m?.addEventListener('change', cb); return () => m?.removeEventListener('change', cb); },
+  () => !!mm()?.matches, () => false);
 
 /**
  * Press and hold to talk. It drives the voice client's existing push-to-talk through the same key events the keyboard

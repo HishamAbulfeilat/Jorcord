@@ -32,9 +32,25 @@ Unit tests: `apps/web/src/lib/memory.test.ts` (eviction, caps, trimming, user pr
 
 ## Numbers
 
-Chromium headless, 1500-message channel, 3 rounds (see the soak output). "Before" = same spec on the unmodified stores (git `main` at the start of this work).
+Measured soak (Chromium headless, 1500-message busy channel + 13 channels of 60, 3 rounds of history scrolling, 14-channel switching and an 80-message gateway flood; heap after forced GC):
 
-RESULTS_PLACEHOLDER
+| Checkpoint | JS heap | DOM nodes | JS listeners |
+|---|---|---|---|
+| baseline, busy channel open | 24.8 MB | 11838 | 742 |
+| after round 1 | 26.2 MB | 13501 | 974 |
+| after round 2 | 25.4 MB | 12774 | 927 |
+| after round 3 | 25.5 MB | 12599 | 912 |
+
+Heap growth over the soak: +0.7 MB (flat after round 1); channels in memory 12 (cap), messages in memory 612. CI ceiling: 120 MB growth.
+
+A full before/after of the soak was not run (shared machine, ~9 minutes under load). The store-level before/after is deterministic and covered by `memory.test.ts`:
+
+| Scenario | Before | After |
+|---|---|---|
+| 2000 live messages into one open channel | all kept | at most 188 (low-memory) / 500 (normal) |
+| 500 gateway messages for a channel nobody opened | 500 messages allocated in a new list | 0 |
+| open 8 channels in a row (low-memory cap 4) | 8 lists kept | 4 |
+| 1500 unreferenced users seen via messages | all kept | pruned to the cap, referenced users kept |
 
 ## Search and mobile (not memory, same pass)
 
