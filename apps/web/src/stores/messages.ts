@@ -11,7 +11,7 @@ export interface ChannelMsgs {
   list: Message[]; // ascending by id
   loading: boolean; loadedInitial: boolean; hasMoreOlder: boolean; hasMoreNewer: boolean; error?: string; jumpTo?: Id | null;
 }
-export interface Pending { nonce: string; channelId: Id; content: string; files: { name: string; size: number }[]; replyTo: Id | null; allowedMentions?: AllowedMentions | null; status: 'sending' | 'failed'; progress?: number; createdAt: number }
+export interface Pending { nonce: string; channelId: Id; content: string; files: { name: string; size: number }[]; replyTo: Id | null; allowedMentions?: AllowedMentions | null; /** Message flags (@silent, no embeds, /tts) kept for retry. */ flags?: number; status: 'sending' | 'failed'; progress?: number; createdAt: number }
 interface MsgState {
   ch: Record<Id, ChannelMsgs>; pending: Pending[];
   init(channelId: Id, newestFirst: Message[], limit: number, around?: Id): void;

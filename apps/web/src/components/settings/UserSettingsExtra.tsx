@@ -18,6 +18,7 @@ import { PROFILE_THEMES, THEME_PAIRS, themeGradient, type ThemePair } from '@/li
 import { useStreamer } from '@/lib/streamer';
 import { DEFAULT_OVERLAY_SHORTCUT, OVERLAY_CORNERS, type OverlayCorner } from '@/lib/overlay';
 import { t, T } from '@/i18n';
+import { ttsSupported } from '@/lib/tts';
 
 /* ------------------------------------------------------------------ notifications */
 const DEVICE_ICON = { web: Globe, desktop: Monitor, android: Smartphone, ios: Smartphone } as const;
@@ -46,6 +47,7 @@ export function NotificationsTab() {
     <H1>{t('Notifications')}</H1>
     <Row title={t('Enable Desktop Notifications')} desc={t('Get notified of new messages when Jorcord is in the background.')}><Toggle label={t('Desktop notifications')} checked={p.desktopNotifications} onChange={enableDesktop} /></Row>
     <Row title={t('Message Sounds')}><Toggle label={t('Sounds')} checked={p.notificationSounds} onChange={(v) => set('notificationSounds', v)} /></Row>
+    <Row title={t('Allow /tts playback')} desc={ttsSupported() ? t('Read messages sent with /tts aloud with your device voice. Not played while you are in a call.') : t('Text-to-speech is not supported by this browser.')}><Toggle label={t('Allow /tts playback')} checked={p.allowTtsPlayback} disabled={!ttsSupported()} onChange={(v) => set('allowTtsPlayback', v)} /></Row>
     <Row title={t('Suppress @everyone and @here')}><Toggle label={t('Suppress everyone')} checked={p.suppressEveryone} onChange={(v) => set('suppressEveryone', v)} /></Row>
 
     <H3>{t('Push Notifications')}</H3>

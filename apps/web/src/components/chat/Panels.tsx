@@ -50,18 +50,18 @@ export function SearchPanel({ guildId, channel, onClose }: { guildId: string | u
   const parsed = useMemo(() => parseSearchTokens(dq), [dq]);
   // Typed tokens (`from:`, `has:`, ...) and the chip buttons combine; the chip adds to any `has:` tokens.
   const { req, unresolved } = useMemo(() => {
-    const r = toSearchRequest(parsed, Object.values(members ?? {}));
+    const r = toSearchRequest(parsed, Object.values(members ?? {}), Object.values(chans ?? {}));
     const hasAll = [...new Set([...(r.req.has ? r.req.has.split(',') : []), ...(has ? [has] : [])])];
     return { req: { ...r.req, has: hasAll.length ? hasAll.join(',') : undefined }, unresolved: r.unresolved };
-  }, [parsed, members, has]);
-  const filtered = !!(req.authorId || req.mentions || req.has || req.pinned || req.during);
+  }, [parsed, members, chans, has]);
+  const filtered = !!(req.authorId || req.author_type || req.mentions || req.has || req.pinned || req.during);
   const res = useQuery({
     queryKey: ['search', guildId ?? channel.id, scope, req], enabled: ((req.q?.trim().length ?? 0) > 1 || filtered) && unresolved.length === 0,
-    queryFn: () => (guildId ? api.guilds.search(guildId, { ...req, channelId: scope === 'channel' ? channel.id : undefined }) : api.guilds.search('@me', { ...req, channelId: channel.id })),
+    queryFn: () => (guildId ? api.guilds.search(guildId, { ...req, channelId: req.channelId ?? (scope === 'channel' ? channel.id : undefined) }) : api.guilds.search('@me', { ...req, channelId: channel.id })),
   });
   return (
     <PanelShell title={t('Search Results')} onClose={onClose}>
-      <div className="mb-2 flex items-center rounded bg-rail px-2"><input autoFocus value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search messages" placeholder="Search  (from: mentions: has: before: after:)" className="h-9 flex-1 bg-transparent text-sm outline-none placeholder:text-muted" /><Search size={16} className="text-muted" /></div>
+      <div className="mb-2 flex items-center rounded bg-rail px-2"><input autoFocus value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search messages" placeholder="Search  (from: in: author_type: mentions: has: before: after:)" className="h-9 flex-1 bg-transparent text-sm outline-none placeholder:text-muted" /><Search size={16} className="text-muted" /></div>
       <div className="mb-3 flex flex-wrap gap-1.5">
         {guildId && (['server', 'channel'] as const).map((s) => <button key={s} aria-pressed={scope === s} onClick={() => setScope(s)} className={cx('rounded-full px-3 py-1 text-xs font-semibold', scope === s ? 'bg-brand text-white' : 'bg-active text-interactive')}>{s === 'server' ? 'Everywhere' : 'This channel'}</button>)}
         {['image', 'video', 'file', 'link', 'embed'].map((h) => <button key={h} aria-pressed={has === h} onClick={() => setHas(has === h ? '' : h)} className={cx('rounded-full px-3 py-1 text-xs font-semibold', has === h ? 'bg-brand text-white' : 'bg-active text-interactive')}>has: {h}</button>)}

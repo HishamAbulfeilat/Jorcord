@@ -74,7 +74,7 @@ export interface Member {
   banner?: string | null; bio?: string | null; pronouns?: string | null;
   /** true until the member accepts the server rules (membership screening) */ pending?: boolean; /** ISO time of their first active boost of this server */ boostingSince?: string | null;
 }
-export interface Attachment { id: Id; filename: string; contentType: string; size: number; url: string; width: number | null; height: number | null; spoiler: boolean }
+export interface Attachment { id: Id; filename: string; contentType: string; size: number; url: string; width: number | null; height: number | null; spoiler: boolean; /** Alt text (<= 1024 chars). */ description?: string | null }
 export interface Embed { type: 'link' | 'image' | 'video' | 'rich'; url?: string; title?: string; description?: string; color?: number; thumbnail?: string; image?: string; video?: string; siteName?: string; fields?: { name: string; value: string; inline?: boolean }[]; footer?: string; author?: string }
 /** `count`/`me` cover regular reactions; `burstCount`/`meBurst`/`burstColors` cover burst (super) reactions, which are metered separately. */
 export interface Reaction { emoji: string; emojiId: Id | null; count: number; me: boolean; burstCount?: number; meBurst?: boolean; burstColors?: string[] }

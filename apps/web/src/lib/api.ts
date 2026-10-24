@@ -16,8 +16,8 @@ export type RemoteAuthPoll = { status: 'pending' | 'scanned'; expiresAt: string 
 export interface RemoteAuthScan { id: string; device: { userAgent: string | null; ip: string | null; createdAt: string | null }; expiresAt: string }
 export interface UserProfile extends User { activities?: Activity[]; connections?: PublicConnection[]; note?: string | null; mutualGuilds?: { id: Id; name: string; icon: string | null; nick?: string | null }[]; mutualFriends?: User[] }
 export interface MessageQuery { limit?: number; before?: Id; after?: Id; around?: Id }
-export interface SearchQuery { q?: string; authorId?: Id; mentions?: Id; channelId?: Id; /** comma-separated: link,embed,file,image,video,sticker */ has?: string; before?: string; after?: string; during?: string; pinned?: string; sort_by?: string; sort_order?: string }
-export interface SendMessageInput { content: string; replyTo?: Id | null; files?: File[]; nonce?: string; stickerIds?: Id[]; poll?: CreatePoll; allowedMentions?: AllowedMentions | null }
+export interface SearchQuery { q?: string; authorId?: Id; author_type?: string; mentions?: Id; channelId?: Id; /** comma-separated: link,embed,file,image,video,sticker */ has?: string; before?: string; after?: string; during?: string; pinned?: string; sort_by?: string; sort_order?: string }
+export interface SendMessageInput { /** Message flags: SUPPRESS_EMBEDS, SUPPRESS_NOTIFICATIONS (@silent), TTS. */ flags?: number; /** Alt text per file, in `files` order. */ descriptions?: (string | null)[]; content: string; replyTo?: Id | null; files?: File[]; nonce?: string; stickerIds?: Id[]; poll?: CreatePoll; allowedMentions?: AllowedMentions | null }
 export interface CreateEventInput { name: string; description?: string | null; entityType: number; channelId?: Id | null; scheduledStartTime: string; scheduledEndTime?: string | null; location?: string | null; privacyLevel?: 2; recurrenceRule?: RecurrenceRule | null }
 export interface CommandPermissionSet { commandId: Id; applicationId: Id; guildId: Id; permissions: CommandPermissionOverwrite[] }
 export interface CommandCatalog { commands: ApplicationCommand[]; applications: { id: Id; name: string; icon: string | null; botUserId: Id }[] }
@@ -326,11 +326,17 @@ export const api = {
       if (m.files?.length) {
         const f = new FormData();
         f.set('content', m.content); if (m.replyTo) f.set('replyTo', m.replyTo);
+        if (m.flags) f.set('flags', String(m.flags));
+        if (m.descriptions?.some((d) => d)) f.set('descriptions', JSON.stringify(m.descriptions.map((d) => d ?? '')));
         m.files.forEach((file) => f.append('files[]', file, file.name));
         return send<Message>({ method: 'POST', path: `/channels/${channelId}/messages`, form: f });
       }
-      return send<Message>({ method: 'POST', path: `/channels/${channelId}/messages`, body: { content: m.content, replyTo: m.replyTo ?? null, ...(m.stickerIds?.length ? { stickerIds: m.stickerIds } : {}), ...(m.poll ? { poll: m.poll } : {}), ...(m.allowedMentions ? { allowedMentions: m.allowedMentions } : {}) } });
+      return send<Message>({ method: 'POST', path: `/channels/${channelId}/messages`, body: { content: m.content, replyTo: m.replyTo ?? null, ...(m.stickerIds?.length ? { stickerIds: m.stickerIds } : {}), ...(m.poll ? { poll: m.poll } : {}), ...(m.allowedMentions ? { allowedMentions: m.allowedMentions } : {}), ...(m.flags ? { flags: m.flags } : {}) } });
     },
+    /** Toggle SUPPRESS_EMBEDS on a message (author, or MANAGE_MESSAGES). */
+    setFlags: (channelId: Id, id: Id, flags: number) => send<Message>({ method: 'PATCH', path: `/channels/${channelId}/messages/${id}`, body: { flags } }),
+    translateConfig: () => send<{ available: boolean }>({ method: 'GET', path: '/translate/config' }),
+    translate: (channelId: Id, id: Id, to: string) => send<{ messageId: Id; to: string; text: string; detectedLanguage: string | null; cached: boolean }>({ method: 'POST', path: `/channels/${channelId}/messages/${id}/translate`, body: { to } }),
     /** Forward a message I can read into `channelId` (snapshot copy, no pings). */
     forward: (channelId: Id, src: { channelId: Id; messageId: Id }) => send<Message>({ method: 'POST', path: `/channels/${channelId}/messages`, body: { forward: src } }),
     edit: (channelId: Id, id: Id, content: string) => send<Message>({ method: 'PATCH', path: `/channels/${channelId}/messages/${id}`, body: { content } }),

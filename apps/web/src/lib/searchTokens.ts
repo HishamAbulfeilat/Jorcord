@@ -9,6 +9,10 @@ export interface ParsedSearch {
   /** Raw `from:` values (usernames, `<@id>` or ids), resolved later with `resolveUser`. */
   from: string[];
   mentions: string[];
+  /** Raw `in:` values (`#name`, `<#id>` or an id), resolved later with `resolveChannel`. */
+  inChannel: string[];
+  /** `author_type:bot|user`. */
+  authorType?: 'bot' | 'user';
   has: SearchHasValue[];
   /** Snowflake or ISO date string, exactly as the server accepts it. */
   before?: string;
@@ -40,15 +44,20 @@ function tokenize(input: string): string[] {
  * are kept as plain search text.
  */
 export function parseSearchTokens(input: string): ParsedSearch {
-  const out: ParsedSearch = { text: '', from: [], mentions: [], has: [] };
+  const out: ParsedSearch = { text: '', from: [], mentions: [], inChannel: [], has: [] };
   const rest: string[] = [];
   for (const tok of tokenize(input)) {
-    const m = /^(from|mentions|has|before|after|during|pinned|sort|order):(.*)$/i.exec(tok);
+    const m = /^(from|mentions|in|author_type|has|before|after|during|pinned|sort|order):(.*)$/i.exec(tok);
     const value = m ? m[2]!.replace(/^"(.*)"$/, '$1').trim() : '';
     if (!m || !value) { rest.push(tok); continue; }
     const key = m[1]!.toLowerCase();
     if (key === 'from') out.from.push(stripMention(value));
     else if (key === 'mentions') out.mentions.push(stripMention(value));
+    else if (key === 'in') out.inChannel.push(value.replace(/^<#(\d+)>$/, '$1').replace(/^#/, ''));
+    else if (key === 'author_type') {
+      const v = value.toLowerCase();
+      if (v === 'bot' || v === 'user') out.authorType = v; else rest.push(tok);
+    }
     else if (key === 'has') {
       const h = value.toLowerCase();
       if ((SEARCH_HAS as readonly string[]).includes(h)) { if (!out.has.includes(h as SearchHasValue)) out.has.push(h as SearchHasValue); } else rest.push(tok);
@@ -71,6 +80,14 @@ export function parseSearchTokens(input: string): ParsedSearch {
   return out;
 }
 
+/** Resolves an `in:` value to a channel id: ids pass through, names match case-insensitively. */
+export function resolveChannel(value: string, channels: Iterable<{ id: Id; name?: string | null }>): Id | null {
+  if (ID.test(value)) return value;
+  const v = value.toLowerCase();
+  for (const c of channels) if (c.name && c.name.toLowerCase() === v) return c.id;
+  return null;
+}
+
 /** Resolves a `from:`/`mentions:` value to a user id: ids pass through, names match username / display name / nickname. */
 export function resolveUser(value: string, members: Iterable<Pick<Member, 'user' | 'nick'>>): Id | null {
   if (ID.test(value)) return value;
@@ -82,19 +99,21 @@ export function resolveUser(value: string, members: Iterable<Pick<Member, 'user'
   return null;
 }
 
-export interface SearchRequest { q?: string; authorId?: Id; mentions?: Id; has?: string; before?: string; after?: string; during?: string; pinned?: string; sort_by?: string; sort_order?: string }
+export interface SearchRequest { q?: string; authorId?: Id; channelId?: Id; author_type?: string; mentions?: Id; has?: string; before?: string; after?: string; during?: string; pinned?: string; sort_by?: string; sort_order?: string }
 
 /**
  * Turns parsed tokens into API query params. A `from:`/`mentions:` name that matches nobody sets `unresolved` so the UI can
  * say so instead of silently searching everyone. Only the first value of each user filter is sent (the API takes one).
  */
-export function toSearchRequest(p: ParsedSearch, members: Iterable<Pick<Member, 'user' | 'nick'>>): { req: SearchRequest; unresolved: string[] } {
+export function toSearchRequest(p: ParsedSearch, members: Iterable<Pick<Member, 'user' | 'nick'>>, channels: Iterable<{ id: Id; name?: string | null }> = []): { req: SearchRequest; unresolved: string[] } {
   const list = [...members]; const unresolved: string[] = [];
   const one = (vals: string[]) => { for (const v of vals) { const id = resolveUser(v, list); if (id) return id; unresolved.push(v); } return undefined; };
   const req: SearchRequest = {
     q: p.text || undefined, authorId: one(p.from), mentions: one(p.mentions), has: p.has.length ? p.has.join(',') : undefined,
     before: p.before, after: p.after, during: p.during, pinned: p.pinned === undefined ? undefined : String(p.pinned),
-    sort_by: p.sortBy, sort_order: p.sortOrder,
+    sort_by: p.sortBy, sort_order: p.sortOrder, author_type: p.authorType,
   };
+  const chans = [...channels];
+  for (const v of p.inChannel) { const id = resolveChannel(v, chans); if (id) { req.channelId = id; break; } unresolved.push(`#${v}`); }
   return { req, unresolved };
 }

@@ -1,7 +1,7 @@
 /** Context-menu builders. Pure functions over store state; navigation goes through a window event the shell listens to. */
-import { Perm } from '@jorcord/shared';
+import { MessageFlags, Perm } from '@jorcord/shared';
 import type { Channel, Id, Message } from '@jorcord/shared';
-import { Lock, ShieldAlert, Rocket, Star, Megaphone, EyeOff, ListChecks, AlarmClock, Bookmark, Forward, ArrowDown, ArrowUp, Bell, FolderMinus, FolderPlus as FolderAdd, Folder as FolderI, MonitorUp, Unlink, Bot, AtSign, BellOff, Check, Copy, Edit3, Hash, LogOut, MessageSquare, Pencil, Pin, PinOff, Reply, Settings, ShieldBan, Smile, Trash2, UserMinus, UserPlus, Link2, UserX, Clock, BookOpen, Plus, FolderPlus, Mail, Ban } from 'lucide-react';
+import { Eye, Languages, Lock, ShieldAlert, Rocket, Star, Megaphone, EyeOff, ListChecks, AlarmClock, Bookmark, Forward, ArrowDown, ArrowUp, Bell, FolderMinus, FolderPlus as FolderAdd, Folder as FolderI, MonitorUp, Unlink, Bot, AtSign, BellOff, Check, Copy, Edit3, Hash, LogOut, MessageSquare, Pencil, Pin, PinOff, Reply, Settings, ShieldBan, Smile, Trash2, UserMinus, UserPlus, Link2, UserX, Clock, BookOpen, Plus, FolderPlus, Mail, Ban } from 'lucide-react';
 import { api } from './api';
 import { queryClient } from './queryClient';
 import { useSocial } from '@/stores/social';
@@ -32,6 +32,7 @@ export async function markGuildRead(gid: Id) {
 export function markChannelRead(c: Channel) { if (!c.lastMessageId) return; useData.getState().setRead(c.id, c.lastMessageId, 0); api.channels.ack(c.id, c.lastMessageId).catch(() => {}); }
 
 import { favoriteCandidate } from './gifFavorites';
+import { targetLanguage, translateMessage, translateSupport, translateSupportCached, useTranslations } from './translate';
 import { addAppPath } from './directory';
 import { navigateTo } from './navigate';
 import { ensureLocalDevice } from './e2ee/service';
@@ -155,6 +156,31 @@ export function userMenu(userId: Id, guildId?: Id | null): MenuItem[] {
   return items;
 }
 
+/** "Remove Embeds" / "Restore Embeds": the author, or someone with MANAGE_MESSAGES, toggles SUPPRESS_EMBEDS. Only offered when there is something to hide. */
+export function embedsToggle(m: Message, meId: string, perms: bigint): MenuItem | null {
+  if (!['default', 'reply'].includes(m.type) || m.forward || m.webhookId) return null;
+  const suppressed = ((m.flags ?? 0) & MessageFlags.SUPPRESS_EMBEDS) !== 0;
+  if (m.author.id !== meId && !can(perms, Perm.MANAGE_MESSAGES)) return null;
+  if (!suppressed && !m.embeds.length && !/https?:\/\//i.test(m.content)) return null;
+  return { label: suppressed ? t('Restore Embeds') : t('Remove Embeds'), icon: suppressed ? Eye : EyeOff,
+    onClick: () => api.messages.setFlags(m.channelId, m.id, suppressed ? 0 : MessageFlags.SUPPRESS_EMBEDS)
+      .then((u) => useMessages.getState().update({ ...m, flags: u.flags, embeds: u.embeds })).catch(toastError) };
+}
+
+/** "Translate": on-device Translator API when the browser has one, else the server's TRANSLATE_URL; shown disabled when neither exists. */
+function translateItem(m: Message): MenuItem {
+  void translateSupport(); // probe once so the next menu knows
+  const cached = translateSupportCached();
+  const shown = !!useTranslations.getState().by[m.id];
+  if (shown) return { label: t('Hide Translation'), icon: Languages, onClick: () => useTranslations.getState().set(m.id, null) };
+  return { label: cached === 'none' ? t('Translate (not available)') : t('Translate'), icon: Languages, disabled: cached === 'none',
+    onClick: () => {
+      const st = useTranslations.getState(); st.set(m.id, 'loading');
+      translateMessage(m.channelId, m.id, m.content, targetLanguage(useUI.getState().prefs.language))
+        .then((r) => st.set(m.id, r)).catch((e) => { st.set(m.id, null); toastError(e); });
+    } };
+}
+
 export function messageMenu(m: Message, opts: { startEdit: () => void; pickEmoji: (rect: DOMRect | undefined) => void }): MenuItem[] {
   const s = useData.getState(); const me = s.me; if (!me) return [];
   const ch = findChannel(s, m.channelId); const perms = myChannelPerms(m.channelId); const isDm = !ch?.guildId;
@@ -162,6 +188,8 @@ export function messageMenu(m: Message, opts: { startEdit: () => void; pickEmoji
     { label: t('Add Reaction'), icon: Smile, disabled: !can(perms, Perm.ADD_REACTIONS) && !isDm, onClick: () => opts.pickEmoji(undefined) },
     ...(canEditMessage(m, me.id) ? [{ label: t('Edit Message'), icon: Edit3, onClick: opts.startEdit }] : []),
     ...(canPinMessage(perms, isDm) ? [{ label: m.pinned ? 'Unpin Message' : 'Pin Message', icon: m.pinned ? PinOff : Pin, onClick: () => (m.pinned ? api.messages.unpin(m.channelId, m.id) : api.messages.pin(m.channelId, m.id)).then(() => useMessages.getState().update({ ...m, pinned: !m.pinned })).catch(toastError) }] : []),
+    ...(embedsToggle(m, me.id, perms) ? [embedsToggle(m, me.id, perms)!] : []),
+    ...(m.content.trim() && ['default', 'reply'].includes(m.type) && !ch?.encrypted ? [translateItem(m)] : []),
     { label: t('Reply'), icon: Reply, disabled: !can(perms, Perm.SEND_MESSAGES) && !isDm, onClick: () => ui().setReply(m.channelId, m.id) },
     ...(m.content ? [{ label: t('Copy Text'), icon: Copy, onClick: () => copyText(m.content).then(() => toast(t('Copied text'), 'success')) }] : []),
     ...(ch?.guildId && ch.type !== 'thread' && can(perms, Perm.CREATE_PUBLIC_THREADS) ? [{ label: t('Create Thread'), icon: Hash, onClick: () => ui().openModal({ kind: 'createThread', channelId: m.channelId, messageId: m.id, suggested: m.content.slice(0, 50) }) }] : []),

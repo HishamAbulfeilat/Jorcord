@@ -1,7 +1,8 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { Megaphone, CornerUpLeft, Hash, LogIn, MoreHorizontal, Pencil, Pin, Reply, SmilePlus, Trash2, Rocket, Phone, MessagesSquare, AlertCircle, RotateCw } from 'lucide-react';
 import type { Message } from '@jorcord/shared';
-import { Perm, isStandardStickerId, standardSticker } from '@jorcord/shared';
+import { MessageFlags, Perm, isStandardStickerId, standardSticker } from '@jorcord/shared';
+import { useTranslations } from '@/lib/translate';
 import { Avatar } from '@/components/ui/Avatar';
 import { ServerTagBadge } from '@/components/ui/Cosmetics';
 import { Markdown } from './Markdown';
@@ -105,6 +106,19 @@ function Toolbar({ m, onMenu, startEdit }: { m: Message; onMenu: (e: React.Mouse
   );
 }
 
+/** The translated text of a message ("Translate" in its menu), shown under the original. */
+function TranslationBlock({ id }: { id: string }) {
+  const tr = useTranslations((s) => s.by[id]);
+  if (!tr) return null;
+  if (tr === 'loading') return <div className="mt-1 text-xs text-muted" role="status" data-testid="translation-loading">{t('Translating…')}</div>;
+  return (
+    <div className="mt-1 rounded border-s-2 border-divider ps-2 text-[15px] text-normal" data-testid="translation">
+      <div className="whitespace-pre-wrap">{tr.text}</div>
+      <div className="mt-0.5 flex items-center gap-2 text-[11px] text-muted"><span>{tr.via === 'browser' ? t('Translated on this device') : t('Translated by the server')}</span><button className="underline hover:text-header" onClick={() => useTranslations.getState().set(id, null)}>{t('Hide translation')}</button></div>
+    </div>
+  );
+}
+
 export const MessageItem = memo(function MessageItem({ m, grouped, highlighted, onEditHistory }: { m: Message; grouped: boolean; highlighted?: boolean; /** R19: clicking "(edited)" opens the prior-version popover owned by the message list. */ onEditHistory?: (m: Message, rect: DOMRect) => void }) {
   const me = useData((s) => s.me); const info = useAuthorInfo(m); const guildName = useData((s) => (m.guildId ? s.guilds[m.guildId]?.guild.name : undefined));
   const editing = useUI((s) => s.editing === m.id); const setEditing = useUI((s) => s.setEditing); const openPopout = useUI((s) => s.openPopout); const openMenu = useUI((s) => s.openMenu);
@@ -153,7 +167,8 @@ export const MessageItem = memo(function MessageItem({ m, grouped, highlighted, 
       {m.forward && <ForwardedBody f={m.forward} guildId={m.guildId} />}
       {m.attachments.length > 0 && <div className="mt-1 flex flex-col items-start gap-1">{m.attachments.map((a) => <AttachmentView key={a.id} a={a} />)}</div>}
       {stickers && stickers.length > 0 && <div className="mt-1 flex gap-2">{stickers.map((s) => <img loading="lazy" decoding="async" key={s.id} src={fileUrl(s.url) ?? s.url} alt={s.name} title={s.name} className="h-[160px] w-[160px] object-contain" />)}</div>}
-      {m.embeds.length > 0 && <div className="mt-1 flex flex-col items-start gap-1">{m.embeds.map((e, i) => <EmbedView key={i} e={e} />)}</div>}
+      {m.embeds.length > 0 && !((m.flags ?? 0) & MessageFlags.SUPPRESS_EMBEDS) && <div className="mt-1 flex flex-col items-start gap-1">{m.embeds.map((e, i) => <EmbedView key={i} e={e} />)}</div>}
+      <TranslationBlock id={m.id} />
       {!!m.flags && !!(m.flags & 1) && <div className="mt-0.5 flex items-center gap-1 text-[11px] font-medium text-muted" data-testid="published-mark"><Megaphone size={11} aria-hidden />{t('Published')}</div>}
       {m.crosspost && <div className="mt-0.5 flex items-center gap-1 text-[11px] font-medium text-muted" data-testid="crosspost-origin"><Megaphone size={11} aria-hidden />{t('Followed from')} {m.crosspost.guildName} · #{m.crosspost.channelName}</div>}
       {m.pinned && <div className="mt-0.5 flex items-center gap-1 text-[11px] font-medium text-muted" data-testid="pinned-mark"><Pin size={11} aria-hidden />{t('Pinned')}</div>}

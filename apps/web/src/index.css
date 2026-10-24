@@ -91,6 +91,8 @@ a:hover { text-decoration: underline; }
 .md blockquote { border-inline-start: 4px solid rgb(var(--active)); padding: 0 12px 0 12px; margin: 2px 0; background: transparent; border-radius: 2px; }
 .md h1 { font-size: 1.5rem; font-weight: 700; line-height: 1.75rem; margin: 8px 0 4px; } .md h2 { font-size: 1.25rem; font-weight: 700; margin: 8px 0 4px; } .md h3 { font-size: 1rem; font-weight: 700; margin: 8px 0 4px; }
 .md ul, .md ol { margin: 4px 0; padding-inline-start: 1.5rem; } .md ul { list-style: disc; } .md ol { list-style: decimal; }
+.md li > ul, .md li > ol { margin: 0; } .md li > ul { list-style: circle; }
+.md small.subtext { display: block; font-size: .75rem; line-height: 1rem; color: rgb(var(--muted, 148 155 164)); }
 .md .mention { background: rgb(var(--mention-bg) / .3); color: rgb(var(--mention)); border-radius: 3px; padding: 0 2px; font-weight: 500; cursor: pointer; }
 .md .mention:hover { background: rgb(var(--mention-bg)); color: #fff; }
 .md .spoiler { background: rgb(var(--active)); color: transparent; border-radius: 3px; cursor: pointer; padding: 0 2px; user-select: none; }

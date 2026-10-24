@@ -42,7 +42,7 @@ export async function saveUpload(ctx: Ctx, userId: string, part: MultipartFile):
   const id = snowflake();
   await ctx.db.query('INSERT INTO files (id, key, uploader_id, filename, content_type, size, width, height, spoiler) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)',
     [id, key, userId, filename, contentType, size, width, height, filename.startsWith('SPOILER_')]);
-  return { id, filename, contentType, size, url: fileUrl(key, filename), width, height, spoiler: filename.startsWith('SPOILER_') };
+  return { id, filename, contentType, size, url: fileUrl(key, filename), width, height, spoiler: filename.startsWith('SPOILER_'), description: null };
 }
 
 /** Max size of an avatar/banner fetched from a URL. */
@@ -85,7 +85,7 @@ export async function storeImageFromUrl(ctx: Ctx, userId: string, url: string, b
   return fileUrl(key, filename);
 }
 
-const toAttachment = (f: any): Attachment => ({ id: f.id, filename: f.filename, contentType: f.content_type, size: Number(f.size), url: fileUrl(f.key, f.filename), width: f.width ?? null, height: f.height ?? null, spoiler: f.spoiler });
+const toAttachment = (f: any): Attachment => ({ id: f.id, filename: f.filename, contentType: f.content_type, size: Number(f.size), url: fileUrl(f.key, f.filename), width: f.width ?? null, height: f.height ?? null, spoiler: f.spoiler, description: f.description ?? null });
 
 /** Claims previously uploaded files for a message. Files must belong to the sender and be unattached (IDOR guard). */
 export async function claimAttachments(ctx: Ctx, userId: string, ids: string[]): Promise<Attachment[]> {

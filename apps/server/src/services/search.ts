@@ -9,7 +9,7 @@ export type SearchHas = (typeof HAS_VALUES)[number];
 
 export interface SearchParams {
   viewerId: string; channelIds: string[]; guildId?: string | null;
-  q?: string; authorId?: string; has?: SearchHas[]; mentions?: string; before?: string; after?: string;
+  q?: string; authorId?: string; authorType?: 'bot' | 'user'; has?: SearchHas[]; mentions?: string; before?: string; after?: string;
   pinned?: boolean; during?: string;
   sortBy?: 'timestamp' | 'relevance'; sortOrder?: 'asc' | 'desc'; limit: number;
 }
@@ -39,6 +39,7 @@ export const searchQuerySchema = z.object({
   q: z.string().max(200).optional(),
   authorId: idSchema.optional(), author_id: idSchema.optional(),
   channelId: idSchema.optional(),
+  authorType: z.enum(['bot', 'user']).optional(), author_type: z.enum(['bot', 'user']).optional(),
   has: z.union([z.string(), z.string().array()]).optional(),
   mentions: idSchema.optional(),
   before: boundaryId.optional(), after: boundaryId.optional(),
@@ -54,15 +55,15 @@ export const searchQuerySchema = z.object({
   if (v.during && !isDay(v.during)) { ctx.addIssue({ code: 'custom', path: ['during'], message: 'during must be a YYYY-MM-DD date' }); return z.NEVER; }
   return {
     q: v.q, channelId: v.channelId, mentions: v.mentions, before: v.before, after: v.after, during: v.during, limit: v.limit,
-    authorId: v.authorId ?? v.author_id, has: [...new Set(raw)] as SearchHas[],
+    authorId: v.authorId ?? v.author_id, authorType: v.authorType ?? v.author_type, has: [...new Set(raw)] as SearchHas[],
     pinned: v.pinned === undefined ? undefined : v.pinned === true || v.pinned === 'true',
     sortBy: v.sort_by ?? v.sortBy, sortOrder: v.sort_order ?? v.sortOrder,
   };
 });
 export type SearchQueryInput = z.infer<typeof searchQuerySchema>;
 /** True when at least one narrowing filter is present (a bare before/after range or sort alone is too broad). */
-export const hasSearchCriteria = (q: Pick<SearchQueryInput, 'q' | 'authorId' | 'has' | 'mentions' | 'pinned' | 'during'>) =>
-  !!(q.q || q.authorId || q.has.length || q.mentions || q.pinned !== undefined || q.during);
+export const hasSearchCriteria = (q: Pick<SearchQueryInput, 'q' | 'authorId' | 'authorType' | 'has' | 'mentions' | 'pinned' | 'during'>) =>
+  !!(q.q || q.authorId || q.authorType || q.has.length || q.mentions || q.pinned !== undefined || q.during);
 
 /** Expression the Postgres GIN index is built on (migration 003). Must stay byte-identical to it. */
 // Punctuation is flattened to spaces first so "foo.com" or "a/b" index as separate words (the stock parser keeps hosts/paths whole).
@@ -94,6 +95,7 @@ export function buildSearchSql(mode: Ctx['search'], p: Omit<SearchParams, 'viewe
     else where.push(`content ILIKE ${push(`%${p.q.replace(/[\\%_]/g, '\\$&')}%`)}`);
   }
   if (p.authorId) where.push(`author_id = ${push(p.authorId)}`);
+  if (p.authorType) where.push(`author_id ${p.authorType === 'bot' ? 'IN' : 'NOT IN'} (SELECT id FROM users WHERE bot = true)`);
   if (p.mentions) where.push(`mentions @> ${push(JSON.stringify([p.mentions]))}::jsonb`);
   if (p.before) where.push(`id < ${push(p.before)}`);
   if (p.after) where.push(`id > ${push(p.after)}`);

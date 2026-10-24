@@ -11,7 +11,7 @@ import { parseEmbeds } from '../lib/embeds';
 import { buildPoll } from '../services/polls';
 import { claimAttachments, deleteAttachmentFiles, saveUpload } from '../services/files';
 import { audit, visibleChannelRows } from '../services/guilds';
-import { createMessage, parseMentions, postSystemMessage, consumeBurstQuota, resolveBurstColor } from '../services/messages';
+import { createMessage, unfurlMessage, parseMentions, postSystemMessage, consumeBurstQuota, resolveBurstColor } from '../services/messages';
 import { checkAutomod } from '../services/automod';
 import { assertCanPostIn } from '../services/posting';
 import { channelAccess, channelPermsLite, guildAccess, need } from '../services/perms';
@@ -21,6 +21,7 @@ import { hasSearchCriteria, searchMessages, searchQuerySchema } from '../service
 import { ageConfirmed, ageGate } from '../services/agegate';
 import { messageDTO, messagesDTO, usersByIds } from '../services/serializers';
 import { assertEncryptedPayload } from '../services/e2ee';
+import { LANG_RE, translateConfigured, translateText } from '../services/translate';
 
 const cm = z.object({ id: idSchema });
 const mm = z.object({ id: idSchema, mid: idSchema });
@@ -43,6 +44,13 @@ const sendBody = z.object({
     roles: z.array(idSchema).max(100).optional(),
   }).strict().optional(),
 }).strict();
+/** Normalises alt text: trimmed, <= 1024 chars; empty clears it (null); a non-string is ignored (undefined). */
+export function altText(v: unknown): string | null | undefined {
+  if (v === null) return null;
+  if (typeof v !== 'string') return undefined;
+  const t = v.trim().slice(0, 1024);
+  return t || null;
+}
 const emojiParam = z.string().min(1).max(100);
 /** Optional body for PUT …/reactions: `burst` sends a super reaction in `burstColor` (palette-checked). */
 const reactBody = z.object({ burst: z.boolean().optional(), burstColor: z.string().max(9).nullable().optional() }).strict();
@@ -102,6 +110,7 @@ export function messageRoutes(app: FastifyInstance, ctx: Ctx) {
     await assertCanPostIn(ctx, a, req.userId);
     let body: z.infer<typeof sendBody>;
     const uploaded: string[] = [];
+    let descriptions: unknown = null;
     if (req.isMultipart()) {
       const fields: Record<string, unknown> = {};
       try {
@@ -114,10 +123,18 @@ export function messageRoutes(app: FastifyInstance, ctx: Ctx) {
             if (part.fieldname === 'payload_json') Object.assign(fields, JSON.parse(part.value));
             else if (part.fieldname === 'stickerIds') fields.stickerIds = JSON.parse(part.value);
             else if (part.fieldname === 'content' || part.fieldname === 'replyTo') fields[part.fieldname] = part.value;
+            else if (part.fieldname === 'flags') fields.flags = Number(part.value);
+            else if (part.fieldname === 'descriptions') descriptions = JSON.parse(part.value); // alt text per uploaded file, in file order
           }
         }
       } catch (e: any) { if (e instanceof SyntaxError) throw badRequest('Invalid JSON field'); throw e; }
       body = parse(sendBody, { ...fields, attachments: [...((fields.attachments as string[]) ?? []), ...uploaded] });
+      if (Array.isArray(descriptions)) { // alt text for the files uploaded in this request (own, still unattached rows only)
+        for (let i = 0; i < Math.min(uploaded.length, descriptions.length); i++) {
+          const d = altText(descriptions[i]);
+          if (d !== undefined) await ctx.db.query('UPDATE files SET description = $3 WHERE id = $1 AND uploader_id = $2 AND NOT attached', [uploaded[i], req.userId, d]);
+        }
+      }
     } else body = parse(sendBody, req.body);
     if (a.channel.encrypted) { // secret chat: ciphertext only (docs/E2EE_DMS.md)
       if (uploaded.length || body.attachments?.length || body.stickerIds?.length || body.embeds !== undefined || body.components !== undefined || body.poll !== undefined || body.forward || body.flags) throw badRequest('Secret chats carry encrypted text only: no attachments, stickers, embeds, polls or forwards');
@@ -126,7 +143,8 @@ export function messageRoutes(app: FastifyInstance, ctx: Ctx) {
     if (body.attachments?.length) need(a.perms, Perm.ATTACH_FILES);
     if (body.replyTo) need(a.perms, Perm.READ_MESSAGE_HISTORY);
     // SUPPRESS_EMBEDS | SUPPRESS_NOTIFICATIONS (@silent); bots may also set IS_COMPONENTS_V2
-    if ((body.flags ?? 0) & ~(MessageFlags.SUPPRESS_EMBEDS | MessageFlags.SUPPRESS_NOTIFICATIONS | (req.isBot ? MessageFlags.IS_COMPONENTS_V2 : 0))) throw badRequest('Unsupported message flags');
+    if ((body.flags ?? 0) & ~(MessageFlags.SUPPRESS_EMBEDS | MessageFlags.SUPPRESS_NOTIFICATIONS | MessageFlags.TTS | (req.isBot ? MessageFlags.IS_COMPONENTS_V2 : 0))) throw badRequest('Unsupported message flags');
+    if ((body.flags ?? 0) & MessageFlags.TTS) need(a.perms, Perm.SEND_TTS); // /tts: text-to-speech is its own permission
     const v2 = ((body.flags ?? 0) & MessageFlags.IS_COMPONENTS_V2) !== 0;
     if (v2 && (body.content?.trim() || body.embeds !== undefined || body.poll !== undefined || body.stickerIds?.length || body.forward || body.components === undefined)) throw badRequest('A Components V2 message is made of components only: no content, embeds, stickers, poll or forward');
     let components;
@@ -166,16 +184,31 @@ export function messageRoutes(app: FastifyInstance, ctx: Ctx) {
 
   app.patch('/channels/:id/messages/:mid', async (req) => {
     const p = parse(mm, req.params);
-    const b = parse(z.object({ content: z.string().min(1).max(LIMITS.maxMessageLength).optional(), components: z.unknown().optional() }).strict(), req.body);
-    if (b.content === undefined && b.components === undefined) throw badRequest('Provide content and/or components');
+    const b = parse(z.object({ content: z.string().min(1).max(LIMITS.maxMessageLength).optional(), components: z.unknown().optional(), flags: z.number().int().optional() }).strict(), req.body);
+    if (b.content === undefined && b.components === undefined && b.flags === undefined) throw badRequest('Provide content, components and/or flags');
     limitOrThrow(ctx.rl, `msg-edit:${req.userId}`, 15, 10_000, ctx.config.rateLimit);
     const a = await channelAccess(ctx, req.userId, p.id);
     if (a.channel.encrypted) throw badRequest('Messages in a secret chat cannot be edited; delete and resend');
     const [m] = await ctx.db.query('SELECT * FROM messages WHERE id = $1 AND channel_id = $2', [p.mid, p.id]);
     if (!m) throw notFound('Message');
-    if (m.author_id !== req.userId || m.webhook_id || !['default', 'reply'].includes(m.type)) throw forbidden('You can only edit your own messages');
-    if (m.forward) throw badRequest('Forwarded messages cannot be edited');
+    // Only SUPPRESS_EMBEDS can be toggled: by the author, or by a moderator (MANAGE_MESSAGES) on someone else's message.
+    const flagsOnly = b.flags !== undefined && b.content === undefined && b.components === undefined;
+    if (b.flags !== undefined) {
+      if (b.flags & ~MessageFlags.SUPPRESS_EMBEDS) throw badRequest('Only the SUPPRESS_EMBEDS flag can be edited');
+      if (!['default', 'reply'].includes(m.type)) throw forbidden('This message cannot be edited');
+      if (m.author_id !== req.userId) { if (!a.channel.guild_id) throw forbidden(); need(a.perms, Perm.MANAGE_MESSAGES); }
+    }
+    if (!flagsOnly) {
+      if (m.author_id !== req.userId || m.webhook_id || !['default', 'reply'].includes(m.type)) throw forbidden('You can only edit your own messages');
+      if (m.forward) throw badRequest('Forwarded messages cannot be edited');
+    }
     if (a.gp?.timedOut) throw forbidden('You cannot edit messages while timed out or before accepting the server rules');
+    if (b.flags !== undefined) {
+      const next = (((m.flags ?? 0) as number) & ~MessageFlags.SUPPRESS_EMBEDS) | (b.flags & MessageFlags.SUPPRESS_EMBEDS);
+      if (next !== (m.flags ?? 0)) await ctx.db.query('UPDATE messages SET flags = $2 WHERE id = $1', [p.mid, next]); // not an "edit": no edited_at, no history row
+      // restoring embeds on a message that was sent with them suppressed: fetch the previews now
+      if (next !== (m.flags ?? 0) && !(next & MessageFlags.SUPPRESS_EMBEDS) && !(m.embeds ?? []).length && m.author_id === req.userId && !a.channel.encrypted && ctx.config.unfurlOnSend && has(a.perms, Perm.EMBED_LINKS)) void unfurlMessage(ctx, { ...m, flags: next }, a.channel).catch(() => {});
+    }
     const isV2 = ((m.flags ?? 0) & MessageFlags.IS_COMPONENTS_V2) !== 0;
     if (isV2 && b.content !== undefined) throw badRequest('A Components V2 message has no content to edit');
     if (b.components !== undefined) {
@@ -197,6 +230,36 @@ export function messageRoutes(app: FastifyInstance, ctx: Ctx) {
     const dto = await messageDTO(ctx, row, req.userId);
     await ctx.hub.toChannel(p.id, 'MESSAGE_UPDATE', { ...dto, reactions: dto.reactions.map((r) => ({ ...r, me: false })) });
     return dto;
+  });
+
+  // ---------- attachment alt text ----------
+  /** Sets/clears the alt text of one of my still-unsent uploads (POST /uploads result id). */
+  app.patch('/uploads/:id', async (req) => {
+    const { id } = parse(cm, req.params);
+    const b = parse(z.object({ description: z.string().max(1024).nullable() }).strict(), req.body);
+    const d = altText(b.description) ?? null;
+    const rows = await ctx.db.query('UPDATE files SET description = $3 WHERE id = $1 AND uploader_id = $2 AND NOT attached RETURNING id', [id, req.userId, d]);
+    if (!rows.length) throw notFound('Upload');
+    return { id, description: d };
+  });
+
+  // ---------- translation ----------
+  /** Lets the client tell whether the server-side fallback exists (the browser Translator API is tried first). */
+  app.get('/translate/config', async () => ({ available: translateConfigured(ctx) }));
+  app.post('/channels/:id/messages/:mid/translate', async (req) => {
+    const p = parse(mm, req.params);
+    const { to } = parse(z.object({ to: z.string().regex(LANG_RE) }).strict(), req.body);
+    if (!translateConfigured(ctx)) throw new ApiError(501, 'NOT_CONFIGURED', 'Translation is not configured on this server');
+    limitOrThrow(ctx.rl, `translate:${req.userId}`, 20, 60_000, ctx.config.rateLimit);
+    const a = await channelAccess(ctx, req.userId, p.id);
+    if (a.channel.encrypted) throw badRequest('Messages in a secret chat cannot be translated by the server');
+    await ageGate(ctx, req.userId, req.isBot, a);
+    need(a.perms, Perm.READ_MESSAGE_HISTORY);
+    const [m] = await ctx.db.query('SELECT content FROM messages WHERE id = $1 AND channel_id = $2', [p.mid, p.id]);
+    if (!m) throw notFound('Message');
+    if (!m.content?.trim()) throw badRequest('Nothing to translate');
+    const r = await translateText(ctx, `${p.mid}:${to.toLowerCase()}`, m.content, to);
+    return { messageId: p.mid, to, text: r.text, detectedLanguage: r.detected, cached: r.cached };
   });
 
   // R19: edit history — prior contents of an edited message, newest first.
@@ -354,7 +417,7 @@ export function messageRoutes(app: FastifyInstance, ctx: Ctx) {
       channels = channels.filter((c) => !nsfw.has(c));
     }
     if (!channels.length) return [];
-    return searchMessages(ctx, { viewerId: req.userId, guildId: id, channelIds: channels, q: q.q, authorId: q.authorId, has: q.has, mentions: q.mentions, before: q.before, after: q.after, pinned: q.pinned, during: q.during, sortBy: q.sortBy, sortOrder: q.sortOrder, limit: limitParam(q.limit, 25) });
+    return searchMessages(ctx, { viewerId: req.userId, guildId: id, channelIds: channels, q: q.q, authorId: q.authorId, authorType: q.authorType, has: q.has, mentions: q.mentions, before: q.before, after: q.after, pinned: q.pinned, during: q.during, sortBy: q.sortBy, sortOrder: q.sortOrder, limit: limitParam(q.limit, 25) });
   });
 
   /** Search inside one channel the caller can read (this is how DMs and group DMs are searched). */
@@ -366,7 +429,7 @@ export function messageRoutes(app: FastifyInstance, ctx: Ctx) {
     const a = await channelAccess(ctx, req.userId, id);
     await ageGate(ctx, req.userId, req.isBot, a);
     if (!has(a.perms, Perm.READ_MESSAGE_HISTORY)) return [];
-    return searchMessages(ctx, { viewerId: req.userId, channelIds: [id], q: q.q, authorId: q.authorId, has: q.has, mentions: q.mentions, before: q.before, after: q.after, pinned: q.pinned, during: q.during, sortBy: q.sortBy, sortOrder: q.sortOrder, limit: limitParam(q.limit, 25) });
+    return searchMessages(ctx, { viewerId: req.userId, channelIds: [id], q: q.q, authorId: q.authorId, authorType: q.authorType, has: q.has, mentions: q.mentions, before: q.before, after: q.after, pinned: q.pinned, during: q.during, sortBy: q.sortBy, sortOrder: q.sortOrder, limit: limitParam(q.limit, 25) });
   });
   /** Search across all of the caller's DMs and group DMs. */
   app.get('/users/@me/messages/search', async (req) => {
@@ -374,6 +437,6 @@ export function messageRoutes(app: FastifyInstance, ctx: Ctx) {
     limitOrThrow(ctx.rl, `search:${req.userId}`, 30, 60_000, ctx.config.rateLimit); // full-scan queries are expensive
     if (!hasSearchCriteria(q)) throw badRequest('Provide q, author_id, mentions or has');
     const ids = (await ctx.db.query('SELECT channel_id FROM dm_participants WHERE user_id = $1', [req.userId])).map((r) => r.channel_id as string);
-    return searchMessages(ctx, { viewerId: req.userId, channelIds: ids, q: q.q, authorId: q.authorId, has: q.has, mentions: q.mentions, before: q.before, after: q.after, pinned: q.pinned, during: q.during, sortBy: q.sortBy, sortOrder: q.sortOrder, limit: limitParam(q.limit, 25) });
+    return searchMessages(ctx, { viewerId: req.userId, channelIds: q.channelId ? ids.filter((c) => c === q.channelId) : ids, q: q.q, authorId: q.authorId, authorType: q.authorType, has: q.has, mentions: q.mentions, before: q.before, after: q.after, pinned: q.pinned, during: q.during, sortBy: q.sortBy, sortOrder: q.sortOrder, limit: limitParam(q.limit, 25) });
   });
 }

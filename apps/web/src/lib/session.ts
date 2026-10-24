@@ -24,6 +24,8 @@ import { useChannelActivities } from '@/stores/channelActivities';
 import { setRateLimitNotifier } from './transport';
 import { toast } from '@/stores/ui';
 import { emitOverlayToast } from './overlay';
+import { shouldSpeak, speak } from './tts';
+import { useVoiceUI } from '@/stores/voiceui';
 import { useCalls, wireCallEvents } from '@/stores/calls';
 import { useLiveVoice } from '@/stores/livevoice';
 import { useSecret } from '@/stores/secret';
@@ -135,6 +137,7 @@ function onMessageCreate(m: Message) {
   const me = data.me; if (!me) return;
   const mine = m.author.id === me.id;
   const viewing = currentChannelId() === m.channelId && document.visibilityState === 'visible' && document.hasFocus();
+  maybeSpeak(m, mine);
   if (mine) { data.setRead(m.channelId, m.id, 0); return; }
   if (viewing) { ackLater(m.channelId, m.id); return; }
   const gn = m.guildId ? useNotif.getState().guilds[m.guildId] : undefined;
@@ -168,6 +171,15 @@ function onMessageCreate(m: Message) {
       } catch { /* */ }
     }
   }
+}
+
+/** Reads a /tts message aloud when the receiver opted in ("Allow /tts playback") and is not in a call. */
+function maybeSpeak(m: Message, mine: boolean) {
+  const prefs = useUI.getState().prefs; const v = useVoiceUI.getState();
+  if (!shouldSpeak({ flags: m.flags ?? 0, mine, allowed: prefs.allowTtsPlayback, inCall: v.conn !== 'idle' || !!v.connectedChannelId })) return;
+  if (prefs.mutedChannels[m.channelId] || (m.guildId && prefs.mutedGuilds[m.guildId])) return;
+  const name = displayName(m.author, m.guildId ? useData.getState().guilds[m.guildId]?.members[m.author.id] : undefined);
+  speak(`${name} says ${toPlain(parseInline(m.content))}`, prefs.language);
 }
 
 export const currentChannelId = (): string | null => (window as any).__jorcordChannel ?? null;

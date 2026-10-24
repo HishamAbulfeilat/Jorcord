@@ -12,7 +12,7 @@ describe('parseSearchTokens', () => {
   });
   it('extracts every token type and leaves the rest as text', () => {
     const p = parseSearchTokens('deploy from:alice mentions:<@22> has:image has:link before:2026-03-01 after:123456789 during:2026-03-02 pinned:true sort:relevance order:asc notes');
-    expect(p).toEqual({ text: 'deploy notes', from: ['alice'], mentions: ['22'], has: ['image', 'link'], before: '2026-03-01', after: '123456789', during: '2026-03-02', pinned: true, sortBy: 'relevance', sortOrder: 'asc' });
+    expect(p).toEqual({ text: 'deploy notes', from: ['alice'], mentions: ['22'], inChannel: [], has: ['image', 'link'], before: '2026-03-01', after: '123456789', during: '2026-03-02', pinned: true, sortBy: 'relevance', sortOrder: 'asc' });
   });
   it('is case-insensitive on keys and has values, and de-duplicates has', () => {
     expect(parseSearchTokens('HAS:Video has:video From:Bob').has).toEqual(['video']);

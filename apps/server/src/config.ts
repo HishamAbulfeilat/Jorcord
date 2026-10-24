@@ -38,6 +38,8 @@ export interface Config {
   requireEmailVerification: boolean;
   /** 'auto' = full-text search on Postgres, ILIKE on PGlite. */
   searchMode: 'auto' | 'fts' | 'ilike';
+  /** Optional LibreTranslate-compatible endpoint (TRANSLATE_URL), used by message translation; null = not configured. */
+  translateUrl: string | null; translateApiKey: string | null;
   storage: { driver: 'local' | 's3'; s3: { bucket: string; region: string; endpoint: string | null; accessKeyId: string | null; secretAccessKey: string | null; forcePathStyle: boolean; prefix: string } };
   /** Skip calls to the LiveKit RoomService (tests / deployments without a LiveKit API reachable from the server). */
   livekitControl: boolean;
@@ -131,6 +133,7 @@ export function loadConfig(overrides: Partial<Config> = {}, env: NodeJS.ProcessE
     superAdminId: env.SUPER_ADMIN_USER_ID?.trim() || null,
     webDist: env.WEB_DIST?.trim() ? resolve(env.WEB_DIST.trim()) : null,
     smtpUrl: env.SMTP_URL || null, mailFrom: env.MAIL_FROM ?? 'Jorcord <no-reply@localhost>', requireEmailVerification: env.REQUIRE_EMAIL_VERIFICATION === 'true' || env.REQUIRE_EMAIL_VERIFICATION === '1',
+    translateUrl: env.TRANSLATE_URL?.trim() || null, translateApiKey: env.TRANSLATE_API_KEY?.trim() || null,
     searchMode: (['fts', 'ilike'].includes(env.SEARCH_MODE ?? '') ? env.SEARCH_MODE : 'auto') as Config['searchMode'],
     storage: {
       driver: (env.STORAGE_DRIVER ?? (env.S3_BUCKET ? 's3' : 'local')) === 's3' ? 's3' : 'local',

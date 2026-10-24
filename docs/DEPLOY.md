@@ -65,6 +65,7 @@ All settings are environment variables (`apps/server/.env.example` lists them wi
 | `SMTP_URL`, `MAIL_FROM` | `smtp://user:pass@host:587` (`smtps://` for implicit TLS). Provider recipes: [EMAIL.md](EMAIL.md). |
 | `REQUIRE_EMAIL_VERIFICATION` | `true` blocks sign-in until the email is verified (default `false`; needs SMTP). |
 | `SEARCH_MODE` | `auto` (default), `fts`, `ilike`. |
+| `TRANSLATE_URL` / `TRANSLATE_API_KEY` | Optional LibreTranslate-compatible endpoint (self-hosted, e.g. `http://libretranslate:5000`) for the message "Translate" fallback; unset = server translation disabled (browsers with a Translator API still translate on-device). |
 | `RATE_LIMIT_ENABLED` | Default on. Limits are per node (in memory). |
 
 ### Files

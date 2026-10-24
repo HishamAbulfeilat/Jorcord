@@ -6,6 +6,8 @@ export type MdNode =
   | { t: 'codeblock'; lang: string; v: string }
   | { t: 'quote'; c: MdNode[] }
   | { t: 'heading'; level: 1 | 2 | 3; c: MdNode[] }
+  /** `-# text`: small, muted line. */
+  | { t: 'subtext'; c: MdNode[] }
   | { t: 'list'; ordered: boolean; items: MdNode[][] }
   | { t: 'link'; href: string; c: MdNode[]; masked: boolean }
   | { t: 'user' | 'role' | 'channel'; id: string }
@@ -50,11 +52,12 @@ function pushBlocks(out: MdNode[], text: string) {
       i--; out.push({ t: 'quote', c: parseInline(q.join('\n')) }); continue;
     }
     if ((mm = line.match(/^(#{1,3}) (.+)$/))) { flush(); out.push({ t: 'heading', level: mm[1].length as 1 | 2 | 3, c: parseInline(mm[2]) }); continue; }
+    if ((mm = line.match(/^-# (.+)$/))) { flush(); out.push({ t: 'subtext', c: parseInline(mm[1]) }); continue; }
     if (/^(?:[-*]) \S/.test(line) || /^\d+\. \S/.test(line)) {
       flush();
-      const ordered = /^\d+\. /.test(line); const items: MdNode[][] = [];
-      while (i < lines.length && (ordered ? /^\d+\. \S/ : /^[-*] \S/).test(lines[i])) { items.push(parseInline(lines[i].replace(ordered ? /^\d+\. / : /^[-*] /, ''))); i++; }
-      i--; out.push({ t: 'list', ordered, items }); continue;
+      const ordered = /^\d+\. /.test(line);
+      const { node, next } = parseList(lines, i, ordered);
+      i = next - 1; out.push(node); continue;
     }
     para.push(line);
     if (i < lines.length - 1) {
@@ -62,6 +65,35 @@ function pushBlocks(out: MdNode[], text: string) {
     }
   }
   flush();
+}
+
+const LIST_LINE = /^([ \t]*)([-*]|\d+\.) \S/;
+const indentOf = (s: string) => s.replace(/\t/g, '  ').length;
+const stripMarker = (l: string) => l.replace(/^[ \t]*(?:[-*]|\d+\.) /, '');
+/**
+ * A list starting at `lines[start]` (top level, indent 0-1) of the given kind. Lines indented by 2+ spaces (or a tab) that are
+ * themselves list items become ONE nested list under the preceding item; deeper levels are folded into that second level.
+ */
+function parseList(lines: string[], start: number, ordered: boolean): { node: MdNode; next: number } {
+  const items: MdNode[][] = [];
+  let i = start;
+  while (i < lines.length) {
+    const m = LIST_LINE.exec(lines[i]);
+    if (!m) break;
+    const nested = indentOf(m[1]!) >= 2 && items.length > 0;
+    if (!nested) {
+      if (indentOf(m[1]!) >= 2 || /^\d+\.$/.test(m[2]!) !== ordered) break;
+      items.push(parseInline(stripMarker(lines[i]))); i++; continue;
+    }
+    const subOrdered = /^\d+\.$/.test(m[2]!); const sub: MdNode[][] = [];
+    while (i < lines.length) {
+      const n = LIST_LINE.exec(lines[i]);
+      if (!n || indentOf(n[1]!) < 2) break;
+      sub.push(parseInline(stripMarker(lines[i]))); i++;
+    }
+    items[items.length - 1]!.push({ t: 'list', ordered: subOrdered, items: sub });
+  }
+  return { node: { t: 'list', ordered, items }, next: i };
 }
 
 function isWordChar(c: string | undefined) { return !!c && /[\p{L}\p{N}]/u.test(c); }
@@ -162,9 +194,9 @@ export function toPlain(nodes: MdNode[], resolve?: { user?: (id: string) => stri
       case 'code': return n.v;
       case 'codeblock': return '[code]';
       case 'bold': case 'italic': case 'underline': case 'strike': case 'quote': return toPlain(n.c, resolve);
-      case 'heading': return toPlain(n.c, resolve);
+      case 'heading': case 'subtext': return toPlain(n.c, resolve);
       case 'spoiler': return '[spoiler]';
-      case 'list': return n.items.map((i) => toPlain(i, resolve)).join(' ');
+      case 'list': return n.items.map((i) => i.map((x) => (x.t === 'list' ? ' ' : '') + toPlain([x], resolve)).join('')).join(' ');
       case 'link': return n.masked ? toPlain(n.c, resolve) : n.href;
       case 'user': return '@' + (resolve?.user?.(n.id) ?? 'user');
       case 'role': return '@' + (resolve?.role?.(n.id) ?? 'role');

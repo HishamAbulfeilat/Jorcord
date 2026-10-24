@@ -58,6 +58,7 @@ function Node({ n, ctx }: { n: MdNode; ctx: Ctx }) {
     case 'codeblock': return <CodeBlock lang={n.lang} v={n.v} />;
     case 'quote': return <blockquote><Nodes ns={n.c} ctx={ctx} /></blockquote>;
     case 'heading': { const H = (`h${n.level}`) as 'h1'; return <H><Nodes ns={n.c} ctx={ctx} /></H>; }
+    case 'subtext': return <small className="subtext"><Nodes ns={n.c} ctx={ctx} /></small>;
     case 'list': { const L = n.ordered ? 'ol' : 'ul'; return <L>{n.items.map((it, i) => <li key={i}><Nodes ns={it} ctx={ctx} /></li>)}</L>; }
     case 'link': {
       const internal = n.href.startsWith(location.origin) || (!!getServerUrl() && n.href.startsWith(getServerUrl()));

@@ -31,15 +31,15 @@ export function AttachmentView({ a }: { a: Attachment }) {
     const d = fit(a.width, a.height);
     return (
       <Spoilered on={spoiler}>
-        <button onClick={() => openModal({ kind: 'image', url, name: a.filename })} className="block cursor-zoom-in overflow-hidden rounded-lg" aria-label={`Open image ${a.filename}`}>
-          <img src={url} alt={a.filename} loading="lazy" width={d.width} height={d.height} style={{ aspectRatio: d.aspect, maxWidth: 'min(100%, 400px)', maxHeight: 300, width: d.width ? undefined : 'auto', height: 'auto' }} className="block rounded-lg object-contain" />
+        <button onClick={() => openModal({ kind: 'image', url, name: a.filename })} className="block cursor-zoom-in overflow-hidden rounded-lg" aria-label={`Open image ${a.description || a.filename}`} title={a.description || undefined}>
+          <img src={url} alt={a.description || a.filename} loading="lazy" width={d.width} height={d.height} style={{ aspectRatio: d.aspect, maxWidth: 'min(100%, 400px)', maxHeight: 300, width: d.width ? undefined : 'auto', height: 'auto' }} className="block rounded-lg object-contain" />
         </button>
       </Spoilered>
     );
   }
   if (isVideo(a.contentType)) {
     const d = fit(a.width, a.height, 400, 300);
-    return <Spoilered on={spoiler}><video src={url} controls preload="metadata" playsInline className="max-h-[300px] max-w-full rounded-lg bg-black" style={{ width: d.width, aspectRatio: d.aspect }} /></Spoilered>;
+    return <Spoilered on={spoiler}><video src={url} aria-label={a.description || a.filename} controls preload="metadata" playsInline className="max-h-[300px] max-w-full rounded-lg bg-black" style={{ width: d.width, aspectRatio: d.aspect }} /></Spoilered>;
   }
   if (isAudio(a.contentType)) {
     return (

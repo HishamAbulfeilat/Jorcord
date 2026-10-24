@@ -9,7 +9,7 @@ export type Theme = 'dark' | 'light' | 'amoled';
 export interface Prefs {
   theme: Theme; density: 'cozy' | 'compact'; fontScale: number; reducedMotion: boolean; saturation: number;
   showEmbeds: boolean; autoplayGifs: boolean; twentyFourHour: boolean; language: string; highContrast: boolean;
-  desktopNotifications: boolean; notificationSounds: boolean; defaultNotify: 'all' | 'mentions' | 'none'; suppressEveryone: boolean;
+  desktopNotifications: boolean; notificationSounds: boolean; /** Read /tts messages aloud (Web Speech API). Off by default. */ allowTtsPlayback: boolean; defaultNotify: 'all' | 'mentions' | 'none'; suppressEveryone: boolean;
   inputDevice: string; outputDevice: string; videoDevice: string; inputVolume: number; outputVolume: number;
   noiseSuppression: boolean; echoCancellation: boolean; autoGain: boolean; pushToTalk: boolean;
   noiseEngine: 'browser' | 'rnnoise' | 'high' | 'off'; voiceBitrate: number; musicMode: boolean; pttCode: string; pttGlobal: boolean; vadMode: boolean; vadThreshold: number;
@@ -57,7 +57,7 @@ export const defaultKeybinds: Record<string, string> = {
 };
 export const defaultPrefs: Prefs = {
   theme: 'dark', density: 'cozy', fontScale: 1, reducedMotion: false, saturation: 1, showEmbeds: true, autoplayGifs: true, twentyFourHour: false, language: detectLanguage(), highContrast: false,
-  desktopNotifications: false, notificationSounds: true, defaultNotify: 'mentions', suppressEveryone: false,
+  desktopNotifications: false, notificationSounds: true, allowTtsPlayback: false, defaultNotify: 'mentions', suppressEveryone: false,
   inputDevice: 'default', outputDevice: 'default', videoDevice: 'default', inputVolume: 100, outputVolume: 100, noiseSuppression: true, echoCancellation: true, autoGain: true, pushToTalk: false,
   noiseEngine: 'browser', voiceBitrate: 64, musicMode: false, pttCode: 'Backquote', pttGlobal: false, vadMode: false, vadThreshold: 0.03,
   screenPreset: '1080p60', cameraPreset: '720p30', screenHint: 'motion', screenAudio: true, showVoiceStats: true,

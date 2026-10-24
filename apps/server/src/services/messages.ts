@@ -1,4 +1,4 @@
-import { LIMITS, Perm, has, isStandardStickerId, snowflake, type AllowedMentions, type Attachment, type Component, type Embed, type CrosspostOrigin, type ForwardSnapshot, type Message } from '@jorcord/shared';
+import { LIMITS, MessageFlags, Perm, has, isStandardStickerId, snowflake, type AllowedMentions, type Attachment, type Component, type Embed, type CrosspostOrigin, type ForwardSnapshot, type Message } from '@jorcord/shared';
 import type { Ctx } from '../ctx';
 import { ApiError, badRequest, forbidden, notFound } from '../errors';
 import { checkAutomod } from './automod';
@@ -137,7 +137,7 @@ export async function createMessage(ctx: Ctx, m: NewMessage): Promise<Message> {
   await bumpMentionCounts(ctx, channel, m.authorId, ment, m.replyTo ?? null, !channel.guild_id, m.allowedMentions, id).catch((e) => ctx.log.warn({ err: e }, 'mention count failed'));
   if (channel.guild_id && !m.skipChecks && !m.webhookId) void noteMessage(ctx, channel.guild_id, m.authorId).catch((e) => ctx.log.warn({ err: e }, 'linked role check failed')); // message_count criteria
   ctx.push.notifyMessage(channel, dto); // async + best effort; honours presence, DND, mute and block rules
-  if (!secret && ctx.config.unfurlOnSend && has(m.senderPerms, Perm.EMBED_LINKS)) void unfurlMessage(ctx, row, channel).catch(() => {});
+  if (!secret && ctx.config.unfurlOnSend && has(m.senderPerms, Perm.EMBED_LINKS) && !((m.flags ?? 0) & MessageFlags.SUPPRESS_EMBEDS)) void unfurlMessage(ctx, row, channel).catch(() => {});
   return dto;
 }
 
@@ -201,7 +201,7 @@ async function bumpMentionCounts(ctx: Ctx, channel: any, authorId: string, ment:
   for (const r of rows) await ctx.hub.toUser(r.user_id, 'READ_STATE_UPDATE', { channelId: r.channel_id, lastReadId: r.last_read_id ?? null, mentionCount: r.mention_count });
 }
 
-async function unfurlMessage(ctx: Ctx, row: any, channel: any) {
+export async function unfurlMessage(ctx: Ctx, row: any, channel: any) {
   const urls = [...new Set((row.content as string).match(URL_RE) ?? [])].slice(0, 3);
   if (!urls.length) return;
   const embeds = (await Promise.all(urls.map((u) => unfurl(ctx, u)))).filter(Boolean);
