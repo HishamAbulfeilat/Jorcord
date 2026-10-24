@@ -7,6 +7,8 @@ const FALLBACK: Record<NoiseFallbackReason, string> = {
   'no-worklet-url': 'The RNNoise module is not available in this build',
   'load-failed': 'The RNNoise module could not be loaded',
   'start-failed': 'RNNoise could not be attached to your microphone',
+  underrun: 'RNNoise could not keep up on this device (it would have sounded robotic or cut out)',
+  'worklet-error': 'RNNoise stopped working',
 };
 
 /** One line under the selector. `fallback` is set once a call showed RNNoise could not start. */

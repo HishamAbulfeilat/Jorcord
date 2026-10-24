@@ -14,6 +14,7 @@ import type { ActivityType } from '@jorcord/shared';
 import { MyBansPanel } from './MyBansPanel';
 import { SecretChatsPanel } from './SecretChatsPanel';
 import { t } from '@/i18n';
+import { useUI } from '@/stores/ui';
 
 type Patch = { [K in keyof Privacy]?: Privacy[K] extends object ? Partial<Privacy[K]> : Privacy[K] };
 
@@ -24,6 +25,7 @@ export function PrivacyTab() {
     try { const u = await api.users.patchMe({ privacy: patch }); useData.getState().setMe(u); } catch (e) { toastError(e); } finally { setBusy(false); }
   };
   const fr = p.friendRequests;
+  const hidePublic = useUI((s) => s.prefs.hideOnPublicPages); const setPref = useUI((s) => s.setPref);
   return (<>
     <H1>{t('Privacy & Safety')}</H1>
     <H3>{t('Activity')}</H3>
@@ -31,6 +33,10 @@ export function PrivacyTab() {
       <Toggle label={t('Share my activity')} checked={p.showActivity} disabled={busy} onChange={(v) => void save({ showActivity: v })} />
     </Row>
     <ActivityEditor />
+    <H3>{t('Public pages')}</H3>
+    <Row title={t('Hide me on public pages')} desc={t('If a server publishes its forum on the open web, your posts there show as “Member” without your name or avatar.')}>
+      <Toggle label={t('Hide me on public pages')} checked={!!hidePublic} onChange={(v) => setPref('hideOnPublicPages', v)} />
+    </Row>
     <H3>{t('Direct Messages')}</H3>
     <Row title={t('Allow direct messages from server members')} desc={t('People you only share a server with can start a conversation. Friends can always message you.')}>
       <Toggle label={t('Allow direct messages from server members')} checked={p.allowDmsFromServerMembers} disabled={busy} onChange={(v) => void save({ allowDmsFromServerMembers: v })} />

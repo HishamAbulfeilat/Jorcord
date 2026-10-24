@@ -104,7 +104,7 @@ async function authors(ctx: Ctx, ids: string[]): Promise<Map<string, Who>> {
   const out = new Map<string, Who>();
   const uniq = [...new Set(ids)];
   if (!uniq.length) return out;
-  const rows = await ctx.db.query(`SELECT id, username, display_name, avatar, bot, deleted_at, deletion_due_at, (settings->>'hideOnPublicPages' = 'true') AS hide FROM users WHERE id = ANY($1::text[])`, [uniq]);
+  const rows = await ctx.db.query(`SELECT id, username, display_name, avatar, bot, deleted_at, deletion_due_at, (settings->>'hideOnPublicPages' = 'true' OR settings->'prefs'->>'hideOnPublicPages' = 'true') AS hide FROM users WHERE id = ANY($1::text[])`, [uniq]);
   for (const r of rows) {
     const hidden = !!r.hide || !!r.deleted_at || !!r.deletion_due_at;
     out.set(r.id, hidden ? { name: 'Member', avatar: null, bot: false, hidden: true } : { name: String(r.display_name || r.username), avatar: fileAbs(ctx, r.avatar), bot: !!r.bot, hidden: false });

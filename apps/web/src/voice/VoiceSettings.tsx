@@ -13,6 +13,8 @@ import { cx } from '@/lib/format';
 import { SelfViewVideo } from './tiles';
 import { isCanvasFilterSupported } from './cameraEffects';
 import { isTauri } from '@/lib/server';
+import { NoiseControls } from './NoiseControls';
+import { AudioWizardModal } from './AudioWizard';
 
 function NoiseStatus({ mode, musicMode }: { mode: Prefs['noiseEngine']; musicMode: boolean }) {
   const c = getVoiceClient();
@@ -101,6 +103,7 @@ export function VoiceSettingsForm({ compact }: { compact?: boolean }) {
   const [level, setLevel] = useState(0); const stop = useRef<() => void>();
   const [testing, setTesting] = useState(false);
   const [rec, setRec] = useState(false);
+  const [wizard, setWizard] = useState(false);
   const load = () => navigator.mediaDevices?.enumerateDevices().then(setDevs).catch(() => {});
   useEffect(() => { void load(); navigator.mediaDevices?.addEventListener?.('devicechange', load); return () => { stop.current?.(); navigator.mediaDevices?.removeEventListener?.('devicechange', load); }; }, []);
   useEffect(() => {
@@ -156,12 +159,15 @@ export function VoiceSettingsForm({ compact }: { compact?: boolean }) {
       {mode === 'vad' && <Field label="Input sensitivity"><input type="range" aria-label="Input sensitivity" min={5} max={200} value={Math.round(p.vadThreshold * 1000)} onChange={(e) => set('vadThreshold', Number(e.target.value) / 1000)} className="w-full accent-brand" /></Field>}
 
       <H3>Audio processing</H3>
+      <div className="mb-4 flex items-center justify-between gap-3 rounded-lg bg-side p-3"><span className="text-sm text-muted">{t('Echo, robotic voice or cutting out?')}</span><button type="button" className="btn btn-secondary" onClick={() => setWizard(true)}>{t('Audio problem? Run diagnostics')}</button></div>
+      {wizard && <AudioWizardModal onClose={() => setWizard(false)} />}
       <Field label="Noise suppression">
         <select className="field" aria-label="Noise suppression" value={!p.noiseSuppression ? 'off' : p.noiseEngine} onChange={(e) => { const v = e.target.value as Prefs['noiseEngine']; set('noiseSuppression', v !== 'off'); set('noiseEngine', v); }}>
           <option value="off">Off</option><option value="browser">Browser built-in</option><option value="rnnoise">Standard (RNNoise)</option><option value="high">High (RNNoise + browser)</option>
         </select>
         <NoiseStatus mode={!p.noiseSuppression ? 'off' : p.noiseEngine} musicMode={p.musicMode} />
       </Field>
+      <NoiseControls />
       <Row title="Echo Cancellation"><Toggle label="Echo cancellation" checked={p.echoCancellation} onChange={(v) => set('echoCancellation', v)} /></Row>
       <Row title="Automatic Gain Control"><Toggle label="Automatic gain control" checked={p.autoGain} onChange={(v) => set('autoGain', v)} /></Row>
       <Row title="Music Mode" desc="Stereo, no processing, higher bitrate."><Toggle label="Music mode" checked={p.musicMode} onChange={(v) => set('musicMode', v)} /></Row>

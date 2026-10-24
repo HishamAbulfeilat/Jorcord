@@ -298,7 +298,7 @@ describe('author privacy and freshness', () => {
     const tid = await post(shy.token, forum.id, 'Anonymous question', 'who am I');
     expect((await get(`/p/${guild.id}/${forum.id}/${tid}`)).body).toContain('ShyPerson');
     const u = (await api.req('GET', '/users/@me', shy.token)).body;
-    expect((await api.req('PATCH', '/users/@me', shy.token, { settings: { ...(u.settings ?? {}), hideOnPublicPages: true } })).status).toBe(200);
+    expect((await api.req('PATCH', '/users/@me', shy.token, { settings: { ...(u.settings ?? {}), prefs: { hideOnPublicPages: true } } })).status).toBe(200);
     clearPublicCache();
     for (const url of [`/p/${guild.id}/${forum.id}/${tid}`, `/p/${guild.id}/${forum.id}`]) {
       const h = (await get(url)).body;

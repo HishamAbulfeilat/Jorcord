@@ -24,7 +24,7 @@ export function settingsFromPrefs(p: Prefs): Partial<VoiceSettings> {
   return {
     audio: {
       echoCancellation: p.echoCancellation, noiseSuppression: p.noiseSuppression, autoGainControl: p.autoGain,
-      noiseSuppressionMode: !p.noiseSuppression ? 'off' : p.noiseEngine,
+      noiseSuppressionMode: !p.noiseSuppression ? 'off' : p.noiseEngine, noiseStrength: p.noiseStrength ?? 'standard', noiseMix: p.noiseMix ?? null,
       musicMode: p.musicMode, bitrateKbps: p.voiceBitrate, dtx: true, red: true,
       inputDeviceId: p.inputDevice !== 'default' ? p.inputDevice : undefined,
       outputDeviceId: p.outputDevice !== 'default' ? p.outputDevice : undefined,
@@ -33,7 +33,7 @@ export function settingsFromPrefs(p: Prefs): Partial<VoiceSettings> {
     pttCode: p.pttCode, vadThreshold: p.vadThreshold,
     cameraPreset: p.cameraPreset as StreamPresetId, screenPreset: p.screenPreset as StreamPresetId,
     cameraQuality: p.videoQuality, cameraFps: p.videoFps,
-    screenHint: p.screenHint, screenAudio: p.screenAudio,
+    screenHint: p.screenHint, screenAudio: p.screenAudio, screenDegradation: p.screenDegradation ?? 'auto', screenLock: p.screenLock ?? null,
     mutedSpeakingHint: p.mutedSpeakingHint,
   };
 }
@@ -362,7 +362,7 @@ export function applyPrefs(p: Prefs) {
   if (!client) return;
   const s = settingsFromPrefs(p); const cur = client.getSnapshot().settings;
   const a = s.audio!; const ca = cur.audio;
-  const audioKeys = ['echoCancellation', 'noiseSuppression', 'autoGainControl', 'noiseSuppressionMode', 'musicMode', 'bitrateKbps'] as const;
+  const audioKeys = ['echoCancellation', 'noiseSuppression', 'autoGainControl', 'noiseSuppressionMode', 'noiseStrength', 'noiseMix', 'musicMode', 'bitrateKbps'] as const;
   const patch: any = {};
   for (const k of audioKeys) if (a[k] !== ca[k]) patch[k] = a[k];
   if (Object.keys(patch).length) void client.setAudioSettings(patch).catch(() => {});
@@ -374,6 +374,8 @@ export function applyPrefs(p: Prefs) {
   syncGlobalPtt(p);
   void syncCameraBackground(client, p.cameraBackground);
   if (s.vadThreshold !== cur.vadThreshold) client.setVadThreshold(s.vadThreshold!);
+  if (s.screenDegradation !== cur.screenDegradation) void client.setScreenDegradation(s.screenDegradation!).catch(() => {});
+  if (JSON.stringify(s.screenLock) !== JSON.stringify(cur.screenLock)) void client.setScreenLock(s.screenLock ?? null).catch(() => {});
   if (s.mutedSpeakingHint !== cur.mutedSpeakingHint) client.setMutedSpeakingHint(!!s.mutedSpeakingHint);
   if (s.cameraQuality !== cur.cameraQuality || s.cameraFps !== cur.cameraFps) {
     void client.setCameraSettings({ quality: s.cameraQuality, fps: s.cameraFps }).catch(() => {});

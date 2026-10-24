@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { AlertTriangle, CheckCircle2, ClipboardCopy, Loader2, RefreshCw, Stethoscope, X, XCircle } from 'lucide-react';
-import { formatDiagnostics, runDiagnostics, type DiagCheck } from '@jorcord/voice';
+import { formatDiagnostics, gradeConnection, runDiagnostics, type DiagCheck } from '@jorcord/voice';
 import { useVoiceClient, useVoiceSnapshot } from '@jorcord/voice/react';
 import { useUI } from '@/stores/ui';
 import { useVoiceUI, type VoiceFailure } from '@/stores/voiceui';
@@ -74,7 +74,8 @@ export function DiagnosticsPanel({ onClose }: { onClose: () => void }) {
   const c = snap.connection;
   const rows: [string, string][] = [
     ['Status', snap.status === 'reconnecting' ? `reconnecting (${snap.reconnect.phase}, attempt ${snap.reconnect.attempt}/${snap.reconnect.maxAttempts})` : snap.status],
-    ['Ping', fmtMs(c?.rttMs)], ['Packet loss', fmtLoss(c?.packetLossPct)], ['Media path', c?.transport ? PATH[c.transport]! : '-'],
+    ['Quality', gradeConnection(c).grade], ['Ping (RTT)', fmtMs(c?.rttMs)], ['Jitter', fmtMs(c?.jitterMs)], ['Packet loss', fmtLoss(c?.packetLossPct)], ['Media path (ICE)', c?.transport ? PATH[c.transport]! : '-'],
+    ['Codecs', `${c?.audioCodec ?? '-'} / ${c?.videoCodec ?? '-'}`],
     ['Local candidate', c?.localCandidate ?? '-'], ['Remote candidate', c?.remoteCandidate ?? '-'],
     ['Bitrate in / out', c ? `${c.bitrateInKbps} / ${c.bitrateOutKbps} kbps` : '-'],
     ['Signalling', snap.serverUrl ?? '-'], ['LiveKit', snap.serverVersion ?? '-'], ['Page', location.origin],
@@ -98,13 +99,15 @@ export function DiagnosticsPanel({ onClose }: { onClose: () => void }) {
 export function ConnectionPopover({ onDisconnect, onDiagnostics, onClose }: { onDisconnect: () => void; onDiagnostics: () => void; onClose: () => void }) {
   const snap = useVoiceSnapshot(); const c = snap.connection;
   useEffect(() => { const k = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); }; window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k); }, [onClose]);
-  const bad = (c?.packetLossPct ?? 0) > 5 || (c?.rttMs ?? 0) > 300;
+  const grade = gradeConnection(c); const bad = grade.bars <= 2 && grade.grade !== 'unknown';
   return (
     <div role="dialog" aria-label={t('Connection details')} data-testid="voice-conn-popover" className="absolute inset-x-1 bottom-full z-30 mb-1 rounded-lg border border-divider bg-side p-3 shadow-xl">
       <div className={cx('text-sm font-bold', snap.status === 'connected' ? (bad ? 'text-warn' : 'text-success') : 'text-warn')}>{snap.status === 'connected' ? t('Voice Connected') : snap.status === 'reconnecting' ? t('Reconnecting…') : t('Connecting…')}</div>
       <dl className="mt-2 grid gap-1 text-xs">
         <div className="flex justify-between"><dt className="text-muted">{t('Ping')}</dt><dd data-testid="voice-ping" className="m-0 text-header">{fmtMs(c?.rttMs)}</dd></div>
         <div className="flex justify-between"><dt className="text-muted">{t('Packet loss')}</dt><dd data-testid="voice-loss" className="m-0 text-header">{fmtLoss(c?.packetLossPct)}</dd></div>
+        <div className="flex justify-between"><dt className="text-muted">{t('Jitter')}</dt><dd className="m-0 text-header">{fmtMs(c?.jitterMs)}</dd></div>
+        <div className="flex justify-between"><dt className="text-muted">{t('Quality')}</dt><dd data-testid="voice-grade" className="m-0 text-header">{t(grade.grade)}</dd></div>
         <div className="flex justify-between"><dt className="text-muted">{t('Media path')}</dt><dd className="m-0 text-header">{c?.transport ? PATH[c.transport] : '-'}</dd></div>
       </dl>
       <div className="mt-3 flex gap-2">

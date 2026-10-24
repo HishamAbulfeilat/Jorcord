@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Captions as CaptionsIcon, Camera, CameraOff, ChevronUp, Clapperboard, Crown, Headphones, Mic, MicOff, MonitorUp, MonitorX, PhoneOff, Settings, Activity, VolumeX } from 'lucide-react';
-import { STREAM_PRESETS, type StreamPresetId } from '@jorcord/voice';
+import { BITRATE_STEPS, LOCK_FPS_CHOICES, STREAM_PRESETS, type StreamPresetId } from '@jorcord/voice';
 import { useVoiceClient, useVoiceSnapshot } from '@jorcord/voice/react';
 import { Perm } from '@jorcord/shared';
 import { Toggle } from '@/components/ui/primitives';
@@ -54,7 +54,7 @@ export function ScreenSharePopover({ onClose }: { onClose: () => void }) {
     document.addEventListener('mousedown', h); document.addEventListener('keydown', k);
     return () => { document.removeEventListener('mousedown', h); document.removeEventListener('keydown', k); };
   }, [onClose]);
-  const pick = (id: StreamPresetId) => { setPreset(id); setPref('screenPreset', id as any); if (live) void client.setLiveStreamQuality(id, hint); };
+  const pick = (id: StreamPresetId) => { setPreset(id); setPref('screenPreset', id as any); if (prefs.screenLock) setPref('screenLock', { ...prefs.screenLock, preset: id }); if (live) void client.setLiveStreamQuality(id, hint); };
   return (
     <div ref={ref} role="dialog" aria-label={t('Screen share quality')} data-testid="share-popover"
       className="fixed inset-x-3 bottom-[88px] z-50 animate-pop rounded-lg bg-float p-3 text-start shadow-elev md:absolute md:inset-x-auto md:bottom-full md:end-0 md:mb-3 md:w-80">
@@ -74,6 +74,24 @@ export function ScreenSharePopover({ onClose }: { onClose: () => void }) {
           <option value="motion">Motion (games, video)</option><option value="detail">Detail (text, slides)</option>
         </select>
       </div>
+      <div className="mt-3 flex items-center justify-between gap-2 text-sm text-header">
+        <label htmlFor="sharedeg">{t('When the connection is tight')}</label>
+        <select id="sharedeg" className="field !min-h-0 !w-auto py-1" value={prefs.screenDegradation} onChange={(e) => setPref('screenDegradation', e.target.value as any)}>
+          <option value="auto">{t('Automatic')}</option><option value="clarity">{t('Prefer clarity')}</option><option value="smoothness">{t('Prefer smoothness')}</option>
+        </select>
+      </div>
+      <div className="mt-3 flex items-center justify-between gap-2 text-sm text-header">
+        <label htmlFor="sharelock">{t('Quality lock')}</label>
+        <select id="sharelock" className="field !min-h-0 !w-auto py-1" value={prefs.screenLock ? `${prefs.screenLock.bitrateKbps ?? 0}` : 'off'}
+          onChange={(e) => setPref('screenLock', e.target.value === 'off' ? null : { preset, ...(prefs.screenLock?.fps ? { fps: prefs.screenLock.fps } : {}), ...(Number(e.target.value) ? { bitrateKbps: Number(e.target.value) } : {}) })}>
+          <option value="off">{t('Off (adaptive)')}</option>
+          {BITRATE_STEPS.map((b) => <option key={b.id} value={b.kbps}>{b.id === 'auto' ? t('Locked, auto bitrate') : `${t('Locked')} · ${b.label}`}</option>)}
+        </select>
+      </div>
+      {prefs.screenLock && <div className="mt-2 flex items-center justify-between gap-2 text-sm text-header"><label htmlFor="sharelockfps">{t('Locked frame rate')}</label>
+        <select id="sharelockfps" className="field !min-h-0 !w-auto py-1" value={prefs.screenLock.fps ?? 0} onChange={(e) => setPref('screenLock', { ...prefs.screenLock!, preset, ...(Number(e.target.value) ? { fps: Number(e.target.value) } : { fps: undefined }) })}>
+          <option value={0}>{t('Preset default')}</option>{LOCK_FPS_CHOICES.map((f) => <option key={f} value={f}>{f} fps</option>)}</select></div>}
+      {prefs.screenLock && <p className="mt-1 text-xs text-muted">{t('Locked: the picture stays at this quality; viewers on slow connections receive a lower layer instead.')}</p>}
       {!live && channelId && (
         <div className="mt-3 flex items-center justify-between gap-2 text-sm text-header">
           <label htmlFor="shareviewers">{t('Viewer limit')}</label>

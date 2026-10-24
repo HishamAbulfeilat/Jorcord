@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { Id, Message, Modal, ScheduledMessage } from '@jorcord/shared';
-import type { CameraFrameRate, CameraQuality } from '@jorcord/voice';
+import type { CameraFrameRate, CameraQuality, DegradationChoice, NoiseStrength, QualityLock } from '@jorcord/voice';
 import type { CameraBackground } from '@/voice/backgrounds';
 import type { OverlayCorner } from '@/lib/overlay';
 import { api } from '@/lib/api';
@@ -19,6 +19,12 @@ export interface Prefs {
   screenPreset: '720p30' | '1080p60' | '1440p60' | '4k60' | 'source'; cameraPreset: '720p30' | '1080p60' | '1440p60' | '4k60' | 'source'; screenHint: 'motion' | 'detail'; screenAudio: boolean; showVoiceStats: boolean;
   /** Camera capture: quality preset (auto steps 1080p -> 720p -> 480p) and requested frame rate. */
   videoQuality: CameraQuality; videoFps: CameraFrameRate;
+  /** Screen share: clarity vs smoothness, a manual resolution/fps/bitrate lock (null = automatic). */
+  screenDegradation: DegradationChoice; screenLock: QualityLock | null;
+  /** Mic noise suppression strength and manual wet/dry mix of the RNNoise path (null = follow the strength). */
+  noiseStrength: NoiseStrength; noiseMix: number | null;
+  /** Public web pages (docs/PUBLIC_PAGES.md): show 'Member' instead of my name and avatar. Read by the server from my synced settings. */
+  hideOnPublicPages: boolean;
   /** Local self-view only: mirror the preview, and opt-in canvas effects (both off by default except mirroring). */
   mirrorSelfView: boolean; cameraBlur: boolean; cameraAutoAdjust: boolean;
   /** Background effect applied to the PUBLISHED camera (person segmentation): 'none' | 'blur' | a preset backdrop id. */
@@ -66,7 +72,7 @@ export const defaultPrefs: Prefs = {
   inputDevice: 'default', outputDevice: 'default', videoDevice: 'default', inputVolume: 100, outputVolume: 100, noiseSuppression: true, echoCancellation: true, autoGain: true, pushToTalk: false,
   noiseEngine: 'browser', voiceBitrate: 64, musicMode: false, pttCode: 'Backquote', pttGlobal: false, vadMode: false, vadThreshold: 0.03,
   screenPreset: '1080p60', cameraPreset: '720p30', screenHint: 'motion', screenAudio: true, showVoiceStats: true,
-  videoQuality: 'auto', videoFps: 30,
+  videoQuality: 'auto', videoFps: 30, screenDegradation: 'auto', screenLock: null, noiseStrength: 'standard', noiseMix: null, hideOnPublicPages: false,
   mirrorSelfView: true, cameraBlur: false, cameraAutoAdjust: false, cameraBackground: 'none',
   keybinds: defaultKeybinds,
   streamerMode: false, streamerAuto: true, streamerHidePersonal: true, streamerHideInvites: true, streamerNoSounds: true, streamerNoNotifications: true,

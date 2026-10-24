@@ -37,6 +37,7 @@ import { BotsAppsTab } from './BotsAppsTab';
 import { ModToolsTab } from './ModToolsTab';
 import { OnboardingTab } from './OnboardingTab';
 import { ServerPortTab } from './ServerPortTab';
+import { PublicWebPanel } from './PublicWebPanel';
 import { TemplateTab, WidgetTab, InsightsTab, VanityUrl } from './ServerExtrasTabs';
 import { AuditLogView } from '@/components/moderation/AuditLogView';
 import { ModerationTab } from '@/components/moderation/ModerationTab';
@@ -108,6 +109,7 @@ function Overview({ guildId }: { guildId: string }) {
     <Row title={t('Community Server')} desc={f.rulesChannelId ? t('Unlocks community features such as the welcome screen.') : t('Choose a rules channel first.')}><Toggle label={t('Community Server')} checked={f.community && !!f.rulesChannelId} disabled={!f.rulesChannelId} onChange={(v) => setF({ ...f, community: v })} /></Row>
     <Row title={t('Enable Discovery')} desc={t('Let people find this server on the Discover page.')}><Toggle label={t('Enable Discovery')} checked={f.discoverable} onChange={(v) => setF({ ...f, discoverable: v })} /></Row>
     <div className="mb-4 mt-4"><span className="label">{t('Server Banner')}</span><div className="relative h-28 overflow-hidden rounded-lg bg-rail">{f.banner && <img src={fileUrl(f.banner)!} alt="" className="h-full w-full object-cover" />}<label className="absolute inset-0 flex cursor-pointer items-center justify-center bg-black/40 text-sm font-semibold text-white opacity-0 hover:opacity-100 focus-within:opacity-100">{t('Upload banner')}<input type="file" accept="image/*" className="sr-only" onChange={async (e) => { const file = e.target.files?.[0]; if (file) { try { setF({ ...f, banner: await uploadImageFile(file) }); } catch (err) { toastError(err); } } }} /></label></div>{f.banner && <button className="mt-1 text-sm text-link" onClick={() => setF({ ...f, banner: null })}>{t('Remove banner')}</button>}</div>
+    <PublicWebPanel guildId={guildId} />
     <VanityUrl guildId={guildId} />
     <SaveBar dirty={dirty} busy={busy} onSave={save} onReset={() => setF({ name: gd.name, description: gd.description ?? '', icon: gd.icon, banner: gd.banner, systemChannelId: gd.systemChannelId ?? '', rulesChannelId: gd.rulesChannelId ?? '', discoverable: gd.features.includes('DISCOVERABLE'), screening: gd.features.includes('MEMBER_SCREENING'), community: gd.features.includes('COMMUNITY') })} />
   </>);

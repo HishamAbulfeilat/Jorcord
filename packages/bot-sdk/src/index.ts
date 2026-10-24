@@ -5,6 +5,7 @@
  * Needs a runtime with global `fetch` and `WebSocket` (Node 22+, Bun, Deno, browsers).
  */
 import { ComponentType as CT, IntegrationType, InteractionContextType, Intents, InteractionCallbackType as CB, InteractionType as IT, MessageFlags, Op, type ApplicationCommand, type Component, type MediaGalleryItem, type EventName, type Events, type Interaction } from '@jorcord/shared';
+import { fetchWithRetry, type RetryOptions } from './retry';
 export { Intents, MessageFlags, IntegrationType, InteractionContextType };
 
 /**
@@ -28,16 +29,17 @@ export class RestError extends Error {
   constructor(public status: number, public body: any, public path: string) { super(`${status} ${body?.code ?? ''} ${body?.message ?? ''} (${path})`.trim()); }
 }
 
+export { fetchWithRetry, retryAfterMs, type RetryOptions } from './retry';
+
 export class Rest {
-  constructor(public baseUrl: string, private token: string | null) {}
-  /** JSON request against /api/v1. Retries a 429 (honouring retry-after) up to 3 times. 204 resolves to null. */
+  constructor(public baseUrl: string, private token: string | null, private retry: RetryOptions = {}) {}
+  /** JSON request against /api/v1. Retries a 429 (honouring retry-after / retry_after) up to 3 times; tune with RetryOptions. 204 resolves to null. */
   async request<T = any>(method: string, path: string, body?: unknown, opts: { auth?: boolean; /** sent as X-Audit-Log-Reason (shown in the server's audit log) */ reason?: string } = {}): Promise<T> {
-    for (let attempt = 0; ; attempt++) {
-      const res = await fetch(`${this.baseUrl}/api/v1${path}`, {
+    for (;;) {
+      const res = await fetchWithRetry(`${this.baseUrl}/api/v1${path}`, {
         method, headers: { ...(body !== undefined ? { 'content-type': 'application/json' } : {}), ...(this.token && opts.auth !== false ? { authorization: `Bot ${this.token}` } : {}), ...(opts.reason ? { 'x-audit-log-reason': encodeURIComponent(opts.reason) } : {}) },
         body: body === undefined ? undefined : JSON.stringify(body),
-      });
-      if (res.status === 429 && attempt < 3) { await sleep(Math.max(1, Number(res.headers.get('retry-after') ?? 1)) * 1000); continue; }
+      }, this.retry);
       const text = await res.text();
       const json = text ? safeJson(text) : null;
       if (!res.ok) throw new RestError(res.status, json, path);
