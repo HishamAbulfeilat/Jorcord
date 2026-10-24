@@ -134,7 +134,7 @@ docker run -d --name caddy --restart unless-stopped \
   --network host \
   -v /etc/caddy/Caddyfile:/etc/caddy/Caddyfile:ro \
   -v caddy_data:/data -v caddy_config:/config \
-  caddy caddy run
+  caddy caddy run --config /etc/caddy/Caddyfile --adapter caddyfile
 ```
 
 The socket-address host-network trick keeps `reverse_proxy 127.0.0.1:3000` simple: compose publishes
