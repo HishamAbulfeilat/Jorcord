@@ -2,6 +2,7 @@ import { MOD_LIMITS, Perm, snowflake } from '@jorcord/shared';
 import { badRequest, forbidden, notFound } from '../../errors';
 import { iso } from '../../lib/ids';
 import { audit } from '../guilds';
+import { settleLastMessage } from '../messages';
 import { guildPerms, loadGuildPerm, needOutrankMember } from '../perms';
 import { channelDTO, memberDTO } from '../serializers';
 import { channelOpt, int, parseDuration, permsIn, requireBotPerm, requirePerm, str, user, type CmdCtx, type SysBot } from './kit';
@@ -90,6 +91,7 @@ export const moderationBot: SysBot = {
         const rows = await c.ctx.db.query(
           'SELECT id FROM messages WHERE channel_id = $1 AND NOT pinned AND ($3::text IS NULL OR author_id = $3) ORDER BY id DESC LIMIT $2', [c.channel.id, count, only]);
         const gone = rows.length ? await c.ctx.db.query('DELETE FROM messages WHERE channel_id = $1 AND id = ANY($2::text[]) RETURNING id', [c.channel.id, rows.map((r) => r.id)]) : [];
+        await settleLastMessage(c.ctx, [c.channel.id]);
         for (const r of gone) await c.ctx.hub.toChannel(c.channel.id, 'MESSAGE_DELETE', { id: r.id, channelId: c.channel.id, guildId: c.guildId });
         await audit(c.ctx, c.guildId, c.userId, 'MESSAGE_BULK_DELETE', c.channel.id, { count: gone.length, authorId: only });
         await c.reply(gone.length ? `Deleted ${gone.length} message${gone.length === 1 ? '' : 's'}.` : 'There was nothing to delete (pinned messages are kept).');

@@ -17,7 +17,7 @@ import { trackVisibility } from '../services/visibility';
 import { refreshMember } from '../services/linkedroles';
 import { onMemberJoined } from '../services/sysbots';
 import { applyLargeServerDefault } from '../services/digest';
-import { postSystemMessage } from '../services/messages';
+import { postSystemMessage, settleLastMessage } from '../services/messages';
 import { disconnectMember } from '../services/voice';
 import { channelAccess, guildAccess, guildPerms, loadGuildPerm, need, needOutrank, needOutrankMember } from '../services/perms';
 import { GUILD_SELECT, guildDTO, liveStatus, memberDTO, membersDTO, roleDTO, usersByIds } from '../services/serializers';
@@ -324,6 +324,7 @@ export function memberRoutes(app: FastifyInstance, ctx: Ctx) {
     if (target) await removeMember(p.id, p.userId);
     if (b.deleteMessageSeconds) {
       const msgs = await ctx.db.query('DELETE FROM messages WHERE guild_id = $1 AND author_id = $2 AND id > $3 RETURNING id, channel_id', [p.id, p.userId, snowflake(Date.now() - b.deleteMessageSeconds * 1000)]);
+      await settleLastMessage(ctx, msgs.map((m) => m.channel_id as string));
       for (const m of msgs.slice(0, 1000)) await ctx.hub.toChannel(m.channel_id, 'MESSAGE_DELETE', { id: m.id, channelId: m.channel_id, guildId: p.id });
     }
     await audit(ctx, p.id, req.userId, 'MEMBER_BAN_ADD', p.userId, null, b.reason ?? null);

@@ -308,7 +308,7 @@ export const api = {
     /** Make this channel's overwrites identical to its category's (needs Manage Roles). */
     syncPermissions: (id: Id) => send({ method: 'POST', path: `/channels/${id}/permissions/sync` }),
     deleteOverwrite: (id: Id, owId: Id) => send({ method: 'DELETE', path: `/channels/${id}/permissions/${owId}` }),
-    ack: (id: Id, messageId: Id) => send({ method: 'POST', path: `/channels/${id}/ack`, body: { messageId } }),
+    ack: (id: Id, messageId: Id, unread = false) => send({ method: 'POST', path: `/channels/${id}/ack`, body: unread ? { messageId, unread: true } : { messageId } }),
     typing: (id: Id) => send({ method: 'POST', path: `/channels/${id}/typing` }),
     webhooks: (id: Id) => send<any[]>({ method: 'GET', path: `/channels/${id}/webhooks` }).then((x) => arr<any>(x)),
     createWebhook: (id: Id, name: string, avatar?: string | null) => send<any>({ method: 'POST', path: `/channels/${id}/webhooks`, body: { name, ...(avatar ? { avatar } : {}) } }),

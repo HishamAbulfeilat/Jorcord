@@ -9,7 +9,7 @@ import { randomToken, safeEqual } from '../lib/crypto';
 import { assertNotLocked, recordFailure, webhookGuardKeys } from '../lib/bruteforce';
 import { limitOrThrow } from '../lib/ratelimit';
 import { audit, insertChannel, visibleChannelRows } from '../services/guilds';
-import { createMessage, isMediaAttachment } from '../services/messages';
+import { createMessage, isMediaAttachment, settleLastMessage } from '../services/messages';
 import { claimAttachments } from '../services/files';
 import { parseEmbeds } from '../lib/embeds';
 import { parseComponents } from '../lib/components';
@@ -675,6 +675,7 @@ export function webhookPublicRoutes(app: FastifyInstance, ctx: Ctx) {
     checkToken(w, p, req);
     const m = await loadWebhookMessage(w, p.mid);
     await ctx.db.query('DELETE FROM messages WHERE id = $1', [p.mid]);
+    await settleLastMessage(ctx, [m.channel_id]);
     await ctx.hub.toChannel(m.channel_id, 'MESSAGE_DELETE', { id: p.mid, channelId: m.channel_id, guildId: m.guild_id ?? null });
     return reply.code(204).send();
   });

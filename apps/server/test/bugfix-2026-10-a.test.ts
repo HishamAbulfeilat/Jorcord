@@ -33,6 +33,27 @@ describe('leaving or being removed from a guild', () => {
   }
 });
 
+describe('read markers', () => {
+  it('deleting the newest message re-points last_message_id; acks never move backwards; Mark Unread persists', async () => {
+    const o = await api.register('rd');
+    const g = (await api.req('POST', '/guilds', o.token, { name: 'Reads', template: 'community' })).body;
+    const ch = g.channels.find((c: any) => c.type === 'text');
+    const m1 = (await api.req('POST', `/channels/${ch.id}/messages`, o.token, { content: 'one' })).body;
+    const m2 = (await api.req('POST', `/channels/${ch.id}/messages`, o.token, { content: 'two' })).body;
+    expect((await api.req('DELETE', `/channels/${ch.id}/messages/${m2.id}`, o.token)).status).toBe(204);
+    expect((await api.req('GET', `/channels/${ch.id}`, o.token)).body.lastMessageId).toBe(m1.id);
+    expect((await api.req('POST', `/channels/${ch.id}/ack`, o.token, { messageId: m1.id })).status).toBe(200); // "mark as read" on the new newest message works
+    const m3 = (await api.req('POST', `/channels/${ch.id}/messages`, o.token, { content: 'three' })).body;
+    await api.req('POST', `/channels/${ch.id}/ack`, o.token, { messageId: m3.id });
+    const stale = await api.req('POST', `/channels/${ch.id}/ack`, o.token, { messageId: m1.id });
+    expect(stale.body.lastReadId).toBe(m3.id); // a late ack from an old tab does not regress
+    const un = await api.req('POST', `/channels/${ch.id}/ack`, o.token, { messageId: m3.id, unread: true });
+    expect(un.status).toBe(200); expect(BigInt(un.body.lastReadId)).toBe(BigInt(m3.id) - 1n);
+    const rs = (await api.req('GET', '/users/@me/read-states', o.token)).body.find((r: any) => r.channelId === ch.id);
+    expect(rs.lastReadId).toBe(un.body.lastReadId);
+  });
+});
+
 describe('monthly recurrence', () => {
   it('keeps the start day (clamped to month end) and does not drift or depend on the server time zone', () => {
     const iso = (d: Date[]) => d.map((x) => x.toISOString());

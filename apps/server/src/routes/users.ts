@@ -306,16 +306,27 @@ export function userRoutes(app: FastifyInstance, ctx: Ctx) {
     const rows = await ctx.db.query('SELECT * FROM read_states WHERE user_id = $1', [req.userId]);
     return rows.map((r) => ({ channelId: r.channel_id, lastReadId: r.last_read_id ?? null, mentionCount: r.mention_count }));
   });
+  /**
+   * Read marker. Acks only move forward (a late ack from a stale tab or device must not bring old messages back as unread);
+   * `unread: true` ("Mark Unread" on a message) sets the marker just before that message instead.
+   */
   app.post('/channels/:id/ack', async (req) => {
     const { id } = parse(z.object({ id: idSchema }), req.params);
-    const { messageId } = parse(z.object({ messageId: idSchema }).strict(), req.body);
+    const { messageId, unread } = parse(z.object({ messageId: idSchema, unread: z.boolean().optional() }).strict(), req.body);
     await channelAccess(ctx, req.userId, id);
     const [msg] = await ctx.db.query('SELECT 1 AS x FROM messages WHERE id = $1 AND channel_id = $2', [messageId, id]);
     if (!msg) throw notFound('Message');
-    const [rs] = await ctx.db.query(
-      `INSERT INTO read_states (user_id, channel_id, last_read_id, mention_count) VALUES ($1,$2,$3,0)
-       ON CONFLICT (user_id, channel_id) DO UPDATE SET last_read_id = $3, mention_count = 0 RETURNING *`, [req.userId, id, messageId]);
-    const dto = { channelId: id, lastReadId: rs.last_read_id as string, mentionCount: 0 };
+    const [rs] = unread
+      ? await ctx.db.query(
+        `INSERT INTO read_states (user_id, channel_id, last_read_id, mention_count) VALUES ($1,$2,$3,0)
+         ON CONFLICT (user_id, channel_id) DO UPDATE SET last_read_id = $3, mention_count = 0 RETURNING *`, [req.userId, id, (BigInt(messageId) - 1n).toString()])
+      : await ctx.db.query(
+        `INSERT INTO read_states (user_id, channel_id, last_read_id, mention_count) VALUES ($1,$2,$3,0)
+         ON CONFLICT (user_id, channel_id) DO UPDATE SET
+           last_read_id = CASE WHEN read_states.last_read_id IS NULL OR length($3) > length(read_states.last_read_id) OR (length($3) = length(read_states.last_read_id) AND $3 > read_states.last_read_id) THEN $3 ELSE read_states.last_read_id END,
+           mention_count = CASE WHEN read_states.last_read_id IS NULL OR length($3) > length(read_states.last_read_id) OR (length($3) = length(read_states.last_read_id) AND $3 >= read_states.last_read_id) THEN 0 ELSE read_states.mention_count END
+         RETURNING *`, [req.userId, id, messageId]);
+    const dto = { channelId: id, lastReadId: rs.last_read_id as string, mentionCount: rs.mention_count as number };
     await ctx.hub.toUser(req.userId, 'READ_STATE_UPDATE', dto);
     return dto;
   });

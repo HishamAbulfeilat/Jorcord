@@ -211,6 +211,18 @@ export async function unfurlMessage(ctx: Ctx, row: any, channel: any) {
   if (fresh) await ctx.hub.toChannel(channel.id, 'MESSAGE_UPDATE', await messageDTO(ctx, fresh, null));
 }
 
+/**
+ * After messages were deleted: when a channel's newest message is gone, point `last_message_id` at the newest one left (or null).
+ * Otherwise the channel keeps showing as unread forever (nothing can be read up to a deleted id) and "mark as read" would 404.
+ */
+export async function settleLastMessage(ctx: Ctx, channelIds: string[]): Promise<void> {
+  const ids = [...new Set(channelIds)];
+  if (!ids.length) return;
+  await ctx.db.query(
+    `UPDATE channels c SET last_message_id = (SELECT m.id FROM messages m WHERE m.channel_id = c.id ORDER BY m.id DESC LIMIT 1)
+      WHERE c.id = ANY($1::text[]) AND c.last_message_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM messages m WHERE m.id = c.last_message_id)`, [ids]);
+}
+
 /** System message (join, pin, thread_created). */
 export async function postSystemMessage(ctx: Ctx, channelId: string, authorId: string, type: Message['type'], content = '', threadId: string | null = null) {
   const [channel] = await ctx.db.query('SELECT * FROM channels WHERE id = $1', [channelId]);

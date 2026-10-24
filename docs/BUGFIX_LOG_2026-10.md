@@ -20,6 +20,12 @@ Each entry: bug, root cause, fix, regression test.
 - **Fix:** every occurrence is computed from the start date in UTC, with the day clamped to the month length.
 - **Test:** `apps/server/test/bugfix-2026-10-a.test.ts` (monthly recurrence).
 
+## 5. Channel stayed unread after its newest message was deleted; "Mark Unread" never persisted; stale acks regressed read state (wrong behaviour)
+- **Bug:** (a) deleting a channel's newest message left `channels.last_message_id` on the deleted id, so recipients saw the channel as unread forever and "mark as read" returned 404. (b) the web "Mark Unread" acked `id - 1`, which is not a real message, so the server 404ed and the change vanished on reload. (c) `POST /channels/:id/ack` could move the marker backwards (late ack from another tab or device).
+- **Root cause:** delete paths never recomputed `last_message_id`; ack required an existing message and overwrote unconditionally.
+- **Fix:** `settleLastMessage` after message delete, bulk delete, ban purge, webhook delete and the purge bot command; the web client also falls back to the newest loaded message on `MESSAGE_DELETE`. Ack is monotonic; `{ unread: true }` sets the marker just before the given message and the web uses it.
+- **Test:** `apps/server/test/bugfix-2026-10-a.test.ts` (read markers).
+
 ## 2. Leaving a server did not disconnect voice (security)
 - **Bug:** `DELETE /users/@me/guilds/:id` removed the member but left their voice state and LiveKit participant in place (kick and ban already disconnected).
 - **Root cause:** the leave route duplicated a subset of `removeMemberFromGuild`.

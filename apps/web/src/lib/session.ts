@@ -46,7 +46,15 @@ export function startSession(token: string) {
   unsubs.push(gw.on('CALL_RING', wireCallEvents.ring), gw.on('CALL_RING_END', wireCallEvents.end));
   unsubs.push(gw.on('MESSAGE_CREATE', onMessageCreate));
   unsubs.push(gw.on('MESSAGE_UPDATE', (m) => { useMessages.getState().update(m); settleForMessage(m); }));
-  unsubs.push(gw.on('MESSAGE_DELETE', (d) => useMessages.getState().remove(d.channelId, d.id)));
+  unsubs.push(gw.on('MESSAGE_DELETE', (d) => {
+    useMessages.getState().remove(d.channelId, d.id);
+    // the newest message vanished: fall back to the newest one still loaded, or the channel would stay unread for good
+    const data = useData.getState(); const ch = findChannel(data, d.channelId);
+    if (ch?.lastMessageId === d.id) {
+      const loaded = useMessages.getState().ch[d.channelId];
+      if (loaded?.loadedInitial && !loaded.hasMoreNewer) data.apply('CHANNEL_UPDATE', { ...ch, lastMessageId: loaded.list.filter((x) => !isEphemeral(x)).at(-1)?.id ?? null } as never);
+    }
+  }));
   unsubs.push(gw.on('MESSAGE_REACTION_ADD', (d) => useMessages.getState().reaction(d.channelId, d.messageId, d.emoji, d.emojiId, 1, d.userId === useData.getState().me?.id, !!d.burst, d.burstColor ?? null)));
   unsubs.push(gw.on('MESSAGE_REACTION_REMOVE', (d) => useMessages.getState().reaction(d.channelId, d.messageId, d.emoji, d.emojiId, -1, d.userId === useData.getState().me?.id, !!d.burst)));
   // ---- platform pass ----
