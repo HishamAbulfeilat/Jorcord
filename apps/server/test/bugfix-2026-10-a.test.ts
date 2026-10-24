@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Perm } from '@jorcord/shared';
 import { emptyState } from '../src/services/voice';
+import { nextOccurrences } from '../src/services/scheduled';
 import { Api, startServer, type TestEnv } from './helpers';
 
 let env: TestEnv, api: Api;
@@ -30,4 +31,27 @@ describe('leaving or being removed from a guild', () => {
       expect((await api.req('GET', `/channels/${t.id}/thread-members`, owner.token)).body.map((m: any) => m.userId)).not.toContain(u.id);
     });
   }
+});
+
+describe('monthly recurrence', () => {
+  it('keeps the start day (clamped to month end) and does not drift or depend on the server time zone', () => {
+    const iso = (d: Date[]) => d.map((x) => x.toISOString());
+    expect(iso(nextOccurrences({ frequency: 'monthly' } as any, new Date('2027-01-31T20:30:00Z'), 4))).toEqual([
+      '2027-02-28T20:30:00.000Z', '2027-03-31T20:30:00.000Z', '2027-04-30T20:30:00.000Z', '2027-05-31T20:30:00.000Z']);
+    expect(iso(nextOccurrences({ frequency: 'monthly', interval: 5 } as any, new Date('2027-10-15T00:00:00Z'), 2))).toEqual(['2028-03-15T00:00:00.000Z', '2028-08-15T00:00:00.000Z']);
+    expect(iso(nextOccurrences({ frequency: 'monthly', until: '2027-04-01T00:00:00Z' } as any, new Date('2027-01-31T20:30:00Z'), 5))).toHaveLength(2);
+  });
+});
+
+describe('group DM removal ends the call', () => {
+  it('kicking a participant removes their LiveKit participant, not just the voice state', async () => {
+    const befriend = async (x: any, y: any) => { await api.req('PUT', `/users/@me/relationships/${y.id}`, x.token, { type: 'friend' }); await api.req('PUT', `/users/@me/relationships/${x.id}`, y.token, { type: 'friend' }); };
+    const a = await api.register('ga'), b = await api.register('gb'), c = await api.register('gc');
+    await befriend(a, b); await befriend(a, c);
+    const g = (await api.req('POST', '/users/@me/channels', a.token, { recipientIds: [b.id, c.id] })).body;
+    await env.ctx.voice.set({ ...emptyState(b.id), guildId: null as any, channelId: g.id });
+    expect((await api.req('DELETE', `/channels/${g.id}/recipients/${b.id}`, a.token)).status).toBe(204);
+    expect((await env.ctx.voice.get(b.id))?.channelId ?? null).toBeNull();
+    expect(env.livekit.removed).toContainEqual({ room: g.id, identity: b.id });
+  });
 });

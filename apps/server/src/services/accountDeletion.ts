@@ -1,5 +1,5 @@
 import type { Ctx } from '../ctx';
-import { clearVoiceState } from './voice';
+import { disconnectMember } from './voice';
 import { removeGroupRecipient } from './dms';
 import { deleteGuildCascade, transferGuildOwnership } from './guilds';
 import { actionEmail } from './emailTemplates';
@@ -62,7 +62,7 @@ export async function purgeAccount(ctx: Ctx, id: string) {
     const guildIds = (await ctx.db.query('SELECT guild_id FROM members WHERE user_id = $1', [id])).map((r) => r.guild_id as string);
     const groups = await ctx.db.query(`SELECT c.* FROM channels c JOIN dm_participants p ON p.channel_id = c.id WHERE p.user_id = $1 AND c.type = 'group_dm'`, [id]);
     for (const g of groups) await removeGroupRecipient(ctx, g, id);
-    await clearVoiceState(ctx, id);
+    await disconnectMember(ctx, id).catch((e) => ctx.log.warn({ err: e }, 'voice disconnect on erase failed'));
     const ownedApps = await ctx.db.query('SELECT id, bot_user_id FROM applications WHERE owner_id = $1', [id]);
     const exportKeys = (await ctx.db.query('SELECT storage_key FROM export_jobs WHERE user_id = $1 AND storage_key IS NOT NULL', [id])).map((r) => r.storage_key as string);
     const orphanFiles = await ctx.db.query('DELETE FROM files WHERE uploader_id = $1 AND NOT attached RETURNING key', [id]);

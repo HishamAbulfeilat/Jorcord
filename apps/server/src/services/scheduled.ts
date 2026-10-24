@@ -7,31 +7,28 @@ import { endStage, startStage } from './stage';
 /** Pure function: compute the next `n` occurrences from a recurrence rule and start time. */
 export function nextOccurrences(rule: RecurrenceRule, start: Date, n: number): Date[] {
   const out: Date[] = [];
-  let current = new Date(start.getTime());
-  let generated = 0;
-
   const maxCount = rule.count ?? 52;
   const untilDate = rule.until ? new Date(rule.until) : null;
   const interval = Math.max(1, Math.min(12, rule.interval ?? 1));
+  const DAY = 24 * 60 * 60 * 1000;
 
-  while (generated < n && generated < maxCount) {
-    // advance to next occurrence based on frequency
+  for (let k = 1; out.length < n && out.length < maxCount; k++) {
+    let current: Date;
     switch (rule.frequency) {
-      case 'daily':
-        current = new Date(current.getTime() + interval * 24 * 60 * 60 * 1000);
+      case 'daily': current = new Date(start.getTime() + k * interval * DAY); break;
+      case 'weekly': current = new Date(start.getTime() + k * interval * 7 * DAY); break;
+      case 'monthly': {
+        // UTC and anchored on the start date: Jan 31 -> Feb 28/29 -> Mar 31 (not Mar 3 -> Apr 3), and independent of the server's time zone
+        const months = start.getUTCMonth() + k * interval;
+        const y = start.getUTCFullYear() + Math.floor(months / 12), m = months % 12;
+        const day = Math.min(start.getUTCDate(), new Date(Date.UTC(y, m + 1, 0)).getUTCDate());
+        current = new Date(Date.UTC(y, m, day, start.getUTCHours(), start.getUTCMinutes(), start.getUTCSeconds(), start.getUTCMilliseconds()));
         break;
-      case 'weekly':
-        current = new Date(current.getTime() + interval * 7 * 24 * 60 * 60 * 1000);
-        break;
-      case 'monthly':
-        // Add months preserving day of month (handles month-end correctly)
-        current = new Date(current.getFullYear(), current.getMonth() + interval, current.getDate(), current.getHours(), current.getMinutes(), current.getSeconds());
-        break;
+      }
+      default: return out;
     }
-
     if (untilDate && current > untilDate) break;
-    out.push(new Date(current.getTime()));
-    generated++;
+    out.push(current);
   }
 
   return out;

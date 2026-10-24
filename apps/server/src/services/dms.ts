@@ -3,7 +3,7 @@ import { ApiError, forbidden, notFound } from '../errors';
 import { assertServerAllowsDm, sharedContext } from './memberDms';
 import { privacyOf } from './privacy';
 import { channelDTO } from './serializers';
-import { clearVoiceState } from './voice';
+import { disconnectMember } from './voice';
 
 export const MAX_GROUP_DM = 10;
 
@@ -41,7 +41,7 @@ export async function removeGroupRecipient(ctx: Ctx, channel: any, userId: strin
   if (!removed.length) return;
   await ctx.pcache.invalidate({ k: 'dm', channelId: channel.id });
   const st = await ctx.voice.get(userId);
-  if (st?.channelId === channel.id) await clearVoiceState(ctx, userId);
+  if (st?.channelId === channel.id) await disconnectMember(ctx, userId); // also drops the LiveKit participant, whose token would otherwise keep working
   await ctx.hub.toUser(userId, 'CHANNEL_DELETE', { id: channel.id, guildId: null });
   const left = await participantIds(ctx, channel.id);
   if (!left.length) { await ctx.db.query('DELETE FROM channels WHERE id = $1', [channel.id]); await ctx.pcache.invalidate({ k: 'dm', channelId: channel.id }); return; }
