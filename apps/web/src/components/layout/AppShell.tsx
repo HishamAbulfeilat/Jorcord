@@ -105,10 +105,12 @@ export function AppShell({ base = '' }: { base?: string }) {
   // swipe drawers
   useEffect(() => {
     if (!mobile) return; const el = ref.current; if (!el) return;
-    let sx = 0, sy = 0, t = 0, ok = true;
-    const ts = (e: TouchEvent) => { const p = e.touches[0]; sx = p.clientX; sy = p.clientY; t = Date.now(); ok = !(e.target as HTMLElement).closest('pre,[data-noswipe],input[type=range],textarea,.hljs,video,audio'); };
+    let sx = 0, sy = 0, t = 0, ok = true, onMsg = false;
+    const ts = (e: TouchEvent) => { const p = e.touches[0]; sx = p.clientX; sy = p.clientY; t = Date.now(); ok = !(e.target as HTMLElement).closest('pre,[data-noswipe],input[type=range],textarea,.hljs,video,audio'); onMsg = !!(e.target as HTMLElement).closest('[data-swipe-msg]'); };
     const te = (e: TouchEvent) => {
-      if (!ok) return; const p = e.changedTouches[0]; const dx = p.clientX - sx, dy = p.clientY - sy;
+      if (!ok) return; const p = e.changedTouches[0];
+      // a swipe that starts on a message belongs to the message gestures (reply/react); drawers then open from the screen edge only
+      if (onMsg && sx > 28 && sx < window.innerWidth - 28) return; const dx = p.clientX - sx, dy = p.clientY - sy;
       if (Math.abs(dx) < 70 || Math.abs(dy) > Math.abs(dx) * 0.6 || Date.now() - t > 600) return;
       const s = useUI.getState(); const rtl = document.documentElement.dir === 'rtl';
       if ((rtl ? -dx : dx) > 0) { if (s.rightDrawer) setRight(false); else if (!s.leftDrawer && (rtl ? sx > window.innerWidth * 0.4 : sx < window.innerWidth * 0.6)) setLeft(true); }

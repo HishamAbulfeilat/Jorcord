@@ -56,7 +56,15 @@ export function ContextMenuHost() {
   if (!menu) return null;
   const list = (
     <div ref={ref} role="menu" className={cx('animate-pop bg-float p-1.5 text-[14px] shadow-elev', mobile ? 'safe-bottom w-full rounded-t-xl pb-4' : 'w-[220px] max-w-[92vw] rounded-md')} style={mobile ? undefined : { position: 'fixed', left: pos.x || menu.x, top: pos.y || menu.y }}>
-      {menu.items.map((it, i) => <Item key={i} it={it} mobile={mobile} close={close} openedAt={menu.t} />)}
+      {mobile && menu.items.some((i) => i.quick) && (
+        <div className="mb-1 grid grid-cols-3 gap-1.5 p-1" data-testid="menu-quick">
+          {menu.items.filter((i) => i.quick).map((it, i) => { const Icon = it.icon; return (
+            <button key={i} role="menuitem" tabIndex={-1} onClick={() => { if (Date.now() - menu.t < 400) return; close(); it.onClick?.(); }} className="flex min-h-[64px] flex-col items-center justify-center gap-1 rounded-lg bg-active px-1 text-xs font-semibold text-header">
+              {Icon && <Icon size={20} />}<span className="truncate">{it.label}</span>
+            </button>); })}
+        </div>
+      )}
+      {menu.items.map((it, i) => (mobile && it.quick ? null : <Item key={i} it={it} mobile={mobile} close={close} openedAt={menu.t} />))}
     </div>
   );
   return createPortal(mobile

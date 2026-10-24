@@ -3,7 +3,7 @@ import { COLOR_BLIND_MODES } from '@/lib/a11y';
 import { useNavigate } from 'react-router-dom';
 import { VoiceSettingsForm } from '@/voice/VoiceSettings';
 import { useQuery } from '@tanstack/react-query';
-import { Link2, Accessibility, Bell, Globe, Keyboard, LogOut, Mic, Palette, Shield, User as UserIcon, UserCircle, Monitor, Radio, Laptop, Smile, Code2, Lock, ShieldAlert, Film, Users, Gamepad2, ShieldCheck } from 'lucide-react';
+import { Cpu, Link2, Accessibility, Bell, Globe, Keyboard, LogOut, Mic, Palette, Shield, User as UserIcon, UserCircle, Monitor, Radio, Laptop, Smile, Code2, Lock, ShieldAlert, Film, Users, Gamepad2, ShieldCheck } from 'lucide-react';
 import { PrivacyTab } from './PrivacyTab';
 import { ConnectionsTab } from './ConnectionsTab';
 import { AccountsSection } from './AccountsSection';
@@ -22,6 +22,8 @@ import { DataPrivacyPanel } from './DataPrivacyPanel';
 import { useUI, defaultKeybinds, toast, toastError, type Theme } from '@/stores/ui';
 import { SettingsLayout, H1, H3, SaveBar } from './SettingsLayout';
 import { Field, Row, Toggle, Spinner } from '@/components/ui/primitives';
+import { MemoryPanel } from './MemoryPanel';
+import { GestureSettings } from './GestureSettings';
 import { IconPicker } from '@/components/modals/ModalHost';
 import { Avatar } from '@/components/ui/Avatar';
 import { cx, fileUrl, idColor } from '@/lib/format';
@@ -45,7 +47,7 @@ export function UserSettings({ initialTab }: { initialTab?: string }) {
   const isAdmin = !!useQuery({ queryKey: ['admin', 'me'], queryFn: api.admin.me, retry: false, staleTime: Infinity }).data?.admin;
   const groups = [
     { title: t('User Settings'), items: [{ id: 'account', label: t('My Account'), icon: UserIcon }, { id: 'profile', label: t('Profile'), icon: UserCircle }, { id: 'profiles', label: t('Profiles'), icon: Users }, { id: 'privacy', label: t('Privacy & Safety'), icon: Lock }, { id: 'connections', label: t('Connections'), icon: Link2 }, { id: 'security', label: t('Security & Devices'), icon: Shield }] },
-    { title: t('App Settings'), items: [{ id: 'appearance', label: t('Appearance'), icon: Palette }, { id: 'accessibility', label: t('Accessibility'), icon: Accessibility }, { id: 'voice', label: t('Voice & Video'), icon: Mic }, { id: 'notifications', label: t('Notifications'), icon: Bell }, { id: 'permissions', label: t('Permissions'), icon: ShieldCheck }, { id: 'keybinds', label: t('Keybinds'), icon: Keyboard }, { id: 'streamer', label: t('Streamer Mode'), icon: Radio }, { id: 'language', label: t('Language'), icon: Globe }, ...(isTauri() ? [{ id: 'desktop', label: t('Desktop App'), icon: Laptop }, { id: 'registeredGames', label: t('Registered Games'), icon: Gamepad2 }] : [])] },
+    { title: t('App Settings'), items: [{ id: 'appearance', label: t('Appearance'), icon: Palette }, { id: 'accessibility', label: t('Accessibility'), icon: Accessibility }, { id: 'voice', label: t('Voice & Video'), icon: Mic }, { id: 'notifications', label: t('Notifications'), icon: Bell }, { id: 'permissions', label: t('Permissions'), icon: ShieldCheck }, { id: 'keybinds', label: t('Keybinds'), icon: Keyboard }, { id: 'streamer', label: t('Streamer Mode'), icon: Radio }, { id: 'language', label: t('Language'), icon: Globe }, { id: 'advanced', label: t('Advanced'), icon: Cpu }, ...(isTauri() ? [{ id: 'desktop', label: t('Desktop App'), icon: Laptop }, { id: 'registeredGames', label: t('Registered Games'), icon: Gamepad2 }] : [])] },
     { title: t('Developers'), items: [{ id: 'developer', label: t('Developer Portal'), icon: Code2 }] },
     ...(isAdmin ? [{ title: t('Instance'), items: [{ id: 'admin', label: t('Admin Dashboard'), icon: ShieldAlert }] }] : []),
     { items: [{ id: 'logout', label: t('Log Out'), icon: LogOut, danger: true }] },
@@ -68,6 +70,7 @@ export function UserSettings({ initialTab }: { initialTab?: string }) {
       {tab === 'registeredGames' && <RegisteredGamesTab />}
       {tab === 'keybinds' && <Keybinds />}
       {tab === 'language' && <Language />}
+      {tab === 'advanced' && <MemoryPanel />}
     </SettingsLayout>
   );
 }
@@ -170,6 +173,7 @@ function Appearance() {
     <div role="radiogroup" aria-label={t('Message display')} className="grid gap-2 sm:grid-cols-2">{(['cozy', 'compact'] as const).map((d) => <label key={d} className={cx('flex cursor-pointer items-center gap-3 rounded-lg border-2 p-3', prefs.density === d ? 'border-brand' : 'border-divider')}><input type="radio" name="den" className="accent-brand" checked={prefs.density === d} onChange={() => set('density', d)} /><span className="font-semibold capitalize text-header">{d}</span></label>)}</div>
     <H3>{t('Chat Font Scaling')}</H3>
     <input type="range" min={0.85} max={1.4} step={0.05} value={prefs.fontScale} onChange={(e) => set('fontScale', Number(e.target.value))} aria-label={t('Font scale')} className="w-full accent-brand" /><div className="text-sm text-muted">{Math.round(prefs.fontScale * 100)}%</div>
+    <GestureSettings />
     <H3>{t('Preview')}</H3>
     <div className="rounded-lg bg-chat p-3 ring-1 ring-divider"><div className="flex gap-3"><Avatar user={me} size={40} /><div><div className="font-medium text-header">{me?.displayName || me?.username} <span className="text-xs text-muted">{t('Today')}</span></div><div>{t('Looks great at this size.')}</div></div></div></div>
   </>);

@@ -23,6 +23,7 @@ import { t } from '@/i18n';
 import { toPlain, parseInline } from '@/lib/markdown';
 import { messageMenu, userMenu } from '@/lib/menus';
 import { useMenuTrigger } from '@/components/ui/ContextMenu';
+import { useMessageSwipe } from './useMessageSwipe';
 import { myChannelPerms } from '@/lib/session';
 import { useNav } from '@/lib/nav';
 import { useIsMobile } from '@/lib/hooks';
@@ -146,6 +147,12 @@ const MessageItemBase = memo(function MessageItem({ m, grouped, highlighted, onE
   const menuItems = () => ephemeral ? [{ label: t('Dismiss message'), onClick: () => useMessages.getState().remove(m.channelId, m.id) }] : messageMenu(m, { startEdit, pickEmoji: () => openPopout({ kind: 'emoji', rect: new DOMRect(window.innerWidth / 2, window.innerHeight / 2, 0, 0), guildId: m.guildId ?? undefined, allowBurst: true, onPick: (p) => addReaction(m, p) }) });
   const trig = useMenuTrigger(menuItems);
   const userTrig = useMenuTrigger(() => userMenu(m.author.id, m.guildId));
+  const swipePerms = myChannelPerms(m.channelId); const swipeDm = !m.guildId;
+  const swipe = useMessageSwipe({
+    enabled: mobile && !editing && !ephemeral && !SYSTEM[m.type] && !isLoadingMsg(m),
+    caps: { canReply: can(swipePerms, Perm.SEND_MESSAGES) || swipeDm, canReact: can(swipePerms, Perm.ADD_REACTIONS) || swipeDm, canEdit: !!me && canEditMessage(m, me.id) },
+    run: { reply: () => useUI.getState().setReply(m.channelId, m.id), edit: startEdit, react: () => openPopout({ kind: 'emoji', rect: new DOMRect(window.innerWidth / 2, window.innerHeight / 2, 0, 0), guildId: m.guildId ?? undefined, onPick: (e: Parameters<typeof addReaction>[1]) => addReaction(m, e) } as never) },
+  }, trig);
   const openUser = (e: React.MouseEvent) => { e.stopPropagation(); openPopout({ kind: 'user', userId: m.author.id, guildId: m.guildId ?? undefined, rect: (e.currentTarget as HTMLElement).getBoundingClientRect() }); };
 
   const sys = !!SYSTEM[m.type];
@@ -193,7 +200,8 @@ const MessageItemBase = memo(function MessageItem({ m, grouped, highlighted, onE
   ) : (<>{sensitive && <div className="mb-0.5 text-[11px] font-medium text-warn" data-testid="sensitive-mark">{t('Marked sensitive')}</div>}{inner}</>);
   void nav; void mobile; void Hash; void CornerUpLeft; void fileUrl;
   return (
-    <div className={cx(base, 'msg-cozy', !grouped && !m.replyTo && !m.interaction ? 'mt-[17px] pt-[2px]' : m.replyTo || m.interaction ? 'mt-[17px]' : '', ephemeral && 'bg-brand/[0.06]')} id={`msg-${m.id}`} data-mid={m.id} {...trig} onDoubleClick={() => { if (me && canEditMessage(m, me.id) && !mobile) startEdit(); }}>
+    <div className={cx(base, 'msg-cozy', !grouped && !m.replyTo && !m.interaction ? 'mt-[17px] pt-[2px]' : m.replyTo || m.interaction ? 'mt-[17px]' : '', ephemeral && 'bg-brand/[0.06]')} id={`msg-${m.id}`} data-mid={m.id} data-swipe-msg={mobile ? '' : undefined} {...swipe.bind} onDoubleClick={() => { if (me && canEditMessage(m, me.id) && !mobile) startEdit(); }}>
+      {swipe.indicator}
       {m.replyTo && <ReplyPreview m={m} />}
       {m.interaction && !m.replyTo && <InteractionHeader m={m} />}
       <div className="relative flex gap-4 pb-[2px]">

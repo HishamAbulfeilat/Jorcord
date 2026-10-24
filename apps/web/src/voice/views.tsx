@@ -26,6 +26,7 @@ import { useState } from 'react';
 import { SoundboardButton } from '@/components/Soundboard';
 import { t } from '@/i18n';
 import { StageBar, canModerateStage } from './StageBar';
+import { PttButton } from './PttButton';
 import { VoiceStatusEditor, VoiceStatusText } from './VoiceStatus';
 import { VoiceChatPanel } from '@/components/chat/VoiceChat';
 import { channelUnread } from '@/stores/data';
@@ -134,6 +135,7 @@ export function VoiceDock() {
       {conn === 'connected' && showStats && snap.connection?.rttMs != null && <div data-testid="voice-dock-ping" className="mt-0.5 text-[11px] text-muted">{snap.connection.rttMs} ms{snap.connection.packetLossPct ? ` · ${snap.connection.packetLossPct}% ${t('loss')}` : ''}</div>}
       {details && !diag && <ConnectionPopover onClose={() => setDetails(false)} onDisconnect={() => { setDetails(false); void leaveVoice(); }} onDiagnostics={() => { setDetails(false); setDiag(true); }} />}
       {diag && <DiagnosticsPanel onClose={() => setDiag(false)} />}
+      {conn === 'connected' && <PttButton className="mt-2" />}
       <div className="relative mt-2 grid grid-cols-4 gap-1.5">
         <Tip text={snap.cameraOn ? t('Turn Off Camera') : t('Turn On Camera')} side="top"><button data-testid="dock-camera" aria-label={snap.cameraOn ? 'Turn Off Camera' : 'Turn On Camera'} aria-pressed={snap.cameraOn} onClick={() => getVoiceClient().setCamera(!snap.cameraOn).catch(() => {})} className={cx(DOCK_BTN, snap.cameraOn && '!bg-white !text-black')}>{snap.cameraOn ? <Camera size={18} /> : <CameraOff size={18} />}</button></Tip>
         {snap.platform.canScreenShare
@@ -158,6 +160,7 @@ export function MobileVoiceBar() {
   return (
     <div data-testid="mobile-voice-bar" className="flex shrink-0 items-center gap-2 bg-success/20 px-3 py-1.5 text-sm">
       <button className="flex min-w-0 flex-1 items-center gap-2 text-start font-semibold text-success" onClick={() => nav.go(ch.guildId, ch.id)}><Signal size={16} /><span className="truncate">{ch.guildId ? ch.name : dmName(ch, me)}</span></button>
+      <div className="w-28"><PttButton className="!min-h-[36px] !rounded text-xs" /></div>
       <button aria-label={muted ? 'Unmute' : 'Mute'} onClick={toggleMute} className="flex h-9 w-9 items-center justify-center rounded text-header">{muted ? <MicOff size={18} className="text-danger" /> : <Mic size={18} />}</button>
       <button aria-label={t('Disconnect')} onClick={() => void leaveVoice()} className="flex h-9 w-9 items-center justify-center rounded text-danger"><PhoneOff size={18} /></button>
     </div>

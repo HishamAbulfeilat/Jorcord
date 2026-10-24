@@ -201,6 +201,15 @@ export function historyItem(m: Message, meId: string, perms: bigint): MenuItem |
   return { label: t('View edit history'), icon: BookOpen, onClick: () => window.dispatchEvent(new CustomEvent('jorcord:edit-history', { detail: { channelId: m.channelId, id: m.id } })) };
 }
 
+/** The six actions people reach for most; on touch they become big tiles at the top of the long-press sheet. */
+export const QUICK_LABELS = ['Reply', 'Add Reaction', 'Edit Message', 'Copy Text', 'Forward', 'Pin Message', 'Unpin Message'];
+/** Flags up to six quick actions (in QUICK_LABELS order, enabled ones only) without reordering or removing anything. */
+export function markQuick(items: MenuItem[], max = 6): MenuItem[] {
+  const picked = new Set<MenuItem>();
+  for (const l of QUICK_LABELS) { const it = items.find((i) => i.label === l && !i.disabled && !i.children); if (it && picked.size < max) picked.add(it); }
+  return items.map((i) => (picked.has(i) ? { ...i, quick: true } : i));
+}
+
 export function messageMenu(m: Message, opts: { startEdit: () => void; pickEmoji: (rect: DOMRect | undefined) => void }): MenuItem[] {
   const s = useData.getState(); const me = s.me; if (!me) return [];
   const ch = findChannel(s, m.channelId); const perms = myChannelPerms(m.channelId); const isDm = !ch?.guildId;
@@ -226,6 +235,6 @@ export function messageMenu(m: Message, opts: { startEdit: () => void; pickEmoji
     { separator: true },
     { label: t('Copy Message ID'), icon: Copy, onClick: () => copyText(m.id).then(() => toast(t('Copied ID'), 'success')) },
   ];
-  return items;
+  return markQuick(items);
 }
 void AtSign; void ShieldBan;

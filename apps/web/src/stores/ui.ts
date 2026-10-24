@@ -51,6 +51,8 @@ export interface Prefs {
   idleMinutes: number;
   /** Link domains I chose to open without the external-link confirmation (synced with my account settings). */
   trustedLinkDomains: string[];
+  /** Touch message gestures (lib/swipe.ts): what swiping a message right / left does. */
+  swipeRight: 'reply' | 'react' | 'edit' | 'none'; swipeLeft: 'reply' | 'react' | 'edit' | 'none';
 }
 /** A game the user registered from the Running Games settings tab. */
 export interface RegisteredGame { name: string; executables: string[] }
@@ -80,7 +82,7 @@ export const defaultPrefs: Prefs = {
   hideMutedChannels: {}, userVolumes: {}, userMuted: {}, clipWindow: 30, clipAutoBuffer: false, captions: false, captionsLang: '', mutedSpeakingHint: true, soundboardMuted: false, soundboardMutedUsers: {}, soundboardVolume: 100,
   gameActivity: true, registeredGames: [],
   overlayEnabled: false, overlayLocked: false, overlayCorner: 'top-right',
-  idleMinutes: 10, trustedLinkDomains: [],
+  idleMinutes: 10, trustedLinkDomains: [], swipeRight: 'reply', swipeLeft: 'react',
 };
 
 export type RightPanel = 'members' | 'search' | 'pins' | 'threads' | 'reports' | null;
@@ -104,7 +106,7 @@ export type ModalSpec =
   | { kind: 'externalLink'; url: string } | { kind: 'riskyFile'; url: string; filename: string; download: boolean }
   | { kind: 'gifPicker'; title?: string; onPick: (url: string) => void };
 export type SettingsSpec = { kind: 'user'; tab?: string } | { kind: 'guild'; guildId: Id; tab?: string } | null;
-export interface MenuItem { label?: string; icon?: any; onClick?: () => void; danger?: boolean; separator?: boolean; checked?: boolean; disabled?: boolean; hint?: string; children?: MenuItem[];
+export interface MenuItem { label?: string; icon?: any; /** Touch sheet: shown as a big tile in the top row (max 6). */ quick?: boolean; onClick?: () => void; danger?: boolean; separator?: boolean; checked?: boolean; disabled?: boolean; hint?: string; children?: MenuItem[];
   /** Inline slider row (keyboard: Left/Right adjust, Up/Down leave). */
   slider?: { value: number; min: number; max: number; step?: number; label: string; format?: (v: number) => string; onChange: (v: number) => void } }
 export interface Toast { id: number; kind: 'info' | 'success' | 'error'; text: string }
