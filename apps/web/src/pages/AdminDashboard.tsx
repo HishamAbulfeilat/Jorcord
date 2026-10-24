@@ -7,7 +7,7 @@ import { api } from '@/lib/api';
 import { toast, toastError } from '@/stores/ui';
 import { USER_BADGES, UserFlags, hasUserFlag } from '@jorcord/shared';
 
-type Tab = 'overview' | 'users' | 'servers' | 'reports' | 'audit';
+type Tab = 'overview' | 'users' | 'admins' | 'servers' | 'reports' | 'audit';
 const fmt = (d?: string | null) => (d ? new Date(d).toLocaleString() : '—');
 const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(' ');
 
@@ -16,9 +16,11 @@ export function AdminDashboard() {
   const [tab, setTab] = useState<Tab>('overview');
   if (me.isLoading) return <div className="p-8 text-muted">Loading…</div>;
   if (!me.data?.admin) return <Navigate to="/channels/@me" replace />;
+  const isSuper = me.data.role !== 'delegated';
   const tabs: { id: Tab; label: string; icon: typeof Users }[] = [
-    { id: 'overview', label: 'Overview', icon: LayoutDashboard }, { id: 'users', label: 'Users', icon: Users },
-    { id: 'servers', label: 'Servers', icon: Server }, { id: 'reports', label: 'Reports', icon: Flag }, { id: 'audit', label: 'Admin log', icon: ScrollText },
+    { id: 'overview', label: 'Overview', icon: LayoutDashboard }, { id: 'users', label: 'Users', icon: Users }, { id: 'admins', label: 'Admins', icon: ShieldAlert },
+    { id: 'servers', label: 'Servers', icon: Server }, { id: 'reports', label: 'Reports', icon: Flag },
+    ...(isSuper ? [{ id: 'audit' as const, label: 'Admin log', icon: ScrollText }] : []),
   ];
   return (
     <div className="flex h-full min-h-0 bg-chat text-normal" data-testid="admin-dashboard">
@@ -38,12 +40,13 @@ export function AdminDashboard() {
             This account can see everything. Turn on two-factor authentication in User Settings → My Account to protect it.
           </div>
         )}
-        <GodMode until={me.data.godModeUntil} mfa={me.data.mfaEnabled} />
+        {isSuper && <GodMode until={me.data.godModeUntil} mfa={me.data.mfaEnabled} />}
         {tab === 'overview' && <Overview />}
-        {tab === 'users' && <UsersTab />}
-        {tab === 'servers' && <ServersTab />}
+        {tab === 'users' && <UsersTab isSuper={isSuper} />}
+        {tab === 'admins' && <AdminsTab isSuper={isSuper} />}
+        {tab === 'servers' && <ServersTab isSuper={isSuper} />}
         {tab === 'reports' && <ReportsTab />}
-        {tab === 'audit' && <AuditTab />}
+        {tab === 'audit' && isSuper && <AuditTab />}
       </main>
     </div>
   );
@@ -72,22 +75,23 @@ function Search({ value, onChange, placeholder }: { value: string; onChange: (v:
   return <input aria-label={placeholder} placeholder={placeholder} value={value} onChange={(e) => onChange(e.target.value)} className="mb-4 w-full max-w-md rounded bg-input px-3 py-2 text-sm" />;
 }
 
-function UsersTab() {
+function UsersTab({ isSuper }: { isSuper: boolean }) {
   const [q, setQ] = useState(''); const [sel, setSel] = useState<string | null>(null);
   const { data = [] } = useQuery({ queryKey: ['admin', 'users', q], queryFn: () => api.admin.users(q) });
-  if (sel) return <UserDetail id={sel} onBack={() => setSel(null)} />;
+  if (sel) return <UserDetail id={sel} isSuper={isSuper} onBack={() => setSel(null)} />;
   return (
     <section>
       <h1 className="mb-4 text-xl font-semibold">Users</h1>
       <Search value={q} onChange={setQ} placeholder="Search username, email or ID" />
       <table className="w-full text-left text-sm">
-        <thead className="text-xs uppercase text-muted"><tr><th className="py-2">User</th><th>Email</th><th>Servers</th><th>Joined</th><th>Last seen</th><th>Status</th></tr></thead>
+        <thead className="text-xs uppercase text-muted"><tr><th className="py-2">User</th><th>Email</th><th>Servers</th><th>Joined</th><th>Last seen</th><th>Status</th><th>Admin</th></tr></thead>
         <tbody>
           {data.map((u: any) => (
             <tr key={u.id} className="cursor-pointer border-t border-divider hover:bg-hover" onClick={() => setSel(u.id)}>
               <td className="py-2">{u.displayName || u.username} <span className="text-muted">@{u.username}</span>{u.bot && <span className="ml-1 rounded bg-brand px-1 text-xs text-white">BOT</span>}</td>
               <td>{u.email ?? '—'}</td><td>{u.guilds}</td><td>{fmt(u.createdAt)}</td><td>{fmt(u.lastSeen)}</td>
               <td>{u.disabledAt ? <span className="text-danger">Disabled</span> : u.deletedAt ? <span className="text-muted">Deleted</span> : 'Active'}</td>
+              <td data-testid={`admin-col-${u.username}`}>{u.instanceAdmin ? 'Admin' : '—'}</td>
             </tr>
           ))}
         </tbody>
@@ -96,7 +100,7 @@ function UsersTab() {
   );
 }
 
-function UserDetail({ id, onBack }: { id: string; onBack: () => void }) {
+function UserDetail({ id, isSuper, onBack }: { id: string; isSuper: boolean; onBack: () => void }) {
   const qc = useQueryClient();
   const { data: u } = useQuery({ queryKey: ['admin', 'user', id], queryFn: () => api.admin.user(id) });
   const toggle = async () => {
@@ -108,7 +112,18 @@ function UserDetail({ id, onBack }: { id: string; onBack: () => void }) {
       await qc.invalidateQueries({ queryKey: ['admin'] });
     } catch (e) { toastError(e); }
   };
+  const setAdmin = async () => {
+    if (!u) return;
+    const grant = !u.instanceAdmin;
+    if (!window.confirm(grant ? `Make @${u.username} an instance admin? They will be able to use the admin dashboard (not god mode).` : `Remove admin from @${u.username}? Their dashboard access ends immediately.`)) return;
+    try {
+      await (grant ? api.admin.grantAdmin(id) : api.admin.revokeAdmin(id));
+      toast(grant ? 'Admin granted' : 'Admin removed');
+      await qc.invalidateQueries({ queryKey: ['admin'] });
+    } catch (e) { toastError(e); }
+  };
   if (!u) return <div className="text-muted">Loading…</div>;
+  const canAdmin = isSuper && !u.bot && !u.deletedAt && !u.disabledAt || (isSuper && u.instanceAdmin);
   return (
     <section>
       <button type="button" onClick={onBack} className="mb-4 flex items-center gap-1 text-sm text-muted hover:text-normal"><ArrowLeft size={14} /> All users</button>
@@ -117,7 +132,11 @@ function UserDetail({ id, onBack }: { id: string; onBack: () => void }) {
       <button type="button" onClick={() => void toggle()} className={cx('btn mb-6 flex items-center gap-2', u.disabledAt ? 'btn-primary' : 'btn-danger')}>
         {u.disabledAt ? <><CheckCircle2 size={16} /> Enable account</> : <><Ban size={16} /> Disable account</>}
       </button>
-      <h2 className="mb-2 font-semibold">Badges</h2>
+      <p className="mb-3 text-sm" data-testid="admin-status">Instance admin: {u.instanceAdmin ? 'yes' : 'no'}</p>
+      {canAdmin && (
+        <button type="button" onClick={() => void setAdmin()} className="btn mb-6">{u.instanceAdmin ? 'Remove admin' : 'Make admin'}</button>
+      )}
+      {isSuper && <><h2 className="mb-2 font-semibold">Badges</h2>
       <div className="mb-6 flex flex-wrap gap-x-4 gap-y-1 text-sm" role="group" aria-label="Badges">
         {USER_BADGES.map((b) => (
           <label key={b.flag} className="flex items-center gap-1.5"><input type="checkbox" checked={hasUserFlag(u.publicFlags, b.flag)} onChange={(e) => {
@@ -125,7 +144,7 @@ function UserDetail({ id, onBack }: { id: string; onBack: () => void }) {
             api.admin.setFlags(id, next).then(() => qc.invalidateQueries({ queryKey: ['admin', 'user', id] })).catch(toastError);
           }} />{b.label}</label>
         ))}
-      </div>
+      </div></>}
       <h2 className="mb-2 font-semibold">Servers ({u.guilds.length})</h2>
       <ul className="mb-6 text-sm">{u.guilds.map((g: any) => <li key={g.id}>{g.name}{g.owner && <span className="ml-1 text-muted">(owner)</span>} <span className="text-muted">· joined {fmt(g.joinedAt)}</span></li>)}</ul>
       <h2 className="mb-2 font-semibold">Active sessions ({u.sessions.length})</h2>
@@ -134,10 +153,22 @@ function UserDetail({ id, onBack }: { id: string; onBack: () => void }) {
   );
 }
 
-function ServersTab() {
+function AdminsTab({ isSuper }: { isSuper: boolean }) {
+  const { data = [] } = useQuery({ queryKey: ['admin', 'admins'], queryFn: api.admin.admins });
+  return (
+    <section>
+      <h1 className="mb-1 text-xl font-semibold">Admins</h1>
+      <p className="mb-4 text-sm text-muted">{isSuper ? 'Delegated admins can use this dashboard but not god mode, and cannot grant admin. Grant or remove from a user\'s page.' : 'Accounts with access to this dashboard.'}</p>
+      {data.length === 0 && <p className="text-muted">No delegated admins.</p>}
+      <ul className="space-y-1 text-sm" data-testid="admins-list">{data.map((a: any) => <li key={a.id}>{a.displayName || a.username} <span className="text-muted">@{a.username} · since {fmt(a.grantedAt)}</span></li>)}</ul>
+    </section>
+  );
+}
+
+function ServersTab({ isSuper }: { isSuper: boolean }) {
   const [q, setQ] = useState(''); const [sel, setSel] = useState<string | null>(null);
   const { data = [] } = useQuery({ queryKey: ['admin', 'guilds', q], queryFn: () => api.admin.guilds(q) });
-  if (sel) return <ServerDetail id={sel} onBack={() => setSel(null)} />;
+  if (sel) return <ServerDetail id={sel} isSuper={isSuper} onBack={() => setSel(null)} />;
   return (
     <section>
       <h1 className="mb-4 text-xl font-semibold">Servers</h1>
@@ -156,7 +187,7 @@ function ServersTab() {
   );
 }
 
-function ServerDetail({ id, onBack }: { id: string; onBack: () => void }) {
+function ServerDetail({ id, isSuper, onBack }: { id: string; isSuper: boolean; onBack: () => void }) {
   const { data: g } = useQuery({ queryKey: ['admin', 'guild', id], queryFn: () => api.admin.guild(id) });
   const [channel, setChannel] = useState<string | null>(null);
   if (!g) return <div className="text-muted">Loading…</div>;
@@ -166,7 +197,7 @@ function ServerDetail({ id, onBack }: { id: string; onBack: () => void }) {
       <button type="button" onClick={onBack} className="mb-4 flex items-center gap-1 text-sm text-muted hover:text-normal"><ArrowLeft size={14} /> All servers</button>
       <h1 className="text-xl font-semibold">{g.name}</h1>
       <p className="mb-4 text-sm text-muted">ID {g.id} · owner @{g.ownerName} · created {fmt(g.createdAt)} · {g.members.length} members</p>
-      <JoinButton guildId={g.id} firstChannel={text[0]?.id} />
+      {isSuper && <JoinButton guildId={g.id} firstChannel={text[0]?.id} />}
       <div className="flex min-h-0 gap-4">
         <div className="w-56 shrink-0">
           <h2 className="mb-2 font-semibold">Channels</h2>

@@ -457,10 +457,13 @@ export const api = {
   },
   /** Instance super admin (404 for everyone else). */
   admin: {
-    me: () => send<{ admin: true; userId: string; mfaEnabled: boolean; godModeUntil: string | null }>({ method: 'GET', path: '/admin/me' }),
+    me: () => send<{ admin: true; role: 'super' | 'delegated'; userId: string; mfaEnabled: boolean; godModeUntil: string | null }>({ method: 'GET', path: '/admin/me' }),
     godMode: (b: { enabled: boolean; password?: string; totp?: string }) => send<{ godModeUntil: string | null }>({ method: 'POST', path: '/admin/god-mode', body: b }),
     joinGuild: (id: string) => send<{ ok: true; joined: boolean }>({ method: 'POST', path: `/admin/guilds/${id}/join` }),
     audit: () => send<any[]>({ method: 'GET', path: '/admin/audit' }),
+    admins: () => send<any[]>({ method: 'GET', path: '/admin/admins' }),
+    grantAdmin: (id: string) => send({ method: 'POST', path: `/admin/users/${id}/admin` }),
+    revokeAdmin: (id: string) => send({ method: 'DELETE', path: `/admin/users/${id}/admin` }),
     stats: () => send<Record<string, number>>({ method: 'GET', path: '/admin/stats' }),
     users: (q = '', offset = 0) => send<any[]>({ method: 'GET', path: '/admin/users', query: { ...(q ? { q } : {}), offset: String(offset) } }),
     user: (id: string) => send<any>({ method: 'GET', path: `/admin/users/${id}` }),
