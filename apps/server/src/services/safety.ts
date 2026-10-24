@@ -1,4 +1,4 @@
-import { DEFAULT_RAID_PROTECTION, Perm, has, normalizeLinkList, type Attachment, type GuildSafety, type RaidProtection, type SafetyPreset } from '@jorcord/shared';
+import { DEFAULT_RAID_PROTECTION, DEFAULT_SAFETY_ALERTS, type SafetyAlerts, Perm, has, normalizeLinkList, type Attachment, type GuildSafety, type RaidProtection, type SafetyPreset } from '@jorcord/shared';
 import type { Ctx } from '../ctx';
 import { ApiError } from '../errors';
 import { audit } from './guilds';
@@ -10,6 +10,11 @@ export const normalizeRaid = (raw: unknown): RaidProtection => {
   const n = (v: unknown, d: number, lo: number, hi: number) => (typeof v === 'number' && Number.isFinite(v) ? Math.min(hi, Math.max(lo, Math.round(v))) : d);
   return { enabled: r.enabled === true, maxJoins: n(r.maxJoins, DEFAULT_RAID_PROTECTION.maxJoins, 3, 100), windowSeconds: n(r.windowSeconds, DEFAULT_RAID_PROTECTION.windowSeconds, 10, 600), lockMinutes: n(r.lockMinutes, DEFAULT_RAID_PROTECTION.lockMinutes, 5, 1440) };
 };
+
+export function normalizeAlerts(row: { safety_alerts?: unknown; safety_alerts_channel_id?: string | null }): SafetyAlerts {
+  const r = (row.safety_alerts && typeof row.safety_alerts === 'object' ? row.safety_alerts : {}) as Partial<SafetyAlerts>;
+  return { channelId: row.safety_alerts_channel_id ?? null, raid: r.raid ?? DEFAULT_SAFETY_ALERTS.raid, massDm: r.massDm ?? DEFAULT_SAFETY_ALERTS.massDm };
+}
 
 const MESSAGES: Record<number, string> = {
   1: 'This server requires a verified email address before you can chat.',
@@ -71,6 +76,8 @@ export async function detectRaid(ctx: Ctx, guildId: string) {
   await audit(ctx, guildId, g.owner_id, 'RAID_DETECTED', null, { joins: c.n, windowSeconds: cfg.windowSeconds, lockMinutes: cfg.lockMinutes });
   const [fresh] = await ctx.db.query(`${GUILD_SELECT} WHERE g.id = $1`, [guildId]);
   await ctx.hub.toGuild(guildId, 'GUILD_UPDATE', guildDTO(fresh));
+  const { alertRaid } = await import('./safetyAlerts'); // moderator alert channel (Safety Setup > Safety alerts)
+  await alertRaid(ctx, guildId, { joins: c.n, windowSeconds: cfg.windowSeconds, lockMinutes: cfg.lockMinutes });
 }
 
 export function safetyDTO(g: any): GuildSafety {
@@ -84,7 +91,7 @@ export function safetyDTO(g: any): GuildSafety {
     { id: 'screening', done: Array.isArray(g.features) && g.features.includes('MEMBER_SCREENING') },
   ];
   const guard = normalizeGuard(g.impersonation_guard);
-  return { memberDms: g.member_dms_restricted_at ? 'optin' : 'open', linkAllow: normalizeLinkList(g.link_allow), linkDeny: normalizeLinkList(g.link_deny), impersonationGuard: guard,
+  return { memberDms: g.member_dms_restricted_at ? 'optin' : 'open', linkAllow: normalizeLinkList(g.link_allow), linkDeny: normalizeLinkList(g.link_deny), impersonationGuard: guard, safetyAlerts: normalizeAlerts(g),
     verificationLevel: (g.verification_level ?? 0) as 0, explicitFilter: (g.explicit_filter ?? 0) as 0, defaultNotifications: g.default_notifications ?? 'mentions', raidProtection: raid, invitesPausedUntil: paused, checklist, score: Math.round((checklist.filter((c) => c.done).length / checklist.length) * 100) };
 }
 

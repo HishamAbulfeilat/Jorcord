@@ -53,5 +53,6 @@ export async function guardFirstContact(ctx: Ctx, channel: any, authorId: string
   await ctx.db.query('UPDATE users SET dm_limited_until = $2 WHERE id = $1', [authorId, until]);
   await ctx.db.query('INSERT INTO mass_dm_incidents (id, sender_id, reason, recipients, sample, limited_until) VALUES ($1,$2,$3,$4,$5,$6)', [snowflake(), authorId, reason, reason === 'many_strangers' ? c.anyone : c.same, content.slice(0, 200), until]);
   ctx.log.warn({ senderId: authorId, reason, recipients: c.same, until }, 'mass-DM spam detected; sender limited');
+  void import('./safetyAlerts').then((m) => m.alertMassDm(ctx, authorId, { reason, recipients: reason === 'many_strangers' ? c.anyone : c.same })).catch(() => {}); // moderator alert channels
   throw new ApiError(403, 'DM_LIMITED', LIMIT_MESSAGE, { until: until.toISOString() });
 }

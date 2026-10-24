@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { Relationship } from '@jorcord/shared';
-import { AVATAR_DECORATION_IDS, NAME_PLATE_IDS, PROFILE_EFFECT_IDS, snowflake } from '@jorcord/shared';
+import { AVATAR_DECORATION_IDS, DISPLAY_NAME_EFFECT_IDS, DISPLAY_NAME_FONT_IDS, NAME_PLATE_IDS, PROFILE_EFFECT_IDS, snowflake } from '@jorcord/shared';
 import { removeMemberFromGuild } from './members';
 import { publicConnections } from './connections';
 import { setServerTag } from '../services/cosmetics';
@@ -15,6 +15,8 @@ import { verifyTotp } from '../lib/totp';
 import { scheduleAccountDeletion } from '../services/accountDeletion';
 import { channelAccess } from '../services/perms';
 import { checkImpersonation } from '../services/impersonation';
+import { checkMemberProfileEverywhere } from '../services/automod';
+import { setIgnored } from '../services/ignores';
 import { assertServerAllowsDm, sharedContext } from '../services/memberDms';
 import { assertNotDmLimited } from '../services/massdm';
 import { canSendFriendRequest, normalizePrivacy, privacyOf } from '../services/privacy';
@@ -29,6 +31,7 @@ const patchMe = z.object({
   theme: z.enum(['dark', 'light', 'amoled']),
   avatarDecoration: z.enum(AVATAR_DECORATION_IDS).nullable(), profileEffect: z.enum(PROFILE_EFFECT_IDS).nullable(), namePlate: z.enum(NAME_PLATE_IDS).nullable(),
   serverTagGuildId: idSchema.nullable(),
+  /** free font + effect preset (catalog in shared/parity3c) */ displayNameStyle: z.object({ font: z.enum(DISPLAY_NAME_FONT_IDS), effect: z.enum(DISPLAY_NAME_EFFECT_IDS) }).strict().nullable(),
   settings: z.record(z.unknown()).refine((v) => JSON.stringify(v).length <= 16_384, 'settings too large'),
   privacy: z.object({
     allowDmsFromServerMembers: z.boolean(), messageRequests: z.boolean(), showActivity: z.boolean(),
@@ -36,12 +39,12 @@ const patchMe = z.object({
   }).partial().strict(),
 }).partial().strict();
 
-const COLS: Record<string, string> = { displayName: 'display_name', bio: 'bio', pronouns: 'pronouns', avatar: 'avatar', banner: 'banner', accentColor: 'accent_color', customStatus: 'custom_status', themeColors: 'theme_colors', theme: 'theme', settings: 'settings', avatarDecoration: 'avatar_decoration', profileEffect: 'profile_effect', namePlate: 'name_plate' };
+const COLS: Record<string, string> = { displayName: 'display_name', bio: 'bio', pronouns: 'pronouns', avatar: 'avatar', banner: 'banner', accentColor: 'accent_color', customStatus: 'custom_status', themeColors: 'theme_colors', theme: 'theme', settings: 'settings', avatarDecoration: 'avatar_decoration', profileEffect: 'profile_effect', namePlate: 'name_plate', displayNameStyle: 'display_name_style' };
 
 export async function relationshipDTOs(ctx: Ctx, userId: string): Promise<Relationship[]> {
-  const rows = await ctx.db.query('SELECT other_id, type FROM relationships WHERE user_id = $1 ORDER BY created_at', [userId]);
+  const rows = await ctx.db.query('SELECT other_id, type, nickname FROM relationships WHERE user_id = $1 ORDER BY created_at', [userId]);
   const users = await usersByIds(ctx, rows.map((r) => r.other_id));
-  return rows.filter((r) => users.has(r.other_id)).map((r) => ({ user: users.get(r.other_id)!, type: r.type }));
+  return rows.filter((r) => users.has(r.other_id)).map((r) => ({ user: users.get(r.other_id)!, type: r.type, ...(r.nickname ? { nickname: r.nickname as string } : {}) }));
 }
 
 export function userRoutes(app: FastifyInstance, ctx: Ctx) {
@@ -55,8 +58,9 @@ export function userRoutes(app: FastifyInstance, ctx: Ctx) {
     const sets: string[] = [], vals: unknown[] = [req.userId];
     for (const [k, v] of Object.entries(b)) {
       const col = COLS[k]; if (!col) continue; // whitelist only
-      vals.push(k === 'customStatus' || k === 'settings' || k === 'themeColors' ? (v === null ? null : JSON.stringify(v)) : v);
-      sets.push(`${col} = $${vals.length}${k === 'customStatus' || k === 'settings' || k === 'themeColors' ? '::jsonb' : ''}`);
+      const json = k === 'customStatus' || k === 'settings' || k === 'themeColors' || k === 'displayNameStyle';
+      vals.push(json ? (v === null ? null : JSON.stringify(v)) : v);
+      sets.push(`${col} = $${vals.length}${json ? '::jsonb' : ''}`);
     }
     if (b.privacy) { // merge over what is stored so a partial update never resets the other switches
       const cur = normalizePrivacy((await ctx.db.query('SELECT privacy FROM users WHERE id = $1', [req.userId]))[0]?.privacy);
@@ -70,6 +74,7 @@ export function userRoutes(app: FastifyInstance, ctx: Ctx) {
       const gs = await ctx.db.query(`SELECT m.guild_id FROM members m JOIN guilds g ON g.id = m.guild_id WHERE m.user_id = $1 AND g.impersonation_guard->>'enabled' = 'true' LIMIT 100`, [req.userId]);
       for (const g of gs) await checkImpersonation(ctx, g.guild_id, req.userId).catch((e) => ctx.log.warn({ err: e }, 'impersonation check failed'));
     }
+    if (b.displayName || b.bio) await checkMemberProfileEverywhere(ctx, req.userId); // AutoMod member-profile rules
     const [row] = await ctx.db.query('SELECT * FROM users WHERE id = $1', [req.userId]);
     await ctx.hub.toPresenceAudience(req.userId, 'USER_UPDATE', userDTO(ctx, row));
     if (b.privacy && 'showActivity' in (b.privacy as object)) await ctx.hub.broadcastPresence(req.userId); // the activity switch takes effect at once
@@ -247,8 +252,13 @@ export function userRoutes(app: FastifyInstance, ctx: Ctx) {
   app.get('/users/@me/relationships', async (req) => relationshipDTOs(ctx, req.userId));
   app.put('/users/@me/relationships/:userId', async (req) => {
     const { userId: other } = parse(z.object({ userId: idSchema }), req.params);
-    const { type } = parse(z.object({ type: z.enum(['friend', 'blocked']) }).strict(), req.body);
+    const { type } = parse(z.object({ type: z.enum(['friend', 'blocked', 'ignored']) }).strict(), req.body);
     const me = req.userId;
+    if (type === 'ignored') { // ignore is not a relationship row (it can sit beside a friendship): see services/ignores.ts
+      limitOrThrow(ctx.rl, `ignore:${me}`, 30, 60_000, ctx.config.rateLimit);
+      await setIgnored(ctx, me, other, true);
+      return { type: 'ignored' };
+    }
     limitOrThrow(ctx.rl, `rel:${me}`, 30, 60_000, ctx.config.rateLimit); // friend-request spam brake
     limitOrThrow(ctx.rl, `rel-day:${me}`, 300, 86_400_000, ctx.config.rateLimit);
     if (other === me) throw badRequest('Cannot target yourself');

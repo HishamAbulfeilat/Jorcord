@@ -13,6 +13,8 @@ import { channelDTO, messageDTO } from './serializers';
 import { unfurl } from './unfurl';
 import { assertEncryptedPayload } from './e2ee';
 import { digestHolders, holdForDigest } from './digest';
+import { expiryFor } from './ttl';
+import { ignorersOf } from './ignores';
 
 const URL_RE = /https?:\/\/[^\s<>()]+/gi;
 
@@ -126,6 +128,7 @@ export async function createMessage(ctx: Ctx, m: NewMessage): Promise<Message> {
   if (m.embeds?.length) await ctx.db.query('UPDATE messages SET embeds = $2::jsonb WHERE id = $1', [id, JSON.stringify(m.embeds.slice(0, LIMITS.maxEmbedsPerMessage))]);
   if (m.crosspost) await ctx.db.query('UPDATE messages SET crosspost = $2::jsonb WHERE id = $1', [id, JSON.stringify(m.crosspost)]);
   await ctx.db.query('UPDATE channels SET last_message_id = $2, archived = false, activity_at = now() WHERE id = $1', [channel.id, id]);
+  { const exp = expiryFor(channel, type); if (exp) await ctx.db.query('UPDATE messages SET expires_at = $2 WHERE id = $1', [id, exp]); } // disappearing DMs (services/disappearing.ts)
   // author has read their own message
   await ctx.db.query(`INSERT INTO read_states (user_id, channel_id, last_read_id, mention_count) VALUES ($1,$2,$3,0)
     ON CONFLICT (user_id, channel_id) DO UPDATE SET last_read_id = EXCLUDED.last_read_id, mention_count = 0`, [m.authorId, channel.id, id]);
@@ -188,6 +191,7 @@ async function bumpMentionCounts(ctx: Ctx, channel: any, authorId: string, ment:
     }
   }
   targets.delete(authorId);
+  for (const ig of await ignorersOf(ctx, authorId, [...targets])) targets.delete(ig); // people who ignore the author get no ping badge from them
   if (!targets.size) return;
   const seen = await viewersAmong(ctx, channel, [...targets]);
   // Quiet mode: people who put this server / channel in their digest get no badge and no push; it is held for their next digest (services/digest.ts)

@@ -12,6 +12,7 @@ import { idSchema, iso, parse } from '../lib/ids';
 import { limitOrThrow } from '../lib/ratelimit';
 import { burnAuthToken, consumeAuthToken, peekAuthToken, sendPasswordChangedEmail, sendPasswordResetEmail, sendVerificationEmail } from '../services/authTokens';
 import { mfaTicketFor } from './passkeys';
+import { isReservedForOther } from '../services/accountChanges';
 import { selfUserDTO } from '../services/serializers';
 
 
@@ -25,6 +26,7 @@ export function publicAuthRoutes(app: FastifyInstance, ctx: Ctx) {
     limitOrThrow(ctx.rl, `register:${req.ip}`, 10, 3600_000, ctx.config.rateLimit); // mass sign-up / enumeration brake
     const b = parse(registerSchema, req.body);
     const id = snowflake();
+    if (await isReservedForOther(ctx, b.username, null)) throw new ApiError(400, 'REGISTRATION_FAILED', 'Could not register with these details'); // a handle someone just gave up is held for them for 14 days
     try {
       await ctx.db.query('INSERT INTO users (id, email, username, display_name, password_hash) VALUES ($1,$2,$3,$4,$5)',
         [id, b.email, b.username, b.displayName ?? null, await hashPassword(b.password)]);

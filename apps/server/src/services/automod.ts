@@ -78,6 +78,13 @@ export function ruleMatches(r: RuleLike, content: string, mentionCount: number, 
     return letters >= o.capsMinLength && (upper / letters) * 100 >= o.capsPercent;
   }
   if (r.trigger === 'repeated_chars') return longestRun(content) >= ({ ...SPAM_DEFAULTS, ...r.options }).repeatLimit;
+  if (r.trigger === 'member_profile') { // keywords / presets / regex against one profile text (username, display name, nickname or bio)
+    const parts: RuleLike[] = [];
+    if (r.keywords.length) parts.push({ ...r, trigger: 'keyword' });
+    if (r.presets.length) parts.push({ ...r, trigger: 'keyword_preset' });
+    if (r.regexPatterns?.length) parts.push({ ...r, trigger: 'regex' });
+    return parts.some((x) => ruleMatches(x, content, 0, deadline));
+  }
   const allow = r.allowList.map((a) => a.toLowerCase()).filter(Boolean);
   let views = matchViews(content);
   if (allow.length) views = views.map((v) => allow.reduce((acc, a) => acc.split(a).join(' '), v)); // allowed phrases never count
@@ -111,7 +118,7 @@ async function ruleHit(ctx: Ctx, r: any, guildId: string, userId: string, conten
 /** Fixed id of the built-in "AutoMod" bot user that authors alert messages (created on first use; never a member of any server). */
 export const AUTOMOD_USER_ID = '1000000000000000001';
 const automodUserReady = new WeakSet<object>();
-async function automodUserId(ctx: Ctx): Promise<string> {
+export async function automodUserId(ctx: Ctx): Promise<string> {
   if (!automodUserReady.has(ctx.db)) {
     await ctx.db.query(`INSERT INTO users (id, username, display_name, bot, verified, presence) VALUES ($1,'AutoMod','AutoMod',true,true,'online') ON CONFLICT (id) DO NOTHING`, [AUTOMOD_USER_ID]);
     automodUserReady.add(ctx.db);
@@ -141,7 +148,7 @@ async function sendAlert(ctx: Ctx, r: any, guildId: string, userId: string, chan
 
 export async function checkAutomod(ctx: Ctx, guildId: string, userId: string, memberRoleIds: string[], perms: bigint, content: string, mentionCount: number, channelIds: string[] = []) {
   if (has(perms, Perm.MANAGE_GUILD)) return; // administrators/managers are exempt
-  const rules = await ctx.db.query('SELECT * FROM automod_rules WHERE guild_id = $1 AND enabled', [guildId]);
+  const rules = await ctx.db.query(`SELECT * FROM automod_rules WHERE guild_id = $1 AND enabled AND trigger <> 'member_profile'`, [guildId]); // profile rules judge people, not messages (checkMemberProfile)
   const deadline = Date.now() + REGEX_BUDGET_MS;
   const links = rules.some((r) => r.trigger === 'suspicious_links') ? await guildLinkLists(ctx, guildId) : undefined;
   for (const r of rules) {
@@ -192,4 +199,50 @@ export async function botOutputBlocked(ctx: Ctx, guildId: string | null | undefi
 export function testRules(rules: any[], content: string, mentionCount: number, links?: LinkLists) {
   return rules.map((r) => ({ ruleId: r.id as string, name: r.name as string, trigger: r.trigger as string, enabled: !!r.enabled, testMode: !!r.test_mode, actions: rowActions(r),
     matched: r.trigger === 'spam' ? false : (() => { try { return ruleMatches(ruleLike(r), content, mentionCount, Date.now() + REGEX_BUDGET_MS, links); } catch { return false; } })(), evaluated: r.trigger !== 'spam' }));
+}
+
+
+/**
+ * AutoMod "member profile" rules: the keyword / preset / regex lists are checked against the member's username, display name, nickname and bio
+ * when they join and whenever one of those changes. A hit applies the rule's actions: `block` puts the member on hold and into the review queue
+ * (Safety > Impersonation) until a moderator clears them, `timeout` and `warn` as for messages, `alert` posts to the rule's alert channel.
+ * Managers, exempt roles, bots and the owner are skipped. Never throws.
+ */
+export async function checkMemberProfile(ctx: Ctx, guildId: string, userId: string): Promise<{ ruleId: string; field: string } | null> {
+  try {
+    const rules = await ctx.db.query(`SELECT * FROM automod_rules WHERE guild_id = $1 AND enabled AND trigger = 'member_profile'`, [guildId]);
+    if (!rules.length) return null;
+    const [u] = await ctx.db.query('SELECT username, display_name, bio, bot FROM users WHERE id = $1', [userId]);
+    const [m] = await ctx.db.query('SELECT nick FROM members WHERE guild_id = $1 AND user_id = $2', [guildId, userId]);
+    const [g] = await ctx.db.query('SELECT owner_id FROM guilds WHERE id = $1', [guildId]);
+    if (!u || !m || !g || u.bot || g.owner_id === userId) return null;
+    const roleIds = (await ctx.db.query('SELECT role_id FROM member_roles WHERE guild_id = $1 AND user_id = $2', [guildId, userId])).map((x) => x.role_id as string);
+    const fields: [string, string | null][] = [['username', u.username], ['display name', u.display_name], ['nickname', m.nick], ['bio', u.bio]];
+    const deadline = Date.now() + REGEX_BUDGET_MS * 2;
+    for (const r of rules) {
+      if ((r.exempt_roles as string[]).some((x) => roleIds.includes(x))) continue;
+      const hit = fields.find(([, v]) => { if (!v) return false; try { return ruleMatches(ruleLike(r), v, 0, deadline); } catch { return false; } });
+      if (!hit) continue;
+      const actions = rowActions(r);
+      const shown = `${hit[0]}: ${String(hit[1]).slice(0, 100)}`;
+      if (r.test_mode) { await audit(ctx, guildId, userId, 'AUTOMOD_TEST', r.id, { field: hit[0], actions }, r.name); await sendAlert(ctx, r, guildId, userId, undefined, shown, actions, true); continue; }
+      if (actions.includes('alert')) await sendAlert(ctx, r, guildId, userId, undefined, shown, actions, false);
+      if (actions.includes('warn')) await ctx.db.query(`INSERT INTO mod_warnings (id, guild_id, user_id, moderator_id, reason, source, rule_id) VALUES ($1,$2,$3,NULL,$4,'automod',$5)`, [snowflake(), guildId, userId, `AutoMod rule "${r.name}" (profile ${hit[0]})`.slice(0, 500), r.id]);
+      if (actions.includes('timeout')) await ctx.db.query(`UPDATE members SET timeout_until = now() + ($3::int * interval '1 second') WHERE guild_id = $1 AND user_id = $2`, [guildId, userId, r.timeout_seconds ?? 60]);
+      if (actions.includes('block')) {
+        const flag = { kind: 'profile', target: String(r.name).slice(0, 80), name: String(hit[1]).slice(0, 100), distance: 0, at: new Date().toISOString() };
+        await ctx.db.query('UPDATE members SET impersonation_flag = $3::jsonb, safety_hold = true WHERE guild_id = $1 AND user_id = $2', [guildId, userId, JSON.stringify(flag)]);
+      }
+      await ctx.pcache.invalidate({ k: 'member', guildId, userId });
+      await audit(ctx, guildId, userId, actions.some((a) => a !== 'alert') ? 'AUTOMOD_BLOCK' : 'AUTOMOD_ALERT', r.id, { field: hit[0], actions }, r.name);
+      return { ruleId: r.id as string, field: hit[0] };
+    }
+  } catch (e) { ctx.log.warn({ err: e, guildId, userId }, 'member profile check failed'); }
+  return null;
+}
+
+/** After a profile change: re-check the member in every server that has a profile rule. */
+export async function checkMemberProfileEverywhere(ctx: Ctx, userId: string) {
+  const gs = await ctx.db.query(`SELECT DISTINCT m.guild_id FROM members m JOIN automod_rules r ON r.guild_id = m.guild_id AND r.enabled AND r.trigger = 'member_profile' WHERE m.user_id = $1 LIMIT 100`, [userId]);
+  for (const g of gs) await checkMemberProfile(ctx, g.guild_id, userId);
 }

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { Perm, has } from '@jorcord/shared';
+import { Perm, SAFETY_ALERT_PREFIX, has } from '@jorcord/shared';
 import {
   ComponentType, INTERACTION_ACK_DEADLINE_MS, INTERACTION_TOKEN_TTL_MS, InteractionCallbackType as CB, InteractionType as IT, MessageFlags, CommandType,
   snowflake, InteractionContextType as CTX, type Component, type Interaction, type Message,
@@ -18,6 +18,7 @@ import { isInstalled } from './apps';
 import { commandAllowsContext, commandAllowsIntegration, isUserInstalled } from './userInstalls';
 import { runSystemInteraction } from './sysbots';
 import { memberDTO, messageDTO, userDTO } from './serializers';
+import { handleSafetyAlertPress } from './safetyAlerts';
 
 const MAX_FOLLOWUPS = 10;
 const ALLOWED_RESPONSE_FLAGS = MessageFlags.EPHEMERAL | MessageFlags.SUPPRESS_EMBEDS | MessageFlags.IS_COMPONENTS_V2;
@@ -164,6 +165,7 @@ export async function invoke(ctx: Ctx, userId: string, raw: unknown, access: (ch
   if (b.type === IT.MESSAGE_COMPONENT) {
     if (channel.guild_id && !has(a.perms, Perm.READ_MESSAGE_HISTORY)) throw forbidden('Missing permissions').num(50013);
     const [m] = await ctx.db.query('SELECT * FROM messages WHERE id = $1 AND channel_id = $2', [b.messageId, channel.id]);
+    if (b.data.customId.startsWith(SAFETY_ALERT_PREFIX)) { await handleSafetyAlertPress(ctx, userId, channel.id, b.messageId, b.data.customId); return { id: snowflake() }; } // Safety Setup alert buttons are answered by the server itself
     let msgDto: Message | null = null, appId: string | null = null, comps: Component[] = [];
     if (m) { msgDto = await messageDTO(ctx, m, userId); appId = m.application_id; comps = m.components ?? []; }
     else {

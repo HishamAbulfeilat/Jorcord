@@ -8,6 +8,7 @@ import { clearServerTag } from '../services/cosmetics';
 import { bumpDaily } from './guildextras';
 import { assertInvitesOpen, detectRaid } from '../services/safety';
 import { checkImpersonation } from '../services/impersonation';
+import { checkMemberProfile } from '../services/automod';
 import { ApiError, badRequest, conflict, forbidden, notFound } from '../errors';
 import { assetUrl, idSchema, iso, limitParam, parse } from '../lib/ids';
 import { randomToken } from '../lib/crypto';
@@ -64,6 +65,7 @@ export async function joinGuild(ctx: Ctx, userId: string, guildId: string, invit
     await bumpDaily(ctx, guildId, 'joins');
     await detectRaid(ctx, guildId).catch((e) => ctx.log.warn({ err: e }, 'raid detection failed'));
     await checkImpersonation(ctx, guildId, userId).catch((e) => ctx.log.warn({ err: e }, 'impersonation check failed'));
+    await checkMemberProfile(ctx, guildId, userId); // AutoMod member-profile rules (username / display name / bio keywords)
     await refreshMember(ctx, guildId, userId).catch((e) => ctx.log.warn({ err: e }, 'linked role refresh failed')); // criteria such as account age can hold on day one
     if (full.systemChannelId) await postSystemMessage(ctx, full.systemChannelId, userId, 'join').catch((e) => ctx.log.warn({ err: e }, 'join message failed'));
     await onMemberJoined(ctx, guildId, userId); // built-in Welcome bot (greeting + auto-role) when installed
@@ -232,6 +234,7 @@ export function memberRoutes(app: FastifyInstance, ctx: Ctx) {
       await ctx.db.query('UPDATE members SET nick = $3 WHERE guild_id = $1 AND user_id = $2', [p.id, targetId, b.nick || null]);
       await audit(ctx, p.id, req.userId, 'MEMBER_UPDATE', targetId, { nick: b.nick || null });
       if (b.nick && self) await checkImpersonation(ctx, p.id, targetId).catch((e) => ctx.log.warn({ err: e }, 'impersonation check failed'));
+      if (b.nick && self) await checkMemberProfile(ctx, p.id, targetId);
     }
     if (b.avatar !== undefined || b.banner !== undefined || b.bio !== undefined || b.pronouns !== undefined) {
       if (!self) throw forbidden('You can only edit your own server profile', 'NOT_SELF');

@@ -16,6 +16,8 @@ export interface User {
   presence?: Presence;
   /** Badge bitfield (`UserFlags`); 0/absent = none. */
   publicFlags?: number;
+  /** Free display-name style (font + effect ids from parity3c); null/absent = plain. */
+  displayNameStyle?: { font: string; effect: string } | null;
 }
 /** Private to the owner; enforced server-side. */
 export interface Privacy {
@@ -71,6 +73,8 @@ export interface Channel {
   voiceStatus?: string | null;
   /** Forum/media parents: slowmode (seconds) given to every new post. */
   defaultThreadSlowmode?: number;
+  /** DMs and group DMs: messages vanish this many seconds after they are sent (0/absent = off). */
+  messageTtlSeconds?: number;
 }
 export interface Member {
   guildId: Id; user: User; nick: string | null; roles: Id[]; joinedAt: string; timeoutUntil: string | null; avatar?: string | null;
@@ -86,7 +90,7 @@ export interface Reaction { emoji: string; emojiId: Id | null; count: number; me
 export interface ForwardSnapshot { content: string; attachments: Attachment[]; embeds: Embed[]; createdAt: string; editedAt: string | null; sourceGuildId: Id | null; sourceChannelId: Id; sourceMessageId: Id }
 export interface Message {
   id: Id; channelId: Id; guildId: Id | null; author: User; content: string; createdAt: string; editedAt: string | null;
-  type: 'default' | 'reply' | 'join' | 'pin' | 'boost' | 'thread_created' | 'call' | 'poll_result';
+  type: 'default' | 'reply' | 'join' | 'pin' | 'boost' | 'thread_created' | 'call' | 'poll_result' | 'ttl_update';
   replyTo: Id | null; referenced?: Message | null; mentions: Id[]; mentionRoles: Id[]; mentionEveryone: boolean;
   attachments: Attachment[]; embeds: Embed[]; reactions: Reaction[]; pinned: boolean; stickerIds: Id[]; threadId: Id | null; webhookId?: Id | null;
   /** Additive (platform pass). */
@@ -118,7 +122,7 @@ export interface AllowedMentions {
 /** A message reminder (private). `firedAt` is set once it is due. */
 export interface Reminder { id: Id; remindAt: string; firedAt: string | null; message: Message }
 export interface Invite { code: string; guildId: Id; channelId: Id; inviterId: Id; uses: number; maxUses: number | null; expiresAt: string | null; temporary: boolean; guild?: Pick<Guild, 'id' | 'name' | 'icon'>; approxMembers?: number }
-export interface Relationship { user: User; type: 'friend' | 'blocked' | 'incoming' | 'outgoing' }
+export interface Relationship { user: User; type: 'friend' | 'blocked' | 'incoming' | 'outgoing'; /** Private nickname the owner gave this friend. */ nickname?: string | null }
 export interface Emoji { id: Id; guildId: Id; name: string; animated: boolean; url: string; /** When present, only members holding one of these roles (or emoji managers) may use the emoji. */ roleIds?: Id[] }
 export interface Sticker { id: Id; guildId: Id; name: string; url: string; format: 'png' | 'apng' | 'lottie' | 'gif' }
 export interface VoiceState { userId: Id; guildId: Id | null; channelId: Id | null; selfMute: boolean; selfDeaf: boolean; serverMute: boolean; serverDeaf: boolean; video: boolean; streaming: boolean; suppress: boolean; /** ISO time when the user asked to speak on a stage (null/absent = no request). */ requestToSpeakAt?: string | null; /** userId of the streamer this member is currently watching (null/absent = not watching). */ watching?: string | null; /** cap on how many members may watch this member's stream (null/absent = uncapped). */ streamViewerLimit?: number | null; /** true while this member holds priority speaker (server-confirmed: needs PRIORITY_SPEAKER and the right to speak); others are ducked while they talk. */ prioritySpeaker?: boolean }
@@ -133,7 +137,7 @@ export interface VoiceRecording { id: Id; channelId: Id; guildId: Id | null; sta
 export interface AuditEntry { id: Id; guildId: Id; actorId: Id; action: string; /** numeric AuditActionType (additive) */ actionType?: number; targetId: Id | null; changes: unknown; reason: string | null; createdAt: string }
 export interface ReadState { channelId: Id; lastReadId: Id | null; mentionCount: number }
 export interface Webhook { id: Id; guildId: Id; channelId: Id; name: string; avatar: string | null; token?: string }
-export type AutoModTrigger = 'keyword' | 'keyword_preset' | 'spam' | 'mention_spam' | 'link' | 'regex' | 'invite_link' | 'caps' | 'repeated_chars' | 'suspicious_links';
+export type AutoModTrigger = 'keyword' | 'keyword_preset' | 'spam' | 'mention_spam' | 'link' | 'regex' | 'invite_link' | 'caps' | 'repeated_chars' | 'suspicious_links' | 'member_profile';
 export type AutoModAction = 'block' | 'timeout' | 'alert' | 'warn';
 /** Trigger tuning: spamCount messages within spamSeconds; capsPercent of letters (at least capsMinLength letters); a run of repeatLimit identical characters. */
 export interface AutoModOptions { spamCount?: number; spamSeconds?: number; capsPercent?: number; capsMinLength?: number; repeatLimit?: number; /** suspicious_links: lowest link risk score (0-100) that triggers the rule; default 50 */ linkMinScore?: number }

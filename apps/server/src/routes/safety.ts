@@ -6,10 +6,10 @@ import { idSchema, parse } from '../lib/ids';
 import { audit } from '../services/guilds';
 import { clearImpersonation, normalizeGuard } from '../services/impersonation';
 import { memberDmState, setMemberDmOptIn } from '../services/memberDms';
-import { notFound } from '../errors';
+import { badRequest, notFound } from '../errors';
 import { iso } from '../lib/ids';
 import { guildAccess, guildPerms, need } from '../services/perms';
-import { SAFETY_PRESETS, normalizeRaid, safetyDTO } from '../services/safety';
+import { SAFETY_PRESETS, normalizeAlerts, normalizeRaid, safetyDTO } from '../services/safety';
 import { GUILD_SELECT, guildDTO } from '../services/serializers';
 
 const patchSafety = z.object({
@@ -19,6 +19,7 @@ const patchSafety = z.object({
   /** 'optin': members who join from now on (or everyone, with applyToExisting) must opt in before other members can DM them through this server */ memberDms: z.enum(['open', 'optin']), memberDmsApplyToExisting: z.boolean(),
   linkAllow: z.array(z.string().max(253)).max(100), linkDeny: z.array(z.string().max(253)).max(100),
   impersonationGuard: z.object({ enabled: z.boolean(), action: z.enum(['flag', 'hold']) }).partial().strict(),
+  /** raid / mass-DM detections post to this channel (null = off) */ safetyAlerts: z.object({ channelId: idSchema.nullable(), raid: z.boolean(), massDm: z.boolean() }).partial().strict(),
 }).partial().strict();
 
 /** Safety Setup: verification level, explicit-media filter, default notifications, raid protection and the invite pause. All MANAGE_GUILD. */
@@ -38,6 +39,16 @@ export function safetyRoutes(app: FastifyInstance, ctx: Ctx) {
     if (b.linkAllow) set('link_allow', JSON.stringify(normalizeLinkList(b.linkAllow)), '::jsonb');
     if (b.linkDeny) set('link_deny', JSON.stringify(normalizeLinkList(b.linkDeny)), '::jsonb');
     if (b.impersonationGuard) set('impersonation_guard', JSON.stringify(normalizeGuard({ ...normalizeGuard(cur.impersonation_guard), ...b.impersonationGuard })), '::jsonb');
+    if (b.safetyAlerts) {
+      if (b.safetyAlerts.channelId) {
+        const [c] = await ctx.db.query('SELECT type FROM channels WHERE id = $1 AND guild_id = $2', [b.safetyAlerts.channelId, id]);
+        if (!c || (c.type !== 'text' && c.type !== 'announcement')) throw badRequest('The alert channel must be a text channel in this server');
+      }
+      const cur2 = normalizeAlerts(cur);
+      const next = { ...cur2, ...b.safetyAlerts };
+      set('safety_alerts_channel_id', next.channelId);
+      set('safety_alerts', JSON.stringify({ raid: next.raid, massDm: next.massDm }), '::jsonb');
+    }
     if (b.pauseInvites !== undefined) set('invites_paused_until', b.pauseInvites ? new Date(Date.now() + 86_400_000) : null);
     if (!sets.length) return;
     await ctx.db.query(`UPDATE guilds SET ${sets.join(', ')} WHERE id = $1`, vals);

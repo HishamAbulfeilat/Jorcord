@@ -36,6 +36,7 @@ import { messageRoutes } from './routes/messages';
 import { fileRoutes, miscRoutes, voiceWebhookRoutes } from './routes/misc';
 import { pushPublicRoutes, pushRoutes } from './routes/push';
 import { socialRoutes } from './routes/social';
+import { accounts3PublicRoutes, accounts3Routes } from './routes/accounts3';
 import { activityRoutes } from './routes/activities';
 import { connectionRoutes, connectionOAuthPublicRoutes } from './routes/connections';
 import { streamFeedRoutes } from './routes/streamfeeds';
@@ -155,6 +156,7 @@ export async function buildApp(opts: BuildOptions = {}): Promise<{ app: FastifyI
     passkeyPublicRoutes(api, ctx);
     exportPublicRoutes(api, ctx);
     remoteAuthPublicRoutes(api, ctx);
+    accounts3PublicRoutes(api, ctx);
     pushPublicRoutes(api, ctx);
     invitePublicRoutes(api, ctx);
     webhookPublicRoutes(api, ctx);
@@ -173,6 +175,7 @@ export async function buildApp(opts: BuildOptions = {}): Promise<{ app: FastifyI
       scheduledMessageRoutes(priv, ctx);
       e2eeRoutes(priv, ctx);
       digestRoutes(priv, ctx);
+      accounts3Routes(priv, ctx);
       guildPortRoutes(priv, ctx);
       memberRoutes(priv, ctx); messageRoutes(priv, ctx); miscRoutes(priv, ctx); voiceRoutes(priv, ctx); pushRoutes(priv, ctx);
       applicationRoutes(priv, ctx); appEmojiRoutes(priv, ctx); userInstallRoutes(priv, ctx); commandRoutes(priv, ctx); interactionRoutes(priv, ctx); pollRoutes(priv, ctx); eventRoutes(priv, ctx); socialRoutes(priv, ctx); soundboardRoutes(priv, ctx); activityRoutes(priv, ctx); safetyRoutes(priv, ctx); onboardingRoutes(priv, ctx); followRoutes(priv, ctx); guildExtrasRoutes(priv, ctx); favoriteRoutes(priv, ctx); connectionRoutes(priv, ctx); streamFeedRoutes(priv, ctx); linkedRoleRoutes(priv, ctx); directoryRoutes(priv, ctx); integrationRoutes(priv, ctx); modToolRoutes(priv, ctx); adminRoutes(priv, ctx);

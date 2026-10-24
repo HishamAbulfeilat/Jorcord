@@ -14,6 +14,8 @@ import { expireExports } from './dataExport';
 import { sendDueScheduledMessages } from './scheduledMessages';
 import { sweepAccountDeletions } from './accountDeletion';
 import { sendDueDigests } from './digest';
+import { sweepExpiredMessages } from './disappearing';
+import { pruneReservedUsernames } from './accountChanges';
 
 /** Thread auto-archive: no activity for `auto_archive_minutes` -> archived (THREAD_UPDATE). Atomic, so multi-node safe. */
 export async function archiveIdleThreads(ctx: Ctx) {
@@ -78,4 +80,6 @@ export async function runSweeps(ctx: Ctx) {
   await step('scheduled-messages', () => sendDueScheduledMessages(ctx));
   await step('account-deletions', () => sweepAccountDeletions(ctx));
   await step('digests', () => sendDueDigests(ctx));
+  await step('disappearing-messages', () => sweepExpiredMessages(ctx));
+  await step('reserved-usernames', () => pruneReservedUsernames(ctx));
 }

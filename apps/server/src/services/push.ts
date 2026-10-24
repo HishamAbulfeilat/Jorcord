@@ -295,6 +295,9 @@ async function notifyMessage(ctx: Ctx, svc: PushService, channel: any, msg: Mess
       everyone ? `SELECT m.user_id FROM members m LEFT JOIN notification_settings n ON n.user_id = m.user_id AND n.scope = 'guild' AND n.target_id = m.guild_id WHERE m.guild_id = $1 AND (n.level IS NULL OR n.level = 'all') LIMIT 5000`
         : `SELECT user_id FROM notification_settings WHERE scope = 'guild' AND target_id = $1 AND level = 'all' LIMIT 5000`, [channel.guild_id])) add(r.user_id, 'all');
   }
+  if (channel.type === 'thread') { // per-thread setting "all messages": followers who asked for it hear every message of the thread
+    for (const r of await ctx.db.query(`SELECT n.user_id FROM notification_settings n JOIN thread_members t ON t.thread_id = n.target_id AND t.user_id = n.user_id WHERE n.scope = 'thread' AND n.target_id = $1 AND n.level = 'all' LIMIT 5000`, [channel.id])) add(r.user_id, 'all');
+  }
   cands.delete(authorId);
   if (!cands.size) return;
   if (channel.guild_id) { // only people who can actually see the channel

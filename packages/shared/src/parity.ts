@@ -74,6 +74,8 @@ export interface GuildSafety {
   memberDms?: 'open' | 'optin';
   linkAllow?: string[]; linkDeny?: string[];
   impersonationGuard?: { enabled: boolean; action: 'flag' | 'hold' };
+  /** Raid and mass-DM detections post to this channel (null = off). */
+  safetyAlerts?: { channelId: Id | null; raid: boolean; massDm: boolean };
 }
 export type SafetyPreset = 'basic' | 'recommended' | 'strict';
 

@@ -24,7 +24,7 @@ export function userDTO(ctx: Ctx, r: any): User {
     id: r.id, username: r.username, displayName: r.display_name ?? null, avatar: r.avatar ?? null, banner: r.banner ?? null,
     accentColor: r.accent_color ?? null, bio: r.bio ?? null, pronouns: r.pronouns ?? null, bot: !!r.bot,
     createdAt: iso(r.created_at)!, customStatus: liveStatus(r.custom_status), themeColors: r.theme_colors ?? null,
-    avatarDecoration: r.avatar_decoration ?? null, profileEffect: r.profile_effect ?? null, namePlate: r.name_plate ?? null, serverTag: r.server_tag ?? null, presence: ctx.hub.publicPresence(r.id, r.presence),
+    avatarDecoration: r.avatar_decoration ?? null, profileEffect: r.profile_effect ?? null, namePlate: r.name_plate ?? null, displayNameStyle: r.display_name_style ?? null, serverTag: r.server_tag ?? null, presence: ctx.hub.publicPresence(r.id, r.presence),
     publicFlags: (r.public_flags ?? 0) | (ctx.config.superAdminId && r.id === ctx.config.superAdminId ? UserFlags.STAFF : 0),
   };
 }
@@ -67,7 +67,7 @@ export async function channelsDTO(ctx: Ctx, rows: any[]): Promise<Channel[]> {
     ...(r.type === 'group_dm' ? { icon: r.icon ?? null } : {}),
     ...(r.type === 'dm' || r.type === 'group_dm' ? { recipients: recips.filter((p) => p.channel_id === r.id).map((p) => users.get(p.user_id)!).filter(Boolean) } : {}),
     ...(r.type === 'voice' || r.type === 'stage' ? { voiceStatus: r.voice_status ?? null } : {}),
-    ownerId: r.owner_id ?? null, archived: r.archived, createdAt: iso(r.created_at)!, isClipsChannel: !!r.is_clips_channel, ...(r.encrypted ? { encrypted: true } : {}),
+    ownerId: r.owner_id ?? null, archived: r.archived, createdAt: iso(r.created_at)!, isClipsChannel: !!r.is_clips_channel, ...(r.encrypted ? { encrypted: true } : {}), ...(r.message_ttl_seconds ? { messageTtlSeconds: r.message_ttl_seconds } : {}),
     ...(r.type === 'forum' || r.type === 'media' ? { availableTags: r.available_tags ?? [], requireTag: !!r.require_tag, defaultAutoArchiveDuration: r.default_auto_archive ?? 1440, defaultSortOrder: (r.default_sort_order ?? 'latest_activity') as 'latest_activity' | 'creation_date', defaultForumLayout: (r.default_forum_layout ?? 'list') as 'list' | 'gallery', defaultReactionEmoji: r.default_reaction_emoji ?? null, defaultThreadSlowmode: r.default_thread_slowmode ?? 0 } : {}),
     ...(r.type === 'thread' ? {
       appliedTags: r.applied_tags ?? [], autoArchiveDuration: r.auto_archive_minutes ?? 1440, locked: !!r.locked,

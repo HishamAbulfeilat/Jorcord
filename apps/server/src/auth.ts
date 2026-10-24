@@ -66,5 +66,11 @@ export async function issueTokens(ctx: Ctx, userRow: any, req: FastifyRequest, e
     await ctx.db.query('UPDATE users SET deletion_due_at = NULL WHERE id = $1 AND deleted_at IS NULL', [userRow.id]);
     userRow.deletion_due_at = null; deletionCancelled = true;
   }
-  return { ...(deletionCancelled ? { deletionCancelled } : {}), user: selfUserDTO(ctx, userRow), accessToken: await signAccess(ctx.config.jwtSecret, userRow.id, sid, ctx.config.accessTtlSec), refreshToken: refresh };
+  // a self-disabled account (POST /users/@me/disable) comes back with the next successful sign-in
+  let reactivated = false;
+  if (!existingSessionId && userRow.self_disabled_at) {
+    await ctx.db.query('UPDATE users SET self_disabled_at = NULL WHERE id = $1', [userRow.id]);
+    userRow.self_disabled_at = null; reactivated = true;
+  }
+  return { ...(deletionCancelled ? { deletionCancelled } : {}), ...(reactivated ? { reactivated } : {}), user: selfUserDTO(ctx, userRow), accessToken: await signAccess(ctx.config.jwtSecret, userRow.id, sid, ctx.config.accessTtlSec), refreshToken: refresh };
 }

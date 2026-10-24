@@ -308,7 +308,7 @@ export function guildRoutes(app: FastifyInstance, ctx: Ctx) {
     actions: rowActions(r), alertChannelId: r.alert_channel_id ?? null, regexPatterns: r.regex_patterns ?? [], testMode: !!r.test_mode, options: r.options ?? {} });
   const actionEnum = z.enum(['block', 'timeout', 'alert', 'warn']);
   const ruleBody = z.object({
-    name: z.string().trim().min(1).max(100), enabled: z.boolean(), trigger: z.enum(['keyword', 'keyword_preset', 'spam', 'mention_spam', 'link', 'regex', 'invite_link', 'caps', 'repeated_chars', 'suspicious_links']),
+    name: z.string().trim().min(1).max(100), enabled: z.boolean(), trigger: z.enum(['keyword', 'keyword_preset', 'spam', 'mention_spam', 'link', 'regex', 'invite_link', 'caps', 'repeated_chars', 'suspicious_links', 'member_profile']),
     keywords: z.array(z.string().min(1).max(60)).max(100), action: actionEnum, actions: z.array(actionEnum).min(1).max(4), exemptRoles: z.array(idSchema).max(20),
     presets: z.array(z.enum(['profanity', 'sexual_content', 'slurs'])).max(3), allowList: z.array(z.string().min(1).max(60)).max(100),
     mentionLimit: z.number().int().min(1).max(50), exemptChannels: z.array(idSchema).max(50), timeoutSeconds: z.number().int().min(10).max(7 * 86400),

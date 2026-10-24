@@ -77,9 +77,10 @@ export async function purgeAccount(ctx: Ctx, id: string) {
       await q.query('DELETE FROM auth_tokens WHERE user_id = $1', [id]);
       await q.query('DELETE FROM sessions WHERE user_id = $1', [id]);
       await q.query('DELETE FROM user_passkeys WHERE user_id = $1', [id]);
-      for (const t of ['push_devices', 'notification_settings', 'user_notes', 'dm_ignores', 'saved_messages', 'reminders', 'gif_favorites', 'connections', 'oauth_tokens', 'oauth_codes', 'app_user_metadata', 'bot_reminders', 'remote_auth'])
+      for (const t of ['push_devices', 'notification_settings', 'user_notes', 'dm_ignores', 'saved_messages', 'reminders', 'gif_favorites', 'connections', 'oauth_tokens', 'oauth_codes', 'app_user_metadata', 'bot_reminders', 'remote_auth', 'ignored_users', 'email_changes', 'username_history', 'reserved_usernames', 'join_waves'])
         await q.query(`DELETE FROM ${t} WHERE user_id = $1`, [id]); // personal data tied to the account (table names are constants)
       await q.query('DELETE FROM user_notes WHERE target_id = $1', [id]);
+      await q.query('DELETE FROM ignored_users WHERE other_id = $1', [id]);
       await q.query('DELETE FROM export_jobs WHERE user_id = $1', [id]);
       for (const a of ownedApps) {
         await q.query('DELETE FROM roles WHERE managed_app_id = $1', [a.id]);
@@ -89,7 +90,7 @@ export async function purgeAccount(ctx: Ctx, id: string) {
       await q.query('DELETE FROM ban_appeals WHERE user_id = $1', [id]);
       await q.query('DELETE FROM webauthn_challenges WHERE user_id = $1', [id]);
       await q.query(`UPDATE users SET username = $2, display_name = 'Deleted User', email = NULL, password_hash = NULL, avatar = NULL, banner = NULL, accent_color = NULL,
-        bio = NULL, pronouns = NULL, custom_status = NULL, settings = '{}'::jsonb, mfa_secret = NULL, mfa_enabled = false, verified = false, presence = 'offline', server_tag = NULL, deletion_due_at = NULL, deleted_at = now() WHERE id = $1`, [id, `deleted_${id}`]);
+        bio = NULL, pronouns = NULL, custom_status = NULL, settings = '{}'::jsonb, mfa_secret = NULL, mfa_enabled = false, verified = false, presence = 'offline', server_tag = NULL, display_name_style = NULL, self_disabled_at = NULL, deletion_due_at = NULL, deleted_at = now() WHERE id = $1`, [id, `deleted_${id}`]);
     });
     await ctx.pcache.invalidate({ k: 'user', userId: id });
     for (const f of orphanFiles) await ctx.storage.delete(f.key).catch(() => {});

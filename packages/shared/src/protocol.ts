@@ -105,6 +105,10 @@ export interface Events {
   /** To me: my saved-for-later list changed on another session. */
   SAVED_UPDATE: { channelId: Id; messageId: Id; saved: boolean };
   USER_NOTE_UPDATE: { userId: Id; note: string | null };
+  /** To the owner (all sessions): a user was (un)ignored. */
+  IGNORE_UPDATE: { userId: Id; ignored: boolean };
+  /** To the owner: a friend nickname changed. */
+  FRIEND_NICKNAME_UPDATE: { userId: Id; nickname: string | null };
   /** Soundboard: a guild's sound list changed / someone played a sound in a voice channel (sent to the people in that channel). */
   SOUNDBOARD_SOUNDS_UPDATE: { guildId: Id; sounds: SoundboardSound[] };
   /** A soundboard sound (`sound`) or an emoji burst (`emoji`, a unicode emoji or `name:id` of a custom one) shown floating in the call. Exactly one is set. */
