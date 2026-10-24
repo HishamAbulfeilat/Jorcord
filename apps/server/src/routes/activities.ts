@@ -56,6 +56,25 @@ async function loadActivity(ctx: Ctx, id: string) {
  * MANAGE_CHANNELS, may end a session.
  */
 export function activityRoutes(app: FastifyInstance, ctx: Ctx) {
+  /** The DTO, plus (for third-party activities) what the client needs to frame the app: its name, icon and https URL. */
+  const withApp = async (r: any): Promise<ChannelActivity> => {
+    const dto = activityDTO(r);
+    if (!r.application_id) return dto;
+    const [a] = await ctx.db.query('SELECT name, icon, activity_url FROM applications WHERE id = $1', [r.application_id]);
+    return a ? { ...dto, application: { name: a.name, icon: a.icon ?? null, activityUrl: a.activity_url ?? null } } : dto;
+  };
+  /** Apps a member can launch from this voice channel: apps with an activity URL that are installed in the server, plus their own. */
+  app.get('/channels/:id/activity-apps', async (req) => {
+    const { id } = parse(channelParams, req.params);
+    const acc = await channelAccess(ctx, req.userId, id);
+    if (acc.channel.type !== 'voice' && acc.channel.type !== 'stage') throw badRequest('Not a voice channel');
+    const rows = await ctx.db.query(
+      `SELECT a.id, a.name, a.icon, a.description FROM applications a
+        WHERE a.activity_url IS NOT NULL AND (a.owner_id = $2 OR EXISTS (SELECT 1 FROM application_installs i WHERE i.application_id = a.id AND i.guild_id = $1))
+        ORDER BY a.name LIMIT 50`, [acc.channel.guild_id ?? '', req.userId]);
+    return { apps: rows.map((a) => ({ id: a.id, name: a.name, icon: a.icon ?? null, description: a.description ?? '' })) };
+  });
+
   app.put('/users/@me/activities', async (req) => {
     const { activities } = parse(z.object({ activities: activitiesSchema }).strict(), req.body);
     limitOrThrow(ctx.rl, `activity:${req.userId}`, 30, 60_000, ctx.config.rateLimit);
@@ -78,7 +97,7 @@ export function activityRoutes(app: FastifyInstance, ctx: Ctx) {
     const { id } = parse(channelParams, req.params);
     await channelAccess(ctx, req.userId, id);
     const rows = await ctx.db.query('SELECT * FROM channel_activities WHERE channel_id = $1 ORDER BY id', [id]);
-    return { activities: rows.map(activityDTO) };
+    return { activities: await Promise.all(rows.map(withApp)) };
   });
 
   app.post('/channels/:id/activities', async (req, reply) => {
@@ -112,7 +131,7 @@ export function activityRoutes(app: FastifyInstance, ctx: Ctx) {
       'INSERT INTO channel_activities (id, channel_id, guild_id, kind, host_id, state, application_id) VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7) RETURNING *',
       [aid, id, acc.channel.guild_id ?? null, kind, req.userId, JSON.stringify(initial), applicationId],
     );
-    const dto = activityDTO(row);
+    const dto = await withApp(row);
     await ctx.hub.toChannel(id, 'ACTIVITY_START', dto);
     return reply.code(201).send(dto);
   });
@@ -121,7 +140,7 @@ export function activityRoutes(app: FastifyInstance, ctx: Ctx) {
     const { id } = parse(activityParams, req.params);
     const row = await loadActivity(ctx, id);
     await channelAccess(ctx, req.userId, row.channel_id);
-    return activityDTO(row);
+    return withApp(row);
   });
 
   app.patch('/activities/:id/state', async (req) => {
@@ -134,7 +153,7 @@ export function activityRoutes(app: FastifyInstance, ctx: Ctx) {
     let nextState: unknown;
     if (row.kind === 'app') { // shared document owned by the third-party activity: any participant in the call may write it (size-capped), last writer wins
       const [u] = await ctx.db.query('UPDATE channel_activities SET state = $2::jsonb, updated_at = now() WHERE id = $1 RETURNING *', [id, JSON.stringify(b.state ?? {})]);
-      const dto = activityDTO(u);
+      const dto = await withApp(u);
       await ctx.hub.toChannel(row.channel_id, 'ACTIVITY_UPDATE', dto);
       return dto;
     }
@@ -148,7 +167,7 @@ export function activityRoutes(app: FastifyInstance, ctx: Ctx) {
       'UPDATE channel_activities SET state = $3::jsonb, updated_at = now() WHERE id = $1 AND state = $2::jsonb RETURNING *',
       [id, JSON.stringify(row.state ?? {}), JSON.stringify(nextState)]);
     if (!updated) throw new ApiError(409, 'ACTIVITY_CONFLICT', 'The activity changed; try again');
-    const dto = activityDTO(updated);
+    const dto = await withApp(updated);
     await ctx.hub.toChannel(row.channel_id, 'ACTIVITY_UPDATE', dto);
     return dto;
   });

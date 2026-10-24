@@ -2,7 +2,7 @@
 import type {
   Activity, Attachment, AuditEntry, AutoModRule, Channel, Emoji, Guild, GuildFull, Invite, Member, Message, MessageEdit, Relationship, ReadState, Role, SelfUser, Sticker, User, VoiceToken, VoiceRecording, Id, Presence, OverwriteDTO,
   AllowedMentions, ConnectionOAuthStart, ConnectionProviderInfo, StreamFeed, StreamFeedsResponse, GuildIntegration, WelcomeScreen, VoiceState, StageQueueEntry, StageBlock, StreamInfo,
-  Reminder, ScheduledMessage, ModView, ModWarning, ModNote, BulkModerationFilter, BulkModerationResult, PruneResult, BoostSummary, LinkedRoleView, LinkedCriterion, RoleMetadataApp, DirectoryApp, DirectoryCategory, SoundboardSound, Connection, PublicConnection, GifFavorite, GuildTemplate, GuildWidgetSettings, GuildInsights, ChannelFollow, Onboarding, OnboardingResponse, GuildSafety, ImpersonationEntry, SafetyPreset, Application, ApplicationCommand, CommandPermissionOverwrite, CommandOptionChoice, CreatePoll, ForumTag, InteractionOptionValue, ModalSubmitRow, OAuthAuthorizePreview, OAuthAuthorizeResult, ScheduledEvent, StageInstance, Report, RecurrenceRule, ChannelActivity, ChannelActivityKind,
+  Reminder, ScheduledMessage, ModView, ModWarning, ModNote, BulkModerationFilter, BulkModerationResult, PruneResult, BoostSummary, LinkedRoleView, LinkedCriterion, RoleMetadataApp, DirectoryApp, DirectoryCategory, SoundboardSound, Connection, PublicConnection, GifFavorite, GuildTemplate, GuildWidgetSettings, GuildInsights, ChannelFollow, Onboarding, OnboardingResponse, GuildSafety, ImpersonationEntry, SafetyPreset, Application, ApplicationCommand, CommandPermissionOverwrite, CommandOptionChoice, CreatePoll, ForumTag, InteractionOptionValue, ModalSubmitRow, OAuthAuthorizePreview, OAuthAuthorizeResult, ScheduledEvent, StageInstance, Report, RecurrenceRule, ChannelActivity, ChannelActivityKind, ApplicationEmoji,
   E2eeDevice, DigestEntry, DigestPrefs, ImportReport,
 } from '@jorcord/shared';
 import { send } from './transport';
@@ -275,7 +275,7 @@ export const api = {
     get: (id: Id) => send<Application>({ method: 'GET', path: `/applications/${id}` }),
     /** The response carries the bot token and client secret exactly once. */
     create: (b: { name: string; description?: string; botPublic?: boolean; redirectUris?: string[] }) => send<Application>({ method: 'POST', path: '/applications', body: b }),
-    patch: (id: Id, b: Partial<Pick<Application, 'name' | 'description' | 'icon' | 'botPublic' | 'redirectUris' | 'interactionsEndpointUrl'>> & { directoryListed?: boolean; directoryCategory?: DirectoryCategory; directorySummary?: string; directoryTags?: string[]; directoryPermissions?: string }) => send<Application>({ method: 'PATCH', path: `/applications/${id}`, body: b }),
+    patch: (id: Id, b: Partial<Pick<Application, 'name' | 'description' | 'icon' | 'botPublic' | 'redirectUris' | 'interactionsEndpointUrl'>> & { activityUrl?: string | null } & { directoryListed?: boolean; directoryCategory?: DirectoryCategory; directorySummary?: string; directoryTags?: string[]; directoryPermissions?: string }) => send<Application>({ method: 'PATCH', path: `/applications/${id}`, body: b }),
     delete: (id: Id) => send({ method: 'DELETE', path: `/applications/${id}` }),
     resetToken: (id: Id) => send<{ token: string }>({ method: 'POST', path: `/applications/${id}/bot/reset-token` }),
     resetSecret: (id: Id) => send<{ clientSecret: string }>({ method: 'POST', path: `/applications/${id}/reset-secret` }),
@@ -285,11 +285,15 @@ export const api = {
     commandPermissions: (id: Id, guildId: Id) => send<CommandPermissionSet[]>({ method: 'GET', path: `/applications/${id}/guilds/${guildId}/commands/permissions` }).then((x) => arr<CommandPermissionSet>(x)),
     getCommandPermissions: (id: Id, guildId: Id, cid: Id) => send<CommandPermissionSet>({ method: 'GET', path: `/applications/${id}/guilds/${guildId}/commands/${cid}/permissions` }),
     putCommandPermissions: (id: Id, guildId: Id, cid: Id, permissions: CommandPermissionOverwrite[]) => send<CommandPermissionSet>({ method: 'PUT', path: `/applications/${id}/guilds/${guildId}/commands/${cid}/permissions`, body: { permissions } }),
+    emojis: (id: Id) => send<{ items: ApplicationEmoji[] }>({ method: 'GET', path: `/applications/${id}/emojis` }).then((r) => r.items ?? []),
+    createEmoji: (id: Id, b: { name: string; image: string }) => send<ApplicationEmoji>({ method: 'POST', path: `/applications/${id}/emojis`, body: b }),
+    renameEmoji: (id: Id, eid: Id, name: string) => send<ApplicationEmoji>({ method: 'PATCH', path: `/applications/${id}/emojis/${eid}`, body: { name } }),
+    deleteEmoji: (id: Id, eid: Id) => send({ method: 'DELETE', path: `/applications/${id}/emojis/${eid}` }),
     deleteCommand: (id: Id, cid: Id, guildId?: Id) => send({ method: 'DELETE', path: guildId ? `/applications/${id}/guilds/${guildId}/commands/${cid}` : `/applications/${id}/commands/${cid}` }),
   },
   oauth: {
     preview: (q: { clientId: Id; scope: string; permissions?: string }) => send<OAuthAuthorizePreview>({ method: 'GET', path: '/oauth2/authorize', query: q }),
-    authorize: (b: { clientId: Id; scope: string; permissions?: string; guildId?: Id; redirectUri?: string; state?: string }) => send<OAuthAuthorizeResult>({ method: 'POST', path: '/oauth2/authorize', body: b }),
+    authorize: (b: { clientId: Id; scope: string; permissions?: string; guildId?: Id; integrationType?: 0 | 1; redirectUri?: string; state?: string }) => send<OAuthAuthorizeResult>({ method: 'POST', path: '/oauth2/authorize', body: b }),
   },
   interactions: {
     /** 202 `{id}`: the answer arrives over the gateway (MESSAGE_CREATE, INTERACTION_MODAL, INTERACTION_AUTOCOMPLETE_RESULT, INTERACTION_FAILED). */
@@ -390,7 +394,9 @@ export const api = {
   /** Shared voice-channel sessions (Watch Together). Reads and writes are rejected by the server unless the caller can view the channel. */
   activities: {
     list: (channelId: Id) => send<{ activities: ChannelActivity[] }>({ method: 'GET', path: `/channels/${channelId}/activities` }),
-    start: (channelId: Id, b: { kind: ChannelActivityKind; state: unknown }) => send<ChannelActivity>({ method: 'POST', path: `/channels/${channelId}/activities`, body: b }),
+    start: (channelId: Id, b: { kind: ChannelActivityKind; state: unknown } | { applicationId: Id; state?: unknown }) => send<ChannelActivity>({ method: 'POST', path: `/channels/${channelId}/activities`, body: b }),
+    /** Third-party (iframe) apps that can be launched in this voice channel. */
+    apps: (channelId: Id) => send<{ apps: { id: Id; name: string; icon: string | null; description: string }[] }>({ method: 'GET', path: `/channels/${channelId}/activity-apps` }).then((r) => r.apps ?? []),
     /** The host publishes play/pause/seek; the server fans out ACTIVITY_UPDATE to channel viewers. */
     update: (id: Id, state: unknown) => send<ChannelActivity>({ method: 'PATCH', path: `/activities/${id}/state`, body: { state } }),
     end: (id: Id) => send({ method: 'DELETE', path: `/activities/${id}` }),

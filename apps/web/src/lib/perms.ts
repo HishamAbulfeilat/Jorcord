@@ -1,4 +1,5 @@
 /** Permission-aware UI helpers. All gating here is cosmetic: the server enforces via computePermissions. */
+import { safeRoleColor } from './a11y';
 import type { CSSProperties } from 'react';
 import { ALL_PERMS, Perm, computePermissions, has, type Overwrite, type PermName } from '@jorcord/shared';
 import type { Channel, Guild, Member, Role, OverwriteDTO } from '@jorcord/shared';
@@ -79,12 +80,12 @@ export function colourRole(member: Pick<Member, 'roles'> | undefined, roles: Rol
 }
 export function roleColor(member: Pick<Member, 'roles'> | undefined, roles: Role[]): string | undefined {
   const best = colourRole(member, roles);
-  return best ? intToHex(best.color) : undefined;
+  return best ? safeRoleColor(intToHex(best.color)) : undefined;
 }
 /** Text style for a role colour: a plain colour, or a left-to-right gradient clipped to the text when the role has a secondary colour. */
 export function roleTextStyle(role: Pick<Role, 'color' | 'colorSecondary'> | undefined): CSSProperties | undefined {
   if (!role || !role.color) return undefined;
-  const a = intToHex(role.color);
+  const a = safeRoleColor(intToHex(role.color));
   if (role.colorSecondary == null) return { color: a };
   return { color: a, backgroundImage: `linear-gradient(90deg, ${a}, ${intToHex(role.colorSecondary)})`, WebkitBackgroundClip: 'text', backgroundClip: 'text', WebkitTextFillColor: 'transparent' };
 }

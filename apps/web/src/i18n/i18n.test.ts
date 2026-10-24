@@ -7,7 +7,7 @@ const ph = (s: string) => (s.match(/\{\w+\}/g) ?? []).sort().join(',');
 const sources = (() => { const out: string[] = []; (function w(d: string) { for (const f of readdirSync(d)) { const p = join(d, f); if (statSync(p).isDirectory()) { if (!p.endsWith('/i18n')) w(p); } else if (/\.tsx?$/.test(f) && !/\.test\./.test(f)) out.push(readFileSync(p, 'utf8')); } })(join(__dirname, '..')); return out.join('\n'); })();
 
 describe('i18n', () => {
-  it('ships en (source), es, ar, fr, de, tr', () => { expect(TRANSLATED.sort()).toEqual(['ar', 'de', 'es', 'fr', 'tr']); });
+  it('ships en (source) plus 15 translated locales (10 of them machine translated, see docs/I18N.md)', () => { expect(TRANSLATED.sort()).toEqual(['ar', 'de', 'es', 'fr', 'hi', 'id', 'it', 'ja', 'ko', 'nl', 'pl', 'pt', 'ru', 'tr', 'zh']); });
   it('every locale translates the same core keys, none empty, placeholders preserved', () => {
     const base = Object.keys(DICTS.es!);
     expect(base.length).toBeGreaterThan(150);

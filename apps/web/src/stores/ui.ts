@@ -10,6 +10,8 @@ export type Theme = 'dark' | 'light' | 'amoled';
 export interface Prefs {
   theme: Theme; density: 'cozy' | 'compact'; fontScale: number; reducedMotion: boolean; saturation: number;
   showEmbeds: boolean; autoplayGifs: boolean; twentyFourHour: boolean; language: string; highContrast: boolean;
+  /** Accessibility: OpenDyslexic font, colour-blind safe status palette, clamp role colours to 4.5:1 contrast (saturation is above). */
+  dyslexiaFont: boolean; colorBlindMode: 'off' | 'protanopia' | 'deuteranopia' | 'tritanopia'; roleContrast: boolean;
   desktopNotifications: boolean; notificationSounds: boolean; /** Read /tts messages aloud (Web Speech API). Off by default. */ allowTtsPlayback: boolean; defaultNotify: 'all' | 'mentions' | 'none'; suppressEveryone: boolean;
   inputDevice: string; outputDevice: string; videoDevice: string; inputVolume: number; outputVolume: number;
   noiseSuppression: boolean; echoCancellation: boolean; autoGain: boolean; pushToTalk: boolean;
@@ -51,7 +53,7 @@ export function detectLanguage(): string {
   try {
     const l = (navigator.languages?.[0] ?? navigator.language ?? 'en-US');
     const base = l.toLowerCase().split('-')[0];
-    return ({ es: 'es-ES', fr: 'fr-FR', de: 'de-DE', tr: 'tr-TR', ar: 'ar' } as Record<string, string>)[base!] ?? 'en-US';
+    return ({ es: 'es-ES', fr: 'fr-FR', de: 'de-DE', tr: 'tr-TR', ar: 'ar', pt: 'pt-BR', ru: 'ru-RU', hi: 'hi-IN', id: 'id-ID', ja: 'ja-JP', zh: 'zh-CN', ko: 'ko-KR', it: 'it-IT', nl: 'nl-NL', pl: 'pl-PL' } as Record<string, string>)[base!] ?? 'en-US';
   } catch { return 'en-US'; }
 }
 export const defaultKeybinds: Record<string, string> = {
@@ -59,7 +61,7 @@ export const defaultKeybinds: Record<string, string> = {
   prevServer: 'Ctrl+Alt+ArrowUp', nextServer: 'Ctrl+Alt+ArrowDown', toggleMembers: 'Ctrl+U', search: 'Ctrl+F', shortcuts: 'Ctrl+/', pushToTalk: 'Ctrl+`', toggleMute: 'Ctrl+Shift+M', toggleDeafen: 'Ctrl+Shift+D',
 };
 export const defaultPrefs: Prefs = {
-  theme: 'dark', density: 'cozy', fontScale: 1, reducedMotion: false, saturation: 1, showEmbeds: true, autoplayGifs: true, twentyFourHour: false, language: detectLanguage(), highContrast: false,
+  theme: 'dark', density: 'cozy', fontScale: 1, reducedMotion: false, saturation: 1, showEmbeds: true, autoplayGifs: true, twentyFourHour: false, language: detectLanguage(), highContrast: false, dyslexiaFont: false, colorBlindMode: 'off', roleContrast: false,
   desktopNotifications: false, notificationSounds: true, allowTtsPlayback: false, defaultNotify: 'mentions', suppressEveryone: false,
   inputDevice: 'default', outputDevice: 'default', videoDevice: 'default', inputVolume: 100, outputVolume: 100, noiseSuppression: true, echoCancellation: true, autoGain: true, pushToTalk: false,
   noiseEngine: 'browser', voiceBitrate: 64, musicMode: false, pttCode: 'Backquote', pttGlobal: false, vadMode: false, vadThreshold: 0.03,

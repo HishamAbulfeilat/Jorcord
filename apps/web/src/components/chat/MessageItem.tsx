@@ -11,6 +11,7 @@ import { MessageText } from './SecretChat';
 import { AttachmentView, EmbedView } from './Attachments';
 import { Forward as ForwardIcon } from 'lucide-react';
 import { ReactionBar, addReaction } from './Reactions';
+import { StickerImage } from './StickerImage';
 import { useData, refreshStickers } from '@/stores/data';
 import { useUI, toast, toastError } from '@/stores/ui';
 import { useMessages, type Pending } from '@/stores/messages';
@@ -166,7 +167,7 @@ export const MessageItem = memo(function MessageItem({ m, grouped, highlighted, 
       {!editing && <LinkWarningBanner warnings={m.linkWarnings} />}
       {m.forward && <ForwardedBody f={m.forward} guildId={m.guildId} />}
       {m.attachments.length > 0 && <div className="mt-1 flex flex-col items-start gap-1">{m.attachments.map((a) => <AttachmentView key={a.id} a={a} />)}</div>}
-      {stickers && stickers.length > 0 && <div className="mt-1 flex gap-2">{stickers.map((s) => <img loading="lazy" decoding="async" key={s.id} src={fileUrl(s.url) ?? s.url} alt={s.name} title={s.name} className="h-[160px] w-[160px] object-contain" />)}</div>}
+      {stickers && stickers.length > 0 && <div className="mt-1 flex gap-2">{stickers.map((s) => <StickerImage key={s.id} sticker={s} className="h-[160px] w-[160px] object-contain" />)}</div>}
       {m.embeds.length > 0 && !((m.flags ?? 0) & MessageFlags.SUPPRESS_EMBEDS) && <div className="mt-1 flex flex-col items-start gap-1">{m.embeds.map((e, i) => <EmbedView key={i} e={e} />)}</div>}
       <TranslationBlock id={m.id} />
       {!!m.flags && !!(m.flags & 1) && <div className="mt-0.5 flex items-center gap-1 text-[11px] font-medium text-muted" data-testid="published-mark"><Megaphone size={11} aria-hidden />{t('Published')}</div>}

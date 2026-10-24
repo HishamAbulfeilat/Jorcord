@@ -156,3 +156,7 @@ img[data-still] { image-rendering: auto; }
 .jv-effect { position: absolute; bottom: 14%; font-size: 36px; line-height: 1; animation: jv-float 2.8s ease-out forwards; will-change: transform, opacity; }
 .jv-effect img { width: 36px; height: 36px; object-fit: contain; }
 @media (prefers-reduced-motion: reduce) { .jv-effect { animation: jv-fade 2.8s linear forwards; bottom: 40%; } }
+
+/* Accessibility options (lib/a11y.ts). OpenDyslexic is bundled locally (@fontsource, SIL OFL); saturation is a user-set filter on the root. */
+:root[data-font="dyslexic"] body, :root[data-font="dyslexic"] button, :root[data-font="dyslexic"] input, :root[data-font="dyslexic"] textarea, :root[data-font="dyslexic"] select { font-family: 'OpenDyslexic', ui-sans-serif, system-ui, sans-serif; letter-spacing: 0.02em; }
+html { filter: saturate(var(--saturation, 1)); }

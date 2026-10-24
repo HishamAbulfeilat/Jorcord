@@ -183,9 +183,11 @@ describe('embedded activities', () => {
     // an app without an activity URL cannot be launched
     const noUrl = (await api.req('POST', '/applications', dev.token, { name: 'plainapp', description: 'no activity here', botPublic: true })).body;
     expect((await api.req('POST', `/channels/${voice.id}/activities`, dev.token, { applicationId: noUrl.id })).status).toBe(404);
+    expect((await api.req('GET', `/channels/${voice.id}/activity-apps`, dev.token)).body.apps.map((x: any) => x.name)).toEqual(['iframeapp']); // own app, plain app has no URL
+    expect((await api.req('GET', `/channels/${voice.id}/activity-apps`, friend.token)).body.apps).toEqual([]); // not installed in this server
     const started = await api.req('POST', `/channels/${voice.id}/activities`, dev.token, { applicationId: a.id, state: { round: 1 } });
     expect(started.status).toBe(201);
-    expect(started.body).toMatchObject({ kind: 'app', applicationId: a.id, hostId: dev.id, state: { round: 1 } });
+    expect(started.body).toMatchObject({ kind: 'app', applicationId: a.id, hostId: dev.id, state: { round: 1 }, application: { name: 'iframeapp', activityUrl: 'https://game.example.com/play?x=1' } });
     expect((await api.req('POST', `/channels/${voice.id}/activities`, friend.token, { applicationId: a.id })).status).toBe(409);
     // any participant can write the shared state
     const upd = await api.req('PATCH', `/activities/${started.body.id}/state`, friend.token, { state: { round: 2 } });

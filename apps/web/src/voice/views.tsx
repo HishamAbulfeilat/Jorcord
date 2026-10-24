@@ -18,6 +18,7 @@ import { ControlBar, ScreenSharePopover } from './controls';
 import { ConnectionPopover, DiagnosticsPanel, useConnectingElapsed } from './Troubleshoot';
 import { CallSurface, Lobby, StageSurface, VoiceBanners } from './Room';
 import { TicTacToeView } from './TicTacToe';
+import { AppActivityView } from './AppActivity';
 import { NetBars } from './tiles';
 import { getVoiceClient, joinVoice, leaveVoice } from './controller';
 import { setCurrentChannel } from '@/lib/session';
@@ -76,6 +77,7 @@ export function VoiceChannelView({ channel }: { channel: Channel }) {
               ? <ConnectingView />
               : stage ? <StageSurface channelId={channel.id} /> : <CallSurface />}
             {!stage && <TicTacToeView channelId={channel.id} />}
+            {!stage && <AppActivityView channelId={channel.id} />}
             <ControlBar onSettings={() => openModal({ kind: 'voiceSettings' })} className="shrink-0 safe-bottom" />
           </>
         ) : (

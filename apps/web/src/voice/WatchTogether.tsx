@@ -6,6 +6,7 @@ import { useData } from '@/stores/data';
 import { useChannelActivities } from '@/stores/channelActivities';
 import { t } from '@/i18n';
 import { initialTicTacToeState } from './TicTacToe';
+import { AppActivityLauncher } from './AppActivity';
 
 /**
  * YouTube links only, from youtube.com or youtu.be. The id is exactly 11 URL-safe base64 characters.
@@ -188,6 +189,7 @@ export function WatchTogetherPopover({ channelId, onClose }: { channelId: string
             : <p className="text-xs text-muted">{t('Tic-Tac-Toe is running in this channel.')}</p>
           : <button className="btn btn-secondary btn-lg w-full" onClick={() => void startTicTacToe()} disabled={busy}>{t('Start Tic-Tac-Toe')}</button>}
       </div>
+      <AppActivityLauncher channelId={channelId} />
     </div>
   );
 }

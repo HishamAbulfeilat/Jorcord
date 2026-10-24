@@ -4,8 +4,8 @@
  *   - Bot:  gateway client (heartbeat, resume, backoff reconnect), slash command registration, interaction handlers
  * Needs a runtime with global `fetch` and `WebSocket` (Node 22+, Bun, Deno, browsers).
  */
-import { ComponentType as CT, Intents, InteractionCallbackType as CB, InteractionType as IT, MessageFlags, Op, type ApplicationCommand, type Component, type MediaGalleryItem, type EventName, type Events, type Interaction } from '@jorcord/shared';
-export { Intents, MessageFlags };
+import { ComponentType as CT, IntegrationType, InteractionContextType, Intents, InteractionCallbackType as CB, InteractionType as IT, MessageFlags, Op, type ApplicationCommand, type Component, type MediaGalleryItem, type EventName, type Events, type Interaction } from '@jorcord/shared';
+export { Intents, MessageFlags, IntegrationType, InteractionContextType };
 
 /**
  * Components V2 builders. A V2 message is made only of layout components and carries the IS_COMPONENTS_V2 flag (no `content`, embeds or stickers):
@@ -31,10 +31,10 @@ export class RestError extends Error {
 export class Rest {
   constructor(public baseUrl: string, private token: string | null) {}
   /** JSON request against /api/v1. Retries a 429 (honouring retry-after) up to 3 times. 204 resolves to null. */
-  async request<T = any>(method: string, path: string, body?: unknown, opts: { auth?: boolean } = {}): Promise<T> {
+  async request<T = any>(method: string, path: string, body?: unknown, opts: { auth?: boolean; /** sent as X-Audit-Log-Reason (shown in the server's audit log) */ reason?: string } = {}): Promise<T> {
     for (let attempt = 0; ; attempt++) {
       const res = await fetch(`${this.baseUrl}/api/v1${path}`, {
-        method, headers: { ...(body !== undefined ? { 'content-type': 'application/json' } : {}), ...(this.token && opts.auth !== false ? { authorization: `Bot ${this.token}` } : {}) },
+        method, headers: { ...(body !== undefined ? { 'content-type': 'application/json' } : {}), ...(this.token && opts.auth !== false ? { authorization: `Bot ${this.token}` } : {}), ...(opts.reason ? { 'x-audit-log-reason': encodeURIComponent(opts.reason) } : {}) },
         body: body === undefined ? undefined : JSON.stringify(body),
       });
       if (res.status === 429 && attempt < 3) { await sleep(Math.max(1, Number(res.headers.get('retry-after') ?? 1)) * 1000); continue; }
@@ -54,7 +54,17 @@ export class Rest {
   }
 }
 
-export interface SlashCommand { name: string; description: string; type?: 1 | 2 | 3; options?: unknown[]; defaultMemberPermissions?: string | null; dmPermission?: boolean }
+export interface SlashCommand {
+  name: string; description: string; type?: 1 | 2 | 3; options?: unknown[]; defaultMemberPermissions?: string | null; dmPermission?: boolean;
+  /** Where the app can be installed for this command: 0 guild, 1 user (see IntegrationType). Default [0]. Global commands only for 1. */
+  integrationTypes?: (0 | 1)[];
+  /** Where the command may run: 0 guild, 1 bot DM, 2 private channel (see InteractionContextType). Default: guild and bot DM. */
+  contexts?: (0 | 1 | 2)[] | null;
+}
+/** An application (bot-owned) emoji. Use `emojiMarkup` to put it into message content or a component's `emoji` field. */
+export interface AppEmoji { id: string; applicationId: string; name: string; animated: boolean; url: string }
+/** `<:name:id>` / `<a:name:id>` */
+export const emojiMarkup = (e: Pick<AppEmoji, 'id' | 'name' | 'animated'>) => `<${e.animated ? 'a' : ''}:${e.name}:${e.id}>`;
 export interface BotOptions {
   token: string; baseUrl: string;
   /** Gateway intents bitfield. Omit for the legacy unfiltered stream. */
@@ -73,6 +83,10 @@ export class InteractionContext {
   get customId(): string | undefined { return this.raw.data?.customId; }
   get values(): string[] { return this.raw.data?.values ?? []; }
   get userId() { return this.raw.user.id; }
+  /** 0 guild, 1 bot DM, 2 private channel / group DM (InteractionContextType). */
+  get context(): number | undefined { return this.raw.context; }
+  /** True when the invoking user installed the app to their account and the bot is not a member where this happens: replies are private to them. */
+  get isUserInstall(): boolean { return this.raw.authorizingIntegrationOwners?.[String(IntegrationType.USER_INSTALL)] !== undefined; }
   /** Value of a top-level slash command option. */
   option<T extends string | number | boolean = string>(name: string): T | undefined { return this.raw.data?.options?.find((o) => o.name === name)?.value as T | undefined; }
   private cb(type: number, data?: unknown) { return this.rest.request('POST', `/interactions/${this.raw.id}/${this.raw.token}/callback`, { type, ...(data ? { data } : {}) }, { auth: false }); }
@@ -136,6 +150,12 @@ export class Bot {
   /** Rich presence for the bot itself ("Playing X", "Listening to X"...). Pass [] to clear. Cleared by the server when the bot disconnects. */
   setActivities(activities: { type: 'playing' | 'streaming' | 'listening' | 'watching' | 'competing'; name: string; details?: string; state?: string; url?: string; startedAt?: string }[]) { return this.rest.request('PUT', '/users/@me/activities', { activities }); }
   setActivity(type: 'playing' | 'streaming' | 'listening' | 'watching' | 'competing', name: string, extra: { details?: string; state?: string; url?: string } = {}) { return this.setActivities([{ type, name, ...extra }]); }
+  // ---- application emoji ----
+  async listEmojis(): Promise<AppEmoji[]> { const app = await this.applicationId(); return (await this.rest.get<{ items: AppEmoji[] }>(`/applications/${app}/emojis`)).items; }
+  /** `image` is a base64 data URI (png, gif, webp or jpeg, at most 256 KB), e.g. `data:image/png;base64,...`. */
+  async createEmoji(name: string, image: string): Promise<AppEmoji> { const app = await this.applicationId(); return this.rest.post(`/applications/${app}/emojis`, { name, image }); }
+  async renameEmoji(id: string, name: string): Promise<AppEmoji> { const app = await this.applicationId(); return this.rest.patch(`/applications/${app}/emojis/${id}`, { name }); }
+  async deleteEmoji(id: string): Promise<void> { const app = await this.applicationId(); await this.rest.delete(`/applications/${app}/emojis/${id}`); }
   async applicationId(): Promise<string> { return (this.appId ??= (await this.rest.get<{ id: string }>('/applications/@me')).id); }
   /** Bulk-overwrite this bot's commands (global, or for one guild it is installed in). Idempotent. */
   async registerCommands(commands: SlashCommand[], o: { guildId?: string } = {}): Promise<ApplicationCommand[]> {

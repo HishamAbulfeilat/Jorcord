@@ -8,6 +8,16 @@ import fr from './fr';
 import de from './de';
 import tr from './tr';
 import ar from './ar';
+import pt from './pt';
+import ru from './ru';
+import hi from './hi';
+import id from './id';
+import ja from './ja';
+import zh from './zh';
+import ko from './ko';
+import it from './it';
+import nl from './nl';
+import pl from './pl';
 
 export type Dict = Record<string, string>;
 export const LOCALES = [
@@ -18,8 +28,18 @@ export const LOCALES = [
   { id: 'de', tag: 'de-DE', label: 'Deutsch', dir: 'ltr' as const },
   { id: 'tr', tag: 'tr-TR', label: 'Türkçe', dir: 'ltr' as const },
   { id: 'ar', tag: 'ar', label: 'العربية', dir: 'rtl' as const },
+  { id: 'pt', tag: 'pt-BR', label: 'Português (Brasil)', dir: 'ltr' as const },
+  { id: 'ru', tag: 'ru-RU', label: 'Русский', dir: 'ltr' as const },
+  { id: 'hi', tag: 'hi-IN', label: 'हिन्दी', dir: 'ltr' as const },
+  { id: 'id', tag: 'id-ID', label: 'Bahasa Indonesia', dir: 'ltr' as const },
+  { id: 'ja', tag: 'ja-JP', label: '日本語', dir: 'ltr' as const },
+  { id: 'zh', tag: 'zh-CN', label: '简体中文', dir: 'ltr' as const },
+  { id: 'ko', tag: 'ko-KR', label: '한국어', dir: 'ltr' as const },
+  { id: 'it', tag: 'it-IT', label: 'Italiano', dir: 'ltr' as const },
+  { id: 'nl', tag: 'nl-NL', label: 'Nederlands', dir: 'ltr' as const },
+  { id: 'pl', tag: 'pl-PL', label: 'Polski', dir: 'ltr' as const },
 ] as const;
-export const DICTS: Record<string, Dict> = { es, fr, de, tr, ar };
+export const DICTS: Record<string, Dict> = { es, fr, de, tr, ar, pt, ru, hi, id, ja, zh, ko, it, nl, pl };
 export const TRANSLATED = Object.keys(DICTS);
 
 /** 'es-ES' | 'es' | 'ar-EG' -> 'es' | 'ar'; unknown -> 'en'. */

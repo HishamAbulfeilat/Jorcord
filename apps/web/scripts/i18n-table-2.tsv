@@ -1,0 +1,223 @@
+key	pt	ru	hi	id	ja	zh	ko	it	nl	pl
+Servers	Servidores	Серверы	सर्वर	Server	サーバー	服务器	서버	Server	Servers	Serwery
+Direct Messages	Mensagens diretas	Личные сообщения	सीधे संदेश	Pesan Langsung	ダイレクトメッセージ	私信	다이렉트 메시지	Messaggi diretti	Directe berichten	Wiadomości prywatne
+Add a Server	Adicionar um servidor	Добавить сервер	सर्वर जोड़ें	Tambah Server	サーバーを追加	添加服务器	서버 추가	Aggiungi un server	Server toevoegen	Dodaj serwer
+Explore servers	Explorar servidores	Обзор серверов	सर्वर खोजें	Jelajahi server	サーバーを探す	探索服务器	서버 둘러보기	Esplora i server	Servers verkennen	Przeglądaj serwery
+Explore Discoverable Servers	Explorar servidores públicos	Обзор публичных серверов	सार्वजनिक सर्वर खोजें	Jelajahi server publik	公開サーバーを探す	探索公开服务器	공개 서버 둘러보기	Esplora i server pubblici	Openbare servers verkennen	Przeglądaj serwery publiczne
+Channels	Canais	Каналы	चैनल	Kanal	チャンネル	频道	채널	Canali	Kanalen	Kanały
+No channels yet.	Ainda não há canais.	Каналов пока нет.	अभी कोई चैनल नहीं।	Belum ada kanal.	まだチャンネルがありません。	还没有频道。	아직 채널이 없습니다.	Ancora nessun canale.	Nog geen kanalen.	Brak kanałów.
+Create Channel	Criar canal	Создать канал	चैनल बनाएँ	Buat Kanal	チャンネルを作成	创建频道	채널 만들기	Crea canale	Kanaal maken	Utwórz kanał
+Create Category	Criar categoria	Создать категорию	श्रेणी बनाएँ	Buat Kategori	カテゴリを作成	创建分类	카테고리 만들기	Crea categoria	Categorie maken	Utwórz kategorię
+Create Invite	Criar convite	Создать приглашение	आमंत्रण बनाएँ	Buat Undangan	招待を作成	创建邀请	초대 만들기	Crea invito	Uitnodiging maken	Utwórz zaproszenie
+Invite People	Convidar pessoas	Пригласить людей	लोगों को आमंत्रित करें	Undang Orang	メンバーを招待	邀请成员	사람 초대하기	Invita persone	Mensen uitnodigen	Zaproś osoby
+Edit Channel	Editar canal	Изменить канал	चैनल संपादित करें	Edit Kanal	チャンネルを編集	编辑频道	채널 편집	Modifica canale	Kanaal bewerken	Edytuj kanał
+Mark As Read	Marcar como lido	Отметить прочитанным	पढ़ा हुआ चिह्नित करें	Tandai Sudah Dibaca	既読にする	标为已读	읽음으로 표시	Segna come letto	Markeren als gelezen	Oznacz jako przeczytane
+Mute Server	Silenciar servidor	Отключить уведомления сервера	सर्वर म्यूट करें	Bisukan Server	サーバーをミュート	静音服务器	서버 음소거	Silenzia server	Server dempen	Wycisz serwer
+Unmute Server	Reativar som do servidor	Включить уведомления сервера	सर्वर अनम्यूट करें	Bunyikan Server	サーバーのミュート解除	取消静音服务器	서버 음소거 해제	Riattiva server	Server dempen opheffen	Wyłącz wyciszenie serwera
+Mute Channel	Silenciar canal	Отключить уведомления канала	चैनल म्यूट करें	Bisukan Kanal	チャンネルをミュート	静音频道	채널 음소거	Silenzia canale	Kanaal dempen	Wycisz kanał
+Unmute Channel	Reativar som do canal	Включить уведомления канала	चैनल अनम्यूट करें	Bunyikan Kanal	チャンネルのミュート解除	取消静音频道	채널 음소거 해제	Riattiva canale	Kanaal dempen opheffen	Wyłącz wyciszenie kanału
+Notification Settings	Configurações de notificação	Настройки уведомлений	सूचना सेटिंग्स	Pengaturan Notifikasi	通知設定	通知设置	알림 설정	Impostazioni notifiche	Meldingsinstellingen	Ustawienia powiadomień
+Server Settings	Configurações do servidor	Настройки сервера	सर्वर सेटिंग्स	Pengaturan Server	サーバー設定	服务器设置	서버 설정	Impostazioni server	Serverinstellingen	Ustawienia serwera
+Leave Server	Sair do servidor	Покинуть сервер	सर्वर छोड़ें	Tinggalkan Server	サーバーから退出	离开服务器	서버 나가기	Esci dal server	Server verlaten	Opuść serwer
+Copy Link	Copiar link	Копировать ссылку	लिंक कॉपी करें	Salin Tautan	リンクをコピー	复制链接	링크 복사	Copia link	Link kopiëren	Kopiuj link
+Copy Server ID	Copiar ID do servidor	Копировать ID сервера	सर्वर ID कॉपी करें	Salin ID Server	サーバーIDをコピー	复制服务器 ID	서버 ID 복사	Copia ID server	Server-ID kopiëren	Kopiuj ID serwera
+Copy Channel ID	Copiar ID do canal	Копировать ID канала	चैनल ID कॉपी करें	Salin ID Kanal	チャンネルIDをコピー	复制频道 ID	채널 ID 복사	Copia ID canale	Kanaal-ID kopiëren	Kopiuj ID kanału
+Copy User ID	Copiar ID do usuário	Копировать ID пользователя	उपयोगकर्ता ID कॉपी करें	Salin ID Pengguna	ユーザーIDをコピー	复制用户 ID	사용자 ID 복사	Copia ID utente	Gebruikers-ID kopiëren	Kopiuj ID użytkownika
+Copy Message Link	Copiar link da mensagem	Копировать ссылку на сообщение	संदेश लिंक कॉपी करें	Salin Tautan Pesan	メッセージリンクをコピー	复制消息链接	메시지 링크 복사	Copia link del messaggio	Berichtlink kopiëren	Kopiuj link do wiadomości
+Copy Text	Copiar texto	Копировать текст	टेक्स्ट कॉपी करें	Salin Teks	テキストをコピー	复制文本	텍스트 복사	Copia testo	Tekst kopiëren	Kopiuj tekst
+Move Up	Mover para cima	Переместить вверх	ऊपर ले जाएँ	Pindah ke Atas	上へ移動	上移	위로 이동	Sposta su	Omhoog	Przesuń w górę
+Move Down	Mover para baixo	Переместить вниз	नीचे ले जाएँ	Pindah ke Bawah	下へ移動	下移	아래로 이동	Sposta giù	Omlaag	Przesuń w dół
+Folder	Pasta	Папка	फ़ोल्डर	Folder	フォルダ	文件夹	폴더	Cartella	Map	Folder
+Folder Settings	Configurações da pasta	Настройки папки	फ़ोल्डर सेटिंग्स	Pengaturan Folder	フォルダ設定	文件夹设置	폴더 설정	Impostazioni cartella	Mapinstellingen	Ustawienia folderu
+Folder Name	Nome da pasta	Название папки	फ़ोल्डर का नाम	Nama Folder	フォルダ名	文件夹名称	폴더 이름	Nome cartella	Mapnaam	Nazwa folderu
+Folder Color	Cor da pasta	Цвет папки	फ़ोल्डर का रंग	Warna Folder	フォルダの色	文件夹颜色	폴더 색상	Colore cartella	Mapkleur	Kolor folderu
+Ungroup Servers	Desagrupar servidores	Разгруппировать серверы	सर्वर अलग करें	Pisahkan Server	サーバーのグループ解除	取消服务器分组	서버 그룹 해제	Separa i server	Servers losmaken	Rozgrupuj serwery
+Create Folder	Criar pasta	Создать папку	फ़ोल्डर बनाएँ	Buat Folder	フォルダを作成	创建文件夹	폴더 만들기	Crea cartella	Map maken	Utwórz folder
+Remove From Folder	Remover da pasta	Убрать из папки	फ़ोल्डर से हटाएँ	Keluarkan dari Folder	フォルダから削除	从文件夹移除	폴더에서 제거	Rimuovi dalla cartella	Uit map verwijderen	Usuń z folderu
+Move To Folder	Mover para pasta	Переместить в папку	फ़ोल्डर में ले जाएँ	Pindahkan ke Folder	フォルダに移動	移至文件夹	폴더로 이동	Sposta nella cartella	Naar map verplaatsen	Przenieś do folderu
+Friends	Amigos	Друзья	दोस्त	Teman	フレンド	好友	친구	Amici	Vrienden	Znajomi
+Online	Online	В сети	ऑनलाइन	Online	オンライン	在线	온라인	Online	Online	Online
+Offline	Offline	Не в сети	ऑफ़लाइन	Offline	オフライン	离线	오프라인	Offline	Offline	Offline
+Idle	Ausente	Неактивен	निष्क्रिय	Tidak Aktif	退席中	闲置	자리 비움	Inattivo	Afwezig	Zaraz wracam
+Do Not Disturb	Não perturbe	Не беспокоить	परेशान न करें	Jangan Ganggu	取り込み中	请勿打扰	다른 용무 중	Non disturbare	Niet storen	Nie przeszkadzać
+Invisible	Invisível	Невидимый	अदृश्य	Tidak Terlihat	オフライン表示	隐身	오프라인 표시	Invisibile	Onzichtbaar	Niewidoczny
+All	Todos	Все	सभी	Semua	すべて	全部	전체	Tutti	Alle	Wszyscy
+Pending	Pendentes	Ожидают	लंबित	Tertunda	保留中	待处理	대기 중	In attesa	In behandeling	Oczekujące
+Blocked	Bloqueados	Заблокированные	ब्लॉक किए गए	Diblokir	ブロック済み	已屏蔽	차단됨	Bloccati	Geblokkeerd	Zablokowani
+Add Friend	Adicionar amigo	Добавить в друзья	दोस्त जोड़ें	Tambah Teman	フレンドを追加	添加好友	친구 추가	Aggiungi amico	Vriend toevoegen	Dodaj znajomego
+Send Friend Request	Enviar pedido de amizade	Отправить запрос в друзья	दोस्ती का अनुरोध भेजें	Kirim Permintaan Pertemanan	フレンド申請を送信	发送好友请求	친구 요청 보내기	Invia richiesta di amicizia	Vriendschapsverzoek sturen	Wyślij zaproszenie do znajomych
+Message	Mensagem	Сообщение	संदेश	Pesan	メッセージ	消息	메시지	Messaggio	Bericht	Wiadomość
+Search	Pesquisar	Поиск	खोजें	Cari	検索	搜索	검색	Cerca	Zoeken	Szukaj
+Members	Membros	Участники	सदस्य	Anggota	メンバー	成员	멤버	Membri	Leden	Członkowie
+Member List	Lista de membros	Список участников	सदस्य सूची	Daftar Anggota	メンバーリスト	成员列表	멤버 목록	Elenco membri	Ledenlijst	Lista członków
+Pinned Messages	Mensagens fixadas	Закреплённые сообщения	पिन किए गए संदेश	Pesan Tersemat	ピン留めされたメッセージ	置顶消息	고정된 메시지	Messaggi fissati	Vastgemaakte berichten	Przypięte wiadomości
+Pinned	Fixada	Закреплено	पिन किया गया	Disematkan	ピン留め済み	已置顶	고정됨	Fissato	Vastgemaakt	Przypięto
+Unpin	Desafixar	Открепить	पिन हटाएँ	Lepas Sematan	ピン留めを外す	取消置顶	고정 해제	Rimuovi dai fissati	Losmaken	Odepnij
+Threads	Tópicos	Ветки	थ्रेड	Utas	スレッド	子区	스레드	Thread	Threads	Wątki
+Search Results	Resultados da pesquisa	Результаты поиска	खोज परिणाम	Hasil Pencarian	検索結果	搜索结果	검색 결과	Risultati di ricerca	Zoekresultaten	Wyniki wyszukiwania
+Reply	Responder	Ответить	जवाब दें	Balas	返信	回复	답장	Rispondi	Antwoorden	Odpowiedz
+Edit Message	Editar mensagem	Изменить сообщение	संदेश संपादित करें	Edit Pesan	メッセージを編集	编辑消息	메시지 편집	Modifica messaggio	Bericht bewerken	Edytuj wiadomość
+Delete Message	Apagar mensagem	Удалить сообщение	संदेश हटाएँ	Hapus Pesan	メッセージを削除	删除消息	메시지 삭제	Elimina messaggio	Bericht verwijderen	Usuń wiadomość
+Add Reaction	Adicionar reação	Добавить реакцию	प्रतिक्रिया जोड़ें	Tambah Reaksi	リアクションを追加	添加表情回应	반응 추가	Aggiungi reazione	Reactie toevoegen	Dodaj reakcję
+Mark Unread	Marcar como não lido	Отметить непрочитанным	अपठित चिह्नित करें	Tandai Belum Dibaca	未読にする	标为未读	읽지 않음으로 표시	Segna come non letto	Markeren als ongelezen	Oznacz jako nieprzeczytane
+Mute	Silenciar	Отключить микрофон	म्यूट	Bisukan	ミュート	静音	음소거	Silenzia	Dempen	Wycisz
+Unmute	Reativar som	Включить микрофон	अनम्यूट	Bunyikan	ミュート解除	取消静音	음소거 해제	Riattiva audio	Dempen opheffen	Wyłącz wyciszenie
+Deafen	Ensurdecer	Отключить звук	डेफ़न	Tulikan	スピーカーミュート	拒听	헤드셋 음소거	Disattiva audio	Doofzetten	Ogłusz
+Undeafen	Reativar áudio	Включить звук	डेफ़न हटाएँ	Batal Tulikan	スピーカーミュート解除	取消拒听	헤드셋 음소거 해제	Riattiva ascolto	Doof opheffen	Cofnij ogłuszenie
+Disconnect	Desconectar	Отключиться	डिस्कनेक्ट करें	Putuskan	切断	断开连接	연결 끊기	Disconnetti	Verbinding verbreken	Rozłącz
+Go Live	Transmitir ao vivo	Начать трансляцию	लाइव जाएँ	Mulai Siaran	配信を開始	开始直播	라이브 시작	Vai in diretta	Live gaan	Rozpocznij transmisję
+Live	Ao vivo	В эфире	लाइव	Langsung	配信中	直播中	라이브	Dal vivo	Live	Na żywo
+Voice Settings	Configurações de voz	Настройки голоса	वॉइस सेटिंग्स	Pengaturan Suara	音声設定	语音设置	음성 설정	Impostazioni vocali	Spraakinstellingen	Ustawienia głosu
+Stop Streaming	Parar transmissão	Остановить трансляцию	स्ट्रीमिंग रोकें	Hentikan Siaran	配信を停止	停止直播	스트리밍 중지	Interrompi la trasmissione	Streamen stoppen	Zatrzymaj transmisję
+User Settings	Configurações do usuário	Настройки пользователя	उपयोगकर्ता सेटिंग्स	Pengaturan Pengguna	ユーザー設定	用户设置	사용자 설정	Impostazioni utente	Gebruikersinstellingen	Ustawienia użytkownika
+App Settings	Configurações do app	Настройки приложения	ऐप सेटिंग्स	Pengaturan Aplikasi	アプリ設定	应用设置	앱 설정	Impostazioni app	App-instellingen	Ustawienia aplikacji
+My Account	Minha conta	Моя учётная запись	मेरा खाता	Akun Saya	マイアカウント	我的账户	내 계정	Il mio account	Mijn account	Moje konto
+Profile	Perfil	Профиль	प्रोफ़ाइल	Profil	プロフィール	个人资料	프로필	Profilo	Profiel	Profil
+Security & Devices	Segurança e dispositivos	Безопасность и устройства	सुरक्षा और डिवाइस	Keamanan & Perangkat	セキュリティとデバイス	安全与设备	보안 및 기기	Sicurezza e dispositivi	Beveiliging en apparaten	Bezpieczeństwo i urządzenia
+Appearance	Aparência	Внешний вид	रूप-रंग	Tampilan	外観	外观	화면	Aspetto	Weergave	Wygląd
+Accessibility	Acessibilidade	Специальные возможности	एक्सेसिबिलिटी	Aksesibilitas	アクセシビリティ	无障碍	접근성	Accessibilità	Toegankelijkheid	Dostępność
+Voice & Video	Voz e vídeo	Голос и видео	वॉइस और वीडियो	Suara & Video	音声とビデオ	语音和视频	음성 및 비디오	Voce e video	Spraak en video	Głos i wideo
+Notifications	Notificações	Уведомления	सूचनाएँ	Notifikasi	通知	通知	알림	Notifiche	Meldingen	Powiadomienia
+Keybinds	Atalhos de teclado	Горячие клавиши	कीबाइंड	Pintasan Keyboard	キーバインド	快捷键	단축키	Scorciatoie da tastiera	Sneltoetsen	Skróty klawiszowe
+Language	Idioma	Язык	भाषा	Bahasa	言語	语言	언어	Lingua	Taal	Język
+Streamer Mode	Modo streamer	Режим стримера	स्ट्रीमर मोड	Mode Streamer	配信者モード	主播模式	스트리머 모드	Modalità streamer	Streamermodus	Tryb streamera
+Desktop App	App para computador	Приложение для ПК	डेस्कटॉप ऐप	Aplikasi Desktop	デスクトップアプリ	桌面应用	데스크톱 앱	App desktop	Desktop-app	Aplikacja na komputer
+Log Out	Sair	Выйти	लॉग आउट	Keluar	ログアウト	退出登录	로그아웃	Esci	Uitloggen	Wyloguj się
+Log In	Entrar	Войти	लॉग इन	Masuk	ログイン	登录	로그인	Accedi	Inloggen	Zaloguj się
+Register	Registrar	Регистрация	रजिस्टर करें	Daftar	登録	注册	가입하기	Registrati	Registreren	Zarejestruj się
+Welcome back!	Bem-vindo de volta!	С возвращением!	वापसी पर स्वागत है!	Selamat datang kembali!	おかえりなさい！	欢迎回来！	다시 오신 것을 환영합니다!	Bentornato!	Welkom terug!	Witaj ponownie!
+Create an account	Criar uma conta	Создать учётную запись	खाता बनाएँ	Buat akun	アカウントを作成	创建账户	계정 만들기	Crea un account	Account aanmaken	Utwórz konto
+Email	E-mail	Эл. почта	ईमेल	Email	メールアドレス	电子邮箱	이메일	Email	E-mail	E-mail
+Password	Senha	Пароль	पासवर्ड	Kata sandi	パスワード	密码	비밀번호	Password	Wachtwoord	Hasło
+Username	Nome de usuário	Имя пользователя	उपयोगकर्ता नाम	Nama pengguna	ユーザー名	用户名	사용자 이름	Nome utente	Gebruikersnaam	Nazwa użytkownika
+Display Name	Nome de exibição	Отображаемое имя	प्रदर्शित नाम	Nama Tampilan	表示名	显示名称	표시 이름	Nome visualizzato	Weergavenaam	Nazwa wyświetlana
+Continue	Continuar	Продолжить	जारी रखें	Lanjutkan	続ける	继续	계속	Continua	Doorgaan	Kontynuuj
+Forgot your password?	Esqueceu sua senha?	Забыли пароль?	पासवर्ड भूल गए?	Lupa kata sandi?	パスワードをお忘れですか？	忘记密码？	비밀번호를 잊으셨나요?	Hai dimenticato la password?	Wachtwoord vergeten?	Nie pamiętasz hasła?
+Need an account?	Precisa de uma conta?	Нужна учётная запись?	खाता चाहिए?	Perlu akun?	アカウントが必要ですか？	需要账户？	계정이 필요하신가요?	Serve un account?	Een account nodig?	Potrzebujesz konta?
+Already have an account?	Já tem uma conta?	Уже есть учётная запись?	पहले से खाता है?	Sudah punya akun?	すでにアカウントをお持ちですか？	已有账户？	이미 계정이 있으신가요?	Hai già un account?	Heb je al een account?	Masz już konto?
+Connect to a server	Conectar a um servidor	Подключиться к серверу	सर्वर से जुड़ें	Hubungkan ke server	サーバーに接続	连接到服务器	서버에 연결	Connettiti a un server	Verbinden met een server	Połącz z serwerem
+Server address	Endereço do servidor	Адрес сервера	सर्वर पता	Alamat server	サーバーアドレス	服务器地址	서버 주소	Indirizzo del server	Serveradres	Adres serwera
+Connect	Conectar	Подключиться	जुड़ें	Hubungkan	接続	连接	연결	Connetti	Verbinden	Połącz
+Change server	Trocar de servidor	Сменить сервер	सर्वर बदलें	Ganti server	サーバーを変更	更换服务器	서버 변경	Cambia server	Server wijzigen	Zmień serwer
+Server	Servidor	Сервер	सर्वर	Server	サーバー	服务器	서버	Server	Server	Serwer
+Cancel	Cancelar	Отмена	रद्द करें	Batal	キャンセル	取消	취소	Annulla	Annuleren	Anuluj
+Save	Salvar	Сохранить	सहेजें	Simpan	保存	保存	저장	Salva	Opslaan	Zapisz
+Save Changes	Salvar alterações	Сохранить изменения	बदलाव सहेजें	Simpan Perubahan	変更を保存	保存更改	변경 사항 저장	Salva modifiche	Wijzigingen opslaan	Zapisz zmiany
+Reset	Redefinir	Сбросить	रीसेट करें	Atur Ulang	リセット	重置	초기화	Reimposta	Resetten	Resetuj
+Done	Concluído	Готово	हो गया	Selesai	完了	完成	완료	Fatto	Klaar	Gotowe
+Close	Fechar	Закрыть	बंद करें	Tutup	閉じる	关闭	닫기	Chiudi	Sluiten	Zamknij
+Back	Voltar	Назад	वापस	Kembali	戻る	返回	뒤로	Indietro	Terug	Wstecz
+Next	Próximo	Далее	अगला	Berikutnya	次へ	下一步	다음	Avanti	Volgende	Dalej
+Edit	Editar	Изменить	संपादित करें	Edit	編集	编辑	편집	Modifica	Bewerken	Edytuj
+Delete	Excluir	Удалить	हटाएँ	Hapus	削除	删除	삭제	Elimina	Verwijderen	Usuń
+Remove	Remover	Убрать	हटाएँ	Hapus	削除	移除	제거	Rimuovi	Verwijderen	Usuń
+Create	Criar	Создать	बनाएँ	Buat	作成	创建	만들기	Crea	Maken	Utwórz
+Join	Entrar	Присоединиться	जुड़ें	Gabung	参加	加入	참가	Unisciti	Deelnemen	Dołącz
+Open	Abrir	Открыть	खोलें	Buka	開く	打开	열기	Apri	Openen	Otwórz
+Retry	Tentar novamente	Повторить	फिर कोशिश करें	Coba lagi	再試行	重试	다시 시도	Riprova	Opnieuw proberen	Spróbuj ponownie
+Upload	Enviar	Загрузить	अपलोड करें	Unggah	アップロード	上传	업로드	Carica	Uploaden	Prześlij
+Name	Nome	Название	नाम	Nama	名前	名称	이름	Nome	Naam	Nazwa
+Clear	Limpar	Очистить	साफ़ करें	Hapus	クリア	清除	지우기	Cancella	Wissen	Wyczyść
+Confirm	Confirmar	Подтвердить	पुष्टि करें	Konfirmasi	確認	确认	확인	Conferma	Bevestigen	Potwierdź
+Roles	Cargos	Роли	भूमिकाएँ	Peran	ロール	角色	역할	Ruoli	Rollen	Role
+Overview	Visão geral	Обзор	अवलोकन	Ringkasan	概要	概览	개요	Panoramica	Overzicht	Przegląd
+Emoji	Emojis	Эмодзи	इमोजी	Emoji	絵文字	表情符号	이모지	Emoji	Emoji	Emoji
+Stickers	Figurinhas	Стикеры	स्टिकर	Stiker	ステッカー	贴纸	스티커	Sticker	Stickers	Naklejki
+Integrations	Integrações	Интеграции	इंटीग्रेशन	Integrasi	連携	集成	연동	Integrazioni	Integraties	Integracje
+Invites	Convites	Приглашения	आमंत्रण	Undangan	招待	邀请	초대	Inviti	Uitnodigingen	Zaproszenia
+Bans	Banimentos	Баны	प्रतिबंध	Blokir	BAN	封禁	차단 목록	Ban	Verbanningen	Bany
+Audit Log	Registro de auditoria	Журнал аудита	ऑडिट लॉग	Log Audit	監査ログ	审核日志	감사 로그	Registro attività	Auditlogboek	Dziennik zdarzeń
+Moderation	Moderação	Модерация	मॉडरेशन	Moderasi	モデレーション	管理	관리	Moderazione	Moderatie	Moderacja
+Delete Server	Excluir servidor	Удалить сервер	सर्वर हटाएँ	Hapus Server	サーバーを削除	删除服务器	서버 삭제	Elimina server	Server verwijderen	Usuń serwer
+Server Boost	Impulso do servidor	Буст сервера	सर्वर बूस्ट	Boost Server	サーバーブースト	服务器加成	서버 부스트	Boost del server	Serverboost	Boost serwera
+Rules Channel	Canal de regras	Канал с правилами	नियम चैनल	Kanal Aturan	ルールチャンネル	规则频道	규칙 채널	Canale delle regole	Regelkanaal	Kanał z regułami
+Enable Discovery	Ativar descoberta	Включить обнаружение	डिस्कवरी चालू करें	Aktifkan Penemuan	ディスカバリーを有効にする	启用发现	디스커버리 활성화	Attiva Esplora	Ontdekken inschakelen	Włącz odkrywanie
+Discover	Descobrir	Обзор	खोजें	Temukan	見つける	发现	탐색	Scopri	Ontdekken	Odkrywaj
+Featured communities	Comunidades em destaque	Рекомендуемые сообщества	चुनिंदा समुदाय	Komunitas pilihan	注目のコミュニティ	精选社区	추천 커뮤니티	Community in evidenza	Uitgelichte communities	Polecane społeczności
+Search results	Resultados da pesquisa	Результаты поиска	खोज परिणाम	Hasil pencarian	検索結果	搜索结果	검색 결과	Risultati di ricerca	Zoekresultaten	Wyniki wyszukiwania
+Explore communities	Explorar comunidades	Обзор сообществ	समुदाय खोजें	Jelajahi komunitas	コミュニティを探す	探索社区	커뮤니티 둘러보기	Esplora le community	Communities verkennen	Przeglądaj społeczności
+Find your community on Jorcord	Encontre sua comunidade no Jorcord	Найдите своё сообщество на Jorcord	Jorcord पर अपना समुदाय खोजें	Temukan komunitasmu di Jorcord	Jorcordであなたのコミュニティを見つけよう	在 Jorcord 上找到你的社区	Jorcord에서 나만의 커뮤니티를 찾아보세요	Trova la tua community su Jorcord	Vind je community op Jorcord	Znajdź swoją społeczność w Jorcord
+Welcome to {name}	Bem-vindo(a) a {name}	Добро пожаловать в {name}	{name} में आपका स्वागत है	Selamat datang di {name}	{name}へようこそ	欢迎来到 {name}	{name}에 오신 것을 환영합니다	Benvenuto in {name}	Welkom bij {name}	Witamy w {name}
+Review the rules	Leia as regras	Ознакомьтесь с правилами	नियम पढ़ें	Tinjau aturan	ルールを確認	查看规则	규칙 확인하기	Leggi le regole	Bekijk de regels	Zapoznaj się z regułami
+I have read and agree to the rules	Li e concordo com as regras	Я прочитал(а) правила и согласен(на)	मैंने नियम पढ़ लिए हैं और सहमत हूँ	Saya telah membaca dan menyetujui aturan	ルールを読み、同意します	我已阅读并同意规则	규칙을 읽었으며 동의합니다	Ho letto e accetto le regole	Ik heb de regels gelezen en ga akkoord	Przeczytałem(-am) i akceptuję regulamin
+Complete	Concluir	Завершить	पूरा करें	Selesai	完了する	完成	완료	Completa	Voltooien	Zakończ
+Get Started	Começar	Начать	शुरू करें	Mulai	始める	开始使用	시작하기	Inizia	Aan de slag	Rozpocznij
+Maybe later	Talvez depois	Может быть, позже	शायद बाद में	Mungkin nanti	あとで	以后再说	나중에	Forse più tardi	Misschien later	Może później
+Start here	Comece aqui	Начните здесь	यहाँ से शुरू करें	Mulai di sini	ここから始める	从这里开始	여기서 시작	Inizia da qui	Begin hier	Zacznij tutaj
+Set Custom Status	Definir status personalizado	Установить свой статус	कस्टम स्टेटस सेट करें	Atur Status Kustom	カスタムステータスを設定	设置自定义状态	사용자 지정 상태 설정	Imposta stato personalizzato	Aangepaste status instellen	Ustaw status niestandardowy
+Edit Custom Status	Editar status personalizado	Изменить свой статус	कस्टम स्टेटस संपादित करें	Edit Status Kustom	カスタムステータスを編集	编辑自定义状态	사용자 지정 상태 편집	Modifica stato personalizzato	Aangepaste status bewerken	Edytuj status niestandardowy
+Clear Custom Status	Limpar status personalizado	Очистить свой статус	कस्टम स्टेटस हटाएँ	Hapus Status Kustom	カスタムステータスを消去	清除自定义状态	사용자 지정 상태 지우기	Cancella stato personalizzato	Aangepaste status wissen	Wyczyść status niestandardowy
+Set a custom status	Defina um status personalizado	Установите свой статус	कस्टम स्टेटस सेट करें	Atur status kustom	カスタムステータスを設定する	设置自定义状态	사용자 지정 상태를 설정하세요	Imposta uno stato personalizzato	Stel een aangepaste status in	Ustaw status niestandardowy
+Clear after	Limpar após	Очистить через	इसके बाद साफ़ करें	Hapus setelah	消去までの時間	清除时间	지우기까지	Cancella dopo	Wissen na	Wyczyść po
+Don't clear	Não limpar	Не очищать	साफ़ न करें	Jangan hapus	消去しない	不清除	지우지 않음	Non cancellare	Niet wissen	Nie czyść
+Today	Hoje	Сегодня	आज	Hari ini	今日	今天	오늘	Oggi	Vandaag	Dzisiaj
+Keyboard Shortcuts	Atalhos de teclado	Горячие клавиши	कीबोर्ड शॉर्टकट	Pintasan Keyboard	キーボードショートカット	键盘快捷键	키보드 단축키	Scorciatoie da tastiera	Sneltoetsen	Skróty klawiszowe
+Navigation	Navegação	Навигация	नेविगेशन	Navigasi	ナビゲーション	导航	탐색	Navigazione	Navigatie	Nawigacja
+Messaging	Mensagens	Сообщения	मैसेजिंग	Pesan	メッセージ	消息	메시지	Messaggi	Berichten	Wiadomości
+Voice	Voz	Голос	वॉइस	Suara	音声	语音	음성	Voce	Spraak	Głos
+Text formatting	Formatação de texto	Форматирование текста	टेक्स्ट फ़ॉर्मेटिंग	Format teks	テキストの書式	文本格式	텍스트 서식	Formattazione del testo	Tekstopmaak	Formatowanie tekstu
+Search shortcuts	Atalhos de pesquisa	Поисковые сокращения	खोज शॉर्टकट	Pintasan pencarian	検索ショートカット	搜索快捷方式	검색 단축키	Scorciatoie di ricerca	Zoeksnelkoppelingen	Skróty wyszukiwania
+Customize keybinds	Personalizar atalhos	Настроить горячие клавиши	कीबाइंड कस्टमाइज़ करें	Sesuaikan pintasan	キーバインドをカスタマイズ	自定义快捷键	단축키 사용자 지정	Personalizza le scorciatoie	Sneltoetsen aanpassen	Dostosuj skróty klawiszowe
+Quick switcher	Alternador rápido	Быстрый переход	क्विक स्विचर	Pengalih cepat	クイックスイッチャー	快速切换	빠른 전환	Selettore rapido	Snelle wisselaar	Szybki przełącznik
+Send message	Enviar mensagem	Отправить сообщение	संदेश भेजें	Kirim pesan	メッセージを送信	发送消息	메시지 보내기	Invia messaggio	Bericht versturen	Wyślij wiadomość
+Push Notifications	Notificações push	Push-уведомления	पुश सूचनाएँ	Notifikasi Push	プッシュ通知	推送通知	푸시 알림	Notifiche push	Pushmeldingen	Powiadomienia push
+Push on this device	Push neste dispositivo	Push на этом устройстве	इस डिवाइस पर पुश	Push di perangkat ini	このデバイスでプッシュ	此设备上的推送	이 기기의 푸시	Push su questo dispositivo	Push op dit apparaat	Push na tym urządzeniu
+Registered devices	Dispositivos registrados	Зарегистрированные устройства	पंजीकृत डिवाइस	Perangkat terdaftar	登録済みデバイス	已注册设备	등록된 기기	Dispositivi registrati	Geregistreerde apparaten	Zarejestrowane urządzenia
+Receive push notifications	Receber notificações push	Получать push-уведомления	पुश सूचनाएँ प्राप्त करें	Terima notifikasi push	プッシュ通知を受信	接收推送通知	푸시 알림 받기	Ricevi notifiche push	Pushmeldingen ontvangen	Otrzymuj powiadomienia push
+Enable Desktop Notifications	Ativar notificações na área de trabalho	Включить уведомления на рабочем столе	डेस्कटॉप सूचनाएँ चालू करें	Aktifkan Notifikasi Desktop	デスクトップ通知を有効にする	启用桌面通知	데스크톱 알림 켜기	Attiva le notifiche desktop	Bureaubladmeldingen inschakelen	Włącz powiadomienia na pulpicie
+Message Sounds	Sons de mensagem	Звуки сообщений	संदेश ध्वनियाँ	Suara Pesan	メッセージ音	消息提示音	메시지 소리	Suoni dei messaggi	Berichtgeluiden	Dźwięki wiadomości
+All Messages	Todas as mensagens	Все сообщения	सभी संदेश	Semua Pesan	すべてのメッセージ	所有消息	모든 메시지	Tutti i messaggi	Alle berichten	Wszystkie wiadomości
+Only @mentions	Apenas @menções	Только @упоминания	केवल @उल्लेख	Hanya @sebutan	@メンションのみ	仅 @提及	@멘션만	Solo @menzioni	Alleen @vermeldingen	Tylko @wzmianki
+Nothing	Nada	Ничего	कुछ नहीं	Tidak ada	なし	无	없음	Niente	Niets	Nic
+Use my default	Usar meu padrão	Использовать по умолчанию	मेरा डिफ़ॉल्ट उपयोग करें	Gunakan default saya	デフォルトを使用	使用我的默认设置	내 기본값 사용	Usa il mio predefinito	Mijn standaard gebruiken	Użyj mojego domyślnego
+Muted	Silenciado	Без уведомлений	म्यूट किया गया	Dibisukan	ミュート中	已静音	음소거됨	Silenziato	Gedempt	Wyciszono
+Mute duration	Duração do silêncio	Срок отключения	म्यूट की अवधि	Durasi bisu	ミュートの期間	静音时长	음소거 기간	Durata del silenzio	Duur van dempen	Czas wyciszenia
+Until I turn it back on	Até eu reativar	Пока я не включу	जब तक मैं चालू न करूँ	Sampai saya aktifkan lagi	オンに戻すまで	直到我重新开启	다시 켤 때까지	Finché non lo riattivo	Totdat ik het weer aanzet	Dopóki nie włączę
+For 15 Minutes	Por 15 minutos	На 15 минут	15 मिनट के लिए	Selama 15 Menit	15分間	15 分钟	15분 동안	Per 15 minuti	Gedurende 15 minuten	Na 15 minut
+For 1 Hour	Por 1 hora	На 1 час	1 घंटे के लिए	Selama 1 Jam	1時間	1 小时	1시간 동안	Per 1 ora	Gedurende 1 uur	Na 1 godzinę
+For 3 Hours	Por 3 horas	На 3 часа	3 घंटे के लिए	Selama 3 Jam	3時間	3 小时	3시간 동안	Per 3 ore	Gedurende 3 uur	Na 3 godziny
+For 8 Hours	Por 8 horas	На 8 часов	8 घंटे के लिए	Selama 8 Jam	8時間	8 小时	8시간 동안	Per 8 ore	Gedurende 8 uur	Na 8 godzin
+For 24 Hours	Por 24 horas	На 24 часа	24 घंटे के लिए	Selama 24 Jam	24時間	24 小时	24시간 동안	Per 24 ore	Gedurende 24 uur	Na 24 godziny
+Enable Streamer Mode	Ativar modo streamer	Включить режим стримера	स्ट्रीमर मोड चालू करें	Aktifkan Mode Streamer	配信者モードを有効にする	启用主播模式	스트리머 모드 켜기	Attiva modalità streamer	Streamermodus inschakelen	Włącz tryb streamera
+Hide personal information	Ocultar informações pessoais	Скрывать личную информацию	व्यक्तिगत जानकारी छिपाएँ	Sembunyikan informasi pribadi	個人情報を隠す	隐藏个人信息	개인 정보 숨기기	Nascondi le informazioni personali	Persoonlijke informatie verbergen	Ukryj dane osobiste
+Hide invite links	Ocultar links de convite	Скрывать ссылки-приглашения	आमंत्रण लिंक छिपाएँ	Sembunyikan tautan undangan	招待リンクを隠す	隐藏邀请链接	초대 링크 숨기기	Nascondi i link di invito	Uitnodigingslinks verbergen	Ukryj linki zaproszeń
+Disable sounds	Desativar sons	Отключить звуки	ध्वनियाँ बंद करें	Nonaktifkan suara	サウンドを無効にする	禁用声音	소리 끄기	Disattiva i suoni	Geluiden uitschakelen	Wyłącz dźwięki
+Disable notifications	Desativar notificações	Отключить уведомления	सूचनाएँ बंद करें	Nonaktifkan notifikasi	通知を無効にする	禁用通知	알림 끄기	Disattiva le notifiche	Meldingen uitschakelen	Wyłącz powiadomienia
+Streamer Mode is on	O modo streamer está ativado	Режим стримера включён	स्ट्रीमर मोड चालू है	Mode Streamer aktif	配信者モードがオンです	主播模式已开启	스트리머 모드가 켜져 있습니다	La modalità streamer è attiva	Streamermodus staat aan	Tryb streamera jest włączony
+Launch at login	Iniciar com o sistema	Запускать при входе в систему	लॉगिन पर शुरू करें	Jalankan saat login	ログイン時に起動	登录时启动	로그인 시 실행	Avvia all'accesso	Starten bij inloggen	Uruchamiaj przy logowaniu
+Check for updates	Verificar atualizações	Проверить обновления	अपडेट जाँचें	Periksa pembaruan	アップデートを確認	检查更新	업데이트 확인	Controlla aggiornamenti	Controleren op updates	Sprawdź aktualizacje
+Dark	Escuro	Тёмная	गहरा	Gelap	ダーク	深色	다크	Scuro	Donker	Ciemny
+Light	Claro	Светлая	हल्का	Terang	ライト	浅色	라이트	Chiaro	Licht	Jasny
+Theme	Tema	Тема	थीम	Tema	テーマ	主题	테마	Tema	Thema	Motyw
+Profile Theme	Tema do perfil	Тема профиля	प्रोफ़ाइल थीम	Tema Profil	プロフィールテーマ	个人资料主题	프로필 테마	Tema del profilo	Profielthema	Motyw profilu
+Banner	Banner	Баннер	बैनर	Banner	バナー	横幅	배너	Banner	Banner	Baner
+Avatar	Avatar	Аватар	अवतार	Avatar	アバター	头像	아바타	Avatar	Avatar	Awatar
+About Me	Sobre mim	Обо мне	मेरे बारे में	Tentang Saya	自己紹介	关于我	자기소개	Su di me	Over mij	O mnie
+Pronouns	Pronomes	Местоимения	सर्वनाम	Kata ganti	代名詞	代词	대명사	Pronomi	Voornaamwoorden	Zaimki
+Edit Profile	Editar perfil	Изменить профиль	प्रोफ़ाइल संपादित करें	Edit Profil	プロフィールを編集	编辑个人资料	프로필 편집	Modifica profilo	Profiel bewerken	Edytuj profil
+Role Icon	Ícone do cargo	Значок роли	भूमिका आइकन	Ikon Peran	ロールアイコン	角色图标	역할 아이콘	Icona del ruolo	Rolpictogram	Ikona roli
+Webhook name	Nome do webhook	Название вебхука	वेबहुक का नाम	Nama webhook	Webhook名	Webhook 名称	웹후크 이름	Nome del webhook	Naam van webhook	Nazwa webhooka
+New Webhook	Novo webhook	Новый вебхук	नया वेबहुक	Webhook Baru	新しいWebhook	新建 Webhook	새 웹후크	Nuovo webhook	Nieuwe webhook	Nowy webhook
+Copy URL	Copiar URL	Копировать URL	URL कॉपी करें	Salin URL	URLをコピー	复制 URL	URL 복사	Copia URL	URL kopiëren	Kopiuj URL
+New Category	Nova categoria	Новая категория	नई श्रेणी	Kategori Baru	新しいカテゴリ	新建分类	새 카테고리	Nuova categoria	Nieuwe categorie	Nowa kategoria
+New Channel	Novo canal	Новый канал	नया चैनल	Kanal Baru	新しいチャンネル	新建频道	새 채널	Nuovo canale	Nieuw kanaal	Nowy kanał
+Join a Server	Entrar em um servidor	Присоединиться к серверу	सर्वर से जुड़ें	Gabung ke Server	サーバーに参加	加入服务器	서버 참가하기	Unisciti a un server	Deelnemen aan een server	Dołącz do serwera
+Create Your Server	Crie seu servidor	Создайте свой сервер	अपना सर्वर बनाएँ	Buat Servermu	サーバーを作成	创建你的服务器	내 서버 만들기	Crea il tuo server	Maak je server	Utwórz własny serwer
+Server Name	Nome do servidor	Название сервера	सर्वर का नाम	Nama Server	サーバー名	服务器名称	서버 이름	Nome del server	Servernaam	Nazwa serwera
+Find or start a conversation	Encontre ou inicie uma conversa	Найти или начать беседу	बातचीत खोजें या शुरू करें	Cari atau mulai percakapan	会話を検索または開始	查找或开始对话	대화 찾기 또는 시작하기	Trova o avvia una conversazione	Zoek of start een gesprek	Znajdź lub rozpocznij rozmowę
+Where would you like to go?	Para onde você quer ir?	Куда хотите перейти?	आप कहाँ जाना चाहेंगे?	Mau ke mana?	どこへ移動しますか？	你想去哪里？	어디로 이동할까요?	Dove vuoi andare?	Waar wil je heen?	Dokąd chcesz przejść?
+No conversations yet. Find a friend and say hi.	Ainda não há conversas. Encontre um amigo e diga oi.	Бесед пока нет. Найдите друга и поздоровайтесь.	अभी कोई बातचीत नहीं। किसी दोस्त को ढूँढें और हेलो कहें।	Belum ada percakapan. Temukan teman dan sapa.	まだ会話がありません。フレンドを見つけて挨拶しましょう。	还没有对话。找个好友打个招呼吧。	아직 대화가 없습니다. 친구를 찾아 인사해 보세요.	Ancora nessuna conversazione. Trova un amico e saluta.	Nog geen gesprekken. Zoek een vriend en zeg hallo.	Brak rozmów. Znajdź znajomego i się przywitaj.
+Loading…	Carregando…	Загрузка…	लोड हो रहा है…	Memuat…	読み込み中…	加载中…	불러오는 중…	Caricamento…	Laden…	Ładowanie…
+Connecting…	Conectando…	Подключение…	कनेक्ट हो रहा है…	Menghubungkan…	接続中…	正在连接…	연결 중…	Connessione…	Verbinden…	Łączenie…
+Reconnecting…	Reconectando…	Переподключение…	फिर से कनेक्ट हो रहा है…	Menghubungkan ulang…	再接続中…	正在重新连接…	다시 연결 중…	Riconnessione…	Opnieuw verbinden…	Ponowne łączenie…
+Open navigation	Abrir navegação	Открыть навигацию	नेविगेशन खोलें	Buka navigasi	ナビゲーションを開く	打开导航	탐색 열기	Apri navigazione	Navigatie openen	Otwórz nawigację
+Set status	Definir status	Установить статус	स्टेटस सेट करें	Atur status	ステータスを設定	设置状态	상태 설정	Imposta stato	Status instellen	Ustaw status
+Status	Status	Статус	स्टेटस	Status	ステータス	状态	상태	Stato	Status	Status
+Custom Status	Status personalizado	Свой статус	कस्टम स्टेटस	Status Kustom	カスタムステータス	自定义状态	사용자 지정 상태	Stato personalizzato	Aangepaste status	Status niestandardowy
+Accept	Aceitar	Принять	स्वीकार करें	Terima	承認	接受	수락	Accetta	Accepteren	Akceptuj
+Ignore	Ignorar	Игнорировать	अनदेखा करें	Abaikan	無視	忽略	무시	Ignora	Negeren	Ignoruj
+Block	Bloquear	Заблокировать	ब्लॉक करें	Blokir	ブロック	屏蔽	차단	Blocca	Blokkeren	Zablokuj
+Unblock	Desbloquear	Разблокировать	अनब्लॉक करें	Buka Blokir	ブロック解除	取消屏蔽	차단 해제	Sblocca	Deblokkeren	Odblokuj
+Kick	Expulsar	Выгнать	निकालें	Keluarkan	キック	踢出	추방	Espelli	Verwijderen	Wyrzuć
+Ban	Banir	Забанить	प्रतिबंधित करें	Blokir	BAN	封禁	차단	Banna	Verbannen	Zbanuj
+Typing…	Digitando…	Печатает…	टाइप कर रहा है…	Sedang mengetik…	入力中…	正在输入…	입력 중…	Sta scrivendo…	Typt…	Pisze…

@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Intents, Perm } from '@jorcord/shared';
 import { Api, startServer, type TestEnv } from '../../../apps/server/test/helpers';
-import { Bot, Rest, RestError, actionRow, button, container, mediaGallery, section, separator, textDisplay, thumbnail, v2, MessageFlags } from '../src/index';
+import { Bot, Rest, RestError, actionRow, button, container, mediaGallery, section, separator, textDisplay, thumbnail, v2, MessageFlags, emojiMarkup, IntegrationType } from '../src/index';
 
 let env: TestEnv, api: Api, base: string;
 beforeAll(async () => { env = await startServer(); api = new Api(env); base = `http://127.0.0.1:${env.port}`; });
@@ -115,5 +115,24 @@ describe('bot-sdk against a running server', () => {
     await expect(new Bot({ token: app.token + 'x', baseUrl: base }).login()).rejects.toBeInstanceOf(RestError);
     await expect(new Bot({ token: app.token, baseUrl: base, intents: Intents.MESSAGE_CONTENT }).login()).rejects.toThrow('4014');
     expect(await new Rest(base, null).request('GET', '/auth/sessions').catch((e) => e.status)).toBe(401);
+  });
+});
+
+describe('bot-sdk developer-platform helpers', () => {
+  it('manages application emoji, registers user-installable commands and sends an audit reason', async () => {
+    const { app } = await install();
+    const bot = new Bot({ token: app.token, baseUrl: base });
+    const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+    const e = await bot.createEmoji('sparkle', png);
+    expect(emojiMarkup(e)).toBe(`<:sparkle:${e.id}>`);
+    expect((await bot.listEmojis()).map((x) => x.name)).toEqual(['sparkle']);
+    expect((await bot.renameEmoji(e.id, 'glitter')).name).toBe('glitter');
+    await bot.deleteEmoji(e.id);
+    expect(await bot.listEmojis()).toEqual([]);
+    const [c] = await bot.registerCommands([{ name: 'anywhere', description: 'Works everywhere', integrationTypes: [IntegrationType.GUILD_INSTALL, IntegrationType.USER_INSTALL], contexts: [0, 1, 2] }]);
+    expect(c).toMatchObject({ integrationTypes: [0, 1], contexts: [0, 1, 2] });
+    // X-Audit-Log-Reason is percent-encoded; the server accepts it on any route
+    const rest = new Rest(base, app.token);
+    await expect(rest.request('GET', '/users/@me', undefined, { reason: 'läuft ✓' })).resolves.toBeTruthy();
   });
 });

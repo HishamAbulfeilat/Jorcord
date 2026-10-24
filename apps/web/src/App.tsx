@@ -32,6 +32,8 @@ import { AppEffects } from '@/components/layout/AppEffects';
 import { FIXED_SERVER, getServerUrl, isNative, isStaticHost, needsServerSetup, onServerChange } from '@/lib/server';
 import { initNative, syncStatusBar } from '@/lib/native';
 import { setLocale, t } from '@/i18n';
+import { applyA11y } from '@/lib/a11y';
+import { PRESENCE_COLOR } from '@/components/ui/Avatar';
 import { IncomingCalls } from '@/voice/IncomingCall';
 
 function useThemeEffects() {
@@ -42,6 +44,7 @@ function useThemeEffects() {
     r.style.setProperty('--font-scale', String(prefs.fontScale));
     document.querySelector('meta[name=theme-color]')?.setAttribute('content', prefs.theme === 'light' ? '#e3e5e8' : prefs.theme === 'amoled' ? '#000000' : '#1e1f22');
     if (prefs.highContrast) r.dataset.contrast = 'more'; else delete r.dataset.contrast;
+    applyA11y(r, { dyslexiaFont: prefs.dyslexiaFont, colorBlindMode: prefs.colorBlindMode, saturation: prefs.saturation, roleContrast: prefs.roleContrast, theme: prefs.theme }, PRESENCE_COLOR);
     syncStatusBar(prefs.theme);
   }, [prefs]);
   useEffect(() => { if (me?.theme && me.theme !== useUI.getState().prefs.theme && !localStorage.getItem('jorcord.prefs.v1')) useUI.getState().setPref('theme', me.theme); }, [me?.theme]);

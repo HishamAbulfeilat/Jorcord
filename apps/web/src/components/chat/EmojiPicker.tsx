@@ -1,4 +1,5 @@
 import { memo, useCallback, useMemo, useRef, useState } from 'react';
+import { StickerImage } from './StickerImage';
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Search, Smile, Clock, Film, Star, Sticker as StickerIcon, Zap } from 'lucide-react';
 import { fileUrl } from '@/lib/format';
@@ -126,7 +127,7 @@ function StickerGrid({ guildId, q, onPick, externalStickers }: { guildId?: strin
   const others = useMemo(() => (guildId ? order.filter((id) => id !== guildId).map((id) => guilds[id]).filter((g): g is NonNullable<typeof g> => !!g && g.stickers.length > 0) : []), [order, guilds, guildId]);
   const match = (s: { name: string }) => s.name.toLowerCase().includes(q.toLowerCase());
   const list = stickers.filter(match);
-  const Cell = (s: { id: string; name: string; url: string }, disabled = false) => <button key={s.id} role="gridcell" aria-label={s.name} title={disabled ? t('You need the Use External Stickers permission in this channel') : s.name} disabled={disabled} onClick={() => onPick(s)} className={cx('flex aspect-square items-center justify-center rounded-lg p-1', disabled ? 'cursor-not-allowed opacity-40' : 'hover:bg-hover')}><img src={fileUrl(s.url) ?? s.url} alt={s.name} className="max-h-full max-w-full object-contain" loading="lazy" /></button>;
+  const Cell = (s: { id: string; name: string; url: string; format?: string }, disabled = false) => <button key={s.id} role="gridcell" aria-label={s.name} title={disabled ? t('You need the Use External Stickers permission in this channel') : s.name} disabled={disabled} onClick={() => onPick(s)} className={cx('flex aspect-square items-center justify-center rounded-lg p-1', disabled ? 'cursor-not-allowed opacity-40' : 'hover:bg-hover')}><StickerImage sticker={s} className="max-h-full max-w-full object-contain" /></button>;
   return (
     <div className="scroller min-h-0 flex-1 p-2" role="grid" aria-label={t('Stickers')}>
       {guildId && <h3 className="py-1 text-xs font-bold uppercase tracking-wide text-muted">{t('This server')}</h3>}

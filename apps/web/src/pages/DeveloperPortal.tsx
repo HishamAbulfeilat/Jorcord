@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Bot, Code2, Copy, KeyRound, Link2, Plus, Settings as Cog, Terminal, Trash2, TriangleAlert } from 'lucide-react';
+import { Smile, ArrowLeft, Bot, Code2, Copy, KeyRound, Link2, Plus, Settings as Cog, Terminal, Trash2, TriangleAlert } from 'lucide-react';
 import { DIRECTORY_CATEGORIES, OAuthScopes } from '@jorcord/shared';
 import type { Application, DirectoryCategory, OAuthScope, PermName } from '@jorcord/shared';
 import { create } from 'zustand';
@@ -95,11 +95,11 @@ function AppList() {
 
 function General({ app }: { app: Application }) {
   const qc = useQueryClient(); const nav = useNavigate(); const openModal = useUI((s) => s.openModal);
-  const [f, setF] = useState({ name: app.name, description: app.description, icon: app.icon, endpoint: app.interactionsEndpointUrl ?? '' }); const [busy, setBusy] = useState(false);
-  const dirty = f.name !== app.name || f.description !== app.description || f.icon !== app.icon || f.endpoint !== (app.interactionsEndpointUrl ?? '');
+  const [f, setF] = useState({ name: app.name, description: app.description, icon: app.icon, endpoint: app.interactionsEndpointUrl ?? '', activity: app.activityUrl ?? '' }); const [busy, setBusy] = useState(false);
+  const dirty = f.name !== app.name || f.description !== app.description || f.icon !== app.icon || f.endpoint !== (app.interactionsEndpointUrl ?? '') || f.activity !== (app.activityUrl ?? '');
   const save = async () => {
     setBusy(true);
-    try { await api.applications.patch(app.id, { name: f.name.trim(), description: f.description, icon: f.icon, interactionsEndpointUrl: f.endpoint.trim() || null }); await qc.invalidateQueries({ queryKey: ['apps'] }); toast(t('Application saved'), 'success'); }
+    try { await api.applications.patch(app.id, { name: f.name.trim(), description: f.description, icon: f.icon, interactionsEndpointUrl: f.endpoint.trim() || null, activityUrl: f.activity.trim() || null }); await qc.invalidateQueries({ queryKey: ['apps'] }); toast(t('Application saved'), 'success'); }
     catch (e) { toastError(e); } setBusy(false);
   };
   return (<>
@@ -110,7 +110,8 @@ function General({ app }: { app: Application }) {
     <CopyField label={t('Application ID')} value={app.id} testid="app-id" />
     <CopyField label={t('Public Key')} value={app.publicKey} testid="app-public-key" />
     <Field label={t('Interactions Endpoint URL')} hint={t('Optional. Jorcord sends signed HTTP requests here instead of the gateway. It must answer a signed PING with {type:1}.')}><input className="field" type="url" aria-label={t('Interactions Endpoint URL')} value={f.endpoint} onChange={(e) => setF({ ...f, endpoint: e.target.value })} placeholder="https://example.com/interactions" /></Field>
-    <div className="flex items-center gap-2"><button className="btn btn-primary btn-lg" disabled={!dirty || busy || !f.name.trim()} onClick={save}>{t('Save Changes')}</button>{dirty && <button className="btn btn-link" onClick={() => setF({ name: app.name, description: app.description, icon: app.icon, endpoint: app.interactionsEndpointUrl ?? '' })}>{t('Reset')}</button>}</div>
+    <Field label={t('Activity URL')} hint={t('Optional. An https page Jorcord shows in a sandboxed frame when someone launches your app in a voice channel (Embedded App SDK).')}><input className="field" type="url" aria-label={t('Activity URL')} value={f.activity} onChange={(e) => setF({ ...f, activity: e.target.value })} placeholder="https://example.com/activity" /></Field>
+    <div className="flex items-center gap-2"><button className="btn btn-primary btn-lg" disabled={!dirty || busy || !f.name.trim()} onClick={save}>{t('Save Changes')}</button>{dirty && <button className="btn btn-link" onClick={() => setF({ name: app.name, description: app.description, icon: app.icon, endpoint: app.interactionsEndpointUrl ?? '', activity: app.activityUrl ?? '' })}>{t('Reset')}</button>}</div>
     <h3 className="mb-2 mt-10 text-xs font-bold uppercase tracking-wide text-danger">{t('Danger zone')}</h3>
     <button className="btn btn-danger btn-lg" onClick={() => openModal({ kind: 'prompt', title: `Delete '${app.name}'`, label: `Type the application name (${app.name}) to confirm. The bot is removed from every server.`, onSubmit: async (v) => { if (v !== app.name) { toast(t('Name did not match'), 'error'); return; } try { await api.applications.delete(app.id); await qc.invalidateQueries({ queryKey: ['apps'] }); nav('/developers'); } catch (e) { toastError(e); } } })}>{t('Delete App')}</button>
   </>);
@@ -221,7 +222,38 @@ function CommandScope({ app, scope, onChange }: { app: Application; scope: { id?
   );
 }
 
-const TABS = [['information', 'General Information', Cog], ['oauth2', 'OAuth2', Link2], ['bot', 'Bot', Bot], ['commands', 'Commands', Terminal]] as const;
+const TABS = [['information', 'General Information', Cog], ['oauth2', 'OAuth2', Link2], ['bot', 'Bot', Bot], ['commands', 'Commands', Terminal], ['emoji', 'Emoji', Smile]] as const;
+
+/** Application emoji: owned by the app, usable by its bot in any server as <:name:id>. Images are sent as data URIs (png/gif/webp, at most 256 KB). */
+function AppEmojiTab({ app }: { app: Application }) {
+  const qc = useQueryClient();
+  const q = useQuery({ queryKey: ['app-emoji', app.id], queryFn: () => api.applications.emojis(app.id) });
+  const [name, setName] = useState(''); const [busy, setBusy] = useState(false);
+  const upload = async (file: File | undefined) => {
+    if (!file) return;
+    if (file.size > 256 * 1024) { toast(t('Emoji images are limited to 256 KB.'), 'error'); return; }
+    setBusy(true);
+    try {
+      const image = await new Promise<string>((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result)); r.onerror = () => rej(r.error); r.readAsDataURL(file); });
+      const n = (name.trim() || file.name.replace(/\.[^.]+$/, '')).replace(/[^\w]/g, '_').slice(0, 32);
+      await api.applications.createEmoji(app.id, { name: n.length < 2 ? `${n}_` : n, image }); setName(''); await qc.invalidateQueries({ queryKey: ['app-emoji', app.id] });
+    } catch (e) { toastError(e); } finally { setBusy(false); }
+  };
+  return (<>
+    <h1 className="mb-1 text-xl font-bold text-header">{t('Application Emoji')}</h1>
+    <p className="mb-4 text-sm text-muted">{t('Emoji owned by this app. Your bot can use them in any message with the markup shown below.')}</p>
+    <div className="mb-4 flex flex-wrap items-end gap-2">
+      <Field label={t('Name')}><input className="field" aria-label={t('Emoji name')} value={name} maxLength={32} onChange={(e) => setName(e.target.value)} placeholder="party_parrot" /></Field>
+      <label className="btn btn-primary btn-lg cursor-pointer">{t('Upload')}<input type="file" accept="image/png,image/gif,image/webp,image/jpeg" className="sr-only" disabled={busy} onChange={(e) => { void upload(e.target.files?.[0]); e.target.value = ''; }} /></label>
+    </div>
+    {q.isLoading ? <Spinner /> : !q.data?.length ? <Empty icon={<Smile size={40} />} title={t('No application emoji yet')} /> : (
+      <ul className="grid gap-2">{q.data.map((e) => (
+        <li key={e.id} className="flex items-center gap-3 rounded bg-rail px-3 py-2"><img src={fileUrl(e.url) ?? e.url} alt={e.name} className="h-8 w-8 object-contain" />
+          <code className="min-w-0 flex-1 truncate text-sm text-header">{`<${e.animated ? 'a' : ''}:${e.name}:${e.id}>`}</code>
+          <button className="btn btn-secondary" onClick={() => void copyText(`<${e.animated ? 'a' : ''}:${e.name}:${e.id}>`).then(() => toast(t('Copied'), 'success'))}><Copy size={14} /></button>
+          <button className="btn btn-danger" aria-label={t('Delete')} onClick={() => api.applications.deleteEmoji(app.id, e.id).then(() => qc.invalidateQueries({ queryKey: ['app-emoji', app.id] })).catch(toastError)}><Trash2 size={14} /></button></li>))}</ul>)}
+  </>);
+}
 
 function AppPage() {
   const { appId = '', tab = 'information' } = useParams(); const token = useSecrets((s) => s.token[appId]); const secret = useSecrets((s) => s.secret[appId]);
@@ -244,6 +276,7 @@ function AppPage() {
         {tab === 'oauth2' && <OAuth key={app.id} app={app} />}
         {tab === 'bot' && <BotTab key={app.id} app={app} />}
         {tab === 'commands' && <CommandsTab key={app.id} app={app} />}
+        {tab === 'emoji' && <AppEmojiTab key={app.id} app={app} />}
         {!TABS.some(([id]) => id === tab) && <Navigate to={`/developers/${app.id}/information`} replace />}
       </section>
     </div>

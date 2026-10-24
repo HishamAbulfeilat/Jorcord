@@ -1,0 +1,13 @@
+{
+  "name": "@jorcord/activities-sdk",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Embedded App SDK for Jorcord activities: a dependency-free postMessage client for pages shown in a voice channel's sandboxed iframe.",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "exports": { ".": "./src/index.ts" },
+  "files": ["src", "dist", "README.md"],
+  "scripts": { "typecheck": "tsc --noEmit", "build": "tsc -p tsconfig.build.json", "test": "vitest run --passWithNoTests" },
+  "dependencies": { "@jorcord/shared": "workspace:*" },
+  "devDependencies": { "typescript": "^5.6.3", "vitest": "^5.0.3" }
+}

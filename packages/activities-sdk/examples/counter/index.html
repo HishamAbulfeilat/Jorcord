@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Shared counter</title>
+<style>
+  body { font: 16px system-ui, sans-serif; margin: 0; padding: 16px; background: #1e1f22; color: #f2f3f5; text-align: center; }
+  button { font: inherit; padding: 10px 20px; border: 0; border-radius: 6px; background: #5865f2; color: #fff; cursor: pointer; }
+  #n { font-size: 56px; margin: 12px 0; }
+  ul { list-style: none; padding: 0; color: #b5bac1; }
+</style>
+</head>
+<body>
+  <h1>Shared counter</h1>
+  <div id="n" aria-live="polite">0</div>
+  <button id="plus">+1</button>
+  <p id="status">Connecting…</p>
+  <ul id="people"></ul>
+  <!-- Build the SDK once: pnpm --filter @jorcord/activities-sdk build, then host this folder over https and copy ../../dist/index.js next to this file. -->
+  <script type="module">
+    import { JorcordActivity } from './index.js';
+    const $ = (id) => document.getElementById(id);
+    const activity = new JorcordActivity();
+    let count = 0;
+    const show = (state) => { count = Number(state?.count) || 0; $('n').textContent = String(count); };
+    const people = (list) => { $('people').replaceChildren(...list.map((p) => Object.assign(document.createElement('li'), { textContent: p.displayName || p.username }))); };
+    const { instance, user, participants } = await activity.ready();
+    $('status').textContent = `Signed in as ${user.displayName || user.username}`;
+    show(instance.state); people(participants);
+    activity.subscribe('ACTIVITY_UPDATE', (a) => show(a.state));
+    activity.subscribe('PARTICIPANTS_UPDATE', people);
+    $('plus').addEventListener('click', () => { void activity.setState({ count: count + 1 }); });
+  </script>
+</body>
+</html>

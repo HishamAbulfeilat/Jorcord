@@ -6,5 +6,6 @@ import Capacitor
 class JorcordBridgeViewController: CAPBridgeViewController {
     override func capacitorDidLoad() {
         bridge?.registerPluginInstance(JorcordScreenSharePlugin())
+        bridge?.registerPluginInstance(JorcordCallKitPlugin()) // UNVERIFIED: see docs/PLATFORMS.md
     }
 }

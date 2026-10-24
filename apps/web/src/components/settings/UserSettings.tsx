@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { COLOR_BLIND_MODES } from '@/lib/a11y';
 import { useNavigate } from 'react-router-dom';
 import { VoiceSettingsForm } from '@/voice/VoiceSettings';
 import { useQuery } from '@tanstack/react-query';
@@ -177,6 +178,11 @@ function A11y() {
     <Row title={t('Show embeds and link previews')} desc={t('Show website previews for links in chat.')}><Toggle label={t('Show embeds')} checked={p.showEmbeds} onChange={(v) => set('showEmbeds', v)} /></Row>
     <Row title={t('Increased contrast')} desc={t('Boost text contrast.')}><Toggle label={t('High contrast')} checked={p.highContrast} onChange={(v) => set('highContrast', v)} /></Row>
     <Row title="24-hour time"><Toggle label="24 hour time" checked={p.twentyFourHour} onChange={(v) => set('twentyFourHour', v)} /></Row>
+    <Row title={t('Dyslexia-friendly font')} desc={t('Use the OpenDyslexic typeface, bundled with the app.')}><Toggle label={t('Dyslexia-friendly font')} checked={p.dyslexiaFont} onChange={(v) => set('dyslexiaFont', v)} /></Row>
+    <Row title={t('Role colour contrast')} desc={t('Lighten or darken role colours so names stay readable (at least 4.5:1).')}><Toggle label={t('Role colour contrast')} checked={p.roleContrast} onChange={(v) => set('roleContrast', v)} /></Row>
+    <H3>{t('Colour-blind friendly status colours')}</H3>
+    <select aria-label={t('Colour-blind friendly status colours')} value={p.colorBlindMode} onChange={(e) => set('colorBlindMode', e.target.value as typeof p.colorBlindMode)} className="field mb-4 w-full">{COLOR_BLIND_MODES.map((m) => <option key={m.id} value={m.id}>{t(m.label)}</option>)}</select>
+    <H3>{t('Saturation')}</H3><input type="range" min={0} max={1} step={0.05} value={p.saturation} onChange={(e) => set('saturation', Number(e.target.value))} aria-label={t('Saturation')} className="mb-4 w-full accent-brand" />
     <H3>{t('Text size')}</H3><input type="range" min={0.85} max={1.4} step={0.05} value={p.fontScale} onChange={(e) => set('fontScale', Number(e.target.value))} aria-label={t('Font scale')} className="w-full accent-brand" />
   </>);
 }

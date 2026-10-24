@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		B10000000000000000000001 /* ScreenSharePlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000001 /* ScreenSharePlugin.swift */; };
+		B10000000000000000000002 /* CallKitPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000002 /* CallKitPlugin.swift */; };
 		B10000000000000000000002 /* JorcordBridgeViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000002 /* JorcordBridgeViewController.swift */; };
 		B10000000000000000000003 /* SampleHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000003 /* SampleHandler.swift */; };
 		B10000000000000000000004 /* BroadcastExtension.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = B20000000000000000000006 /* BroadcastExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -23,6 +24,7 @@
 
 /* Begin PBXFileReference section */
 		B20000000000000000000001 /* ScreenSharePlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenSharePlugin.swift; sourceTree = "<group>"; };
+		B20000000000000000000002 /* CallKitPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallKitPlugin.swift; sourceTree = "<group>"; };
 		B20000000000000000000002 /* JorcordBridgeViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JorcordBridgeViewController.swift; sourceTree = "<group>"; };
 		B20000000000000000000003 /* SampleHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SampleHandler.swift; sourceTree = "<group>"; };
 		B20000000000000000000004 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
@@ -130,6 +132,7 @@
 				504EC3071FED79650016851F /* AppDelegate.swift */,
 				B20000000000000000000002 /* JorcordBridgeViewController.swift */,
 				B20000000000000000000001 /* ScreenSharePlugin.swift */,
+				B20000000000000000000002 /* CallKitPlugin.swift */,
 				504EC30B1FED79650016851F /* Main.storyboard */,
 				504EC30E1FED79650016851F /* Assets.xcassets */,
 				504EC3101FED79650016851F /* LaunchScreen.storyboard */,
@@ -306,6 +309,7 @@
 				504EC3081FED79650016851F /* AppDelegate.swift in Sources */,
 				B10000000000000000000002 /* JorcordBridgeViewController.swift in Sources */,
 				B10000000000000000000001 /* ScreenSharePlugin.swift in Sources */,
+				B10000000000000000000002 /* CallKitPlugin.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

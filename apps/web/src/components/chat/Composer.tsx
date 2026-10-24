@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { parseWarnCommand } from '@/lib/modtools';
+import { expandTextCommand } from '@/lib/textCommands';
 import { Mic, PlusCircle, Smile, SendHorizonal, X, Eye, EyeOff, Hash, Image as ImageIcon, Gift, Upload, BarChart3, CalendarClock, BellOff, Link2Off, Timer } from 'lucide-react';
 import { LIMITS, Perm, snowflake } from '@jorcord/shared';
 import type { AllowedMentions, ApplicationCommand, Channel } from '@jorcord/shared';
@@ -155,7 +156,7 @@ export function Composer({ channel, stagedExternal }: { channel: Channel; staged
   };
 
   const finalize = (raw: string) => {
-    let out = replaceShortcodes(raw);
+    let out = expandTextCommand(replaceShortcodes(raw));
     // longest tokens first so @bob_smith wins over @bob
     for (const [k, v] of [...tokens.current.entries()].sort((a, b) => b[0].length - a[0].length)) out = out.split(k).join(v);
     return out.trim();

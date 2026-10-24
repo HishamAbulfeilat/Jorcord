@@ -94,3 +94,18 @@ iOS WKWebView supports `getUserMedia` (iOS 14.3+) but not screen capture initiat
 
 Secrets (Apple/Android ones are optional and just skip signing; the Tauri updater key is required while `createUpdaterArtifacts` is true): `TAURI_SIGNING_PRIVATE_KEY(_PASSWORD)`, `APPLE_*`, `ANDROID_KEYSTORE_B64`,
 `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`, `GOOGLE_SERVICES_JSON_B64`.
+
+## iOS CallKit and PushKit (UNVERIFIED sketch)
+
+`apps/mobile/ios/App/App/CallKitPlugin.swift` (`JorcordCallKit`, registered in `JorcordBridgeViewController`, added to the Xcode project) and the JS bridge `apps/web/src/lib/callkit.ts` (unit-tested against a fake plugin; every call is a no-op outside the iOS app).
+
+**Nothing in the native part has been compiled or run**: it was written on Linux without Xcode, a Mac, or an Apple Developer account. Treat it as a design to finish on a Mac, with a real device.
+
+What exists: CallKit provider (incoming and outgoing calls, answer/end/mute actions as events), PushKit VoIP registration (token emitted as the `voipToken` event), and a push handler that always reports a call (iOS terminates apps that do not). `UIBackgroundModes` already contains `voip` and `audio`.
+
+What is missing before it works end to end:
+
+1. Enable the *Push Notifications* and *Voice over IP* capabilities, and create an APNs VoIP certificate or a key with the `.voip` topic (`<bundle id>.voip`).
+2. Server: store the VoIP token (extend `POST /users/@me/push-devices` with a platform such as `ios-voip`; this was left out because the push route is shared) and send an APNs VoIP push (`apns-push-type: voip`, payload `{ callId, caller, video }`) when a DM/group call starts and the callee is offline, in `services/calls.ts`.
+3. Web: call `callKit.incoming()` from the incoming-call handler when `Capacitor.getPlatform() === "ios"`, `callKit.listen({ onAnswer, onEnd, onMuted })` to join/leave/mute, `callKit.connected()` once media is up, `callKit.end()` on hangup. Configure `AVAudioSession` to hand over to the call (`audioSessionActivated` event) before publishing audio.
+4. Test on a device: lock-screen ring, answer from the lock screen, decline, end from the system UI, call while the app is killed.

@@ -25,6 +25,7 @@ export type ChannelActivityKind = 'youtube' | 'tictactoe' | 'app';
  */
 export interface ChannelActivity {
   id: Id; channelId: Id; guildId: Id | null; kind: ChannelActivityKind; hostId: Id; /** set for kind 'app' (third-party embedded activity) */ applicationId?: Id;
+  /** kind 'app': what is needed to frame it (the https URL is validated again by the client). */ application?: { name: string; icon: string | null; activityUrl: string | null };
   state: unknown; startedAt: string; updatedAt: string;
 }
 /** Serialized `state` size cap (bytes) accepted by PATCH /activities/:id/state. */
