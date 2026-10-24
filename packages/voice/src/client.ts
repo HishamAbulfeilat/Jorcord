@@ -3,7 +3,7 @@ import {
   type Participant, type RemoteParticipant, type LocalParticipant, type TrackPublication,
   type RoomOptions, type TrackPublishOptions, type ScreenShareCaptureOptions, type VideoCaptureOptions,
   type LocalVideoTrack, type RemoteVideoTrack, type RemoteTrackPublication, type LocalTrackPublication,
-  type VideoCodec, type BaseKeyProvider,
+  type VideoCodec, type BaseKeyProvider, type TrackProcessor,
 } from 'livekit-client';
 import type { VoiceToken } from '@jorcord/shared';
 import { DEFAULT_AUDIO, resolveAudio, type AudioSettings } from './audio';
@@ -30,6 +30,9 @@ import {
 export type VoiceStatus = 'idle' | 'connecting' | 'connected' | 'reconnecting' | 'disconnected';
 export type InputMode = 'open' | 'vad' | 'ptt';
 export type StreamSource = 'camera' | 'screen';
+
+/** A processor that rewrites the published camera picture (see VoiceClient.setCameraProcessor). */
+export type CameraProcessor = TrackProcessor<Track.Kind.Video>;
 
 export interface ParticipantView {
   identity: string; userId: string; name: string; isLocal: boolean;
@@ -138,6 +141,8 @@ export class VoiceClient {
   private supportedCodecs: string[];
   private notifyQueued = false;
   private rnnoiseAttached = false;
+  /** Optional video processor (background blur / replacement) applied to the *published* camera track. */
+  private cameraProcessor: CameraProcessor | undefined;
   private micGate: { ctx: AudioContext; analyser: AnalyserNode; buf: Float32Array; src: MediaStreamAudioSourceNode; track: MediaStreamTrack } | undefined;
   private opts: VoiceClientOptions;
   private rc: ReconnectState;
@@ -747,6 +752,7 @@ export class VoiceClient {
           if (track) track.contentHint = plan.contentHint;
           this.intent.camera = true; this.intent.cameraDeviceId = deviceId ?? this.intent.cameraDeviceId;
           this.emit({ cameraOn: true, activeCodec: codec });
+          if (this.cameraProcessor) await this.applyCameraProcessor();
           return;
         } catch (e) {
           lastError = e;
@@ -755,6 +761,30 @@ export class VoiceClient {
       }
       throw lastError;
     } catch (e) { this.emit({ cameraOn: !!lp.getTrackPublication(Track.Source.Camera) }); throw this.fail(e, 'media'); }
+  }
+
+  /**
+   * Attach (or with `undefined` remove) a video processor on the published camera track, e.g. background blur/replacement. Remote participants
+   * then receive the processed picture, not just the local preview. Remembered across camera re-publishes. Resolves false when the processor
+   * could not start; the raw camera keeps working in that case.
+   */
+  async setCameraProcessor(processor: CameraProcessor | undefined): Promise<boolean> {
+    this.cameraProcessor = processor;
+    return this.applyCameraProcessor();
+  }
+
+  private async applyCameraProcessor(): Promise<boolean> {
+    const track: any = this.room.localParticipant.getTrackPublication(Track.Source.Camera)?.track;
+    if (!track) return true; // applied when the camera is next enabled
+    try {
+      if (this.cameraProcessor) await track.setProcessor(this.cameraProcessor);
+      else if (track.getProcessor?.()) await track.stopProcessor();
+      return true;
+    } catch {
+      this.cameraProcessor = undefined;
+      try { await track.stopProcessor?.(); } catch { /* already gone */ }
+      return false;
+    }
   }
 
   /** Change camera quality / frame rate. Re-publishes only when the camera is on, so the next frame uses the new preset. */

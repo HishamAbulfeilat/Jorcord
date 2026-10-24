@@ -67,7 +67,7 @@ export default defineConfig({
         navigateFallbackDenylist: [/^\/api/, /^\/gateway/, /^\/files/, new RegExp('^' + base.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(api|gateway|files)')],
         globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
         // the ~2 MB RNNoise/WASM worklet is only needed when someone enables noise suppression: cache it on first use instead of on install
-        globIgnores: ['**/NoiseSuppressorWorklet-*.js'],
+        globIgnores: ['**/NoiseSuppressorWorklet-*.js', '**/vision_wasm_*.js'],
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
         runtimeCaching: [
           { urlPattern: ({ url }) => /\/assets\/NoiseSuppressorWorklet-.*\.js$/.test(url.pathname), handler: 'CacheFirst', options: { cacheName: 'jorcord-noise', expiration: { maxEntries: 2 } } },

@@ -18,6 +18,7 @@ import { t } from '@/i18n';
 import './noiseSetup';
 import { audioMapsForClient } from './userAudio';
 import { tauriPttSource } from '@/lib/globalPtt';
+import { syncCameraBackground } from './cameraBackground';
 
 export function settingsFromPrefs(p: Prefs): Partial<VoiceSettings> {
   return {
@@ -86,6 +87,7 @@ export function getVoiceClient(): VoiceClient {
       onDisconnected: (why) => (why === 'error' ? giveUp() : scheduleReconcile()),
     });
     bindClient(client);
+    void syncCameraBackground(client, useUI.getState().prefs.cameraBackground);
     syncGlobalPtt(useUI.getState().prefs);
     { const ua = audioMapsForClient(useUI.getState().prefs); client.syncUserAudio(ua.volumes, ua.muted); }
     // Mobile apps: screen sharing through the native plugin (the button stays hidden when it reports unsupported).
@@ -370,6 +372,7 @@ export function applyPrefs(p: Prefs) {
   if (s.inputMode !== cur.inputMode) client.setInputMode(s.inputMode!);
   if (s.pttCode !== cur.pttCode) client.setPttKey(s.pttCode!);
   syncGlobalPtt(p);
+  void syncCameraBackground(client, p.cameraBackground);
   if (s.vadThreshold !== cur.vadThreshold) client.setVadThreshold(s.vadThreshold!);
   if (s.mutedSpeakingHint !== cur.mutedSpeakingHint) client.setMutedSpeakingHint(!!s.mutedSpeakingHint);
   if (s.cameraQuality !== cur.cameraQuality || s.cameraFps !== cur.cameraFps) {

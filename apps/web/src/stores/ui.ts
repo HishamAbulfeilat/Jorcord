@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { Id, Message, Modal, ScheduledMessage } from '@jorcord/shared';
 import type { CameraFrameRate, CameraQuality } from '@jorcord/voice';
+import type { CameraBackground } from '@/voice/backgrounds';
 import type { OverlayCorner } from '@/lib/overlay';
 import { api } from '@/lib/api';
 import { useData } from '@/stores/data';
@@ -18,6 +19,8 @@ export interface Prefs {
   videoQuality: CameraQuality; videoFps: CameraFrameRate;
   /** Local self-view only: mirror the preview, and opt-in canvas effects (both off by default except mirroring). */
   mirrorSelfView: boolean; cameraBlur: boolean; cameraAutoAdjust: boolean;
+  /** Background effect applied to the PUBLISHED camera (person segmentation): 'none' | 'blur' | a preset backdrop id. */
+  cameraBackground: CameraBackground;
   keybinds: Record<string, string>;
   streamerMode: boolean; streamerAuto: boolean; streamerHidePersonal: boolean; streamerHideInvites: boolean; streamerNoSounds: boolean; streamerNoNotifications: boolean;
   mutedChannels: Record<Id, boolean>; mutedGuilds: Record<Id, boolean>; collapsedCategories: Record<Id, boolean>;
@@ -62,7 +65,7 @@ export const defaultPrefs: Prefs = {
   noiseEngine: 'browser', voiceBitrate: 64, musicMode: false, pttCode: 'Backquote', pttGlobal: false, vadMode: false, vadThreshold: 0.03,
   screenPreset: '1080p60', cameraPreset: '720p30', screenHint: 'motion', screenAudio: true, showVoiceStats: true,
   videoQuality: 'auto', videoFps: 30,
-  mirrorSelfView: true, cameraBlur: false, cameraAutoAdjust: false,
+  mirrorSelfView: true, cameraBlur: false, cameraAutoAdjust: false, cameraBackground: 'none',
   keybinds: defaultKeybinds,
   streamerMode: false, streamerAuto: true, streamerHidePersonal: true, streamerHideInvites: true, streamerNoSounds: true, streamerNoNotifications: true,
   mutedChannels: {}, mutedGuilds: {}, collapsedCategories: {},

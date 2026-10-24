@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { CAMERA_BACKGROUNDS, backgroundLabel, type CameraBackground } from './backgrounds';
+import { normaliseBackground } from './cameraBackground';
 import { CAMERA_FRAME_RATES, STREAM_PRESETS, cameraPlan, type CameraFrameRate, type CameraQuality } from '@jorcord/voice';
 import { LIMITS } from '@jorcord/shared';
 import { Toggle, Row, Modal } from '@/components/ui/primitives';
@@ -185,6 +187,11 @@ export function VoiceSettingsForm({ compact }: { compact?: boolean }) {
       <Row title="Mirror my camera" desc="Flip your own preview only; everyone else still sees the un-mirrored feed."><Toggle label="Mirror my camera" checked={p.mirrorSelfView} onChange={(v) => set('mirrorSelfView', v)} /></Row>
       <Row title="Background blur" desc={blurSupported ? 'Soft-focus blur of your preview (softens the whole frame — no person cut-out). Runs locally and pauses in background tabs.' : 'This browser cannot apply canvas filters, so blur is unavailable.'}>
         <Toggle label="Background blur" checked={p.cameraBlur} disabled={!blurSupported} onChange={(v) => set('cameraBlur', v)} />
+      </Row>
+      <Row title="Camera background" desc="Cuts you out of the picture and blurs or replaces the room, for everyone in the call. Runs on your device and uses extra CPU; it pauses while this tab is in the background.">
+        <select className="field !w-auto" aria-label="Camera background" data-testid="camera-background" value={normaliseBackground(p.cameraBackground)} onChange={(e) => set('cameraBackground', e.target.value as CameraBackground)}>
+          {CAMERA_BACKGROUNDS.map((b) => <option key={b} value={b}>{backgroundLabel(b)}</option>)}
+        </select>
       </Row>
       <Row title="Auto brightness & contrast" desc="Nudges exposure when the frame is too dark or too bright."><Toggle label="Auto brightness and contrast" checked={p.cameraAutoAdjust} onChange={(v) => set('cameraAutoAdjust', v)} /></Row>
       <CameraPreview deviceId={p.videoDevice} quality={p.videoQuality} fps={p.videoFps} />
