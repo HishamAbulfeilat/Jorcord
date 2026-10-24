@@ -151,8 +151,8 @@ export function userMenu(userId: Id, guildId?: Id | null): MenuItem[] {
       const p = gperms(guildId); const roles = Object.values(g.roles);
       const mod: MenuItem[] = [];
       if (canManageMember(g.guild, roles, actor, target, p, Perm.MODERATE_MEMBERS)) mod.push({ label: t('Timeout 10 min'), icon: Clock, onClick: () => api.guilds.patchMember(guildId, userId, { timeoutUntil: new Date(Date.now() + 600000).toISOString() }).then(() => toast(t('Member timed out'), 'success')).catch(toastError) });
-      if (canManageMember(g.guild, roles, actor, target, p, Perm.KICK_MEMBERS)) mod.push({ label: `Kick ${target.user.username}`, icon: UserMinus, danger: true, onClick: () => ui().openModal({ kind: 'confirm', title: t('Kick Member'), body: `Kick ${target.user.username} from the server? They can rejoin with an invite.`, confirmLabel: 'Kick', danger: true, onConfirm: () => api.guilds.kick(guildId, userId).catch(toastError) }) });
-      if (canManageMember(g.guild, roles, actor, target, p, Perm.BAN_MEMBERS)) mod.push({ label: `Ban ${target.user.username}`, icon: Ban, danger: true, onClick: () => ui().openModal({ kind: 'prompt', title: 'Ban Member', label: t('Reason (optional)'), onSubmit: (reason) => api.guilds.ban(guildId, userId, { reason, deleteMessageSeconds: 0 }).then(() => toast(t('Member banned'), 'success')).catch(toastError) }) });
+      if (canManageMember(g.guild, roles, actor, target, p, Perm.KICK_MEMBERS)) mod.push({ label: `Kick ${target.user.username}`, icon: UserMinus, danger: true, onClick: () => ui().openModal({ kind: 'removeMember', mode: 'kick', guildId, userId }) });
+      if (canManageMember(g.guild, roles, actor, target, p, Perm.BAN_MEMBERS)) mod.push({ label: `Ban ${target.user.username}`, icon: Ban, danger: true, onClick: () => ui().openModal({ kind: 'removeMember', mode: 'ban', guildId, userId }) });
       if (p & (Perm.KICK_MEMBERS | Perm.BAN_MEMBERS | Perm.MODERATE_MEMBERS | Perm.MANAGE_GUILD) || (p & Perm.ADMINISTRATOR)) mod.unshift({ label: t('Mod View'), icon: ShieldAlert, onClick: () => ui().openModal({ kind: 'modView', guildId, userId }) });
       if (mod.length) items.push({ separator: true }, ...mod);
     }
@@ -186,6 +186,21 @@ function translateItem(m: Message): MenuItem {
     } };
 }
 
+/** "Mark sensitive" / "Remove sensitive mark": moderators (MANAGE_MESSAGES) on any server message, authors on their own post. Content stays; clients blur it. */
+export function sensitiveToggle(m: Message, meId: string, perms: bigint): MenuItem | null {
+  if (!m.guildId || !['default', 'reply'].includes(m.type)) return null;
+  const marked = ((m.flags ?? 0) & MessageFlags.SENSITIVE) !== 0; const mod = can(perms, Perm.MANAGE_MESSAGES);
+  if (marked ? !mod : !(mod || m.author.id === meId)) return null;
+  return { label: marked ? t('Remove sensitive mark') : t('Mark sensitive'), icon: marked ? Eye : EyeOff,
+    onClick: () => api.messages.setSensitive(m.channelId, m.id, !marked).then(() => toast(marked ? t('Mark removed') : t('Marked sensitive'), 'success')).catch(toastError) };
+}
+
+/** Edit history is for the author and moderators; opens as a dialog from the menu. */
+export function historyItem(m: Message, meId: string, perms: bigint): MenuItem | null {
+  if (!m.editedAt || !(m.author.id === meId || (m.guildId && can(perms, Perm.MANAGE_MESSAGES)))) return null;
+  return { label: t('View edit history'), icon: BookOpen, onClick: () => window.dispatchEvent(new CustomEvent('jorcord:edit-history', { detail: { channelId: m.channelId, id: m.id } })) };
+}
+
 export function messageMenu(m: Message, opts: { startEdit: () => void; pickEmoji: (rect: DOMRect | undefined) => void }): MenuItem[] {
   const s = useData.getState(); const me = s.me; if (!me) return [];
   const ch = findChannel(s, m.channelId); const perms = myChannelPerms(m.channelId); const isDm = !ch?.guildId;
@@ -202,7 +217,9 @@ export function messageMenu(m: Message, opts: { startEdit: () => void; pickEmoji
     { label: useSocial.getState().saved[m.id] ? t('Remove from Saved') : t('Save for Later'), icon: Bookmark, onClick: () => { const on = !useSocial.getState().saved[m.id]; (on ? api.users.save(m.channelId, m.id) : api.users.unsave(m.channelId, m.id)).then(() => { useSocial.getState().setSaved(m.id, on); toast(on ? t('Saved for later') : t('Removed from saved'), 'success'); }).catch(toastError); } },
     { label: t('Remind Me'), icon: AlarmClock, children: [[t('in 5 minutes'), 300], [t('in 1 hour'), 3600], [t('in 3 hours'), 10800], [t('in 24 hours'), 86400], [t('in 1 week'), 604800]].map(([label, secs]) => ({ label: label as string, onClick: () => { api.users.remind(m.channelId, m.id, { inSeconds: secs as number }).then(() => { toast(t('We will remind you {when}', { when: label as string }), 'success'); void queryClient.invalidateQueries({ queryKey: ['inbox', 'reminders'] }); }).catch(toastError); } })) },
     ...(favoriteCandidate(m) ? [{ label: t('Add to GIF Favorites'), icon: Star, onClick: () => api.users.addGifFavorite(favoriteCandidate(m)!).then(() => { void queryClient.invalidateQueries({ queryKey: ['gif-favs'] }); toast(t('Saved to your favorites'), 'success'); }).catch(toastError) }] : []),
-    ...(ch?.guildId && ch.type !== 'thread' && can(perms, Perm.MODERATE_MEMBERS) ? [{ label: t('Report Message'), icon: ShieldBan, onClick: () => ui().openModal({ kind: 'report', messageId: m.id, guildId: ch.guildId!, channelId: m.channelId }) }] : []),
+    ...(ch?.guildId && ch.type !== 'thread' && m.author.id !== me.id && ['default', 'reply'].includes(m.type) ? [{ label: t('Report to moderators'), icon: ShieldBan, onClick: () => ui().openModal({ kind: 'report', messageId: m.id, guildId: ch.guildId!, channelId: m.channelId }) }] : []),
+    ...(sensitiveToggle(m, me.id, perms) ? [sensitiveToggle(m, me.id, perms)!] : []),
+    ...(historyItem(m, me.id, perms) ? [historyItem(m, me.id, perms)!] : []),
     { label: t('Mark Unread'), icon: Mail, onClick: () => { s.setRead(m.channelId, String(BigInt(m.id) - 1n), 0); api.channels.ack(m.channelId, m.id, true).catch(() => {}); } },
     { label: t('Copy Message Link'), icon: Link2, onClick: () => copyText(`${publicOrigin()}/channels/${m.guildId ?? '@me'}/${m.channelId}/${m.id}`).then(() => toast(t('Link copied'), 'success')) },
     ...(canDeleteMessage(m, me.id, perms) ? [{ separator: true }, { label: t('Delete Message'), icon: Trash2, danger: true, onClick: () => ui().openModal({ kind: 'confirm', title: t('Delete Message'), body: 'Are you sure you want to delete this message?', confirmLabel: 'Delete', danger: true, onConfirm: () => api.messages.delete(m.channelId, m.id).then(() => useMessages.getState().remove(m.channelId, m.id)).catch(toastError) }) }] : []),

@@ -38,7 +38,8 @@ import { ModToolsTab } from './ModToolsTab';
 import { OnboardingTab } from './OnboardingTab';
 import { ServerPortTab } from './ServerPortTab';
 import { TemplateTab, WidgetTab, InsightsTab, VanityUrl } from './ServerExtrasTabs';
-import { AUDIT_FILTER_GROUPS, actionLabel, entryDetail, entryType } from '@/lib/audit';
+import { AuditLogView } from '@/components/moderation/AuditLogView';
+import { ModerationTab } from '@/components/moderation/ModerationTab';
 
 export function GuildSettings({ guildId, initialTab }: { guildId: string; initialTab?: string }) {
   const g = useData((s) => s.guilds[guildId]); const me = useData((s) => selfMember(s, guildId)); const close = () => useUI.getState().openSettings(null);
@@ -48,7 +49,7 @@ export function GuildSettings({ guildId, initialTab }: { guildId: string; initia
     const it = (id: string, label: string, icon: any, ok: boolean) => (ok ? [{ id, label: t(label), icon }] : []);
     return [
       { title: g?.guild.name ?? 'Server', items: [...it('overview', T('Overview'), Cog, can(perms, Perm.MANAGE_GUILD)), ...it('roles', T('Roles'), Shield, can(perms, Perm.MANAGE_ROLES)), ...it('channels', T('Channels'), Hash, can(perms, Perm.MANAGE_CHANNELS)), ...it('emoji', T('Emoji'), Smile, can(perms, Perm.MANAGE_EMOJIS)), ...it('stickers', T('Stickers'), StickerIcon, can(perms, Perm.MANAGE_EMOJIS)), ...it('soundboard', T('Soundboard'), Volume2, can(perms, Perm.MANAGE_EMOJIS)), ...it('safety', T('Safety Setup'), ShieldCheck, can(perms, Perm.MANAGE_GUILD)), ...it('onboarding', T('Onboarding'), ListChecks, can(perms, Perm.MANAGE_GUILD)), ...it('template', T('Server Template'), FileText, can(perms, Perm.MANAGE_GUILD)), ...it('port', T('Import & Export'), ArrowLeftRight, can(perms, Perm.MANAGE_GUILD)), ...it('widget', T('Widget'), PanelTop, can(perms, Perm.MANAGE_GUILD)), ...it('insights', T('Insights'), BarChart3, can(perms, Perm.MANAGE_GUILD)), ...it('servertag', T('Server Tag'), Tag, can(perms, Perm.MANAGE_GUILD)), ...it('welcome', T('Welcome Screen'), BookOpen, can(perms, Perm.MANAGE_GUILD) && !!g?.guild.features.includes('COMMUNITY')), ...it('apps', T('Bots & Apps'), Bot, can(perms, Perm.MANAGE_GUILD)), ...it('integrations', T('Integrations'), WebhookIcon, can(perms, Perm.MANAGE_WEBHOOKS) || can(perms, Perm.MANAGE_GUILD)), ...it('commands', T('Command Permissions'), Bot, can(perms, Perm.MANAGE_GUILD) && can(perms, Perm.MANAGE_ROLES)), ...it('boosts', T('Server Boost'), Rocket, true), ...it('linkedroles', T('Linked Roles'), Link2, true), ...it('profile', T('Server Profile'), UserCircle, true)] },
-      { title: t('Moderation'), items: [...it('members', T('Members'), Users, can(perms, Perm.KICK_MEMBERS) || can(perms, Perm.MANAGE_ROLES) || can(perms, Perm.MANAGE_GUILD)), ...it('invites', T('Invites'), Link2, can(perms, Perm.MANAGE_GUILD) || can(perms, Perm.CREATE_INVITE)), ...it('automod', T('AutoMod'), Bot, can(perms, Perm.MANAGE_GUILD)), ...it('audit', T('Audit Log'), ScrollText, can(perms, Perm.VIEW_AUDIT_LOG)), ...it('bans', T('Bans'), Ban, can(perms, Perm.BAN_MEMBERS)), ...it('appeals', T('Appeals'), Inbox, can(perms, Perm.BAN_MEMBERS)), ...it('modtools', T('Mod Tools'), Shield, can(perms, Perm.KICK_MEMBERS) || can(perms, Perm.BAN_MEMBERS) || can(perms, Perm.VIEW_AUDIT_LOG))] },
+      { title: t('Moderation'), items: [...it('members', T('Members'), Users, can(perms, Perm.KICK_MEMBERS) || can(perms, Perm.MANAGE_ROLES) || can(perms, Perm.MANAGE_GUILD)), ...it('invites', T('Invites'), Link2, can(perms, Perm.MANAGE_GUILD) || can(perms, Perm.CREATE_INVITE)), ...it('automod', T('AutoMod'), Bot, can(perms, Perm.MANAGE_GUILD)), ...it('audit', T('Audit Log'), ScrollText, can(perms, Perm.VIEW_AUDIT_LOG)), ...it('moderation', T('Moderation'), Shield, can(perms, Perm.KICK_MEMBERS) || can(perms, Perm.BAN_MEMBERS) || can(perms, Perm.MODERATE_MEMBERS) || can(perms, Perm.MANAGE_GUILD)), ...it('bans', T('Bans'), Ban, can(perms, Perm.BAN_MEMBERS)), ...it('appeals', T('Appeals'), Inbox, can(perms, Perm.BAN_MEMBERS)), ...it('modtools', T('Mod Tools'), Shield, can(perms, Perm.KICK_MEMBERS) || can(perms, Perm.BAN_MEMBERS) || can(perms, Perm.VIEW_AUDIT_LOG))] },
       ...(isOwner ? [{ items: [{ id: 'delete', label: t('Delete Server'), icon: Trash2, danger: true }] }] : []),
     ].filter((gr) => gr.items.length);
   }, [perms, g?.guild.name, isOwner]);
@@ -81,7 +82,8 @@ export function GuildSettings({ guildId, initialTab }: { guildId: string; initia
       {tab === 'members' && <MembersTab guildId={guildId} />}
       {tab === 'invites' && <InvitesTab guildId={guildId} />}
       {tab === 'automod' && <AutoModTab guildId={guildId} />}
-      {tab === 'audit' && <Audit guildId={guildId} />}
+      {tab === 'audit' && <AuditLogView guildId={guildId} />}
+      {tab === 'moderation' && <ModerationTab guildId={guildId} canManage={can(perms, Perm.MANAGE_GUILD)} />}
       {tab === 'bans' && <Bans guildId={guildId} />}
       {tab === 'appeals' && <AppealsTab guildId={guildId} />}
       {tab === 'delete' && <DeleteServer guildId={guildId} />}
@@ -196,8 +198,8 @@ function MembersTab({ guildId }: { guildId: string }) {
             <div className="mt-1 flex flex-wrap gap-1">{m.roles.map((r) => g.roles[r]).filter(Boolean).map((r) => <span key={r.id} className="flex items-center gap-1 rounded bg-active px-1.5 py-0.5 text-[11px] text-header"><span className="h-2 w-2 rounded-full" style={{ background: r.color ? intToHex(r.color) : 'rgb(var(--muted))' }} />{r.name}</span>)}</div></div>
           <div className="flex gap-1">
             {moderatable(Perm.MANAGE_ROLES) && <select aria-label={`Add role to ${m.user.username}`} value="" className="field !min-h-[32px] !w-auto !py-0 text-xs" onChange={(e) => { const rid = e.target.value; if (!rid) return; api.guilds.patchMember(guildId, m.user.id, { roles: [...m.roles, rid] }).then(() => useData.getState().apply('MEMBER_UPDATE', { ...target, roles: [...target.roles, rid] })).catch(toastError); }}><option value="">+ Role</option>{roles.filter((r) => r.id !== guildId && !m.roles.includes(r.id) && (me.user.id === g.guild.ownerId || r.position < Math.max(0, ...roles.filter((x) => me.roles.includes(x.id)).map((x) => x.position)))).map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}</select>}
-            {moderatable(Perm.KICK_MEMBERS) && <button className="btn btn-secondary" onClick={() => open({ kind: 'confirm', title: 'Kick Member', body: `Kick ${m.user.username}?`, confirmLabel: 'Kick', danger: true, onConfirm: () => api.guilds.kick(guildId, m.user.id).catch(toastError) })}>{t('Kick')}</button>}
-            {moderatable(Perm.BAN_MEMBERS) && <button className="btn btn-danger" onClick={() => open({ kind: 'prompt', title: 'Ban Member', label: 'Reason (optional)', onSubmit: (reason) => api.guilds.ban(guildId, m.user.id, { reason, deleteMessageSeconds: 0 }).then(() => toast(t('Banned'), 'success')).catch(toastError) })}>{t('Ban')}</button>}
+            {moderatable(Perm.KICK_MEMBERS) && <button className="btn btn-secondary" onClick={() => open({ kind: 'removeMember', mode: 'kick', guildId, userId: m.user.id })}>{t('Kick')}</button>}
+            {moderatable(Perm.BAN_MEMBERS) && <button className="btn btn-danger" onClick={() => open({ kind: 'removeMember', mode: 'ban', guildId, userId: m.user.id })}>{t('Ban')}</button>}
           </div></li>);
     })}</ul>
   </>);
@@ -209,20 +211,6 @@ function InvitesTab({ guildId }: { guildId: string }) {
     <div className="mb-5 flex items-center justify-between"><h1 className="text-xl font-bold text-header">{t('Invites')}</h1><button className="btn btn-primary" onClick={() => useUI.getState().openModal({ kind: 'invite', guildId })}>{t('Create Invite')}</button></div>
     {q.isLoading && <Spinner />}{q.data?.length === 0 && <Empty icon={<Link2 size={40} />} title={t('No active invites')} />}
     <ul>{q.data?.map((i) => <li key={i.code} className="flex items-center gap-3 border-b border-divider/50 py-3 text-sm"><div className="min-w-0 flex-1"><div className="font-mono text-header">{i.code}</div><div className="text-xs text-muted">by {users[i.inviterId] ? displayName(users[i.inviterId]) : i.inviterId} • {i.uses}{i.maxUses ? `/${i.maxUses}` : ''} uses • {i.expiresAt ? `expires ${fmtStamp(new Date(i.expiresAt).getTime())}` : 'never expires'}</div></div><button className="btn btn-secondary" onClick={() => copyText(inviteUrl(i.code)).then(() => toast(t('Copied'), 'success'))}>{t('Copy')}</button><button aria-label={t('Revoke invite')} className="p-2 text-danger" onClick={() => api.invites.delete(i.code).then(() => qc.invalidateQueries({ queryKey: ['invites', guildId] })).catch(toastError)}><Trash2 size={16} /></button></li>)}</ul>
-  </>);
-}
-
-function Audit({ guildId }: { guildId: string }) {
-  const [type, setType] = useState(''); const users = useData((s) => s.users);
-  const q = useQuery({ queryKey: ['audit', guildId, type], queryFn: () => api.guilds.auditLogs(guildId, { limit: 100, ...(type ? { actionType: Number(type) } : {}) }) });
-  return (<>
-    <H1>{t('Audit Log')}</H1>
-    <select className="field mb-4 !w-auto" aria-label={t('Filter by action')} value={type} onChange={(e) => setType(e.target.value)}>
-      <option value="">{t('All actions')}</option>
-      {AUDIT_FILTER_GROUPS.map((g) => <optgroup key={g.title} label={g.title}>{g.items.map((a) => <option key={a.value} value={a.type}>{a.label}</option>)}</optgroup>)}
-    </select>
-    {q.isLoading && <Spinner />}{q.data?.length === 0 && <Empty icon={<ScrollText size={40} />} title={t('No entries')} />}
-    <ul>{q.data?.map((e) => { const actor = users[e.actorId]; const detail = entryDetail(e); return <li key={e.id} data-action={e.action} data-action-type={entryType(e)} className="flex items-start gap-3 border-b border-divider/50 py-3 text-sm"><Avatar user={actor} size={32} /><div className="min-w-0 flex-1"><div><b className="text-header">{actor ? displayName(actor) : e.actorId}</b> <span className="text-muted">{actionLabel(e.action)}</span>{e.targetId && users[e.targetId] && <span className="text-muted"> • {displayName(users[e.targetId])}</span>}</div>{detail && <div className="truncate text-xs text-muted">{detail}</div>}{e.reason && <div className="text-xs text-muted">Reason: {e.reason}</div>}<div className="text-xs text-muted">{fmtStamp(new Date(e.createdAt || snowflakeTime(e.id)).getTime())}</div></div></li>; })}</ul>
   </>);
 }
 

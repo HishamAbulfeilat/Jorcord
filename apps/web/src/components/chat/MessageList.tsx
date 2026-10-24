@@ -49,6 +49,10 @@ export function MessageList({ channel, lastReadSnapshot }: { channel: Channel; l
   const [flashId, setFlashId] = useState<string | null>(null);
   const [editHistory, setEditHistory] = useState<{ m: Message; rect: DOMRect } | null>(null);
   const openEditHistory = useCallback((m: Message, rect: DOMRect) => setEditHistory({ m, rect }), []);
+  useEffect(() => { // "View edit history" in the message menu
+    const on = (e: Event) => { const d = (e as CustomEvent<{ channelId: string; id: string }>).detail; if (d.channelId !== cid) return; const m = useMessages.getState().ch[cid]?.list.find((x) => x.id === d.id); const el = document.getElementById(`msg-${d.id}`); if (m) openEditHistory(m, (el ?? document.body).getBoundingClientRect()); };
+    window.addEventListener('jorcord:edit-history', on); return () => window.removeEventListener('jorcord:edit-history', on);
+  }, [cid, openEditHistory]);
   const anchor = useRef<{ key: string; delta: number } | null>(null);
   const store = useMsgStore.getState;
 

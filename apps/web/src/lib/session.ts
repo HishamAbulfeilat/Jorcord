@@ -86,6 +86,10 @@ export function startSession(token: string) {
   unsubs.push(gw.on('ACTIVITY_UPDATE', (a) => useChannelActivities.getState().upsert(a)));
   unsubs.push(gw.on('ACTIVITY_END', (d) => useChannelActivities.getState().remove(d.id, d.channelId)));
   unsubs.push(gw.on('VOICE_CHANNEL_EFFECT_SEND', (d) => onVoiceEffect(d, meId())));
+  // moderation: queues refresh live; a removed member is told why; moderators outside quiet hours get a content-free ping
+  unsubs.push(gw.on('GUILD_REPORTS_UPDATE', (d) => { void queryClient.invalidateQueries({ queryKey: ['reports', d.guildId] }); void queryClient.invalidateQueries({ queryKey: ['evasion', d.guildId] }); }));
+  unsubs.push(gw.on('MOD_REPORT_PING', (d) => { const name = useData.getState().guilds[d.guildId]?.guild.name; toast(name ? `New report in ${name}` : 'New report', 'info'); }));
+  unsubs.push(gw.on('MOD_NOTICE', (n) => useUI.getState().openModal({ kind: 'modNotice', notice: n })));
   unsubs.push(gw.on('GIF_FAVORITES_UPDATE', () => { void queryClient.invalidateQueries({ queryKey: ['gif-favs'] }); }));
   unsubs.push(gw.on('INTERACTION_FAILED', onInteractionFailed));
   unsubs.push(gw.on('INTERACTION_MODAL', onInteractionModal));

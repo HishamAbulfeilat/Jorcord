@@ -4,6 +4,7 @@ import type {
   AllowedMentions, ConnectionOAuthStart, ConnectionProviderInfo, StreamFeed, StreamFeedsResponse, GuildIntegration, WelcomeScreen, VoiceState, StageQueueEntry, StageBlock, StreamInfo,
   Reminder, ScheduledMessage, ModView, ModWarning, ModNote, BulkModerationFilter, BulkModerationResult, PruneResult, BoostSummary, LinkedRoleView, LinkedCriterion, RoleMetadataApp, DirectoryApp, DirectoryCategory, SoundboardSound, Connection, PublicConnection, GifFavorite, GuildTemplate, GuildWidgetSettings, GuildInsights, ChannelFollow, Onboarding, OnboardingResponse, GuildSafety, ImpersonationEntry, SafetyPreset, Application, ApplicationCommand, CommandPermissionOverwrite, CommandOptionChoice, CreatePoll, ForumTag, InteractionOptionValue, ModalSubmitRow, OAuthAuthorizePreview, OAuthAuthorizeResult, ScheduledEvent, StageInstance, Report, RecurrenceRule, ChannelActivity, ChannelActivityKind, ApplicationEmoji,
   E2eeDevice, DigestEntry, DigestPrefs, ImportReport,
+  AuditQuery, EvasionHint, ModNotice, ModPrefs, ModSettings, ReportAction, User as SharedUser,
 } from '@jorcord/shared';
 import { send } from './transport';
 
@@ -80,6 +81,11 @@ export const api = {
     resetPassword: (token: string, newPassword: string, mfaCode?: string) => send({ method: 'POST', path: '/auth/password/reset', body: { token, newPassword, ...(mfaCode ? { mfaCode } : {}) }, auth: false }),
     resendVerification: (email: string) => send({ method: 'POST', path: '/auth/verify-email/resend', body: { email }, auth: false }),
     password: (b: { currentPassword: string; newPassword: string }) => send({ method: 'POST', path: '/auth/password', body: b }),
+  },
+  /** Why I was kicked, banned or timed out (docs/MODERATION.md). */
+  modNotices: {
+    list: () => send<ModNotice[]>({ method: 'GET', path: '/users/@me/mod-notices' }).then((x) => arr<ModNotice>(x)),
+    markRead: () => send({ method: 'POST', path: '/users/@me/mod-notices/read' }),
   },
   myBans: {
     list: () => send<MyBan[]>({ method: 'GET', path: '/users/@me/bans' }).then((x) => arr<MyBan>(x)),
@@ -167,15 +173,16 @@ export const api = {
     members: (id: Id, q: { limit?: number; after?: Id } = {}) => send<Member[]>({ method: 'GET', path: `/guilds/${id}/members`, query: q }).then((x) => arr<Member>(x)),
     searchMembers: (id: Id, q: string) => send<Member[]>({ method: 'GET', path: `/guilds/${id}/members/search`, query: { q } }).then((x) => arr<Member>(x)),
     patchMember: (id: Id, userId: Id, b: Partial<{ nick: string | null; roles: Id[]; timeoutUntil: string | null; avatar: string | null; banner: string | null; bio: string | null; pronouns: string | null }>) => send<Member>({ method: 'PATCH', path: `/guilds/${id}/members/${userId}`, body: b }),
-    kick: (id: Id, userId: Id) => send({ method: 'DELETE', path: `/guilds/${id}/members/${userId}` }),
-    ban: (id: Id, userId: Id, b: { reason?: string; deleteMessageSeconds?: number } = {}) => send({ method: 'PUT', path: `/guilds/${id}/bans/${userId}`, body: b }),
+    /** `rememberRoles` / `notify` are the kick dialog's toggles (omitted = the server's settings decide). */
+    kick: (id: Id, userId: Id, o: { reason?: string; rememberRoles?: boolean; notify?: boolean } = {}) => send({ method: 'DELETE', path: `/guilds/${id}/members/${userId}`, query: { ...(o.reason ? { reason: o.reason } : {}), ...(o.rememberRoles !== undefined ? { rememberRoles: String(o.rememberRoles) } : {}), ...(o.notify !== undefined ? { notify: String(o.notify) } : {}) } }),
+    ban: (id: Id, userId: Id, b: { reason?: string; deleteMessageSeconds?: number; notify?: boolean } = {}) => send({ method: 'PUT', path: `/guilds/${id}/bans/${userId}`, body: b }),
     unban: (id: Id, userId: Id) => send({ method: 'DELETE', path: `/guilds/${id}/bans/${userId}` }),
     appeals: (id: Id, status: 'pending' | 'approved' | 'denied' | 'all' = 'pending') => send<BanAppealItem[]>({ method: 'GET', path: `/guilds/${id}/appeals?status=${status}` }).then((x) => arr<BanAppealItem>(x)),
     decideAppeal: (id: Id, appealId: Id, decision: 'approve' | 'deny', reason?: string) => send({ method: 'POST', path: `/guilds/${id}/appeals/${appealId}`, body: { decision, reason: reason || null } }),
     bans: (id: Id) => send<{ user: User; reason: string | null }[]>({ method: 'GET', path: `/guilds/${id}/bans` }).then((x) => arr<{ user: User; reason: string | null }>(x)),
     invites: (id: Id) => send<Invite[]>({ method: 'GET', path: `/guilds/${id}/invites` }).then((x) => arr<Invite>(x)),
     createInvite: (id: Id, b: { channelId?: Id; maxUses?: number | null; maxAgeSeconds?: number | null; temporary?: boolean } = {}) => send<Invite>({ method: 'POST', path: `/guilds/${id}/invites`, body: b }),
-    auditLogs: (id: Id, q: { limit?: number; before?: Id; action?: string; actionType?: number } = {}) => send<AuditEntry[]>({ method: 'GET', path: `/guilds/${id}/audit-logs`, query: q }).then((x) => arr<AuditEntry>(x)),
+    auditLogs: (id: Id, q: AuditQuery & { limit?: number } = {}) => send<AuditEntry[]>({ method: 'GET', path: `/guilds/${id}/audit-logs`, query: { ...q } }).then((x) => arr<AuditEntry>(x)),
     emojis: (id: Id) => send<Emoji[]>({ method: 'GET', path: `/guilds/${id}/emojis` }).then((x) => arr<Emoji>(x)),
     createEmoji: (id: Id, b: { name: string; url: string; animated?: boolean; roleIds?: Id[] }) => send<Emoji>({ method: 'POST', path: `/guilds/${id}/emojis`, body: b }),
     patchEmoji: (id: Id, eid: Id, b: { name?: string; roleIds?: Id[] }) => send<Emoji>({ method: 'PATCH', path: `/guilds/${id}/emojis/${eid}`, body: b }),
@@ -196,6 +203,14 @@ export const api = {
     deleteModNote: (id: Id, nid: Id) => send({ method: 'DELETE', path: `/guilds/${id}/notes/${nid}` }),
     bulkModeration: (id: Id, b: { action: 'ban' | 'kick'; userIds?: Id[]; filter?: BulkModerationFilter; reason?: string | null; dryRun: boolean }) => send<BulkModerationResult>({ method: 'POST', path: `/guilds/${id}/moderation/bulk`, body: b }),
     prune: (id: Id, b: { days: number; includeRoles: Id[]; dryRun: boolean }) => send<PruneResult>({ method: 'POST', path: `/guilds/${id}/prune`, body: b }),
+    /** Audit log CSV (VIEW_AUDIT_LOG) with the same filters as `auditLogs`. */
+    auditCsv: (id: Id, q: AuditQuery = {}) => send<string>({ method: 'GET', path: `/guilds/${id}/audit-logs.csv`, query: { ...q } }),
+    modSettings: (id: Id) => send<ModSettings>({ method: 'GET', path: `/guilds/${id}/mod-settings` }),
+    patchModSettings: (id: Id, b: { [K in keyof ModSettings]?: Partial<ModSettings[K]> }) => send<ModSettings>({ method: 'PATCH', path: `/guilds/${id}/mod-settings`, body: b }),
+    modPrefs: (id: Id) => send<ModPrefs & { serverBlurDefault: boolean }>({ method: 'GET', path: `/guilds/${id}/mod-prefs` }),
+    putModPrefs: (id: Id, b: Partial<ModPrefs>) => send<ModPrefs & { serverBlurDefault: boolean }>({ method: 'PUT', path: `/guilds/${id}/mod-prefs`, body: b }),
+    evasionHints: (id: Id, status: 'open' | 'dismissed' | 'confirmed' | 'all' = 'open') => send<(EvasionHint & { user: SharedUser | null; bannedUser: SharedUser | null })[]>({ method: 'GET', path: `/guilds/${id}/evasion-hints`, query: { status } }).then((x) => arr<EvasionHint & { user: SharedUser | null; bannedUser: SharedUser | null }>(x)),
+    handleEvasionHint: (id: Id, hid: Id, status: 'dismissed' | 'confirmed') => send({ method: 'PATCH', path: `/guilds/${id}/evasion-hints/${hid}`, body: { status } }),
     modLogCsv: (id: Id, all = false) => send<string>({ method: 'GET', path: `/guilds/${id}/mod-log.csv${all ? '?all=true' : ''}` }),
     linkedRoles: (id: Id) => send<LinkedRoleView[]>({ method: 'GET', path: `/guilds/${id}/linked-roles` }).then((x) => arr<LinkedRoleView>(x)),
     createLinkedRole: (id: Id, b: { roleId: Id; description?: string | null; criteria: LinkedCriterion[] }) => send<LinkedRoleView>({ method: 'POST', path: `/guilds/${id}/linked-roles`, body: b }),
@@ -261,7 +276,7 @@ export const api = {
     stageInstances: (id: Id) => send<StageInstance[]>({ method: 'GET', path: `/guilds/${id}/stage-instances` }).then((x) => arr<StageInstance>(x)),
     /** Moderation report queue (Mod View gate): list reports, resolve or dismiss one. */
     reports: (id: Id, q: { status?: 'open' | 'resolved' | 'dismissed' | 'all'; limit?: number; before?: Id } = {}) => send<Report[]>({ method: 'GET', path: `/guilds/${id}/reports`, query: { status: q.status ?? 'open', limit: q.limit ?? 50, ...(q.before ? { before: q.before } : {}) } }).then((x) => arr<Report>(x)),
-    resolveReport: (id: Id, rid: Id) => send<Report>({ method: 'PATCH', path: `/guilds/${id}/reports/${rid}`, body: { status: 'resolved' } }),
+    resolveReport: (id: Id, rid: Id, action?: ReportAction) => send<Report>({ method: 'PATCH', path: `/guilds/${id}/reports/${rid}`, body: { status: 'resolved', ...(action && action !== 'none' ? { action } : {}) } }),
     dismissReport: (id: Id, rid: Id) => send<Report>({ method: 'PATCH', path: `/guilds/${id}/reports/${rid}`, body: { status: 'dismissed' } }),
   },
   stages: {
@@ -347,6 +362,8 @@ export const api = {
     forward: (channelId: Id, src: { channelId: Id; messageId: Id }) => send<Message>({ method: 'POST', path: `/channels/${channelId}/messages`, body: { forward: src } }),
     edit: (channelId: Id, id: Id, content: string) => send<Message>({ method: 'PATCH', path: `/channels/${channelId}/messages/${id}`, body: { content } }),
     /** R19: prior versions of an edited message's content, newest first (the current content is not included). */
+    /** Moderators mark a message sensitive (blurred behind a click, text kept); authors may mark their own. */
+    setSensitive: (channelId: Id, id: Id, on: boolean, reason?: string) => (on ? send({ method: 'PUT', path: `/channels/${channelId}/messages/${id}/sensitive`, body: reason ? { reason } : {} }) : send({ method: 'DELETE', path: `/channels/${channelId}/messages/${id}/sensitive` })),
     editHistory: (channelId: Id, id: Id) => send<MessageEdit[]>({ method: 'GET', path: `/channels/${channelId}/messages/${id}/edits` }).then((x) => arr<MessageEdit>(x)),
     delete: (channelId: Id, id: Id) => send({ method: 'DELETE', path: `/channels/${channelId}/messages/${id}` }),
     bulkDelete: (channelId: Id, ids: Id[]) => send({ method: 'POST', path: `/channels/${channelId}/messages/bulk-delete`, body: { messageIds: ids } }),
@@ -369,7 +386,7 @@ export const api = {
     voters: (channelId: Id, id: Id, answerId: number, after?: string, limit = 100) => send<{ users: User[] }>({ method: 'GET', path: `/channels/${channelId}/polls/${id}/answers/${answerId}`, query: { limit, after } }).then((x) => x?.users ?? []),
     endPoll: (channelId: Id, id: Id) => send<Message>({ method: 'POST', path: `/channels/${channelId}/polls/${id}/expire` }),
     /** Report a message in a guild channel (the reporter must be able to read the channel). Returns the new report id. */
-    report: (channelId: Id, messageId: Id, body: { reason: string; description?: string }) => send<{ id: Id }>({ method: 'POST', path: `/channels/${channelId}/messages/${messageId}/report`, body }),
+    report: (channelId: Id, messageId: Id, body: { reason: string; description?: string; anonymous?: boolean }) => send<{ id: Id }>({ method: 'POST', path: `/channels/${channelId}/messages/${messageId}/report`, body }),
   },
   invites: {
     get: (code: string) => send<Invite>({ method: 'GET', path: `/invites/${code}`, auth: false }),

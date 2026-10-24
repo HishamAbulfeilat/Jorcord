@@ -48,4 +48,14 @@ describe('ReportModal', () => {
     await waitFor(() => expect(useUI.getState().toasts.some((tx) => tx.text === 'boom' && tx.kind === 'error')).toBe(true));
     expect(close).not.toHaveBeenCalled();
   });
+
+  it('anonymous: off by default, sends nothing extra, and sends anonymous: true when ticked', async () => {
+    report.mockResolvedValue({ id: 'r1' } as never);
+    render(<ReportModal messageId="m1" guildId="g1" channelId="ch1" close={vi.fn()} />);
+    const box = screen.getByLabelText(/Hide my name from the moderators too/) as HTMLInputElement;
+    expect(box.checked).toBe(false);
+    fireEvent.click(box);
+    fireEvent.click(screen.getByRole('button', { name: 'Report' }));
+    await waitFor(() => expect(report).toHaveBeenCalledWith('ch1', 'm1', { reason: 'spam', description: undefined, anonymous: true }));
+  });
 });

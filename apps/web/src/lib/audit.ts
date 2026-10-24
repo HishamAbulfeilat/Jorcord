@@ -17,6 +17,7 @@ const LABELS: Record<string, string> = {
   LINKED_ROLE_CREATE: 'created a linked role', LINKED_ROLE_UPDATE: 'updated a linked role', LINKED_ROLE_DELETE: 'removed a linked role', BOOST_UPDATE: 'updated boost settings',
   POLL_END: 'ended a poll', APPLICATION_UPDATE: 'updated an application', APPLICATION_TOKEN_RESET: 'reset a bot token', FORUM_TAG_UPDATE: 'updated forum tags',
   STAGE_BLOCK_SPEAKER: 'blocked a member from speaking on a stage', STAGE_UNBLOCK_SPEAKER: 'allowed a member to speak on a stage again', STREAM_VIEWER_KICK: 'removed a viewer from a stream',
+  MESSAGE_SENSITIVE_SET: 'marked a message sensitive', MESSAGE_SENSITIVE_CLEAR: 'removed a sensitive mark', MOD_SETTINGS_UPDATE: 'updated moderation settings', EVASION_HINT_CREATED: 'a ban-evasion hint was raised', EVASION_HINT_HANDLED: 'handled a ban-evasion hint', MEMBER_ROLES_RESTORED: 'got remembered roles back', MESSAGE_EDIT_HISTORY_VIEW: 'viewed a message\'s edit history', REPORT_CREATE: 'reported a message', REPORT_RESOLVE: 'resolved a report', REPORT_DISMISS: 'dismissed a report',
   GUILD_IMPORT: 'imported a server structure', GUILD_EXPORT: 'exported the server structure',
   STREAM_FEED_CREATE: 'added a stream or video feed', STREAM_FEED_UPDATE: 'updated a stream or video feed', STREAM_FEED_DELETE: 'removed a stream or video feed',
 };
@@ -25,12 +26,12 @@ export const actionLabel = (action: string) => LABELS[action] ?? humanize(action
 
 export interface AuditFilter { value: string; label: string; type?: number }
 const GROUPS: { title: string; actions: string[] }[] = [
-  { title: 'Server', actions: ['GUILD_UPDATE', 'BOT_ADD', 'INVITE_CREATE', 'INVITE_DELETE', 'WEBHOOK_CREATE', 'WEBHOOK_UPDATE', 'WEBHOOK_DELETE', 'STREAM_FEED_CREATE', 'STREAM_FEED_UPDATE', 'STREAM_FEED_DELETE', 'APPLICATION_COMMAND_PERMISSION_UPDATE'] },
+  { title: 'Server', actions: ['GUILD_UPDATE', 'BOT_ADD', 'INVITE_CREATE', 'INVITE_DELETE', 'WEBHOOK_CREATE', 'WEBHOOK_UPDATE', 'WEBHOOK_DELETE', 'MOD_SETTINGS_UPDATE', 'STREAM_FEED_CREATE', 'STREAM_FEED_UPDATE', 'STREAM_FEED_DELETE', 'APPLICATION_COMMAND_PERMISSION_UPDATE'] },
   { title: 'Channels', actions: ['CHANNEL_CREATE', 'CHANNEL_UPDATE', 'CHANNEL_DELETE', 'OVERWRITE_UPDATE', 'THREAD_CREATE', 'THREAD_UPDATE', 'THREAD_DELETE', 'FORUM_TAG_UPDATE'] },
-  { title: 'Members', actions: ['MEMBER_KICK', 'MEMBER_BAN_ADD', 'MEMBER_BAN_REMOVE', 'MEMBER_UPDATE', 'MEMBER_ROLE_UPDATE', 'MEMBER_TIMEOUT', 'MEMBER_PRUNE', 'MEMBER_WARN', 'MEMBER_WARN_DELETE', 'MEMBER_BULK_BAN', 'MEMBER_BULK_KICK', 'BAN_APPEAL_CREATE', 'BAN_APPEAL_APPROVE', 'BAN_APPEAL_DENY'] },
+  { title: 'Members', actions: ['MEMBER_KICK', 'MEMBER_BAN_ADD', 'MEMBER_BAN_REMOVE', 'MEMBER_UPDATE', 'MEMBER_ROLE_UPDATE', 'MEMBER_TIMEOUT', 'MEMBER_PRUNE', 'MEMBER_WARN', 'MEMBER_WARN_DELETE', 'MEMBER_BULK_BAN', 'MEMBER_BULK_KICK', 'BAN_APPEAL_CREATE', 'BAN_APPEAL_APPROVE', 'BAN_APPEAL_DENY', 'MEMBER_ROLES_RESTORED', 'EVASION_HINT_CREATED', 'EVASION_HINT_HANDLED'] },
   { title: 'AutoMod', actions: ['AUTOMOD_RULE_CREATE', 'AUTOMOD_RULE_UPDATE', 'AUTOMOD_RULE_DELETE', 'AUTOMOD_BLOCK', 'AUTOMOD_ALERT', 'AUTOMOD_TEST'] },
   { title: 'Roles', actions: ['ROLE_CREATE', 'ROLE_UPDATE', 'ROLE_DELETE'] },
-  { title: 'Messages', actions: ['MESSAGE_DELETE', 'MESSAGE_BULK_DELETE', 'MESSAGE_PIN', 'MESSAGE_UNPIN', 'POLL_END'] },
+  { title: 'Messages', actions: ['MESSAGE_DELETE', 'MESSAGE_BULK_DELETE', 'MESSAGE_PIN', 'MESSAGE_UNPIN', 'POLL_END', 'MESSAGE_SENSITIVE_SET', 'MESSAGE_SENSITIVE_CLEAR', 'MESSAGE_EDIT_HISTORY_VIEW'] },
   { title: 'Expressions', actions: ['EMOJI_CREATE', 'EMOJI_UPDATE', 'EMOJI_DELETE', 'STICKER_CREATE', 'STICKER_UPDATE', 'STICKER_DELETE'] },
   { title: 'Events & stages', actions: ['GUILD_SCHEDULED_EVENT_CREATE', 'GUILD_SCHEDULED_EVENT_UPDATE', 'GUILD_SCHEDULED_EVENT_DELETE', 'STAGE_INSTANCE_CREATE', 'STAGE_INSTANCE_UPDATE', 'STAGE_INSTANCE_DELETE'] },
 ];

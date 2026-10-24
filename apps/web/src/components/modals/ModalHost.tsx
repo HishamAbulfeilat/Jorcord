@@ -51,6 +51,8 @@ const ThreadSettingsModal = lazyNamed(() => import('./PlatformModals'), 'ThreadS
 const ForwardModal = lazyNamed(() => import('./SocialModals'), 'ForwardModal');
 const InboxModal = lazyNamed(() => import('./SocialModals'), 'InboxModal');
 const ReportModal = lazyNamed(() => import('./SocialModals'), 'ReportModal');
+const RemoveMemberModal = lazyNamed(() => import('./ModerationModals'), 'RemoveMemberModal');
+const ModNoticeModal = lazyNamed(() => import('./ModerationModals'), 'ModNoticeModal');
 const EmojiPicker = lazyNamed(() => import('@/components/chat/EmojiPicker'), 'EmojiPicker');
 
 const TEMPLATES = [
@@ -272,6 +274,8 @@ function ModalBody({ m, close }: { m: ModalSpec; close: () => void }) {
     case 'notifSettings': return <NotifSettingsModal scope={m.scope} id={m.id} close={close} />;
     case 'forward': return <ForwardModal message={m.message} close={close} />;
     case 'report': return <ReportModal messageId={m.messageId} guildId={m.guildId} channelId={m.channelId} close={close} />;
+    case 'removeMember': return <RemoveMemberModal mode={m.mode} guildId={m.guildId} userId={m.userId} close={close} />;
+    case 'modNotice': return <ModNoticeModal notice={m.notice} close={close} />;
     case 'modView': return <ModViewModal guildId={m.guildId} userId={m.userId} close={close} />;
     case 'inbox': return <InboxModal initialTab={m.tab} close={close} />;
     case 'safetyNumber': return <SafetyNumberModal channelId={m.channelId} close={close} />;

@@ -6,7 +6,8 @@ import { myChannelPerms } from '@/lib/session';
 import { toastError } from '@/stores/ui';
 import { t } from '@/i18n';
 import { Perm, has } from '@jorcord/shared';
-import type { Channel, Id, Message, Report } from '@jorcord/shared';
+import type { Channel, Id, Message, ReportAction } from '@jorcord/shared';
+import { ReportRow } from '@/components/moderation/ReportRow';
 import { api } from '@/lib/api';
 import { useData } from '@/stores/data';
 import { useUI, toast } from '@/stores/ui';
@@ -133,30 +134,13 @@ export function ThreadsPanel({ channel, onClose }: { channel: Channel; onClose: 
 
 /* ---------------------------------------------------------------- reports panel */
 
-const REPORT_REASON_LABEL = { spam: 'Spam', harassment: 'Harassment', inappropriate_content: 'Inappropriate', impersonation: 'Impersonation', security: 'Security', other: 'Other' } as const;
-
-function reasonBadge(r: Report['reason']) {
-  const cls = (r === 'spam' || r === 'inappropriate_content') ? 'bg-warn/20 text-warn' : r === 'harassment' ? 'bg-danger/20 text-danger' : 'bg-side text-muted';
-  return (
-    <span className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-semibold ${cls}`}>{REPORT_REASON_LABEL[r]}</span>
-  );
-}
-
-function timeAgo(iso: string) {
-  const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
-  if (s < 60) return t('Just now');
-  if (s < 3600) return `${Math.floor(s / 60)}m`;
-  if (s < 86400) return `${Math.floor(s / 3600)}h`;
-  return `${Math.floor(s / 86400)}d`;
-}
-
 export function ReportQueuePanel({ guildId, onClose }: { guildId: Id; onClose: () => void }) {
   const qc = useQueryClient(); const users = useData((s) => s.users); const guilds = useData((s) => s.guilds); const me = useData((s) => s.me);
   const [status, setStatus] = useState<'open' | 'resolved' | 'dismissed' | 'all'>('open');
   const q = useQuery({ queryKey: ['reports', guildId, status], queryFn: () => api.guilds.reports(guildId, { status }), retry: false });
-  const triage = (rid: Id, to: 'resolved' | 'dismissed') => {
-    const fn = to === 'resolved' ? api.guilds.resolveReport : api.guilds.dismissReport;
-    return fn(guildId, rid).then((r) => { void qc.invalidateQueries({ queryKey: ['reports', guildId] }); toast(t(`Report ${to}`), 'success'); }).catch(toastError);
+  const triage = (rid: Id, to: 'resolved' | 'dismissed', action?: ReportAction) => {
+    const p = to === 'resolved' ? api.guilds.resolveReport(guildId, rid, action) : api.guilds.dismissReport(guildId, rid);
+    return p.then(() => { void qc.invalidateQueries({ queryKey: ['reports', guildId] }); toast(t(`Report ${to}`), 'success'); }).catch(toastError);
   };
   const g = guilds[guildId]?.guild;
   const channelName = (cid: Id) => guilds[guildId]?.channels?.[cid]?.name ?? cid;
@@ -178,33 +162,8 @@ export function ReportQueuePanel({ guildId, onClose }: { guildId: Id; onClose: (
       </div>
       {q.isLoading ? <Spinner className="mx-auto my-6" /> : rows.length === 0 ? <Empty icon={<Hash size={40} />} title={t('No reports here')}>{t('No reports in this category yet.')}</Empty> : (
         <ul aria-label={t('Reports')}>{rows.map((r) => (
-          <li key={r.id} className="rounded-lg border border-divider bg-rail mb-2 p-3 last:border-b last:border-b-0" data-report={r.id}>
-            <div className="mb-2 flex items-start justify-between gap-2">
-              <div className="min-w-0 flex items-center gap-2">
-                <Avatar user={target(r.targetUserId)} size={28} />
-                <div className="min-w-0">
-                  <div className="truncate font-semibold text-header">{target(r.targetUserId).username}</div>
-                  <div className="text-xs text-muted">{channelName(r.channelId)} • {t('by')} {reporter(r.reporterId).username}</div>
-                </div>
-              </div>
-              <div className="flex items-center gap-2 shrink-0">{reasonBadge(r.reason)}{r.status !== 'open' ? <span className="text-xs text-muted">{timeAgo(r.createdAt)}</span> : null}</div>
-            </div>
-            {r.description ? <p className="mb-2 text-sm text-muted">{r.description}</p> : null}
-            {r.message?.content || r.message?.attachments.length ? (
-              <div className="mb-2 rounded bg-side/60 border border-divider/60 p-2 text-sm">
-                <div className="text-xs font-semibold text-muted">{t('Reported message')}</div>
-                <p className="mt-0.5 text-header break-words">{r.message.content || t('(attachment)')}</p>
-                {r.message.attachments.length > 0 && (<div className="mt-1 flex flex-wrap gap-1">{r.message.attachments.map((a) => <span key={a.url} className="text-xs text-muted">{a.filename}</span>)}</div>)}
-              </div>
-            ) : null}
-            {r.status === 'open' ? (
-              <div className="flex items-center gap-2 mt-1">
-                <button className="btn btn-sm btn-primary" disabled={!me || r.handledBy === me?.id} onClick={() => void triage(r.id, 'resolved')}>{t('Resolve')}</button>
-                <button className="btn btn-sm btn-secondary" disabled={!me || r.handledBy === me?.id} onClick={() => void triage(r.id, 'dismissed')}>{t('Dismiss')}</button>
-                {r.handledBy && (<span className="ml-auto text-xs text-muted">{t('Handled by')} {users[r.handledBy]?.username ?? r.handledBy}</span>)}
-              </div>
-            ) : null}
-          </li>
+          <ReportRow key={r.id} r={r} target={target(r.targetUserId)} reporterName={r.reporterId ? reporter(r.reporterId).username : null} channelName={channelName(r.channelId)}
+            handlerName={r.handledBy ? users[r.handledBy]?.username : null} canAct={!!me} onResolve={(act) => void triage(r.id, 'resolved', act)} onDismiss={() => void triage(r.id, 'dismissed')} />
         ))}</ul>)}
     </PanelShell>
   );

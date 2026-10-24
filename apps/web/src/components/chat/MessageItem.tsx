@@ -140,6 +140,8 @@ const MessageItemBase = memo(function MessageItem({ m, grouped, highlighted, onE
   useEffect(() => { if (m.guildId && ownIds.length && (own?.length ?? 0) < ownIds.length) void refreshStickers(m.guildId); }, [m.guildId, ownIds.length, own?.length]); // eslint-disable-line
   const mentioned = !!me && (m.mentions.includes(me.id) || m.mentionEveryone) && m.author.id !== me.id;
   const startEdit = () => setEditing(m.id);
+  const canSeeHistory = !!me && (m.author.id === me.id || (!!m.guildId && can(myChannelPerms(m.channelId), Perm.MANAGE_MESSAGES))); // the server only gives edit history to the author and moderators
+  const sensitive = ((m.flags ?? 0) & MessageFlags.SENSITIVE) !== 0; const [shown, setShown] = useState(false);
   const ephemeral = isEphemeral(m);
   const menuItems = () => ephemeral ? [{ label: t('Dismiss message'), onClick: () => useMessages.getState().remove(m.channelId, m.id) }] : messageMenu(m, { startEdit, pickEmoji: () => openPopout({ kind: 'emoji', rect: new DOMRect(window.innerWidth / 2, window.innerHeight / 2, 0, 0), guildId: m.guildId ?? undefined, allowBurst: true, onPick: (p) => addReaction(m, p) }) });
   const trig = useMenuTrigger(menuItems);
@@ -157,12 +159,12 @@ const MessageItemBase = memo(function MessageItem({ m, grouped, highlighted, onE
       </div>
     );
   }
-  const body = (
+  const inner = (
     <>
       {isLoadingMsg(m) ? <ThinkingBody m={m} /> : m.type === 'poll_result' ? <PollResultBody m={m} /> : editing ? <Editor m={m} done={() => setEditing(null)} /> : m.content ? (
         <div className="relative pe-4 text-[16px] leading-[1.375rem] text-normal">
           <MessageText m={m} guildId={m.guildId} />
-          {m.editedAt && (onEditHistory
+          {m.editedAt && (onEditHistory && canSeeHistory
             ? <button data-testid="edit-history-trigger" className="ms-1 cursor-pointer select-none text-[10px] text-muted hover:text-interactive-hover" title={fmtFull(new Date(m.editedAt).getTime())} onClick={(e) => { e.stopPropagation(); onEditHistory(m, e.currentTarget.getBoundingClientRect()); }}>(edited)</button>
             : <time className="ms-1 select-none text-[10px] text-muted" title={fmtFull(new Date(m.editedAt).getTime())}>(edited)</time>)}
         </div>
@@ -183,6 +185,12 @@ const MessageItemBase = memo(function MessageItem({ m, grouped, highlighted, onE
       {m.threadId && <button onClick={() => nav.go(m.guildId, m.threadId)} className="mt-1 flex items-center gap-1.5 rounded border border-divider bg-side px-2 py-1 text-sm text-link hover:underline"><MessagesSquare size={14} />View thread</button>}
     </>
   );
+  const body = sensitive && !shown && !editing ? (
+    <div className="relative" data-testid="sensitive-wrap">
+      <div className="pointer-events-none select-none blur-md" aria-hidden>{inner}</div>
+      <button type="button" data-testid="sensitive-reveal" className="absolute inset-0 flex items-center justify-center rounded bg-black/20 text-sm font-semibold text-white" onClick={(e) => { e.stopPropagation(); setShown(true); }}>{t('Sensitive content. Click to show')}</button>
+    </div>
+  ) : (<>{sensitive && <div className="mb-0.5 text-[11px] font-medium text-warn" data-testid="sensitive-mark">{t('Marked sensitive')}</div>}{inner}</>);
   void nav; void mobile; void Hash; void CornerUpLeft; void fileUrl;
   return (
     <div className={cx(base, 'msg-cozy', !grouped && !m.replyTo && !m.interaction ? 'mt-[17px] pt-[2px]' : m.replyTo || m.interaction ? 'mt-[17px]' : '', ephemeral && 'bg-brand/[0.06]')} id={`msg-${m.id}`} data-mid={m.id} {...trig} onDoubleClick={() => { if (me && canEditMessage(m, me.id) && !mobile) startEdit(); }}>
