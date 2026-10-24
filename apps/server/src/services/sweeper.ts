@@ -16,6 +16,9 @@ import { sweepAccountDeletions } from './accountDeletion';
 import { sendDueDigests } from './digest';
 import { sweepExpiredMessages } from './disappearing';
 import { pruneReservedUsernames } from './accountChanges';
+import { sweepAuditRetention, sweepEditRetention } from './auditQuery';
+import { sweepRoleMemory } from './roleMemory';
+import { sweepNotices } from './modNotices';
 
 /** Thread auto-archive: no activity for `auto_archive_minutes` -> archived (THREAD_UPDATE). Atomic, so multi-node safe. */
 export async function archiveIdleThreads(ctx: Ctx) {
@@ -82,4 +85,8 @@ export async function runSweeps(ctx: Ctx) {
   await step('digests', () => sendDueDigests(ctx));
   await step('disappearing-messages', () => sweepExpiredMessages(ctx));
   await step('reserved-usernames', () => pruneReservedUsernames(ctx));
+  await step('audit-retention', () => sweepAuditRetention(ctx));
+  await step('edit-retention', () => sweepEditRetention(ctx));
+  await step('role-memory', () => sweepRoleMemory(ctx));
+  await step('mod-notices', () => sweepNotices(ctx));
 }

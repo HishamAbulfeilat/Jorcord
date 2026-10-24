@@ -14,6 +14,11 @@ import { assetUrl, idSchema, iso, limitParam, parse } from '../lib/ids';
 import { randomToken } from '../lib/crypto';
 import { limitOrThrow } from '../lib/ratelimit';
 import { audit, buildGuildFull } from '../services/guilds';
+import { rowDiff, ROLE_COLS } from '../services/auditDiff';
+import { currentAuditReason } from '../lib/auditReason';
+import { rememberRoles, restoreRoles } from '../services/roleMemory';
+import { sendRemovalNotice } from '../services/modNotices';
+import { checkBanEvasion } from '../services/evasion';
 import { trackVisibility } from '../services/visibility';
 import { refreshMember } from '../services/linkedroles';
 import { onMemberJoined } from '../services/sysbots';
@@ -54,8 +59,9 @@ export async function joinGuild(ctx: Ctx, userId: string, guildId: string, invit
       const used = await ctx.db.query('UPDATE invites SET uses = uses + 1 WHERE code = $1 AND (max_uses IS NULL OR uses < max_uses) AND (expires_at IS NULL OR expires_at > now()) RETURNING code', [inviteCode]);
       if (!used.length) throw notFound('Invite');
     }
-    await ctx.db.query('INSERT INTO members (guild_id, user_id, pending) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING', [guildId, userId, screening]);
+    await ctx.db.query('INSERT INTO members (guild_id, user_id, pending, joined_via) VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING', [guildId, userId, screening, inviteCode]);
     await ctx.pcache.invalidate({ k: 'member', guildId, userId: userId });
+    await restoreRoles(ctx, guildId, userId).catch((e) => ctx.log.warn({ err: e }, 'role restore failed')); // roles remembered from a kick / leave, re-checked against the server as it is now
     await applyLargeServerDefault(ctx, userId, guildId).catch((e) => ctx.log.warn({ err: e }, 'large-server notification default failed')); // big servers start as mentions-only
     const full = await buildGuildFull(ctx, guildId, userId);
     await ctx.hub.toUser(userId, 'GUILD_CREATE', full);
@@ -65,6 +71,7 @@ export async function joinGuild(ctx: Ctx, userId: string, guildId: string, invit
     await bumpDaily(ctx, guildId, 'joins');
     await detectRaid(ctx, guildId).catch((e) => ctx.log.warn({ err: e }, 'raid detection failed'));
     await checkImpersonation(ctx, guildId, userId).catch((e) => ctx.log.warn({ err: e }, 'impersonation check failed'));
+    await checkBanEvasion(ctx, guildId, userId).catch((e) => ctx.log.warn({ err: e }, 'ban evasion check failed')); // optional hint for moderators, never an action
     await checkMemberProfile(ctx, guildId, userId); // AutoMod member-profile rules (username / display name / bio keywords)
     await refreshMember(ctx, guildId, userId).catch((e) => ctx.log.warn({ err: e }, 'linked role refresh failed')); // criteria such as account age can hold on day one
     if (full.systemChannelId) await postSystemMessage(ctx, full.systemChannelId, userId, 'join').catch((e) => ctx.log.warn({ err: e }, 'join message failed'));
@@ -118,8 +125,8 @@ export function memberRoutes(app: FastifyInstance, ctx: Ctx) {
     await ctx.db.query('INSERT INTO roles (id, guild_id, name, color, color_secondary, hoist, position, permissions, mentionable, icon) VALUES ($1,$2,$3,$4,$5,$6,1,$7,$8,$9)',
       [rid, id, b.name ?? 'new role', b.color ?? 0, b.colorSecondary ?? null, b.hoist ?? false, (bits & ALL_PERMS).toString(), b.mentionable ?? false, b.icon ?? null]);
     await ctx.pcache.invalidate({ k: 'guild', guildId: id });
-    await audit(ctx, id, req.userId, 'ROLE_CREATE', rid, b);
     const [row] = await ctx.db.query('SELECT * FROM roles WHERE id = $1', [rid]);
+    await audit(ctx, id, req.userId, 'ROLE_CREATE', rid, b, null, rowDiff(null, row, ROLE_COLS));
     await ctx.hub.toGuild(id, 'ROLE_CREATE', roleDTO(row));
     for (const r of await ctx.db.query('SELECT id FROM roles WHERE guild_id = $1 AND position > 1', [id])) await pushRole(id, r.id);
     return reply.code(201).send(roleDTO(row));
@@ -138,7 +145,7 @@ export function memberRoutes(app: FastifyInstance, ctx: Ctx) {
     }
     await ctx.db.tx(async (q) => { for (const e of list) await q.query('UPDATE roles SET position = $2 WHERE id = $1 AND guild_id = $3', [e.id, e.position, id]); });
     await ctx.pcache.invalidate({ k: 'guild', guildId: id });
-    await audit(ctx, id, req.userId, 'ROLE_REORDER', null, list);
+    await audit(ctx, id, req.userId, 'ROLE_REORDER', null, list, null, { before: Object.fromEntries(list.map((e) => [e.id, cur.get(e.id) ?? null])), after: Object.fromEntries(list.map((e) => [e.id, e.position])) });
     for (const e of list) await pushRole(id, e.id);
     return (await ctx.db.query('SELECT * FROM roles WHERE guild_id = $1 ORDER BY position DESC, id', [id])).map(roleDTO);
   });
@@ -162,8 +169,8 @@ export function memberRoutes(app: FastifyInstance, ctx: Ctx) {
     for (const [k, v] of Object.entries(b)) { vals.push(k === 'permissions' ? (BigInt(v as string) & ALL_PERMS).toString() : v); sets.push(`${col[k]} = $${vals.length}`); }
     if (sets.length) { await ctx.db.query(`UPDATE roles SET ${sets.join(', ')} WHERE id = $1`, vals); await ctx.pcache.invalidate({ k: 'guild', guildId: p.id }); }
     if (settled) await settled();
-    await audit(ctx, p.id, req.userId, 'ROLE_UPDATE', p.roleId, b);
     const [row] = await ctx.db.query('SELECT * FROM roles WHERE id = $1', [p.roleId]);
+    await audit(ctx, p.id, req.userId, 'ROLE_UPDATE', p.roleId, b, null, rowDiff(role, row, ROLE_COLS));
     await ctx.hub.toGuild(p.id, 'ROLE_UPDATE', roleDTO(row));
     return roleDTO(row);
   });
@@ -186,7 +193,7 @@ export function memberRoutes(app: FastifyInstance, ctx: Ctx) {
     await ctx.pcache.invalidate({ k: 'guild', guildId: p.id });
     await settled();
     if (emojiRows.length) await ctx.hub.toGuild(p.id, 'EMOJIS_UPDATE', { guildId: p.id, emojis: (await ctx.db.query('SELECT * FROM emojis WHERE guild_id = $1', [p.id])).map((e) => ({ id: e.id, guildId: e.guild_id, name: e.name, animated: e.animated, url: e.url, ...(e.role_ids?.length ? { roleIds: e.role_ids as string[] } : {}) })) });
-    await audit(ctx, p.id, req.userId, 'ROLE_DELETE', p.roleId, { name: role.name });
+    await audit(ctx, p.id, req.userId, 'ROLE_DELETE', p.roleId, { name: role.name }, null, rowDiff(role, null, ROLE_COLS));
     await ctx.hub.toGuild(p.id, 'ROLE_DELETE', { id: p.roleId, guildId: p.id });
     for (const u of holders) await pushMember(p.id, u);
     return reply.code(204).send();
@@ -220,7 +227,7 @@ export function memberRoutes(app: FastifyInstance, ctx: Ctx) {
   app.patch('/guilds/:id/members/:userId', async (req) => {
     const p = parse(z.object({ id: idSchema, userId: z.union([idSchema, z.literal('@me')]) }), req.params);
     const b = parse(z.object({
-      nick: z.string().trim().max(32).nullable(), roles: z.array(idSchema).max(250), timeoutUntil: z.string().datetime().nullable(),
+      nick: z.string().trim().max(32).nullable(), roles: z.array(idSchema).max(250), timeoutUntil: z.string().datetime().nullable(), /** shown to the member with a timeout notice and kept in the audit log */ reason: z.string().trim().max(512).nullable(),
       // per-server profile overrides: a member may only change their own
       avatar: assetUrl.nullable(), banner: assetUrl.nullable(), bio: z.string().max(400).nullable(), pronouns: z.string().max(40).nullable(),
     }).partial().strict(), req.body);
@@ -231,8 +238,9 @@ export function memberRoutes(app: FastifyInstance, ctx: Ctx) {
     const self = targetId === req.userId;
     if (b.nick !== undefined) {
       if (self) need(perms, Perm.CHANGE_NICKNAME); else { need(perms, Perm.MANAGE_NICKNAMES); needOutrankMember(actor, target); }
+      const [nickBefore] = await ctx.db.query('SELECT nick FROM members WHERE guild_id = $1 AND user_id = $2', [p.id, targetId]);
       await ctx.db.query('UPDATE members SET nick = $3 WHERE guild_id = $1 AND user_id = $2', [p.id, targetId, b.nick || null]);
-      await audit(ctx, p.id, req.userId, 'MEMBER_UPDATE', targetId, { nick: b.nick || null });
+      await audit(ctx, p.id, req.userId, 'MEMBER_UPDATE', targetId, { nick: b.nick || null }, null, rowDiff(nickBefore, { nick: b.nick || null }, ['nick']));
       if (b.nick && self) await checkImpersonation(ctx, p.id, targetId).catch((e) => ctx.log.warn({ err: e }, 'impersonation check failed'));
       if (b.nick && self) await checkMemberProfile(ctx, p.id, targetId);
     }
@@ -267,7 +275,7 @@ export function memberRoutes(app: FastifyInstance, ctx: Ctx) {
       for (const r of adds) await ctx.db.query('INSERT INTO member_roles (guild_id, user_id, role_id) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING', [p.id, targetId, r]);
       await ctx.pcache.invalidate({ k: 'member', guildId: p.id, userId: targetId });
       await settled();
-      await audit(ctx, p.id, req.userId, 'MEMBER_ROLE_UPDATE', targetId, { added: adds, removed: removes });
+      await audit(ctx, p.id, req.userId, 'MEMBER_ROLE_UPDATE', targetId, { added: adds, removed: removes }, null, { before: { roles: [...have].sort() }, after: { roles: want.slice().sort() } });
     }
     if (b.timeoutUntil !== undefined) {
       need(perms, Perm.MODERATE_MEMBERS);
@@ -278,9 +286,11 @@ export function memberRoutes(app: FastifyInstance, ctx: Ctx) {
         if (t > Date.now() + 28 * 86400_000) throw badRequest('Timeout may not exceed 28 days');
         if (has(await effectiveGuildPerms(p.id, targetId), Perm.ADMINISTRATOR)) throw forbidden('Cannot time out an administrator');
       }
+      const [toBefore] = await ctx.db.query('SELECT timeout_until FROM members WHERE guild_id = $1 AND user_id = $2', [p.id, targetId]);
       await ctx.db.query('UPDATE members SET timeout_until = $3 WHERE guild_id = $1 AND user_id = $2', [p.id, targetId, b.timeoutUntil]);
       await ctx.pcache.invalidate({ k: 'member', guildId: p.id, userId: targetId });
-      await audit(ctx, p.id, req.userId, 'MEMBER_TIMEOUT', targetId, { until: b.timeoutUntil });
+      await audit(ctx, p.id, req.userId, 'MEMBER_TIMEOUT', targetId, { until: b.timeoutUntil }, b.reason || null, rowDiff(toBefore, { timeout_until: b.timeoutUntil }, ['timeout_until']));
+      if (b.timeoutUntil) await sendRemovalNotice(ctx, p.id, targetId, 'timeout', { reason: b.reason || currentAuditReason(), moderatorId: req.userId, until: b.timeoutUntil }).catch((e) => ctx.log.warn({ err: e }, 'timeout notice failed'));
     }
     await pushMember(p.id, targetId);
     return (await memberDTO(ctx, p.id, targetId))!;
@@ -290,14 +300,17 @@ export function memberRoutes(app: FastifyInstance, ctx: Ctx) {
   const removeMember = (guildId: string, userId: string) => removeMemberFromGuild(ctx, guildId, userId);
   app.delete('/guilds/:id/members/:userId', async (req, reply) => {
     const p = parse(z.object({ id: idSchema, userId: idSchema }), req.params);
+    const kq = parse(z.object({ reason: z.string().trim().max(512).optional(), rememberRoles: z.enum(['true', 'false']).optional(), notify: z.enum(['true', 'false']).optional() }), req.query);
     const actor = await guildAccess(ctx, req.userId, p.id);
     need(guildPerms(actor), Perm.KICK_MEMBERS);
     if (p.userId === req.userId) throw badRequest('Cannot kick yourself');
     const target = await loadGuildPerm(ctx, p.id, p.userId);
     if (!target) throw notFound('Member');
     needOutrankMember(actor, target);
+    await rememberRoles(ctx, p.id, p.userId, { reason: 'kick', grantedBy: req.userId, force: kq.rememberRoles === undefined ? undefined : kq.rememberRoles === 'true' }).catch((e) => ctx.log.warn({ err: e }, 'role memory failed'));
     await removeMember(p.id, p.userId);
-    await audit(ctx, p.id, req.userId, 'MEMBER_KICK', p.userId);
+    await audit(ctx, p.id, req.userId, 'MEMBER_KICK', p.userId, null, kq.reason || null);
+    await sendRemovalNotice(ctx, p.id, p.userId, 'kick', { reason: kq.reason || currentAuditReason(), moderatorId: req.userId, notify: kq.notify !== 'false' }).catch((e) => ctx.log.warn({ err: e }, 'kick notice failed'));
     return reply.code(204).send();
   });
 
@@ -311,7 +324,7 @@ export function memberRoutes(app: FastifyInstance, ctx: Ctx) {
   });
   app.put('/guilds/:id/bans/:userId', async (req, reply) => {
     const p = parse(z.object({ id: idSchema, userId: idSchema }), req.params);
-    const b = parse(z.object({ reason: z.string().max(512).nullable().optional(), deleteMessageSeconds: z.number().int().min(0).max(604800).optional() }).strict(), req.body);
+    const b = parse(z.object({ reason: z.string().max(512).nullable().optional(), deleteMessageSeconds: z.number().int().min(0).max(604800).optional(), /** false = do not send the removed member a notice */ notify: z.boolean().optional() }).strict(), req.body);
     const actor = await guildAccess(ctx, req.userId, p.id);
     need(guildPerms(actor), Perm.BAN_MEMBERS);
     if (p.userId === req.userId) throw badRequest('Cannot ban yourself');
@@ -322,7 +335,7 @@ export function memberRoutes(app: FastifyInstance, ctx: Ctx) {
     if (g.owner_id === p.userId) throw forbidden('Cannot ban the guild owner', 'HIERARCHY');
     const target = await loadGuildPerm(ctx, p.id, p.userId);
     needOutrankMember(actor, target);
-    await ctx.db.query('INSERT INTO bans (guild_id, user_id, reason, banned_by) VALUES ($1,$2,$3,$4) ON CONFLICT (guild_id, user_id) DO UPDATE SET reason = $3, banned_by = $4', [p.id, p.userId, b.reason ?? null, req.userId]);
+    await ctx.db.query('INSERT INTO bans (guild_id, user_id, reason, banned_by, joined_via) VALUES ($1,$2,$3,$4,(SELECT joined_via FROM members WHERE guild_id = $1 AND user_id = $2)) ON CONFLICT (guild_id, user_id) DO UPDATE SET reason = $3, banned_by = $4', [p.id, p.userId, b.reason ?? null, req.userId]);
     await ctx.pcache.invalidate({ k: 'member', guildId: p.id, userId: p.userId });
     if (target) await removeMember(p.id, p.userId);
     if (b.deleteMessageSeconds) {
@@ -331,6 +344,7 @@ export function memberRoutes(app: FastifyInstance, ctx: Ctx) {
       for (const m of msgs.slice(0, 1000)) await ctx.hub.toChannel(m.channel_id, 'MESSAGE_DELETE', { id: m.id, channelId: m.channel_id, guildId: p.id });
     }
     await audit(ctx, p.id, req.userId, 'MEMBER_BAN_ADD', p.userId, null, b.reason ?? null);
+    await sendRemovalNotice(ctx, p.id, p.userId, 'ban', { reason: b.reason ?? currentAuditReason(), moderatorId: req.userId, notify: b.notify }).catch((e) => ctx.log.warn({ err: e }, 'ban notice failed'));
     return reply.code(204).send();
   });
   app.delete('/guilds/:id/bans/:userId', async (req, reply) => {

@@ -3,6 +3,7 @@ import { z } from 'zod';
 import type { Relationship } from '@jorcord/shared';
 import { AVATAR_DECORATION_IDS, DISPLAY_NAME_EFFECT_IDS, DISPLAY_NAME_FONT_IDS, NAME_PLATE_IDS, PROFILE_EFFECT_IDS, snowflake } from '@jorcord/shared';
 import { removeMemberFromGuild } from './members';
+import { rememberRoles } from '../services/roleMemory';
 import { publicConnections } from './connections';
 import { setServerTag } from '../services/cosmetics';
 import type { Ctx } from '../ctx';
@@ -195,6 +196,7 @@ export function userRoutes(app: FastifyInstance, ctx: Ctx) {
     const [m] = await ctx.db.query('SELECT 1 AS x FROM members WHERE guild_id = $1 AND user_id = $2', [guildId, req.userId]);
     if (!g || !m) throw notFound('Guild');
     if (g.owner_id === req.userId) throw new ApiError(400, 'OWNER_CANNOT_LEAVE', 'Transfer ownership or delete the guild instead');
+    await rememberRoles(ctx, guildId, req.userId, { reason: 'leave', grantedBy: null }).catch((e) => ctx.log.warn({ err: e }, 'role memory failed')); // only if the server asked for it, or a timeout is running
     await removeMemberFromGuild(ctx, guildId, req.userId); // same cleanup as a kick: voice, private threads, tag, bot install
     return reply.code(204).send();
   });

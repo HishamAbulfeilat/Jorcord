@@ -4,6 +4,7 @@ import { Perm, normalizeLinkList } from '@jorcord/shared';
 import type { Ctx } from '../ctx';
 import { idSchema, parse } from '../lib/ids';
 import { audit } from '../services/guilds';
+import { rowDiff, SAFETY_COLS } from '../services/auditDiff';
 import { clearImpersonation, normalizeGuard } from '../services/impersonation';
 import { memberDmState, setMemberDmOptIn } from '../services/memberDms';
 import { badRequest, notFound } from '../errors';
@@ -52,7 +53,7 @@ export function safetyRoutes(app: FastifyInstance, ctx: Ctx) {
     if (b.pauseInvites !== undefined) set('invites_paused_until', b.pauseInvites ? new Date(Date.now() + 86_400_000) : null);
     if (!sets.length) return;
     await ctx.db.query(`UPDATE guilds SET ${sets.join(', ')} WHERE id = $1`, vals);
-    await audit(ctx, id, actor, 'SAFETY_UPDATE', id, b);
+    await audit(ctx, id, actor, 'SAFETY_UPDATE', id, b, null, rowDiff(cur, await load(id), SAFETY_COLS));
     const [fresh] = await ctx.db.query(`${GUILD_SELECT} WHERE g.id = $1`, [id]);
     await ctx.hub.toGuild(id, 'GUILD_UPDATE', guildDTO(fresh));
   };

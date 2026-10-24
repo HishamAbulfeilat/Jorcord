@@ -121,6 +121,10 @@ export interface Events {
   GIF_FAVORITES_UPDATE: { item?: GifFavorite; removedId?: Id };
   /** Reports (mod queue): a report was created or triaged; clients with moderation perms re-read the queue. */
   GUILD_REPORTS_UPDATE: { guildId: Id };
+  /** To moderators outside their quiet hours: a new report arrived (content-free). */
+  MOD_REPORT_PING: { guildId: Id; reportId: Id; count: number };
+  /** To a member: they were kicked, banned or timed out (see GET /users/@me/mod-notices). */
+  MOD_NOTICE: import('./moderation').ModNotice;
   /** A guild's webhook was created, updated or deleted: clients re-read that channel's webhook list. */
   WEBHOOKS_UPDATE: { guildId: Id; channelId: Id };
   GUILD_MEMBERS_CHUNK: { guildId: Id; members: Member[]; notFound: Id[]; chunkIndex: number; chunkCount: number; nonce?: string };

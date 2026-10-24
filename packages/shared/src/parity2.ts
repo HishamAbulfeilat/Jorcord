@@ -79,11 +79,15 @@ export type ReportReason = (typeof REPORT_REASONS)[number];
 export type ReportStatus = 'open' | 'resolved' | 'dismissed';
 /** A user report against another member's message; moderators triage it in the queue. */
 export interface Report {
-  id: Id; guildId: Id; channelId: Id; messageId: Id; reporterId: Id; targetUserId: Id;
+  id: Id; guildId: Id; channelId: Id; messageId: Id; reporterId: Id | null; targetUserId: Id;
   reason: ReportReason; description?: string | null;
   /** Snapshot of the message at report time (content + author display), null when unreachable. */
   message?: { content: string; attachments: Attachment[] } | null;
   status: ReportStatus; handledBy?: Id | null; handledAt?: string | null; createdAt: string;
+  /** Package F: how many people reported this message (duplicates fold into the first open report). */ reportCount?: number;
+  /** The reporter asked to be hidden from moderators too: `reporterId` is then null. */ anonymous?: boolean;
+  /** Canned action taken when it was resolved (none, delete_message, mark_sensitive, warn, timeout). */ actionTaken?: string | null;
+  /** Server default and the moderator's own choice: show attachments blurred until clicked. */ blurMedia?: boolean;
 }
 export interface ModView {
   user: User; isMember: boolean; joinedAt: string | null; accountCreatedAt: string; roles: Id[]; timeoutUntil: string | null; banned: boolean;

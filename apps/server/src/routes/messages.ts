@@ -262,17 +262,21 @@ export function messageRoutes(app: FastifyInstance, ctx: Ctx) {
     return { messageId: p.mid, to, text: r.text, detectedLanguage: r.detected, cached: r.cached };
   });
 
-  // R19: edit history — prior contents of an edited message, newest first.
+  // R19: edit history — prior contents of an edited message, newest first. Only the author and moderators (MANAGE_MESSAGES) may read it;
+  // a moderator reading someone else's history leaves an audit entry. The oldest entry is the original text.
   app.get('/channels/:id/messages/:mid/edits', async (req) => {
     const p = parse(mm, req.params);
     const q = parse(z.object({ limit: z.coerce.number().optional() }), req.query);
     const a = await channelAccess(ctx, req.userId, p.id);
     await ageGate(ctx, req.userId, req.isBot, a);
     need(a.perms, Perm.READ_MESSAGE_HISTORY);
-    const [m] = await ctx.db.query('SELECT id FROM messages WHERE id = $1 AND channel_id = $2', [p.mid, p.id]);
+    const [m] = await ctx.db.query('SELECT id, author_id FROM messages WHERE id = $1 AND channel_id = $2', [p.mid, p.id]);
     if (!m) throw notFound('Message');
-    return (await ctx.db.query('SELECT id, message_id, content, edited_at FROM message_edits WHERE message_id = $1 ORDER BY id DESC LIMIT $2', [p.mid, limitParam(q.limit, 25, 100)]))
-      .map((r) => ({ id: r.id as string, messageId: r.message_id as string, content: r.content as string, editedAt: iso(r.edited_at) ?? new Date().toISOString() }));
+    const own = m.author_id === req.userId;
+    if (!own && !(a.channel.guild_id && has(a.perms, Perm.MANAGE_MESSAGES))) throw forbidden('Only the author and moderators can see the edit history');
+    const rows = await ctx.db.query('SELECT id, message_id, content, edited_at FROM message_edits WHERE message_id = $1 ORDER BY id DESC LIMIT $2', [p.mid, limitParam(q.limit, 25, 100)]);
+    if (!own && rows.length && a.channel.guild_id) await audit(ctx, a.channel.guild_id, req.userId, 'MESSAGE_EDIT_HISTORY_VIEW', p.mid, { channelId: p.id, authorId: m.author_id, versions: rows.length });
+    return rows.map((r) => ({ id: r.id as string, messageId: r.message_id as string, content: r.content as string, editedAt: iso(r.edited_at) ?? new Date().toISOString() }));
   });
 
   const removeMessages = async (channel: any, ids: string[]) => {

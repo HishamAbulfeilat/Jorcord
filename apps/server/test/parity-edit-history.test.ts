@@ -42,11 +42,13 @@ describe('message edit history (R19)', () => {
     expect(r.body).toEqual([]);
   });
 
-  it('is visible to members with READ_MESSAGE_HISTORY and forbidden to others', async () => {
+  it('is visible to the author and moderators only (ordinary readers get 403, outsiders 404)', async () => {
     const f = await fixture();
     const m = (await api.req('POST', `/channels/${f.channelId}/messages`, f.owner.token, { content: 'hi' })).body;
     await api.req('PATCH', `/channels/${f.channelId}/messages/${m.id}`, f.owner.token, { content: 'ho' });
-    expect((await api.req('GET', `/channels/${f.channelId}/messages/${m.id}/edits`, f.bob.token)).body.map((e: any) => e.content)).toEqual(['hi']);
+    const peek = await api.req('GET', `/channels/${f.channelId}/messages/${m.id}/edits`, f.bob.token);
+    expect(peek.status).toBe(403); // an ordinary member who can read the message cannot read what it said before
+    expect((await api.req('GET', `/channels/${f.channelId}/messages/${m.id}/edits`, f.owner.token)).body.map((e: any) => e.content)).toEqual(['hi']);
     const out = await api.req('GET', `/channels/${f.channelId}/messages/${m.id}/edits`, f.outsider.token);
     expect(out.status).toBe(404); // not a guild member: the channel is invisible to them
   });

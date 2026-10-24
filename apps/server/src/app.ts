@@ -65,6 +65,7 @@ import { createWebApp, hasWebBuild } from './lib/webapp';
 import { livekitProxyRoutes, livekitConnectSources } from './routes/voice-livekit';
 import { activityOriginsCached } from './services/embeddedActivities';
 import { installAuditReason } from './lib/auditReason';
+import { modSuiteRoutes } from './routes/modsuite';
 import { userInstallRoutes } from './routes/userInstalls';
 import { appEmojiRoutes, emojiPublicRoutes } from './routes/appEmojis';
 import { securityHeaders, logSerializers, LOG_REDACT } from './lib/security';
@@ -178,7 +179,7 @@ export async function buildApp(opts: BuildOptions = {}): Promise<{ app: FastifyI
       accounts3Routes(priv, ctx);
       guildPortRoutes(priv, ctx);
       memberRoutes(priv, ctx); messageRoutes(priv, ctx); miscRoutes(priv, ctx); voiceRoutes(priv, ctx); pushRoutes(priv, ctx);
-      applicationRoutes(priv, ctx); appEmojiRoutes(priv, ctx); userInstallRoutes(priv, ctx); commandRoutes(priv, ctx); interactionRoutes(priv, ctx); pollRoutes(priv, ctx); eventRoutes(priv, ctx); socialRoutes(priv, ctx); soundboardRoutes(priv, ctx); activityRoutes(priv, ctx); safetyRoutes(priv, ctx); onboardingRoutes(priv, ctx); followRoutes(priv, ctx); guildExtrasRoutes(priv, ctx); favoriteRoutes(priv, ctx); connectionRoutes(priv, ctx); streamFeedRoutes(priv, ctx); linkedRoleRoutes(priv, ctx); directoryRoutes(priv, ctx); integrationRoutes(priv, ctx); modToolRoutes(priv, ctx); adminRoutes(priv, ctx);
+      applicationRoutes(priv, ctx); appEmojiRoutes(priv, ctx); userInstallRoutes(priv, ctx); commandRoutes(priv, ctx); interactionRoutes(priv, ctx); pollRoutes(priv, ctx); eventRoutes(priv, ctx); socialRoutes(priv, ctx); soundboardRoutes(priv, ctx); activityRoutes(priv, ctx); safetyRoutes(priv, ctx); onboardingRoutes(priv, ctx); followRoutes(priv, ctx); guildExtrasRoutes(priv, ctx); favoriteRoutes(priv, ctx); connectionRoutes(priv, ctx); streamFeedRoutes(priv, ctx); linkedRoleRoutes(priv, ctx); directoryRoutes(priv, ctx); integrationRoutes(priv, ctx); modToolRoutes(priv, ctx); modSuiteRoutes(priv, ctx); adminRoutes(priv, ctx);
     });
   }, { prefix: '/api/v1' });
 

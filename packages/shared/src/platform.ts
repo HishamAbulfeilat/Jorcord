@@ -52,6 +52,7 @@ export const AuditActionType = {
   STAGE_BLOCK_SPEAKER: 314, STAGE_UNBLOCK_SPEAKER: 315, STREAM_VIEWER_KICK: 316,
   STREAM_FEED_CREATE: 320, STREAM_FEED_UPDATE: 321, STREAM_FEED_DELETE: 322,
   GUILD_IMPORT: 340, GUILD_EXPORT: 341,
+  MESSAGE_SENSITIVE_SET: 350, MESSAGE_SENSITIVE_CLEAR: 351, MOD_SETTINGS_UPDATE: 352, EVASION_HINT_HANDLED: 353, EVASION_HINT_CREATED: 354, MEMBER_ROLES_RESTORED: 355, MESSAGE_EDIT_HISTORY_VIEW: 357,
 } as const;
 export type AuditAction = keyof typeof AuditActionType;
 
@@ -94,7 +95,8 @@ export const InteractionCallbackType = { PONG: 1, CHANNEL_MESSAGE_WITH_SOURCE: 4
 export const INTERACTION_TOKEN_TTL_MS = 15 * 60_000;
 export const INTERACTION_ACK_DEADLINE_MS = 3000;
 export const MessageFlags = { CROSSPOSTED: 1 << 0, IS_CROSSPOST: 1 << 1, SUPPRESS_EMBEDS: 1 << 2, /** Text-to-speech (needs SEND_TTS); receivers who enabled "Allow /tts playback" hear it. */ TTS: 1 << 4, EPHEMERAL: 1 << 6, LOADING: 1 << 7, SUPPRESS_NOTIFICATIONS: 1 << 12,
-  /** Components V2: the message is built only from top-level layout components (no content, embeds, stickers or poll). Set once, never cleared. */ IS_COMPONENTS_V2: 1 << 15 } as const;
+  /** Components V2: the message is built only from top-level layout components (no content, embeds, stickers or poll). Set once, never cleared. */ IS_COMPONENTS_V2: 1 << 15,
+  /** Jorcord: a moderator (or the author) marked the content sensitive; clients blur it behind a click-through. The text is kept. */ SENSITIVE: 1 << 20 } as const;
 export interface InteractionOptionValue { name: string; type: number; value?: string | number | boolean; options?: InteractionOptionValue[]; focused?: boolean }
 export interface Interaction {
   id: Id; applicationId: Id; type: number; token: string; version: 1; guildId: Id | null; channelId: Id | null; user: User; member?: unknown;

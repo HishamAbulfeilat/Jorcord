@@ -233,19 +233,4 @@ export async function postSystemMessage(ctx: Ctx, channelId: string, authorId: s
   if (!channel) return null;
   return createMessage(ctx, { channel, authorId, content, type, senderPerms: 0n, skipChecks: true, threadId });
 }
-export async function reportMessage(ctx: Ctx, userId: string, channelId: string, messageId: string, { reason, description }: { reason: string; description?: string }) {
-  const [msg] = await ctx.db.query('SELECT author_id FROM messages WHERE id = $1 AND channel_id = $2', [messageId, channelId]);
-  if (!msg) throw notFound('Message');
-  if (msg.author_id === userId) throw badRequest('You cannot report your own message');
-  const a = await channelAccess(ctx, userId, channelId);
-  if (!a.channel.guild_id) throw badRequest('Reports are for server messages'); // DMs have no moderator queue
-  const dup = await ctx.db.query('SELECT 1 AS x FROM reports WHERE message_id = $1 AND reporter_id = $2 AND status = \'open\'', [messageId, userId]);
-  if (dup.length) throw new ApiError(409, 'ALREADY_REPORTED', 'You already reported this message');
-  const rid = snowflake();
-  await ctx.db.query('INSERT INTO reports (id, guild_id, channel_id, message_id, reporter_id, target_user_id, reason, description) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)',
-    [rid, a.channel.guild_id, channelId, messageId, userId, msg.author_id, reason, description ?? null]);
-  await audit(ctx, a.channel.guild_id, userId, 'REPORT_CREATE', messageId, { reason, channelId, targetUserId: msg.author_id });
-  await ctx.hub.toGuild(a.channel.guild_id, 'GUILD_REPORTS_UPDATE', { guildId: a.channel.guild_id });
-  return { id: rid };
-}
 export { permsFor, loadOverwrites, loadGuildPerms, forbidden };

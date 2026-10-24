@@ -134,7 +134,7 @@ export interface StageBlock { userId: Id; blockedBy: Id; reason: string | null; 
 export interface StreamInfo { channelId: Id; streamerId: Id; viewerLimit: number | null; /** min(viewerLimit, the server cap) */ effectiveLimit: number; viewerCount: number; viewers: Id[]; kicked?: Id[] }
 /** An active voice-channel recording session. */
 export interface VoiceRecording { id: Id; channelId: Id; guildId: Id | null; startedBy: Id; startedAt: string }
-export interface AuditEntry { id: Id; guildId: Id; actorId: Id; action: string; /** numeric AuditActionType (additive) */ actionType?: number; targetId: Id | null; changes: unknown; reason: string | null; createdAt: string }
+export interface AuditEntry { id: Id; guildId: Id; actorId: Id; action: string; /** numeric AuditActionType (additive) */ actionType?: number; targetId: Id | null; changes: unknown; /** before/after of the fields the action changed (additive) */ diff?: { before: Record<string, unknown>; after: Record<string, unknown> } | null; reason: string | null; createdAt: string }
 export interface ReadState { channelId: Id; lastReadId: Id | null; mentionCount: number }
 export interface Webhook { id: Id; guildId: Id; channelId: Id; name: string; avatar: string | null; token?: string }
 export type AutoModTrigger = 'keyword' | 'keyword_preset' | 'spam' | 'mention_spam' | 'link' | 'regex' | 'invite_link' | 'caps' | 'repeated_chars' | 'suspicious_links' | 'member_profile';

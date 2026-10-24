@@ -13,3 +13,4 @@ export * from './trust';
 export * from './privacykit';
 export * from './parity3d';
 export * from './parity3c';
+export * from './moderation';
