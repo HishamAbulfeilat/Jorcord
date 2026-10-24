@@ -3,6 +3,8 @@ import { MessageFlags, Perm } from '@jorcord/shared';
 import type { Channel, Id, Message } from '@jorcord/shared';
 import { Eye, Languages, Lock, ShieldAlert, Rocket, Star, Megaphone, EyeOff, ListChecks, AlarmClock, Bookmark, Forward, ArrowDown, ArrowUp, Bell, FolderMinus, FolderPlus as FolderAdd, Folder as FolderI, MonitorUp, Unlink, Bot, AtSign, BellOff, Check, Copy, Edit3, Hash, LogOut, MessageSquare, Pencil, Pin, PinOff, Reply, Settings, ShieldBan, Smile, Trash2, UserMinus, UserPlus, Link2, UserX, Clock, BookOpen, Plus, FolderPlus, Mail, Ban } from 'lucide-react';
 import { api } from './api';
+import { api3c } from './api3c';
+import { MESSAGE_TTL_OPTIONS, messageTtlLabel } from '@jorcord/shared';
 import { queryClient } from './queryClient';
 import { useSocial } from '@/stores/social';
 import { useData, selfMember, findChannel } from '@/stores/data';
@@ -108,6 +110,7 @@ export function dmMenu(c: Channel): MenuItem[] {
   return [
     { label: t('Mark As Read'), icon: Check, onClick: () => markChannelRead(c) },
     { label: muted ? t('Unmute Conversation') : t('Mute Conversation'), icon: BellOff, onClick: () => setMuted('channel', c.id, !muted) },
+    { label: t('Disappearing Messages'), icon: Clock, children: MESSAGE_TTL_OPTIONS.map((sec) => ({ label: `${(c.messageTtlSeconds ?? 0) === sec ? '✓ ' : ''}${t(messageTtlLabel(sec))}`, onClick: () => { api3c.setDisappearing(c.id, sec).catch(toastError); } })) },
     { separator: true },
     { label: c.type === 'group_dm' ? t('Leave Group') : t('Close DM'), icon: LogOut, danger: true, onClick: () => api.channels.delete(c.id).catch(toastError) },
     { label: t('Copy Channel ID'), icon: Copy, onClick: () => copyText(c.id).then(() => toast(t('Copied ID'), 'success')) },
@@ -138,6 +141,8 @@ export function userMenu(userId: Id, guildId?: Id | null): MenuItem[] {
     if (rel === 'friend') items.push({ label: t('Remove Friend'), icon: UserMinus, onClick: () => api.users.removeRelationship(userId).then(() => s.apply('RELATIONSHIP_REMOVE', { userId })).catch(toastError) });
     else if (rel === 'incoming') items.push({ label: t('Accept Friend Request'), icon: UserPlus, onClick: () => api.users.setRelationship(userId, 'friend').catch(toastError) });
     else if (rel !== 'outgoing' && rel !== 'blocked') items.push({ label: t('Add Friend'), icon: UserPlus, onClick: () => api.users.setRelationship(userId, 'friend').then(() => toast(t('Friend request sent'), 'success')).catch(toastError) });
+    if (rel === 'friend') items.push({ label: t('Change Friend Nickname'), icon: BookOpen, onClick: () => ui().openModal({ kind: 'prompt', title: t('Friend Nickname'), label: t('Only you see this. Leave empty to remove it.'), initial: s.relationships[userId]?.nickname ?? '', onSubmit: (v) => api3c.setFriendNickname(userId, v.trim() || null).catch(toastError) }) });
+    { const ign = !!useSocial.getState().ignored[userId]; items.push({ label: ign ? t('Unignore') : t('Ignore'), icon: EyeOff, onClick: () => (ign ? api3c.unignore(userId) : api3c.ignore(userId)).then(() => { useSocial.getState().setIgnored(userId, !ign); toast(ign ? t('No longer ignoring this user') : t('Ignored. Their messages are hidden and they cannot ping you.'), 'success'); }).catch(toastError) }); }
     items.push(rel === 'blocked' ? { label: t('Unblock'), icon: UserX, onClick: () => api.users.removeRelationship(userId).catch(toastError) } : { label: t('Block'), icon: UserX, danger: true, onClick: () => api.users.setRelationship(userId, 'blocked').catch(toastError) });
   }
   if (guildId) {

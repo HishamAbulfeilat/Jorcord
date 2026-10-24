@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { BadgeCheck, ShieldAlert, MessageSquare, UserPlus, UserMinus, Settings } from 'lucide-react';
+import { BadgeCheck, ShieldAlert, MessageSquare, UserPlus, UserMinus, Settings, EyeOff } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useData, selfMember } from '@/stores/data';
 import { Perm } from '@jorcord/shared';
@@ -18,6 +18,9 @@ import { headerBackground, bodyBackground, isHexPair, isHex } from '@/lib/profil
 import { memberProfile } from '@/lib/memberProfile';
 import { useStreamer } from '@/lib/streamer';
 import { t } from '@/i18n';
+import { api3c } from '@/lib/api3c';
+import { useSocial } from '@/stores/social';
+import { nameStyleClass } from '@/lib/nameStyle';
 import { ProfileEffect, ServerTagBadge, plateClass } from '@/components/ui/Cosmetics';
 import { ActivityCards } from '@/components/ui/ActivityLine';
 
@@ -54,6 +57,7 @@ export function ProfileCard({ userId, guildId, compact }: { userId: string; guil
   const bannerUrl = fileUrl(prof.banner); const hs = useHoverStill(bannerUrl);
   if (!u?.id) return <div className="p-6 text-center text-muted">{t('Loading…')}</div>;
   const isMe = me?.id === userId;
+  const ignoredNow = useSocial((st) => !!st.ignored[userId]);
   const canModView = !!guildId && !isMe && !!member && modPerms(guildId);
   const banner = hs.src; const accent = u.accentColor ?? idColor(u.id);
   const myRoles = member && roles ? member.roles.map((r) => roles[r]).filter((r) => r && r.id !== guildId).sort((a, b) => b.position - a.position) : [];
@@ -67,12 +71,13 @@ export function ProfileCard({ userId, guildId, compact }: { userId: string; guil
               {rel === 'friend' ? <button aria-label="Remove friend" title="Remove friend" className="btn btn-secondary" onClick={() => api.users.removeRelationship(userId).then(() => useData.getState().apply('RELATIONSHIP_REMOVE', { userId })).catch(toastError)}><UserMinus size={16} /></button>
                 : rel === 'outgoing' ? <button className="btn btn-secondary" disabled>{t('Request Sent')}</button>
                 : rel === 'blocked' ? null : <button className="btn btn-primary" onClick={() => api.users.setRelationship(userId, 'friend').then(() => toast(rel === 'incoming' ? 'Friend added' : 'Friend request sent', 'success')).catch(toastError)}><UserPlus size={16} />{rel === 'incoming' ? t('Accept') : t('Add Friend')}</button>}
+              <button className="btn btn-secondary" aria-label={ignoredNow ? t('Unignore') : t('Ignore')} title={ignoredNow ? t('Unignore') : t('Ignore')} data-testid="profile-ignore" onClick={() => (ignoredNow ? api3c.unignore(userId) : api3c.ignore(userId)).then(() => useSocial.getState().setIgnored(userId, !ignoredNow)).catch(toastError)}><EyeOff size={16} /></button>
               <button className="btn btn-secondary" aria-label="Message" onClick={() => { closeAll(); openDmWith(userId); }}><MessageSquare size={16} /></button>
               {canModView && <button className="btn btn-secondary" aria-label={t('Mod View')} title={t('Mod View')} onClick={() => { closeAll(); useUI.getState().openModal({ kind: 'modView', guildId: guildId!, userId }); }}><ShieldAlert size={16} /></button>}
             </div>)}
         </div>
         <div className="rounded-lg bg-[rgb(var(--rail)/0.5)] p-3">
-          <div className={cx("text-xl font-bold leading-6 text-header", plateClass(u.namePlate), u.namePlate && "px-2 py-1 -mx-1")}>{displayName(u, member)} <ServerTagBadge tag={u.serverTag} className="align-middle" /></div>
+          <div className={cx("text-xl font-bold leading-6 text-header", nameStyleClass(u.displayNameStyle), plateClass(u.namePlate), u.namePlate && "px-2 py-1 -mx-1")}>{displayName(u, member)} <ServerTagBadge tag={u.serverTag} className="align-middle" /></div>
           <div className="text-sm text-normal">{u.username}{prof.pronouns && <span className="text-muted"> • {prof.pronouns}</span>}</div>
           <UserBadges flags={u.publicFlags} className="mt-2" />
           {(u.customStatus?.text || u.customStatus?.emoji) && <div className="mt-2 text-sm text-normal" data-testid="profile-status">{u.customStatus.emoji} {u.customStatus.text}</div>}

@@ -10,7 +10,7 @@ import { AppShell } from '@/components/layout/AppShell';
 import { lazyNamed, Lazy } from '@/lib/lazy';
 // route-level code splitting: only the shell + the page being opened are downloaded
 const auth = () => import('@/pages/AuthPages');
-const LoginPage = lazyNamed(auth, 'LoginPage'), RegisterPage = lazyNamed(auth, 'RegisterPage'), ForgotPasswordPage = lazyNamed(auth, 'ForgotPasswordPage'), ResetPasswordPage = lazyNamed(auth, 'ResetPasswordPage'), VerifyEmailPage = lazyNamed(auth, 'VerifyEmailPage');
+const LoginPage = lazyNamed(auth, 'LoginPage'), RegisterPage = lazyNamed(auth, 'RegisterPage'), ForgotPasswordPage = lazyNamed(auth, 'ForgotPasswordPage'), ResetPasswordPage = lazyNamed(auth, 'ResetPasswordPage'), VerifyEmailPage = lazyNamed(auth, 'VerifyEmailPage'), VerifyEmailChangePage = lazyNamed(auth, 'VerifyEmailChangePage');
 const InvitePage = lazyNamed(() => import('@/pages/InvitePage'), 'InvitePage');
 const TemplatePage = lazyNamed(() => import('@/pages/TemplatePage'), 'TemplatePage');
 const DemoPage = lazyNamed(() => import('@/pages/DemoPage'), 'DemoPage');
@@ -106,6 +106,7 @@ export default function App() {
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
         <Route path="/verify-email" element={<VerifyEmailPage />} />
+        <Route path="/verify-email-change" element={<VerifyEmailChangePage />} />
         <Route path="/invite/:code" element={<InvitePage />} />
         <Route path="/template/:code" element={<TemplatePage />} />
         <Route path="/demo/*" element={<DemoPage />} />

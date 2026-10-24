@@ -38,3 +38,22 @@
 .fx-petals { background-image: radial-gradient(4px 2px at 30px 20px, #ffb7d5, transparent), radial-gradient(4px 2px at 100px 60px, #ff8fbf, transparent), radial-gradient(3px 2px at 150px 100px, #ffd1e6, transparent), radial-gradient(4px 2px at 70px 105px, #ffb7d5, transparent); background-size: 180px 120px; animation: fx-drift 9s linear infinite; }
 .fx-starfield { background-image: radial-gradient(1px 1px at 15px 20px, #fff, transparent), radial-gradient(1.5px 1.5px at 70px 55px, #cfe0ff, transparent), radial-gradient(1px 1px at 120px 90px, #fff, transparent), radial-gradient(1.5px 1.5px at 160px 30px, #ffe9b0, transparent), radial-gradient(1px 1px at 40px 100px, #fff, transparent); background-size: 180px 120px; animation: fx-twinkle 3.2s ease-in-out infinite; }
 .fx-northern { background-image: linear-gradient(105deg, transparent 20%, #57f28744 35%, #5865f255 50%, #eb459e33 65%, transparent 80%); background-size: 200% 100%; animation: fx-sweep 7s linear infinite; }
+
+/* Display-name styles (free): font presets use system stacks only (no downloads), effects are CSS only. ids match DISPLAY_NAME_FONTS / DISPLAY_NAME_EFFECTS. */
+.dnf-serif { font-family: Georgia, 'Times New Roman', serif; }
+.dnf-mono { font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; }
+.dnf-rounded { font-family: ui-rounded, 'Nunito', 'Varela Round', 'Trebuchet MS', sans-serif; }
+.dnf-display { font-family: 'Trebuchet MS', 'Segoe UI', Impact, sans-serif; letter-spacing: .04em; text-transform: uppercase; }
+.dnf-hand { font-family: 'Segoe Print', 'Bradley Hand', 'Comic Sans MS', cursive; }
+.dnf-slab { font-family: Rockwell, 'Roboto Slab', 'Courier New', serif; font-weight: 700; }
+.dnf-condensed { font-family: 'Arial Narrow', 'Roboto Condensed', Impact, sans-serif; letter-spacing: -.01em; }
+.dnx-solid { font-weight: 700; text-shadow: 0 1px 0 rgb(0 0 0 / .25); }
+.dnx-gradient-sunset, .dnx-gradient-ocean, .dnx-shimmer { -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; color: transparent; }
+.dnx-gradient-sunset { background-image: linear-gradient(90deg, #ff9a5a, #ff4d8d, #ffd452); }
+.dnx-gradient-ocean { background-image: linear-gradient(90deg, #36d1ff, #5865f2, #57f2c4); }
+.dnx-neon { color: #fff; text-shadow: 0 0 4px #ff2bd6, 0 0 10px #ff2bd6, 0 0 18px #00f0ff; }
+.dnx-glow { text-shadow: 0 0 6px currentColor; }
+.dnx-toon { -webkit-text-stroke: 1px rgb(0 0 0 / .55); paint-order: stroke fill; font-weight: 800; }
+.dnx-shimmer { background-image: linear-gradient(100deg, #b0b6c8 30%, #ffffff 50%, #b0b6c8 70%); background-size: 220% 100%; animation: dn-shimmer 3s linear infinite; }
+@keyframes dn-shimmer { to { background-position: -220% 0; } }
+@media (prefers-reduced-motion: reduce) { .dnx-shimmer { animation: none; } }

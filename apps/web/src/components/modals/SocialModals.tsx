@@ -15,8 +15,10 @@ import { goto } from '@/lib/menus';
 import { Modal, Tabs, Spinner, Empty } from '@/components/ui/primitives';
 import { ResultCard } from '@/components/chat/Panels';
 import { t } from '@/i18n';
+import { api3c } from '@/lib/api3c';
+import type { ThreadNotifyLevel } from '@jorcord/shared';
 
-type InboxTab = 'mentions' | 'digest' | 'saved' | 'reminders' | 'scheduled';
+type InboxTab = 'mentions' | 'unreads' | 'threads' | 'digest' | 'saved' | 'reminders' | 'scheduled';
 
 function MentionsList({ close }: { close: () => void }) {
   const guilds = useData((s) => s.guilds);
@@ -160,14 +162,48 @@ function ScheduledList() {
   );
 }
 
+/** Inbox > Unreads: channels and DMs with messages I have not read (muted ones are left out by the server). */
+function UnreadsList({ close }: { close: () => void }) {
+  const guilds = useData((s) => s.guilds); const dms = useData((s) => s.dms); const me = useData((s) => s.me?.id);
+  const q = useQuery({ queryKey: ['inbox', 'unreads'], queryFn: api3c.inboxUnreads, retry: false });
+  return (<div data-testid="inbox-unreads">
+    {q.isLoading && <Spinner className="mx-auto my-6" />}
+    {!q.isLoading && !q.data?.length && <Empty icon={<Hash size={40} />} title={t('You are all caught up')}>{t('Channels with unread messages show up here.')}</Empty>}
+    <ul aria-label={t('Unreads')}>{q.data?.map((c) => {
+      const g = c.guildId ? guilds[c.guildId] : undefined; const dm = dms[c.channelId];
+      return (<li key={c.channelId}><button className="flex w-full items-center gap-3 rounded px-2 py-2 text-start hover:bg-hover" onClick={() => { close(); goto(c.guildId, c.channelId); }}>
+        <Hash size={18} className="shrink-0 text-muted" /><span className="min-w-0 flex-1"><span className="block truncate font-medium text-header">{dm ? dmName(dm, me) : `#${c.name ?? g?.channels[c.channelId]?.name ?? ''}`}</span><span className="block truncate text-xs text-muted">{g?.guild.name ?? t('Direct Message')}</span></span>
+        {c.mentionCount > 0 && <span className="rounded-full bg-danger px-1.5 text-xs font-bold text-white">{c.mentionCount}</span>}</button></li>);
+    })}</ul>
+  </div>);
+}
+
+/** Inbox > Threads: threads I follow, ones with new activity first, each with its own notification level. */
+function ThreadsList({ close }: { close: () => void }) {
+  const qc = useQueryClient();
+  const q = useQuery({ queryKey: ['inbox', 'threads'], queryFn: api3c.inboxThreads, retry: false });
+  const setLevel = (id: string, level: ThreadNotifyLevel) => api3c.setThreadLevel(id, level).then(() => qc.invalidateQueries({ queryKey: ['inbox', 'threads'] })).catch(toastError);
+  return (<div data-testid="inbox-threads">
+    {q.isLoading && <Spinner className="mx-auto my-6" />}
+    {!q.isLoading && !q.data?.length && <Empty icon={<Hash size={40} />} title={t('No followed threads')}>{t('Threads you join or post in show up here.')}</Empty>}
+    <ul aria-label={t('Threads')}>{q.data?.map((th) => (
+      <li key={th.threadId} className="flex items-center gap-2 px-2 py-2">
+        <button className="flex min-w-0 flex-1 items-center gap-2 text-start hover:underline" onClick={() => { close(); goto(th.guildId, th.threadId); }}>
+          {th.unread && <span aria-label={t('New activity')} className="h-2 w-2 shrink-0 rounded-full bg-brand" />}<span className="truncate font-medium text-header">{th.name ?? t('Thread')}</span></button>
+        <select aria-label={t('Notifications for this thread')} className="field !w-auto !py-1 text-sm" value={th.level} onChange={(e) => void setLevel(th.threadId, e.target.value as ThreadNotifyLevel)}>
+          <option value="all">{t('All messages')}</option><option value="mentions">{t('Only @mentions')}</option><option value="none">{t('Nothing')}</option></select>
+      </li>))}</ul>
+  </div>);
+}
+
 export function InboxModal({ initialTab, close }: { initialTab?: InboxTab; close: () => void }) {
   const [tab, setTab] = useState<InboxTab>(initialTab ?? 'mentions');
   const digestUnread = useQuery({ queryKey: ['inbox', 'digest'], queryFn: () => api.digest.list({ limit: 25 }), retry: false }).data?.filter((e) => !e.readAt).length ?? 0;
   const due = useQuery({ queryKey: ['inbox', 'reminders'], queryFn: api.users.reminders }).data?.filter((r) => r.firedAt).length ?? 0;
   return (
     <Modal title={t('Inbox')} onClose={close} width={560}>
-      <div className="mb-3"><Tabs label={t('Inbox')} value={tab} onChange={setTab} tabs={[{ id: 'mentions', label: t('Mentions') }, { id: 'digest', label: t('Digest'), badge: digestUnread }, { id: 'saved', label: t('Saved') }, { id: 'reminders', label: t('Reminders'), badge: due }, { id: 'scheduled', label: t('Scheduled') }]} /></div>
-      <div className="max-h-[60dvh] overflow-y-auto" data-testid="inbox">{tab === 'mentions' && <MentionsList close={close} />}{tab === 'digest' && <DigestList close={close} />}{tab === 'saved' && <SavedList close={close} />}{tab === 'reminders' && <RemindersList close={close} />}{tab === 'scheduled' && <ScheduledList />}</div>
+      <div className="mb-3"><Tabs label={t('Inbox')} value={tab} onChange={setTab} tabs={[{ id: 'mentions', label: t('Mentions') }, { id: 'unreads', label: t('Unreads') }, { id: 'threads', label: t('Threads') }, { id: 'digest', label: t('Digest'), badge: digestUnread }, { id: 'saved', label: t('Saved') }, { id: 'reminders', label: t('Reminders'), badge: due }, { id: 'scheduled', label: t('Scheduled') }]} /></div>
+      <div className="max-h-[60dvh] overflow-y-auto" data-testid="inbox">{tab === 'mentions' && <MentionsList close={close} />}{tab === 'unreads' && <UnreadsList close={close} />}{tab === 'threads' && <ThreadsList close={close} />}{tab === 'digest' && <DigestList close={close} />}{tab === 'saved' && <SavedList close={close} />}{tab === 'reminders' && <RemindersList close={close} />}{tab === 'scheduled' && <ScheduledList />}</div>
     </Modal>
   );
 }

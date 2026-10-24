@@ -34,6 +34,8 @@ import { pickProfileGif } from '@/lib/profileGif';
 import { RegisteredGamesTab } from './RegisteredGamesTab';
 import { ProfileEffect, ServerTagBadge, plateClass } from '@/components/ui/Cosmetics';
 import { ScanQrDialog } from './ScanQrDialog';
+import { AccountChanges, DisableAccount } from './AccountChanges';
+import { DisplayNameStylePicker } from './DisplayNameStylePicker';
 
 let lastTab = 'account';
 export function UserSettings({ initialTab }: { initialTab?: string }) {
@@ -78,6 +80,7 @@ function Account({ go }: { go: (t: string) => void }) {
       <div className="flex items-center gap-4 px-4 pb-4"><div className="-mt-8 rounded-full border-[6px] border-[rgb(var(--side))]"><Avatar user={me} size={80} presence /></div><div className="mt-2 text-xl font-bold text-header">{me.displayName || me.username}</div><button className="btn btn-primary ms-auto" onClick={() => go('profile')}>{t('Edit User Profile')}</button></div>
       <dl className="m-4 space-y-4 rounded-lg bg-[rgb(var(--modal-alt))] p-4"><div><dt className="label !mb-0.5">{t('Username')}</dt><dd className="text-header">{me.username}</dd></div><div><dt className="label !mb-0.5">{t('Email')}</dt><dd className="text-header" data-testid="account-email">{st.hidePersonal ? maskEmail(me.email) : me.email}{!me.verified && <span className="ms-2 text-xs text-warn">unverified</span>}</dd></div></dl></div>
     {!me.verified && me.email && <div role="status" data-testid="verify-banner" className="mt-4 rounded-lg bg-[rgb(var(--modal-alt))] p-4 text-sm text-header"><p className="mb-3">{t('Your email is not verified yet. Verify it so you can recover your account.')}</p><ResendVerification email={me.email} send={() => api.auth.sendVerifyEmail()} /></div>}
+    <AccountChanges />
     <ServerSection />
     <AccountsSection />
     <H3>{t('Password')}</H3>
@@ -86,6 +89,7 @@ function Account({ go }: { go: (t: string) => void }) {
       <Field label={t('New Password')}><input type="password" autoComplete="new-password" className="field" value={pw.next} onChange={(e) => setPw({ ...pw, next: e.target.value })} minLength={8} /></Field>
       <button disabled={busy || pw.next.length < 8 || !pw.cur} className="btn btn-primary btn-lg">{t('Change Password')}</button>
     </form>
+    <DisableAccount />
     <DataPrivacyPanel />
   </>);
 }
@@ -107,6 +111,7 @@ function Profile() {
       <ThemePicker value={f.accentColor} onChange={(c) => setF({ ...f, accentColor: c })} />
       <ThemeColorsPicker value={f.themeColors} onChange={(c) => setF({ ...f, themeColors: c })} />
       <CosmeticsPicker me={me} value={f} onChange={(v) => setF({ ...f, ...v })} />
+      <DisplayNameStylePicker />
       <div className="mb-4"><span className="label">{t('Custom Status')}</span><button type="button" className="btn btn-secondary" onClick={() => useUI.getState().openModal({ kind: 'customStatus' })}><Smile size={16} />{me.customStatus?.text || me.customStatus?.emoji ? `${me.customStatus.emoji ?? ''} ${me.customStatus.text ?? ''}`.trim() : t('Set a custom status')}</button></div>
       <Field label={t('About Me')} hint={t('You can use markdown and links.')}><textarea className="field min-h-[110px]" value={f.bio} maxLength={190} onChange={(e) => setF({ ...f, bio: e.target.value })} /></Field>
     </div>

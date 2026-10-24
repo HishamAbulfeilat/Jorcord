@@ -12,6 +12,7 @@ import { setRemember } from '@/lib/authStorage';
 import { QrLogin } from '@/components/auth/QrLogin';
 import { startAuthentication, browserSupportsWebAuthn } from '@simplewebauthn/browser';
 import { t } from '@/i18n';
+import { api3c } from '@/lib/api3c';
 
 export function Shell({ title, sub, children, footer }: { title: string; sub: string; children: React.ReactNode; footer: React.ReactNode }) {
   return (
@@ -222,6 +223,26 @@ export function VerifyEmailPage() {
       {state === 'ok' && <p role="status" className="text-[#dbdee1]">Thanks! Your email address is verified.{authed ? '' : ' Sign in to continue.'}</p>}
       {state === 'ok' && !authed && <Link to="/login" className="mt-4 flex h-11 w-full items-center justify-center rounded-[3px] bg-[#5865f2] font-medium text-white hover:bg-[#4752c4]">Sign in</Link>}
       {state === 'error' && <p role="alert" className="text-[#f23f43]">{msg || 'This verification link is invalid or has expired.'}</p>}
+    </Shell>
+  );
+}
+
+/** Landing page of the link mailed to a NEW address after "Change email". Confirming signs every device out, so sign in again with the new address. */
+export function VerifyEmailChangePage() {
+  const [sp] = useSearchParams(); const token = sp.get('token') ?? '';
+  const [state, setState] = useState<'working' | 'ok' | 'error'>(token ? 'working' : 'error'); const [msg, setMsg] = useState('');
+  useEffect(() => {
+    if (!token) return;
+    let dead = false;
+    api3c.confirmEmailChange(token).then(() => { if (!dead) { setState('ok'); useAuth.getState().clear(); } }).catch((e) => { if (!dead) { setState('error'); setMsg((e as Error).message); } });
+    return () => { dead = true; };
+  }, [token]);
+  return (
+    <Shell title={state === 'ok' ? t('Email changed') : state === 'error' ? t('Confirmation failed') : t('Confirming…')} sub="" footer={<Link to="/login" className="text-[#00a8fc] underline">{t('Go to login')}</Link>}>
+      {state === 'working' && <div className="flex justify-center"><Spinner /></div>}
+      {state === 'ok' && <p role="status" className="text-[#dbdee1]">{t('Your new email address is confirmed. For your safety you were signed out everywhere. Sign in with the new address.')}</p>}
+      {state === 'ok' && <Link to="/login" className="mt-4 flex h-11 w-full items-center justify-center rounded-[3px] bg-[#5865f2] font-medium text-white hover:bg-[#4752c4]">{t('Sign in')}</Link>}
+      {state === 'error' && <p role="alert" className="text-[#f23f43]">{msg || t('This confirmation link is invalid or has expired.')}</p>}
     </Shell>
   );
 }

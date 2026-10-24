@@ -7,6 +7,8 @@ import { Row, Spinner, Toggle } from '@/components/ui/primitives';
 import { cx } from '@/lib/format';
 import { ImpersonationSection, LinkListsSection, MemberDmsSection } from './SafetyTrustPanels';
 import { t } from '@/i18n';
+import { api3c } from '@/lib/api3c';
+import { useData } from '@/stores/data';
 
 const LEVELS = [
   { v: 0, name: 'None', desc: 'Unrestricted.' },
@@ -66,8 +68,24 @@ export function SafetyTab({ guildId }: { guildId: Id }) {
       <label className="flex items-center gap-2">{t('pause for minutes')}<input aria-label={t('Raid lock minutes')} type="number" min={5} max={1440} className="field !w-24" defaultValue={rp.lockMinutes} onBlur={(e) => void patch({ raidProtection: { lockMinutes: Number(e.target.value) } })} /></label>
     </div>}
     <Row title={t('Pause invites')} desc={paused ? `${t('Invites are paused until')} ${new Date(paused).toLocaleString()}` : t('Stop anyone from joining through invites or Discovery for 24 hours.')}><Toggle label={t('Pause invites')} checked={!!paused} onChange={(v) => void patch({ pauseInvites: v })} /></Row>
+    <SafetyAlerts guildId={guildId} s={s} run={run} />
     <MemberDmsSection s={s} patch={(b) => void patch(b)} />
     <LinkListsSection s={s} patch={(b) => void patch(b)} />
     <ImpersonationSection guildId={guildId} s={s} patch={(b) => void patch(b)} />
+  </div>);
+}
+
+/** Raid and mass-DM detections post to a moderator channel, with Lock invites / Kick new members / Dismiss buttons. */
+function SafetyAlerts({ guildId, s, run }: { guildId: Id; s: GuildSafety; run: (p: Promise<GuildSafety>, ok?: string) => void }) {
+  const chans = useData((st) => st.guilds[guildId]?.channels ?? {});
+  const text = Object.values(chans).filter((c) => c.type === 'text' || c.type === 'announcement').sort((a, b) => a.position - b.position);
+  const a = s.safetyAlerts ?? { channelId: null, raid: true, massDm: true };
+  return (<div data-testid="safety-alerts">
+    <H3>{t('Safety alerts')}</H3>
+    <p className="mb-2 text-sm text-muted">{t('Post a message with one-click actions when a raid or mass-DM spam is detected.')}</p>
+    <label className="mb-2 block"><span className="label">{t('Alert channel')}</span>
+      <select className="field" aria-label={t('Alert channel')} value={a.channelId ?? ''} onChange={(e) => run(api3c.patchSafetyAlerts(guildId, { channelId: e.target.value || null }))}><option value="">{t('Off')}</option>{text.map((c) => <option key={c.id} value={c.id}>#{c.name}</option>)}</select></label>
+    <Row title={t('Raid alerts')}><Toggle label={t('Raid alerts')} checked={a.raid} disabled={!a.channelId} onChange={(v) => run(api3c.patchSafetyAlerts(guildId, { raid: v }))} /></Row>
+    <Row title={t('Mass-DM spam alerts')}><Toggle label={t('Mass-DM spam alerts')} checked={a.massDm} disabled={!a.channelId} onChange={(v) => run(api3c.patchSafetyAlerts(guildId, { massDm: v }))} /></Row>
   </div>);
 }

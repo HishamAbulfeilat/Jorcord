@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronRight, Lock, MailQuestion, Plus, Users, X } from 'lucide-react';
+import { Timer, ChevronDown, ChevronRight, Lock, MailQuestion, Plus, Users, X } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import type { Channel } from '@jorcord/shared';
 import { useData, channelUnread } from '@/stores/data';
@@ -18,6 +18,7 @@ function DmRow({ c, quiet }: { c: Channel; quiet?: boolean }) {
   const { unread, mentions } = useData(useShallow((s) => channelUnread(s, c)));
   const other = (c.recipients ?? []).find((r) => r.id !== me?.id) ?? c.recipients?.[0];
   const custom = useData((s) => (other ? s.users[other.id]?.customStatus?.text : null));
+  const nick = useData((st) => (c.type === 'dm' && other ? st.relationships[other.id]?.nickname : null));
   const trig = useMenuTrigger(() => dmMenu(c));
   const active = channelId === c.id;
   return (
@@ -25,7 +26,7 @@ function DmRow({ c, quiet }: { c: Channel; quiet?: boolean }) {
       <button aria-current={active ? 'page' : undefined} onClick={() => nav.go('@me', c.id)} className={cx('touch flex w-full items-center gap-3 rounded px-2 text-start md:min-h-[42px]', active ? 'bg-active text-header' : 'hover:bg-hover', unread && !active ? 'text-header' : 'text-muted hover:text-interactive-hover')}>
         {c.type === 'group_dm' ? <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-brand text-white">{c.icon ? <img src={fileUrl(c.icon) ?? c.icon} alt="" className="h-full w-full object-cover" /> : <Users size={16} />}</span> : <Avatar user={other} size={32} presence />}
         <span className="min-w-0 flex-1 leading-tight">
-          <span className={cx('block truncate text-[16px]', unread ? 'font-semibold' : 'font-medium')}>{dmName(c, me?.id)}{c.encrypted && <Lock size={12} className="ms-1 inline align-baseline" aria-label={t('Secret chat')} />}</span>
+          <span className={cx('block truncate text-[16px]', unread ? 'font-semibold' : 'font-medium')}>{nick || dmName(c, me?.id)}{!!c.messageTtlSeconds && <Timer size={12} className="ms-1 inline align-baseline" aria-label={t('Disappearing messages')} />}{c.encrypted && <Lock size={12} className="ms-1 inline align-baseline" aria-label={t('Secret chat')} />}</span>
           {(c.type === 'group_dm' || custom) && <span className="block truncate text-xs text-muted">{c.type === 'group_dm' ? `${(c.recipients?.length ?? 0) + 1} Members` : custom}</span>}
         </span>
         {!quiet && <Badge n={mentions} />}

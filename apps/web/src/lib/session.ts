@@ -78,6 +78,9 @@ export function startSession(token: string) {
   unsubs.push(gw.on('GUILD_CREATE', () => { void useNotif.getState().load(); }));
   unsubs.push(gw.on('LINKED_ROLES_UPDATE', (d) => queryClient.invalidateQueries({ queryKey: ['linked-roles', d.guildId] })));
   unsubs.push(gw.on('USER_NOTE_UPDATE', (d) => queryClient.setQueryData(['user', d.userId], (old: any) => (old ? { ...old, note: d.note } : old))));
+  // ignore (distinct from block) and private friend nicknames sync across my devices
+  unsubs.push(gw.on('IGNORE_UPDATE', (d) => useSocial.getState().setIgnored(d.userId, d.ignored)));
+  unsubs.push(gw.on('FRIEND_NICKNAME_UPDATE', (d) => useData.setState((st) => { const r = st.relationships[d.userId]; return r ? { relationships: { ...st.relationships, [d.userId]: { ...r, nickname: d.nickname } } } : {}; })));
   unsubs.push(gw.on('SOUNDBOARD_SOUNDS_UPDATE', (d) => queryClient.setQueryData(['sounds', d.guildId], d.sounds)));
   unsubs.push(gw.on('ACTIVITY_START', (a) => useChannelActivities.getState().upsert(a)));
   unsubs.push(gw.on('ACTIVITY_UPDATE', (a) => useChannelActivities.getState().upsert(a)));
@@ -148,6 +151,7 @@ function onMessageCreate(m: Message) {
   maybeSpeak(m, mine);
   if (mine) { data.setRead(m.channelId, m.id, 0); return; }
   if (viewing) { ackLater(m.channelId, m.id); return; }
+  if (useSocial.getState().ignored[m.author.id]) return; // ignored: no badge, sound or notification (the server also holds back the ping)
   const gn = m.guildId ? useNotif.getState().guilds[m.guildId] : undefined;
   // quiet mode: a server / channel in the digest never pings; the server holds it for the next digest (see docs: notification digest)
   if (gn?.digest || useNotif.getState().channels[m.channelId]?.digest) return;

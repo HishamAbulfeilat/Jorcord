@@ -31,10 +31,13 @@ import { boostAnnouncement } from '@/lib/boosts';
 import { ComponentsV2, isComponentsV2 } from './ComponentsV2';
 import { EphemeralNotice, InteractionHeader, MessageComponents, PollResultBody, PollView, ThinkingBody, isLoadingMsg } from './MessageExtras';
 import { isEphemeral } from '@/stores/messages';
+import { nameStyleClass } from '@/lib/nameStyle';
+import { withIgnore } from './IgnoredStub';
+import { WaveButton, ttlSystemText } from './JoinExtras';
 
 const SYSTEM: Record<string, (n: string) => string> = {
   join: () => t('just joined the server. Say hi!'), pin: () => t('pinned a message to this channel.'), boost: () => t('just boosted the server!'),
-  thread_created: () => t('started a thread.'), call: () => t('started a call.'),
+  thread_created: () => t('started a thread.'), call: () => t('started a call.'), ttl_update: () => '',
 };
 
 export function useAuthorInfo(m: Pick<Message, 'author' | 'guildId'>) {
@@ -120,7 +123,7 @@ function TranslationBlock({ id }: { id: string }) {
   );
 }
 
-export const MessageItem = memo(function MessageItem({ m, grouped, highlighted, onEditHistory }: { m: Message; grouped: boolean; highlighted?: boolean; /** R19: clicking "(edited)" opens the prior-version popover owned by the message list. */ onEditHistory?: (m: Message, rect: DOMRect) => void }) {
+const MessageItemBase = memo(function MessageItem({ m, grouped, highlighted, onEditHistory }: { m: Message; grouped: boolean; highlighted?: boolean; /** R19: clicking "(edited)" opens the prior-version popover owned by the message list. */ onEditHistory?: (m: Message, rect: DOMRect) => void }) {
   const me = useData((s) => s.me); const info = useAuthorInfo(m); const guildName = useData((s) => (m.guildId ? s.guilds[m.guildId]?.guild.name : undefined));
   const editing = useUI((s) => s.editing === m.id); const setEditing = useUI((s) => s.setEditing); const openPopout = useUI((s) => s.openPopout); const openMenu = useUI((s) => s.openMenu);
   const replyingTo = useUI((s) => s.replyTo[m.channelId] === m.id);
@@ -150,7 +153,7 @@ export const MessageItem = memo(function MessageItem({ m, grouped, highlighted, 
     return (
       <div className={cx(base, 'flex items-center gap-3 py-1.5')} {...trig} id={`msg-${m.id}`}>
         <span className="flex w-10 justify-end"><Icon size={18} className={m.type === 'join' ? 'text-success' : 'text-muted'} /></span>
-        <span className="text-[15px] text-muted"><button className="font-medium text-header hover:underline" onClick={openUser}>{info.name}</button> {m.type === 'boost' ? t(boostAnnouncement(m.content, guildName)) : m.type === 'call' && m.content === 'missed' ? (m.author.id === me?.id ? t('called, but no one picked up.') : t('called, but you missed it.')) : SYSTEM[m.type]('').trim()} <span className="ms-1 whitespace-nowrap text-xs">{fmtStamp(ts)}</span></span>
+        <span className="text-[15px] text-muted"><button className="font-medium text-header hover:underline" onClick={openUser}>{info.name}</button> {m.type === 'boost' ? t(boostAnnouncement(m.content, guildName)) : m.type === 'call' && m.content === 'missed' ? (m.author.id === me?.id ? t('called, but no one picked up.') : t('called, but you missed it.')) : m.type === 'ttl_update' ? ttlSystemText(m.content) : SYSTEM[m.type]('').trim()} <span className="ms-1 whitespace-nowrap text-xs">{fmtStamp(ts)}</span>{m.type === 'join' && <WaveButton m={m} />}</span>
       </div>
     );
   }
@@ -194,7 +197,7 @@ export const MessageItem = memo(function MessageItem({ m, grouped, highlighted, 
         <div className="min-w-0 flex-1">
           {(!grouped || m.replyTo || m.interaction) && (
             <div className="flex items-baseline gap-2 leading-[1.375rem]">
-              <button onClick={openUser} {...userTrig} className="truncate font-medium text-header hover:underline" style={info.nameStyle ?? { color: info.color }}>{info.name}</button><ServerTagBadge tag={info.user.serverTag} className="ms-1 align-middle" />
+              <button onClick={openUser} {...userTrig} className={`truncate font-medium text-header hover:underline ${nameStyleClass(info.user.displayNameStyle)}`} style={info.nameStyle ?? { color: info.color }}>{info.name}</button><ServerTagBadge tag={info.user.serverTag} className="ms-1 align-middle" />
               {info.icon && <RoleIcon role={info.icon} size={16} className="self-center" />}
               {m.author.bot && <span className="self-center rounded bg-brand px-1 py-px text-[10px] font-bold uppercase leading-3 text-white">Bot</span>}
               <time dateTime={new Date(ts).toISOString()} title={fmtFull(ts)} className="text-xs font-medium text-muted">{fmtStamp(ts)}</time>
@@ -241,3 +244,6 @@ function ForwardedBody({ f, guildId }: { f: NonNullable<Message['forward']>; gui
     </div>
   );
 }
+
+/** Messages from people I ignore fold into a one-line stub (components/chat/IgnoredStub.tsx). */
+export const MessageItem = withIgnore(MessageItemBase);
