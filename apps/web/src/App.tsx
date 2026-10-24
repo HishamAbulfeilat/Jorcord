@@ -24,6 +24,7 @@ import { ModalHost } from '@/components/modals/ModalHost';
 import { PopoutHost } from '@/components/modals/PopoutHost';
 import { ContextMenuHost } from '@/components/ui/ContextMenu';
 import { Toasts } from '@/components/ui/Toasts';
+import { PermissionHost } from '@/components/ui/PermissionHost';
 import { Logo } from '@/components/ui/Logo';
 import { Spinner } from '@/components/ui/primitives';
 import { ApiException } from '@/lib/transport';
@@ -51,7 +52,7 @@ function Overlays() {
   return (<>
     <Lazy>{settings?.kind === 'user' && <UserSettings initialTab={settings.tab} />}
     {settings?.kind === 'guild' && <GuildSettings guildId={settings.guildId} initialTab={settings.tab} />}</Lazy>
-    <ModalHost /><PopoutHost /><ContextMenuHost /><IncomingCalls /><Toasts />
+    <ModalHost /><PopoutHost /><ContextMenuHost /><IncomingCalls /><Toasts /><PermissionHost />
   </>);
 }
 

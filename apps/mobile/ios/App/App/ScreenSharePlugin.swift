@@ -20,7 +20,8 @@ public class JorcordScreenSharePlugin: CAPPlugin, CAPBridgedPlugin {
     public let pluginMethods: [CAPPluginMethod] = [
         CAPPluginMethod(name: "isSupported", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "start", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "stop", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "stop", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "openAppSettings", returnType: CAPPluginReturnPromise)
     ]
 
     // Keep in sync with BroadcastExtension/SampleHandler.swift.
@@ -96,6 +97,14 @@ public class JorcordScreenSharePlugin: CAPPlugin, CAPBridgedPlugin {
         }
         startTimeout = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 45, execute: work)
+    }
+
+    /// Opens this app's page in the Settings app (mic / camera / notifications toggles) for the "blocked" state.
+    @objc func openAppSettings(_ call: CAPPluginCall) {
+        DispatchQueue.main.async {
+            guard let url = URL(string: UIApplication.openSettingsURLString) else { call.reject("unavailable"); return }
+            UIApplication.shared.open(url, options: [:]) { ok in ok ? call.resolve() : call.reject("could not open settings") }
+        }
     }
 
     @objc func stop(_ call: CAPPluginCall) {

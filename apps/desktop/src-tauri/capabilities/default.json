@@ -1,8 +1,8 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Permissions for the Jorcord main window. Remote (user-configured server) origins get no IPC except notifications.",
-  "windows": ["main", "overlay"],
+  "description": "Permissions for the Jorcord main window. Remote (user-configured server) origins get no IPC except notifications. Microphone/camera/screen are webview permissions (see on_permission_request in lib.rs), not IPC capabilities.",
+  "windows": ["main"],
   "permissions": [
     "core:default",
     "core:window:allow-show",
@@ -21,6 +21,13 @@
     "clipboard-manager:allow-read-text",
     "clipboard-manager:allow-write-text",
     "opener:allow-open-url",
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [
+        { "url": "ms-settings:*" },
+        { "url": "x-apple.systempreferences:*" }
+      ]
+    },
     "window-state:default"
   ]
 }

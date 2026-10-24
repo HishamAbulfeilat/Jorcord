@@ -4,6 +4,8 @@ import { api, type RemoteAuthScan } from '@/lib/api';
 import { describeDevice, isOtherServer, parseQrPayload, type QrLoginPayload } from '@/lib/qrLogin';
 import { toast } from '@/stores/ui';
 import { Spinner } from '@/components/ui/primitives';
+import { ensurePermission, reportPermissionFailure } from '@/lib/permissionFlow';
+import { classifyMediaError, failureMessage } from '@/lib/permissions';
 import { t } from '@/i18n';
 
 /**
@@ -33,8 +35,9 @@ export function ScanQrDialog({ onClose }: { onClose: () => void }) {
     let stop = false; let stream: MediaStream | undefined; let raf = 0;
     (async () => {
       if (!navigator.mediaDevices?.getUserMedia) { setError(t('This device has no camera access. Paste the code instead.')); return; }
+      if (!(await ensurePermission('camera'))) { if (!stop) setError(t('The camera is off. Allow it, or paste the code instead.')); return; }
       try { stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false }); }
-      catch { setError(t('Camera permission was denied. Allow the camera for Jorcord, or paste the code instead.')); return; }
+      catch (err) { if (!stop) { setError(failureMessage('camera', classifyMediaError(err)) + ' ' + t('Or paste the code instead.')); void reportPermissionFailure('camera', err); } return; }
       if (stop) { stream.getTracks().forEach((x) => x.stop()); return; }
       const v = video.current; if (!v) return;
       v.srcObject = stream; v.setAttribute('playsinline', 'true'); await v.play().catch(() => {});

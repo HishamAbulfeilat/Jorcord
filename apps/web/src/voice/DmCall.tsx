@@ -8,13 +8,13 @@ import { displayName } from '@/lib/format';
 import { Avatar } from '@/components/ui/Avatar';
 import { ControlBar } from './controls';
 import { CallSurface, VoiceBanners } from './Room';
-import { getVoiceClient, joinVoice } from './controller';
+import { joinVoice, setCameraOn } from './controller';
 import { useChannelVoiceUsers } from './views';
 import { t } from '@/i18n';
 
 export async function startCall(channelId: string, video: boolean) {
   await joinVoice(channelId);
-  if (video) await getVoiceClient().setCamera(true).catch(() => {});
+  if (video) await setCameraOn(true);
 }
 
 /** Call / video-call buttons for DM headers (rendered by ChatView's header). */

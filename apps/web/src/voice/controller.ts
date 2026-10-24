@@ -2,6 +2,8 @@
  * Voice controller: one VoiceClient (LiveKit) per tab, joined/left through the API token endpoint and mirrored to the
  * gateway with VOICE_STATE_UPDATE (op 4). UI reads the client via @jorcord/voice/react hooks and `useVoiceUI`.
  */
+import { ensurePermission, reportFailure } from '@/lib/permissionFlow';
+import { detectEnv, failureFromVoiceCode } from '@/lib/permissions';
 import { VoiceClient, createNativeScreenSource, mapVoiceError, type StreamPresetId, type VoiceSettings, type VoiceSnapshot, type ContentHint, type VoiceError } from '@jorcord/voice';
 import { api } from '@/lib/api';
 import { getGateway } from '@/lib/gateway';
@@ -214,6 +216,9 @@ export async function joinVoice(channelId: string) {
   if (wantChannel === channelId && (c.getSnapshot().status === 'connected' || c.getSnapshot().status === 'connecting')) return;
   if (joining) { try { await joining; } catch { /* ignore */ } }
   const run = (async () => {
+    // Just in time: ask for the microphone on the join click, not at startup. Declining (or a blocked mic) still joins, muted and listen-only.
+    const micOk = await ensurePermission('microphone').catch(() => true);
+    if (!micOk) { ui.patch({ selfMute: true }); useUI.getState().toast(t('Joined without a microphone. You are muted until you allow it.'), 'info'); }
     const prev = wantChannel;
     if (prev && prev !== channelId) await leaveVoice();
     wantChannel = channelId; lastSent = '';
@@ -221,7 +226,7 @@ export async function joinVoice(channelId: string) {
     try {
       const tok = await withTimeout(api.voice.token(channelId), TOKEN_TIMEOUT_MS);
       if (wantChannel !== channelId) return; // cancelled while fetching the token
-      c.prepare({ muted: ui.selfMute, deafened: ui.selfDeaf });
+      c.prepare({ muted: ui.selfMute || !micOk, deafened: ui.selfDeaf });
       await c.connect(tok, channelId);
       if (wantChannel !== channelId) { await c.disconnect(); return; }
       ui.patch({ joiningChannelId: null, connectingSince: null });
@@ -372,12 +377,33 @@ export function applyPrefs(p: Prefs) {
   }
 }
 
-export function startScreenShare(o: { preset: StreamPresetId; hint: ContentHint; audio: boolean }) {
+/** Turn the camera on/off. Turning it on asks first (explainer + OS prompt) and explains denied / no camera / camera busy. */
+export async function setCameraOn(on: boolean): Promise<void> {
   const c = getVoiceClient();
+  if (!on) { await c.setCamera(false).catch(() => {}); return; }
+  if (!(await ensurePermission('camera'))) return;
+  try { await c.setCamera(true); }
+  catch (e: any) { const f = failureFromVoiceCode(e?.code); if (f) await reportFailure('camera', f); else useUI.getState().toast(e?.message ?? t('Could not start the camera.'), 'error'); }
+}
+
+export async function startScreenShare(o: { preset: StreamPresetId; hint: ContentHint; audio: boolean }) {
+  const c = getVoiceClient();
+  if (!(await ensurePermission('screen'))) return;
+  const began = Date.now();
   useUI.getState().setPref('screenPreset', o.preset as Prefs['screenPreset']);
   useUI.getState().setPref('screenHint', o.hint as 'motion' | 'detail');
   useUI.getState().setPref('screenAudio', o.audio);
-  return c.startScreenShare(o).catch((e) => { if (e?.code !== 'screen-cancelled') useUI.getState().toast(e?.message ?? 'Could not start screen share', 'error'); });
+  return c.startScreenShare(o).catch((e) => {
+    if (e?.code === 'screen-cancelled') {
+      // macOS desktop: with Screen Recording denied the request fails instantly (no picker was shown); a real cancel takes a moment.
+      const env = detectEnv();
+      if (env.shell === 'tauri' && env.os === 'macos' && Date.now() - began < 600) void reportFailure('screen', 'denied');
+      return;
+    }
+    const f = failureFromVoiceCode(e?.code);
+    if (f && f !== 'unsupported') void reportFailure('screen', f);
+    else useUI.getState().toast(e?.message ?? t('Could not start screen share'), 'error');
+  });
 }
 
 /**

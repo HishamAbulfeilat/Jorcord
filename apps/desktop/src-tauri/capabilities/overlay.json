@@ -1,0 +1,11 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "overlay",
+  "description": "The click-through overlay only listens to events from the main window; it gets no clipboard, autostart, updater, notification or opener access.",
+  "windows": ["overlay"],
+  "permissions": [
+    "core:default",
+    "core:window:allow-show",
+    "core:window:allow-hide"
+  ]
+}

@@ -11,6 +11,7 @@ import { Row, Toggle, Spinner } from '@/components/ui/primitives';
 import { cx, fmtStamp } from '@/lib/format';
 import { disablePush, enablePush, loadPushState, notificationPermission, pushSupport, sendTestNotification, type NotificationPermissionState } from '@/lib/push';
 import { desktop } from '@/lib/native';
+import { ensurePermission } from '@/lib/permissionFlow';
 import { getServerUrl, isNative, nativePlatform } from '@/lib/server';
 import { switchServer } from '@/lib/serverSwitch';
 import { PROFILE_THEMES, THEME_PAIRS, themeGradient, type ThemePair } from '@/lib/profileTheme';
@@ -28,13 +29,12 @@ export function NotificationsTab() {
   const devices = useQuery({ queryKey: ['push-devices'], queryFn: api.push.devices, retry: false });
   useEffect(() => { void notif.load(); }, []); // eslint-disable-line
   const enableDesktop = async (v: boolean) => {
-    if (v && typeof Notification !== 'undefined' && Notification.permission !== 'granted') {
-      const r = await Notification.requestPermission(); if (r !== 'granted') { toast(t('Notifications are blocked in your browser settings.'), 'error'); return; }
-    }
+    if (v && !(await ensurePermission('notifications'))) return; // explainer, then the browser/OS prompt; a blocked state explains how to fix it
     set('desktopNotifications', v);
   };
   const togglePush = async (v: boolean) => {
     setBusy(true);
+    if (v && !(await ensurePermission('notifications'))) { setBusy(false); return; }
     if (v) { const r = await enablePush(); if (r.ok) { setThisDevice(true); toast(t('Push notifications enabled on this device'), 'success'); } else toast(r.reason, 'error'); }
     else { await disablePush(); setThisDevice(false); }
     await devices.refetch(); setBusy(false);

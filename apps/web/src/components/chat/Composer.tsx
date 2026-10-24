@@ -12,6 +12,8 @@ import { composerState } from '@/lib/perms';
 import { cx, displayName, dmName, fmtBytes, isImage, fileUrl } from '@/lib/format';
 import { toPlain, parseInline } from '@/lib/markdown';
 import { VoiceRecorder } from '@/lib/voiceRecord';
+import { ensurePermission, reportPermissionFailure } from '@/lib/permissionFlow';
+import { queryPermission } from '@/lib/permissions';
 import { fmtVoiceDuration, waveformPeaks } from '@/lib/voiceMsg';
 import { VoicePlayer, WaveformBars } from './Attachments';
 import { searchEmoji, replaceShortcodes } from '@/lib/emoji';
@@ -175,9 +177,15 @@ export function Composer({ channel, stagedExternal }: { channel: Channel; staged
   const clearVoiceState = () => { setRecording(false); setLive(null); };
   const startVoice = async () => {
     if (!canVoice || preview || recRef.current) return;
+    // Just in time: the first press only asks for the microphone (explainer + OS prompt); recording needs a held press, so press again.
+    const micState = await queryPermission('microphone');
+    if (micState === 'prompt' || micState === 'denied') {
+      if (await ensurePermission('microphone')) toast(t('Microphone allowed. Hold the button to record.'), 'success');
+      return;
+    }
     const rec = new VoiceRecorder((peaks, at) => setLive({ peaks, at }));
     recRef.current = rec;
-    try { await rec.start(); } catch { recRef.current = null; toast(t('Microphone access was blocked.'), 'error'); return; }
+    try { await rec.start(); } catch (err) { recRef.current = null; void reportPermissionFailure('microphone', err); return; }
     setLive({ peaks: [], at: 0 }); setRecording(true);
   };
   const stopVoice = async () => {

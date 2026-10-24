@@ -6,10 +6,13 @@ import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Intent;
+import android.Manifest;
+import android.content.pm.PackageManager;
 import android.content.pm.ServiceInfo;
 import android.os.Build;
 import android.os.IBinder;
 import androidx.core.app.NotificationCompat;
+import androidx.core.content.ContextCompat;
 
 /** Ongoing-call foreground service: prevents Android from freezing the mic/camera/WebRTC while backgrounded. */
 public class CallForegroundService extends Service {
@@ -23,6 +26,9 @@ public class CallForegroundService extends Service {
             stopSelf();
             return START_NOT_STICKY;
         }
+        // Android 14+ throws SecurityException when a camera foreground-service type is requested without the runtime permission.
+        // (CallServicePlugin.start refuses to start the service at all without RECORD_AUDIO.)
+        boolean cam = ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED;
         String title = intent != null && intent.getStringExtra("title") != null ? intent.getStringExtra("title") : "Jorcord call";
         NotificationManager nm = getSystemService(NotificationManager.class);
         if (Build.VERSION.SDK_INT >= 26) {
@@ -40,7 +46,7 @@ public class CallForegroundService extends Service {
             .build();
         if (Build.VERSION.SDK_INT >= 29) {
             int types = ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE;
-            if (intent != null && intent.getBooleanExtra("camera", false)) types |= ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA;
+            if (cam && intent != null && intent.getBooleanExtra("camera", false)) types |= ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA;
             startForeground(ID, n, types);
         } else {
             startForeground(ID, n);

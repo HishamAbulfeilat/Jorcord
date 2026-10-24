@@ -12,7 +12,7 @@ import { api } from '@/lib/api';
 import { VIEWER_LIMIT_CHOICES, limitLabel } from './StreamAudience';
 import { myChannelPerms } from '@/lib/session';
 import { cx } from '@/lib/format';
-import { isDmChannel, leaveVoice, setPrioritySpeaker, startScreenShare } from './controller';
+import { isDmChannel, leaveVoice, setCameraOn, setPrioritySpeaker, startScreenShare } from './controller';
 import { WatchTogetherPopover } from './WatchTogether';
 import { RecordButton } from './Recording';
 import { ClipButton } from './ClipRecorder';
@@ -113,7 +113,7 @@ export function ControlBar({ onSettings, className }: { onSettings: () => void; 
   return (
     <div className={cx('relative flex flex-wrap items-center justify-center gap-3 px-3 py-3 max-md:gap-2 max-md:pb-5', className)} role="toolbar" aria-label={t('Voice controls')}>
       <RoundBtn label={snap.cameraOn ? 'Turn Off Camera' : 'Turn On Camera'} active={snap.cameraOn} pressed={snap.cameraOn} disabled={!canPublish}
-        onClick={() => void client.setCamera(!snap.cameraOn).catch(() => {})}>{snap.cameraOn ? <Camera size={22} /> : <CameraOff size={22} />}</RoundBtn>
+        onClick={() => void setCameraOn(!snap.cameraOn)}>{snap.cameraOn ? <Camera size={22} /> : <CameraOff size={22} />}</RoundBtn>
       {canShare && (
         <div className="relative flex items-center">
           <RoundBtn label={snap.screenOn ? 'Stop Streaming' : 'Share Your Screen'} active={snap.screenOn} pressed={snap.screenOn} disabled={!canPublish}

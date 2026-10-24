@@ -36,7 +36,7 @@
         <service
             android:name=".CallForegroundService"
             android:exported="false"
-            android:foregroundServiceType="microphone|camera|mediaProjection|phoneCall" />
+            android:foregroundServiceType="microphone|camera" />
 
         <!-- MediaProjection screen capture for screen sharing (needs its own foregroundServiceType=mediaProjection service). -->
         <service
@@ -62,7 +62,9 @@
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <!-- API 33+ runtime permission: requested just in time (Settings > Permissions / enabling push), never at launch. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- API 31+ runtime permission for Bluetooth headset mic/routing. Declared so the system can route call audio to a headset; no scanning is done. -->
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />

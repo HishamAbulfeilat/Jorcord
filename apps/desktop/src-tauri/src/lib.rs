@@ -325,6 +325,21 @@ pub fn run() {
     }));
 
     builder
+        // Webview permission requests (getUserMedia / getDisplayMedia / Notification). WebKitGTK (Linux) silently DENIES media requests
+        // when no handler answers, so the in-app prompt would never appear; wry on macOS/Windows would otherwise show its own per-origin
+        // prompt. The web app shows its own just-in-time explainer first, and on macOS the OS (TCC) still asks for mic/camera/screen.
+        // Only the main window is trusted; geolocation and everything else keep the default (Linux: deny).
+        .on_permission_request(|webview, kind| {
+            use tauri::webview::{PermissionKind as K, PermissionResponse as R};
+            if webview.label() != "main" {
+                return R::Deny;
+            }
+            match kind {
+                K::Microphone | K::Camera | K::DisplayCapture | K::Notifications | K::ClipboardRead => R::Allow,
+                K::Geolocation | K::Midi | K::Sensors | K::LocalFonts | K::WindowManagement => R::Deny,
+                _ => R::Default,
+            }
+        })
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, shortcut, event| {
